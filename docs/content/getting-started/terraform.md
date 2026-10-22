@@ -25,8 +25,13 @@ One module per cloud creates the storage and identity the stack needs, then inst
 | **Alerting** | Alertmanager with the bundled rules. No receiver until one is configured; see [Alerting](#alerting) |
 | **Grafana state** | A dedicated small PostgreSQL instance, so what users build in the UI survives a restart |
 
-Cloud-side, per backend: one bucket, and one IAM role (AWS) or Google service account with a Workload Identity binding (GCP).
-Plus, unless you turn it off, one small PostgreSQL instance for Grafana — see [Reaching Grafana](#reaching-grafana).
+Cloud-side, each backend gets the following:
+
+- **AWS:** a bucket and an IAM role.
+- **GCP:** a bucket and a Google service account with a Workload Identity binding.
+- **Azure:** a container in a shared storage account, and a user-assigned managed identity with a federated credential.
+
+Unless you turn it off, the module also creates one small PostgreSQL instance for Grafana; see [Reaching Grafana](#reaching-grafana).
 
 Grafana gets an internal L4 load balancer with the rest of the stack on all three clouds. DNS, TLS, and an identity provider are still yours — see [Reaching Grafana](#reaching-grafana).
 
@@ -379,14 +384,14 @@ Either grow the pool or start at `sizing = "small"`.
 
 The modules cover the cloud-resource half of a production deployment — buckets, workload identity, version pinning — but not the sizing, retention, and capacity decisions that only you can make.
 
-[Production Best Practices](../../operating/production-best-practices/) is the checklist, tagged by owner. Start with [what the Terraform path already handles](../../operating/production-best-practices/#terraform-consumer), then work the items still tagged `[operator]`.
+[Production Best Practices](../../operating/production-best-practices/checklist/) is the checklist, tagged by owner. Start with [what the Terraform path already handles](../../operating/production-best-practices/checklist/#terraform-consumer), then work the items still tagged `[operator]`.
 
 Four that catch people out on a first production install:
 
 - **A default StorageClass must exist.** Several components are PVC-backed and the modules do not create one.
-- **Retention is enforced in-cluster, not by the bucket.** `metrics_retention_days` defaults to off for a reason — see the [Thanos checklist](../../operating/production-best-practices/#metrics-thanos).
+- **Retention is enforced in-cluster, not by the bucket.** `metrics_retention_days` defaults to off for a reason — see the [Thanos checklist](../../operating/production-best-practices/thanos/).
 - **Nothing is notified until a receiver exists.** Alertmanager and the bundled rules install, but a default install routes every alert to `mzmon-null`. See [Alerting](#alerting).
-- **Grafana has no identity provider until you configure one.** The modules give it a durable database and can put a load balancer in front of it, but not an IdP — see [Authentication](../../dashboards/grafana/auth/) and the [Grafana checklist](../../operating/production-best-practices/#grafana).
+- **Grafana has no identity provider until you configure one.** The modules give it a durable database and can put a load balancer in front of it, but not an IdP — see [Authentication](../../dashboards/grafana/auth/) and the [Grafana checklist](../../operating/production-best-practices/grafana/).
 
 ## Pinning a different version
 

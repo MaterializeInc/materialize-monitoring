@@ -92,7 +92,7 @@ annotations:
 dependencies:
   - name: alloy
     alias: alloy-agent
-    version: "1.13.1"
+    version: "1.14.0"
     repository: https://grafana.github.io/helm-charts
     condition: alloy-agent.enabled
     tags:
@@ -101,7 +101,7 @@ dependencies:
       - alloy-agent
   - name: alloy
     alias: alloy-gateway
-    version: "1.13.1"
+    version: "1.14.0"
     repository: https://grafana.github.io/helm-charts
     condition: alloy-gateway.enabled
     tags:
@@ -117,7 +117,7 @@ dependencies:
       - bundled-backends
       - loki
   - name: thanos
-    version: "0.47.2"
+    version: "0.47.3"
     repository: oci://ghcr.io/thanos-community/helm-charts
     condition: thanos.enabled
     tags:

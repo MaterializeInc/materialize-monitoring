@@ -1,0 +1,2 @@
+{{- /* The template lives in the dashboards-common library chart. */}}
+{{- include "mzmon-dashboards.notes" $ }}

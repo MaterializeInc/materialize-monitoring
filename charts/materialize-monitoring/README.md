@@ -46,8 +46,8 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.1 |
-| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
+| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.14.0 |
+| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.14.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.1 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
@@ -56,7 +56,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
-| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.47.2 |
+| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.47.3 |
 
 ## Values {#values}
 
@@ -2869,15 +2869,17 @@ otelcol.auth.basic "oteldest" {
 
 Where the bundled dashboards are filed.
 
-**The dashboards themselves are not in this chart.** They ship in
-`materialize-monitoring-dashboards`, installed as a release of its own, because
-Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB
-— the rendered set outgrew that and took `helm upgrade` with it.
+**The dashboards themselves are not in this chart.** They ship in three charts
+of their own, one per folder below — `materialize-monitoring-dashboards`,
+`materialize-monitoring-dashboards-infra`, and
+`materialize-monitoring-dashboards-meta` — each installed as a release of its
+own, because Helm stores a release in a Kubernetes Secret and a Secret may not
+exceed 1 MiB, and the rendered set outgrew that and took `helm upgrade` with it.
 
 What stays here is what a dashboard is filed *into*: the `Grafana` instance,
-its datasources, and the folders below. The dashboards chart references the
-folder UIDs this one creates, spelled out in its own values rather than
-discovered, since it cannot see this release.
+its datasources, and the folders below. The dashboards charts reference the
+folder UIDs this one creates, spelled out in their own values rather than
+discovered, since they cannot see this release.
 
 <table class="helm-values">
   <thead>
@@ -2903,8 +2905,8 @@ discovered, since it cannot see this release.
       <td class="helm-value-default"><code>{"allowCrossNamespaceImport":null, "instanceSelector":{}, "resyncPeriod":"5m"}</code></td>
       <td class="helm-value-desc">Settings shared by the Grafana resources this chart creates.
 Named `manifest` from when it also covered the dashboard manifests; those
-moved to `materialize-monitoring-dashboards`, which carries its own copies
-of these under `grafana`. What is left applies to the folders.
+moved to the `materialize-monitoring-dashboards*` charts, which carry their
+own copies of these under `grafana`. What is left applies to the folders.
 </td>
     </tr>
     <tr>
@@ -2920,7 +2922,7 @@ of these under `grafana`. What is left applies to the folders.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift. Whatever this resolves to must also be set as `grafana.instanceSelector` in the dashboards chart, which has no way to read it from here.
+      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift. Whatever this resolves to must also be set as `grafana.instanceSelector` in each dashboards chart, none of which can read it from here.
 </td>
     </tr>
     <tr>
@@ -4312,10 +4314,10 @@ only once the finalizers have been processed, and Helm proceeds from there.
 this release created, by the labels in `connections.grafana.labels` — the
 same ones the resources carry and their `instanceSelector` matches.
 
-That deliberately reaches beyond this release. The dashboards ship as
-`materialize-monitoring-dashboards`, a release of its own whose
-`GrafanaManifest`s carry grafana-operator's finalizer, and nothing in that
-release's teardown runs when this one is being removed. Take the operator
+That deliberately reaches beyond this release. The dashboards ship in the
+`materialize-monitoring-dashboards*` charts, releases of their own whose
+`GrafanaManifest`s carry grafana-operator's finalizer, and nothing in those
+releases' teardown runs when this one is being removed. Take the operator
 away without clearing them and they wedge in `Terminating` with no remover.
 It is still bounded: it cannot reach resources aimed at a Grafana this
 release did not create.
@@ -7975,7 +7977,7 @@ Everything under `grafana.ini` is passed through to Grafana's own config file
 verbatim, so any section Grafana understands can be set here — see the
 `[auth.generic_oauth]` example on that key.
 
-See [Production Best Practices > Grafana](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/#grafana)
+See [Production Best Practices > Grafana](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/grafana/)
 for the full checklist.
 
 <table class="helm-values">

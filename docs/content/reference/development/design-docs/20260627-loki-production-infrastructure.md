@@ -232,7 +232,7 @@ Two consequences for the topology:
 - **Per-tenant limits ≠ aggregate capacity.** `ingestion_rate_mb` and friends are per tenant (per environment); the aggregate burst is a fleet-capacity concern handled by distributor and ingester count, not by the per-tenant limit.
 - **Scale ingesters past 3 on memory, not bytes.** With `replication_factor` 3 and exactly 3 ingesters, every ingester holds every stream, so per-ingester memory tracks total stream cardinality. When that is the constraint — or to spread the regression burst and shrink blast radius — run N > RF so streams shard across the ring.
 
-Per-component resource starting points, the protective limit values, the measurement queries, and the full operator checklist (with the shared-responsibility model) live in [Operating > Production Best Practices](../../../../operating/production-best-practices/).
+Per-component resource starting points, the protective limit values, the measurement queries, and the full operator checklist (with the shared-responsibility model) live in [Operating > Production Best Practices](../../../../operating/production-best-practices/checklist/).
 
 ## Tenancy
 

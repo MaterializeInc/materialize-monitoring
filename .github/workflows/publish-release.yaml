@@ -75,22 +75,26 @@ jobs:
       # (uv/alloy/rust). Non-chart components skip this — their committed
       # artifacts (docs/assets) need no build.
       #
-      # The chart directory comes from the component manifest's `chart` key,
+      # The chart directories come from the component manifest's `charts` key,
       # falling back to `charts/<component>`. The fallback covers the two
       # components named after their chart; `dashboards` needs the key, because
-      # it ships `charts/materialize-monitoring-dashboards` under a component
-      # name that predates the chart.
-      - name: package chart
+      # it ships three `charts/materialize-monitoring-dashboards*` charts under
+      # a component name that predates them.
+      - name: package charts
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           component="${HEAD_REF#version-update/}"
-          chart_dir="$(yq e ".components.\"${component}\".chart // \"charts/${component}\"" packages/components.yaml)"
-          if [ -f "$chart_dir/Chart.yaml" ]; then
-            helm package "$chart_dir" --destination charts/
-          else
-            echo "component $component is not a chart; skipping helm package"
-          fi
+          # Captured first rather than piped, so a failed lookup fails the step
+          # rather than leaving the loop with nothing to do.
+          chart_dirs="$(yq e "(.components.\"${component}\".charts // [\"charts/${component}\"]) | .[]" packages/components.yaml)"
+          while read -r chart_dir; do
+            if [ -f "$chart_dir/Chart.yaml" ]; then
+              helm package "$chart_dir" --destination charts/
+            else
+              echo "$chart_dir is not a chart; skipping helm package"
+            fi
+          done <<< "$chart_dirs"
       - name: publish release
         # Pass the branch/sha via env (never interpolate untrusted refs into the
         # shell). The component is the branch name minus the version-update/ prefix.
@@ -109,20 +113,26 @@ jobs:
       # matches how this chart already sources its own subcharts. Runs after the
       # GitHub Release so a registry hiccup can't block it; re-running the job
       # retries the push (the release step no-ops once its tag exists).
-      - name: push chart to GHCR (OCI)
+      - name: push charts to GHCR (OCI)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           component="${HEAD_REF#version-update/}"
-          chart_dir="$(yq e ".components.\"${component}\".chart // \"charts/${component}\"" packages/components.yaml)"
-          if [ ! -f "$chart_dir/Chart.yaml" ]; then
-            echo "component $component is not a chart; skipping OCI push"
-            exit 0
-          fi
-          # The tarball is named after the *chart*, which is not always the
-          # component. `helm package` writes `<chart name>-<version>.tgz`.
-          chart_name="$(yq e '.name' "$chart_dir/Chart.yaml")"
-          version="$(yq e '.version' "$chart_dir/Chart.yaml")"
-          echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          helm push "charts/${chart_name}-${version}.tgz" oci://ghcr.io/materializeinc/helm-charts
+          chart_dirs="$(yq e "(.components.\"${component}\".charts // [\"charts/${component}\"]) | .[]" packages/components.yaml)"
+          logged_in=false
+          while read -r chart_dir; do
+            if [ ! -f "$chart_dir/Chart.yaml" ]; then
+              echo "$chart_dir is not a chart; skipping OCI push"
+              continue
+            fi
+            if [ "$logged_in" = false ]; then
+              echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+              logged_in=true
+            fi
+            # The tarball is named after the *chart*, which is not always the
+            # component. `helm package` writes `<chart name>-<version>.tgz`.
+            chart_name="$(yq e '.name' "$chart_dir/Chart.yaml")"
+            version="$(yq e '.version' "$chart_dir/Chart.yaml")"
+            helm push "charts/${chart_name}-${version}.tgz" oci://ghcr.io/materializeinc/helm-charts
+          done <<< "$chart_dirs"

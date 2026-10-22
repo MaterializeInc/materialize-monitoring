@@ -372,6 +372,20 @@ pub struct Resource {
     pub spec: dashboardv2::Dashboard,
 }
 
+impl Resource {
+    /// The name of the folder this dashboard is filed under, as written to
+    /// [`FOLDER_ANNOTATION`], or `root` when it carries none.
+    ///
+    /// Also which chart ships it: each `materialize-monitoring-dashboards*` chart
+    /// carries one folder's dashboards.
+    pub fn folder(&self) -> &str {
+        self.metadata
+            .annotations
+            .get(FOLDER_ANNOTATION)
+            .map_or("root", String::as_str)
+    }
+}
+
 /// Resource metadata.
 ///
 /// Only the fields we author. Grafana owns `uid`, `resourceVersion`,

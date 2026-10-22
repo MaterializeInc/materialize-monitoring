@@ -414,7 +414,7 @@ A ready-made starting point lives at `charts/materialize-monitoring/profiles/aws
 
 > [!INFO]
 >   The default assumes the release is installed into `monitoring`.
->   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), the `:sub` is `system:serviceaccount:thanos:thanos-thanos` instead.
+>   Under [split namespaces](../../operating/production-best-practices/stack-wide/#namespace-layout), the `:sub` is `system:serviceaccount:thanos:thanos-thanos` instead.
 
 *Permissions policy* — least-privilege to the single bucket. `DeleteObject` is required (the compactor rewrites and deletes blocks during compaction/downsampling):
 
@@ -461,7 +461,7 @@ config:
 
    > [!INFO]
    >   The default assumes the release is installed into `monitoring`.
-   >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), use `--member="serviceAccount:<project>.svc.id.goog[thanos/thanos-thanos]"` here.
+   >   Under [split namespaces](../../operating/production-best-practices/stack-wide/#namespace-layout), use `--member="serviceAccount:<project>.svc.id.goog[thanos/thanos-thanos]"` here.
 
 3. Annotate the ServiceAccount:
 
@@ -489,7 +489,7 @@ config:
 
    > [!INFO]
    >   The default assumes the release is installed into `monitoring`.
-   >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), the subject is `system:serviceaccount:thanos:thanos-thanos` instead.
+   >   Under [split namespaces](../../operating/production-best-practices/stack-wide/#namespace-layout), the subject is `system:serviceaccount:thanos:thanos-thanos` instead.
 
 3. Annotate the ServiceAccount and label the pods so the webhook injects the token:
 
@@ -526,7 +526,7 @@ Downsampling keeps long-range queries cheap: a year-wide query reads 1h blocks, 
 Each Receive replica uploads its own copy of every block it holds, labelled with `receive_replica`.
 The Compactor deduplicates on that label (`--deduplication.replica-label=receive_replica`), so compacted blocks hold one copy of each series rather than one per replica.
 The same flag enables vertical compaction, which merges the short overlaps Receive writes across a restart instead of halting on them.
-See [Retention & compaction](../../operating/production-best-practices/#thanos-retention-compaction) for the upgrade caveats.
+See [Retention & compaction](../../operating/production-best-practices/thanos/#thanos-retention-compaction) for the upgrade caveats.
 
 ### Components
 

@@ -36,7 +36,7 @@ queries:
     promQL: |
       sum by (session_type) (rate(mz_query_total{%%{mzEnvironmentFilter}}%%{interval}))
     datadogQuery: |
-      sum:mz_query_total{%%{mzEnvironmentFilter}} by {session_type}.as_rate()
+      sum:mz_query_total{%%{mzEnvironmentFilter}} by {session_type}.as_rate().rollup(sum, 60)
   - id: materialize.connections.adapter.command_rate
     stability: best-effort
     description:
@@ -52,7 +52,7 @@ queries:
     promQL: |
       sum(rate(mz_adapter_commands{%%{mzEnvironmentFilter}}%%{interval}))
     datadogQuery: |
-      sum:mz_adapter_commands{%%{mzEnvironmentFilter}}.as_rate()
+      sum:mz_adapter_commands{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
   - id: materialize.connections.queries.distribution
     stability: best-effort
     description:
@@ -66,8 +66,9 @@ queries:
         Idle statement types are filtered out. Environment-scoped.
     promQL: |
       sum by (statement_type) (increase(mz_query_total{%%{mzEnvironmentFilter}}%%{range})) > 0
+    # cutoff_min drops the statement types with no queries, as `> 0` does.
     datadogQuery: |
-      sum:mz_query_total{%%{mzEnvironmentFilter}} by {statement_type}.as_count()
+      cutoff_min(sum:mz_query_total{%%{mzEnvironmentFilter}} by {statement_type}.as_count(), 1e-9)
     instant: true
   - id: materialize.connections.queries.rate_by_statement
     stability: best-effort
@@ -81,8 +82,9 @@ queries:
         Idle (statement, session) tuples are filtered out. Environment-scoped.
     promQL: |
       sum by (statement_type, session_type) (rate(mz_query_total{%%{mzEnvironmentFilter}}%%{interval})) > 0
+    # cutoff_min drops the idle series, as `> 0` does.
     datadogQuery: |
-      sum:mz_query_total{%%{mzEnvironmentFilter}} by {statement_type,session_type}.as_rate()
+      cutoff_min(sum:mz_query_total{%%{mzEnvironmentFilter}} by {statement_type,session_type}.as_rate().rollup(sum, 60), 1e-9)
   - id: materialize.connections.peek_latency.p50
     stability: best-effort
     description:
@@ -108,7 +110,7 @@ queries:
         - name: mzClusterName
           args: ["instance_id"]
     datadogQuery: |
-      p50:mz_compute_peek_duration_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}}
+      p50:mz_compute_peek_duration_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList}}
         by {instance_id}
   - id: materialize.connections.peek_latency.p90
     stability: best-effort
@@ -132,7 +134,7 @@ queries:
         - name: mzClusterName
           args: ["instance_id"]
     datadogQuery: |
-      p90:mz_compute_peek_duration_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}}
+      p90:mz_compute_peek_duration_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList}}
         by {instance_id}
   - id: materialize.connections.peek_latency.p99
     stability: best-effort
@@ -159,7 +161,7 @@ queries:
         - name: mzClusterName
           args: ["instance_id"]
     datadogQuery: |
-      p99:mz_compute_peek_duration_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}}
+      p99:mz_compute_peek_duration_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList}}
         by {instance_id}
   - id: materialize.connections.adapter.commands_by_application
     stability: best-effort

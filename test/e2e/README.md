@@ -98,7 +98,7 @@ Helm overwrites lists, and whichever side loses that merge does so without a wor
 
 **`make e2e-cluster` creates `materialize` and `materialize-environment`.** The chart renders scrape targets into them and Helm refuses to install objects into a namespace that does not exist. A real cluster has them from the operator module.
 
-**Alloy needs a restart after any config change.** Its config arrives through `envFrom` ConfigMaps, and environment variables are fixed at container start — so neither Helm nor Alloy's `/-/reload` picks up a change. `e2e-tier1` does the rollout restart explicitly. This is the same gap the Terraform module closes with a values hash; see [Production Best Practices](../../docs/content/operating/production-best-practices.md#collection-alloy).
+**Alloy needs a restart after any config change.** Its config arrives through `envFrom` ConfigMaps, and environment variables are fixed at container start — so neither Helm nor Alloy's `/-/reload` picks up a change. `e2e-tier1` does the rollout restart explicitly. This is the same gap the Terraform module closes with a values hash; see [Production Best Practices](../../docs/content/operating/production-best-practices/alloy.md#restart-after-a-config-change).
 
 **Loki's Service names depend on `deploymentMode`.** SingleBinary renders one `loki` Service; the chart's defaults name `loki-distributor` for writes. `loki-test` repoints the writer. Grafana needs no repointing: it reads through the Loki gateway, which routes to whichever Service the mode renders. The write path is the one that fails silently — the gateway retries DNS forever and no logs arrive, with nothing in Loki's own logs to say why.
 

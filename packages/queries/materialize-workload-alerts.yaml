@@ -67,12 +67,15 @@ alerts:
         functions:
           - name: mzClusterName
             args: ["instance_id"]
-      # Datadog aggregates once and cannot drop the unhydrated sentinel, so this
-      # reads the worst replica rather than the freshest, and a hydrating replica
-      # reads as stale.
+      # min: takes each collection's freshest replica, cutoff_max drops the
+      # unhydrated sentinel, and the group-by max takes the worst collection.
       datadogQuery: |
-        avg(last_15m):(
-          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:u*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        avg(last_15m):max(
+          cutoff_max(
+            min:mz_dataflow_wallclock_lag_seconds{quantile:1 AND instance_id:u* AND %%{excludeEnvironmentFilter}} by {namespace,instance_id,collection_id},
+            1e18
+          ),
+          {namespace,instance_id}
         ) > 60
   - alert: cluster-stale
     group: freshness
@@ -109,10 +112,14 @@ alerts:
         functions:
           - name: mzClusterName
             args: ["instance_id"]
-      # As cluster-falling-behind: the worst replica, sentinel included.
+      # As cluster-falling-behind.
       datadogQuery: |
-        avg(last_15m):(
-          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:u*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        avg(last_15m):max(
+          cutoff_max(
+            min:mz_dataflow_wallclock_lag_seconds{quantile:1 AND instance_id:u* AND %%{excludeEnvironmentFilter}} by {namespace,instance_id,collection_id},
+            1e18
+          ),
+          {namespace,instance_id}
         ) > 600
 
   # --- hydration -----------------------------------------------------------
@@ -157,7 +164,7 @@ alerts:
       # replica rather than on every one.
       datadogQuery: |
         min(last_1h):(
-          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:u*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+          max:mz_dataflow_wallclock_lag_seconds{quantile:1 AND instance_id:u* AND %%{excludeEnvironmentFilter}} by {namespace,instance_id}
         ) >= 1000000000000000000
 
   # --- cluster resources ---------------------------------------------------
@@ -204,7 +211,8 @@ alerts:
             args: ["cluster_environmentd_materialize_cloud_cluster_id"]
       datadogQuery: |
         max(last_15m):100 * (
-          max:mz_metrics_resource_usage{metric:heap, cluster_environmentd_materialize_cloud_cluster_id:u*, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          max:mz_metrics_resource_usage{metric:heap AND cluster_environmentd_materialize_cloud_cluster_id:u* AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod}
           / (max:mz_metrics_resource_usage{metric:memory_max} by {namespace,pod} + max:mz_metrics_resource_usage{metric:swap_max} by {namespace,pod})
         ) > 90
   - alert: cluster-memory-high
@@ -247,7 +255,8 @@ alerts:
             args: ["cluster_environmentd_materialize_cloud_cluster_id"]
       datadogQuery: |
         avg(last_15m):100 * (
-          max:mz_metrics_resource_usage{metric:heap, cluster_environmentd_materialize_cloud_cluster_id:u*, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          max:mz_metrics_resource_usage{metric:heap AND cluster_environmentd_materialize_cloud_cluster_id:u* AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod}
           / (max:mz_metrics_resource_usage{metric:memory_max} by {namespace,pod} + max:mz_metrics_resource_usage{metric:swap_max} by {namespace,pod})
         ) > 40
   - alert: cluster-cpu-high
@@ -286,8 +295,9 @@ alerts:
             args: ["namespace"]
       datadogQuery: |
         avg(last_15m):100 * (
-          sum:container_cpu_usage_seconds_total{container:clusterd, pod:*-cluster-u*-replica-*, %%{excludeEnvironmentFilter}} by {namespace,pod}.as_rate()
-          / sum:kube_pod_container_resource_limits{container:clusterd, resource:cpu, pod:*-cluster-u*-replica-*} by {namespace,pod}
+          sum:container_cpu_usage_seconds_total{container:clusterd AND pod:*-cluster-u*-replica-* AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+          / sum:kube_pod_container_resource_limits{container:clusterd AND resource:cpu AND pod:*-cluster-u*-replica-*} by {namespace,pod}
         ) > 85
   - alert: cluster-replica-oomkilled
     group: cluster_resources
@@ -338,12 +348,13 @@ alerts:
       # here: combine the three in a composite monitor ((a || b) && c).
       datadogQuery:
         - |
-          max(last_10m):max:kube_pod_container_status_last_terminated_reason{reason:oomkilled, container:clusterd, pod:*-cluster-u*-replica-*} by {namespace,pod} > 0
+          max(last_10m):max:kube_pod_container_status_last_terminated_reason{reason:oomkilled AND container:clusterd AND pod:*-cluster-u*-replica-*}
+            by {namespace,pod} > 0
         - |
-          max(last_10m):max:kube_pod_container_status_last_terminated_exitcode{container:clusterd, pod:*-cluster-u*-replica-*} by {namespace,pod} == 167
+          max(last_10m):max:kube_pod_container_status_last_terminated_exitcode{container:clusterd AND pod:*-cluster-u*-replica-*} by {namespace,pod} == 167
         - |
           sum(last_10m):(
-            sum:kube_pod_container_status_restarts_total{container:clusterd, pod:*-cluster-u*-replica-*} by {namespace,pod}.as_count()
+            sum:kube_pod_container_status_restarts_total{container:clusterd AND pod:*-cluster-u*-replica-*} by {namespace,pod}.as_count()
           ) > 0
 
   # --- sources -------------------------------------------------------------

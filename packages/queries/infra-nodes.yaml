@@ -62,6 +62,8 @@ queries:
         A kubelet more than one minor behind the control plane is a node that missed an upgrade. It keeps working, so nothing alerts — but it is worth reporting, because the fix is a node-pool operation only an infrastructure team can do.
     promQL: |
       max by (node, kubelet_version) (kube_node_info{node="$node"})
+    datadogQuery: |
+      max:kube_node_info{$node} by {node,kubelet_version}
 
   - id: infra.nodes.info.os
     stability: canonical
@@ -74,6 +76,8 @@ queries:
         A node whose image differs from its siblings was replaced separately, usually by an autoscaler pulling a newer one. Harmless until it is not, and the first thing to quote when a fault appears on one node and not the others.
     promQL: |
       max by (node, os_image) (kube_node_info{node="$node"})
+    datadogQuery: |
+      max:kube_node_info{$node} by {node,os_image}
 
   - id: infra.nodes.info.kernel
     stability: canonical
@@ -86,6 +90,8 @@ queries:
         Rarely interesting on its own, and the single most useful string to quote verbatim when reporting a node-level fault — memory, I/O and network bugs are usually kernel-version-specific.
     promQL: |
       max by (node, kernel_version) (kube_node_info{node="$node"})
+    datadogQuery: |
+      max:kube_node_info{$node} by {node,kernel_version}
 
   - id: infra.nodes.info.runtime
     stability: canonical
@@ -98,6 +104,8 @@ queries:
         The component the node journal's `containerd` messages come from, so its version is the context for anything found on the Logs & Events tab.
     promQL: |
       max by (node, container_runtime_version) (kube_node_info{node="$node"})
+    datadogQuery: |
+      max:kube_node_info{$node} by {node,container_runtime_version}
 
   - id: infra.nodes.info.address
     stability: canonical
@@ -110,6 +118,8 @@ queries:
         Also how node-exporter names this machine: its `instance` label is this address with the exporter's port. That is the join the node picker resolves through, so this cell is the value to check first when the measurement tabs are empty but the Kubernetes ones are not.
     promQL: |
       max by (node, internal_ip) (kube_node_info{node="$node"})
+    datadogQuery: |
+      max:kube_node_info{$node} by {node,internal_ip}
 
   - id: infra.nodes.created
     stability: canonical
@@ -131,6 +141,8 @@ queries:
         wrong number, which is the kind of wrong that gets believed.
     promQL: |
       max by (node) (kube_node_created{node="$node"}) * 1000
+    datadogQuery: |
+      max:kube_node_created{$node} by {node} * 1000
 
   # --- Capacity ------------------------------------------------------------
   - id: infra.nodes.capacity.cpu
@@ -143,6 +155,8 @@ queries:
         allocatable figure, which is the one that decides scheduling.
     promQL: |
       max by (node) (kube_node_status_capacity{node="$node", resource="cpu"})
+    datadogQuery: |
+      max:kube_node_status_capacity{$node AND resource:cpu} by {node}
 
   - id: infra.nodes.capacity.memory
     stability: canonical
@@ -153,6 +167,8 @@ queries:
         `infra.nodes.allocation.memory`.
     promQL: |
       max by (node) (kube_node_status_capacity{node="$node", resource="memory"})
+    datadogQuery: |
+      max:kube_node_status_capacity{$node AND resource:memory} by {node}
 
   - id: infra.nodes.capacity.pods
     stability: canonical
@@ -165,6 +181,8 @@ queries:
         rather than below them.
     promQL: |
       max by (node) (kube_node_status_capacity{node="$node", resource="pods"})
+    datadogQuery: |
+      max:kube_node_status_capacity{$node AND resource:pods} by {node}
 
   - id: infra.nodes.capacity.ephemeral_storage
     stability: canonical
@@ -176,6 +194,8 @@ queries:
         while evicting, so this is worth reading beside `infra.nodes.conditions`.
     promQL: |
       max by (node) (kube_node_status_capacity{node="$node", resource="ephemeral_storage"})
+    datadogQuery: |
+      max:kube_node_status_capacity{$node AND resource:ephemeral_storage} by {node}
 
   # --- Allocation ----------------------------------------------------------
   - id: infra.nodes.allocation.cpu
@@ -204,6 +224,14 @@ queries:
       )
       /
       max by (node) (kube_node_status_allocatable{node="$node", resource="cpu"})
+    # The group-by max deduplicates across kube-state-metrics replicas, as the
+    # PromQL's outer max does.
+    datadogQuery: |
+      max(
+        sum:kube_pod_container_resource_requests{$node AND resource:cpu} by {node,service.instance.id},
+        {node}
+      )
+        / max:kube_node_status_allocatable{$node AND resource:cpu} by {node}
 
   - id: infra.nodes.allocation.memory
     stability: canonical
@@ -228,6 +256,13 @@ queries:
       )
       /
       max by (node) (kube_node_status_allocatable{node="$node", resource="memory"})
+    # As above: the group-by max deduplicates across replicas.
+    datadogQuery: |
+      max(
+        sum:kube_pod_container_resource_requests{$node AND resource:memory} by {node,service.instance.id},
+        {node}
+      )
+        / max:kube_node_status_allocatable{$node AND resource:memory} by {node}
 
   - id: infra.nodes.allocation.pods
     stability: canonical
@@ -251,6 +286,15 @@ queries:
       )
       /
       max by (node) (kube_node_status_allocatable{node="$node", resource="pods"})
+    # Each pod is multiplied by its non-terminal phase, which is 0 once it has
+    # Succeeded or Failed, so the sum leaves out terminal pods as the `unless` does.
+    datadogQuery: |
+      sum(
+        max:kube_pod_info{$node} by {namespace,pod,node}
+          * max:kube_pod_status_phase{phase NOT IN (succeeded,failed)} by {namespace,pod},
+        {node}
+      )
+        / max:kube_node_status_allocatable{$node AND resource:pods} by {node}
 
   - id: infra.nodes.pods.by_namespace
     stability: canonical
@@ -270,6 +314,13 @@ queries:
           unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
         )
       )
+    # As above: the non-terminal phase multiplier leaves out terminal pods.
+    datadogQuery: |
+      sum(
+        max:kube_pod_info{$node} by {namespace,pod}
+          * max:kube_pod_status_phase{phase NOT IN (succeeded,failed)} by {namespace,pod},
+        {namespace}
+      )
 
   # --- Schedulability and conditions ---------------------------------------
   - id: infra.nodes.condition.ready
@@ -287,6 +338,8 @@ queries:
         which is why the pressure conditions sit beside it.
     promQL: |
       max by (node) (kube_node_status_condition{node="$node", condition="Ready", status="true"})
+    datadogQuery: |
+      max:kube_node_status_condition{$node AND condition:ready AND status:true} by {node}
 
   - id: infra.nodes.conditions
     stability: canonical
@@ -316,6 +369,9 @@ queries:
           status="true"
         }
       )
+    datadogQuery: |
+      max:kube_node_status_condition{$node AND condition IN (memorypressure,diskpressure,pidpressure,networkunavailable) AND status:true}
+        by {node,condition}
 
   - id: infra.nodes.unschedulable
     stability: canonical
@@ -332,6 +388,8 @@ queries:
         back after a restart: there is nowhere to put it, and nothing is broken.
     promQL: |
       max by (node) (kube_node_spec_unschedulable{node="$node"})
+    datadogQuery: |
+      max:kube_node_spec_unschedulable{$node} by {node}
 
   - id: infra.nodes.taints
     stability: canonical
@@ -352,6 +410,8 @@ queries:
     instant: true
     promQL: |
       max by (node, key, value, effect) (kube_node_spec_taint{node="$node"})
+    datadogQuery: |
+      max:kube_node_spec_taint{$node} by {node,key,value,effect}
 
   # --- What is scheduled here ----------------------------------------------
   #
@@ -377,6 +437,17 @@ queries:
           and on (namespace, pod) kube_pod_info{node="$node"}
         )
       )
+    # Multiplying by `kube_pod_info * 0 + 1` is an inner join, so only this node's
+    # pods remain, and cutoff_min keeps each pod's current phase, as `== 1` does.
+    datadogQuery: |
+      count(
+        cutoff_min(
+          max:kube_pod_status_phase{*} by {namespace,pod,phase}
+            * (max:kube_pod_info{$node} by {namespace,pod} * 0 + 1),
+          1
+        ),
+        {phase}
+      )
 
   - id: infra.nodes.pods.not_ready
     stability: canonical
@@ -401,6 +472,15 @@ queries:
         and on (namespace, pod) kube_pod_info{node="$node"}
       ) == 0
       unless on (namespace, pod) (kube_pod_status_phase{phase="Succeeded"} == 1)
+    # Adding the Succeeded phase lifts a completed pod above zero, so cutoff_max
+    # drops it along with the Ready pods, as the `unless` does.
+    datadogQuery: |
+      cutoff_max(
+        max:kube_pod_status_ready{condition:true} by {namespace,pod}
+          * (max:kube_pod_info{$node} by {namespace,pod} * 0 + 1)
+          + max:kube_pod_status_phase{phase:succeeded} by {namespace,pod},
+        0
+      )
 
   - id: infra.nodes.pods.restarts
     stability: canonical
@@ -421,6 +501,14 @@ queries:
           kube_pod_container_status_restarts_total
           and on (namespace, pod) kube_pod_info{node="$node"}
         )
+      )
+    # A counter's running total doesn't exist in Datadog, so this shows each
+    # interval's restarts rather than the cumulative count.
+    datadogQuery: |
+      max(
+        sum:kube_pod_container_status_restarts_total{*} by {namespace,pod,service.instance.id}.as_count()
+          * (max:kube_pod_info{$node} by {namespace,pod} * 0 + 1),
+        {namespace,pod}
       )
 
   - id: infra.nodes.pods.budgets
@@ -477,6 +565,31 @@ queries:
           sum by (namespace, pod, instance) (
             kube_pod_container_resource_limits{node="$node", resource="memory"}
           )
+        )
+    datadogQuery:
+      - |
+        max(
+          sum:kube_pod_container_resource_requests{$node AND resource:cpu}
+            by {namespace,pod,service.instance.id},
+          {namespace,pod}
+        )
+      - |
+        max(
+          sum:kube_pod_container_resource_limits{$node AND resource:cpu}
+            by {namespace,pod,service.instance.id},
+          {namespace,pod}
+        )
+      - |
+        max(
+          sum:kube_pod_container_resource_requests{$node AND resource:memory}
+            by {namespace,pod,service.instance.id},
+          {namespace,pod}
+        )
+      - |
+        max(
+          sum:kube_pod_container_resource_limits{$node AND resource:memory}
+            by {namespace,pod,service.instance.id},
+          {namespace,pod}
         )
 
   # --- The node's own account of itself ------------------------------------

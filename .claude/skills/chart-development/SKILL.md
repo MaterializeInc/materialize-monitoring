@@ -179,6 +179,30 @@ can be reused across templates.
 
 These should be defined inside of `_*.tpl` files.
 
+### Helpers shared between charts
+
+The dashboards charts share their templates through `charts/_dashboards-common`,
+a library chart named `dashboards-common`. Each dashboards chart declares it as a
+`file://` dependency and carries it as `charts/dashboards-common`, a symlink to
+that directory, so an edit there reaches all of them. Its templates run with the
+including chart's root context, so `$.Files` is that chart's tree. Things that
+bite:
+
+- **Helm skips any directory under `charts/` whose name starts with `_` or `.`.**
+  A symlink named `_dashboards-common` loads nothing, and the render fails with
+  `no template "…" associated`. Keep the `_` on the library's own directory,
+  which Helm never loads directly, and off the symlink and the chart's name.
+- **`helm lint` fails on an undeclared subchart** ("chart metadata is missing
+  these dependencies"), so the `dependencies` entry is required even though no
+  `helm dependency build` ever runs for these charts.
+- **`helm package` follows the symlink** and bundles the library's files, so a
+  packaged chart is self-contained. Only the including chart's `.helmignore`
+  applies, which is why each dashboards chart's `.helmignore` lists the shared
+  README template.
+- **Helm logs every symlink it follows**, on stderr, without failing:
+  `found symbolic link in path`. `bin/helm-tests.sh` drops that line from a
+  failed suite's output.
+
 ### Helpers in Markdown
 
 When writing markdown referencing helpers / named templates, use `handlebars`

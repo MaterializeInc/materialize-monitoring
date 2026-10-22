@@ -118,31 +118,31 @@ resource "helm_release" "crds" {
   depends_on = [kubernetes_namespace.monitoring]
 }
 
-# The dashboards, as a release of their own.
+# The dashboards, as releases of their own: one per Grafana folder.
 #
-# Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB;
-# the rendered dashboard set had grown past that, which made `helm upgrade` on the
-# main release fail outright rather than degrade. Splitting them gives each a
-# budget of its own.
+# Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB.
+# The rendered dashboard set outgrew the main release, which made `helm upgrade`
+# on it fail outright rather than degrade, and then came close to outgrowing a
+# single dashboards release. Three charts give each set a budget of its own.
 #
-# After the main release, because every value it is given -- the folder UIDs, the
-# instance selector -- names a resource that release creates. Helm will not order
-# them for us across releases, and a dashboard that lands before its folder is
-# filed at the root until the operator's next resync rather than failing, which is
-# the quiet kind of wrong.
+# After the main release, because every value they are given -- the folder UIDs,
+# the instance selector -- names a resource that release creates. Helm will not
+# order them for us across releases, and a dashboard that lands before its folder
+# is filed at the root until the operator's next resync rather than failing,
+# which is the quiet kind of wrong.
 resource "helm_release" "dashboards" {
-  count = var.enable_dashboards ? 1 : 0
+  count = local.dashboards_install.environment ? 1 : 0
 
   name      = "mzmon-dashboards"
   namespace = local.namespace
   chart     = "${var.chart_registry}/materialize-monitoring-dashboards"
-  version   = local.dashboards_chart_version
+  version   = local.dashboards_chart_versions.environment
   timeout   = var.install_timeout
 
   create_namespace = false
 
   # No subcharts, so nothing to bury this chart's own notes -- set for symmetry
-  # with the other two releases rather than because it bites here.
+  # with the other releases rather than because it bites here.
   render_subchart_notes = false
 
   # The chart's validators `fail` at render time, so a bad selector or an empty
@@ -153,7 +153,7 @@ resource "helm_release" "dashboards" {
 
   lifecycle {
     precondition {
-      condition     = can(yamldecode(file("${local.dashboards_chart_dir}/Chart.yaml")).version)
+      condition     = can(yamldecode(file("${local.dashboards_chart_dirs.environment}/Chart.yaml")).version)
       error_message = <<-EOT
         The dashboards chart's Chart.yaml is not readable from the module, so its version cannot be
         resolved.
@@ -161,6 +161,72 @@ resource "helm_release" "dashboards" {
         Same cause as the main chart's: the repository is not present alongside the module, usually
         from an absolute local path `source`. Use a git source or a "./"-relative path, or pin
         dashboards_chart_version explicitly.
+      EOT
+    }
+  }
+}
+
+# The infrastructure and meta-monitoring dashboards, which used to ship in
+# `helm_release.dashboards` above.
+#
+# After it, not alongside it, because of the upgrade that moved them. That
+# upgrade deletes their old `GrafanaManifest`s from the release above while
+# these create new ones for the same dashboards, and grafana-operator deletes a
+# dashboard from Grafana when its manifest goes. Deleted second, the old
+# manifests would take the dashboards the new ones had just applied with them,
+# until the next resync put them back. Ordered this way the deletion goes first.
+resource "helm_release" "dashboards_infra" {
+  count = local.dashboards_install.infra ? 1 : 0
+
+  name      = "mzmon-dashboards-infra"
+  namespace = local.namespace
+  chart     = "${var.chart_registry}/materialize-monitoring-dashboards-infra"
+  version   = local.dashboards_chart_versions.infra
+  timeout   = var.install_timeout
+
+  create_namespace      = false
+  render_subchart_notes = false
+
+  values = [local.dashboards_values]
+
+  depends_on = [helm_release.monitoring, helm_release.dashboards]
+
+  lifecycle {
+    precondition {
+      condition     = can(yamldecode(file("${local.dashboards_chart_dirs.infra}/Chart.yaml")).version)
+      error_message = <<-EOT
+        The materialize-monitoring-dashboards-infra chart's Chart.yaml is not readable from the
+        module, so its version cannot be resolved. See the same precondition on the dashboards
+        release for the cause and the fix.
+      EOT
+    }
+  }
+}
+
+resource "helm_release" "dashboards_meta" {
+  count = local.dashboards_install.meta ? 1 : 0
+
+  name      = "mzmon-dashboards-meta"
+  namespace = local.namespace
+  chart     = "${var.chart_registry}/materialize-monitoring-dashboards-meta"
+  version   = local.dashboards_chart_versions.meta
+  timeout   = var.install_timeout
+
+  create_namespace      = false
+  render_subchart_notes = false
+
+  values = [local.dashboards_values]
+
+  # The same ordering as `helm_release.dashboards_infra`, for the same reason.
+  depends_on = [helm_release.monitoring, helm_release.dashboards]
+
+  lifecycle {
+    precondition {
+      condition     = can(yamldecode(file("${local.dashboards_chart_dirs.meta}/Chart.yaml")).version)
+      error_message = <<-EOT
+        The materialize-monitoring-dashboards-meta chart's Chart.yaml is not readable from the
+        module, so its version cannot be resolved. See the same precondition on the dashboards
+        release for the cause and the fix.
       EOT
     }
   }
@@ -218,6 +284,20 @@ resource "helm_release" "monitoring" {
         Same cause as above: the repository is not present alongside the module, usually from an
         absolute local path `source`. Use a git source or a "./"-relative path, or pin
         chart_version and crds_chart_version explicitly.
+      EOT
+    }
+
+    # Here rather than on a dashboards release, because a selection that matches
+    # nothing installs none of them, and a precondition on a resource with no
+    # instances never runs. Each dashboards chart refuses a selection that matches
+    # none of its own dashboards; this is the same refusal across all three.
+    precondition {
+      condition     = !var.enable_dashboards || anytrue(values(local.dashboards_install))
+      error_message = <<-EOT
+        dashboards_selected (${join(", ", coalesce(var.dashboards_selected, []))}) matches none of
+        the dashboards in any of the three dashboards charts. Patterns are filename stems such as
+        `env-top` or `infra-*`; the dashboard reference lists them. Set enable_dashboards = false to
+        install no dashboards.
       EOT
     }
 

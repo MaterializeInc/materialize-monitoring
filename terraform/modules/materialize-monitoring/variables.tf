@@ -28,19 +28,21 @@ variable "crds_chart_version" {
 }
 
 variable "dashboards_chart_version" {
-  description = "Version of the materialize-monitoring-dashboards chart. Read from its `Chart.yaml` when null, like `chart_version`. Tracked separately because the dashboards ship on a version stream of their own."
+  description = "Version of the three dashboards charts, which share one version stream. Read from each chart's `Chart.yaml` when null, like `chart_version`. Tracked separately because the dashboards ship on a version stream of their own."
   type        = string
   default     = null
 }
 
 variable "enable_dashboards" {
   description = <<-EOT
-    Install the materialize-monitoring-dashboards chart.
+    Install the dashboards charts: materialize-monitoring-dashboards for the Materialize
+    environment, materialize-monitoring-dashboards-infra for the platform underneath it, and
+    materialize-monitoring-dashboards-meta for the monitoring stack itself.
 
-    The dashboards are a Helm release of their own because Helm stores a release in a Kubernetes
-    Secret and a Secret may not exceed 1 MiB, which the rendered set had grown past. The module
-    installs it against the folders and Grafana instance the main release creates, so the two stay
-    in step without either having to discover the other.
+    The dashboards are Helm releases of their own, one per Grafana folder, because Helm stores a
+    release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set had
+    grown past. The module installs them against the folders and Grafana instance the main release
+    creates, so they stay in step without either side having to discover the other.
 
     Set false when dashboards are managed elsewhere — a platform team's own Grafana provisioning,
     or a GitOps pipeline that owns them.
@@ -52,10 +54,12 @@ variable "enable_dashboards" {
 
 variable "dashboards_selected" {
   description = <<-EOT
-    Dashboard filename-stem patterns to install, matched against the set the chart carries.
+    Dashboard filename-stem patterns to install, matched against every dashboard in the three
+    dashboards charts.
 
-    Null leaves the chart's own default, which is every dashboard. Narrow it to hold one back —
-    `env-upgrade` depends on operator instrumentation that not every Materialize version has.
+    Null leaves the charts' own default, which is every dashboard. Narrow it to hold one back —
+    `env-upgrade` depends on operator instrumentation that not every Materialize version has. A
+    dashboards chart the patterns match nothing in is not installed.
   EOT
   type        = list(string)
   default     = null
@@ -67,7 +71,7 @@ variable "dashboards_instance_selector" {
 
     Null derives the label the main chart puts on its own `Grafana` resource, which is correct
     unless that release narrowed the selector through `connections.grafana.labels` in
-    `additional_values` — the dashboards chart cannot read that, so set the same map here.
+    `additional_values` — the dashboards charts cannot read that, so set the same map here.
   EOT
   type        = map(string)
   default     = null

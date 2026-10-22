@@ -79,6 +79,8 @@ queries:
         error text, which is what tells those causes apart.
     promQL: |
       sum(rate(mz_persist_external_failed_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval}))
+    datadogQuery: |
+      sum:mz_persist_external_failed_count{%%{mzEnvironmentFilter} AND op:consensus_*}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.health.connection_errors
     stability: experimental
@@ -99,6 +101,9 @@ queries:
     promQL: |
       sum(rate(mz_persist_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}%%{interval}))
       + (sum(rate(mz_ts_oracle_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}%%{interval})) or vector(0))
+    datadogQuery: |
+      sum:mz_persist_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+        + default_zero(sum:mz_ts_oracle_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60))
 
   - id: materialize.consensus.health.commit_latency_p99
     stability: experimental
@@ -123,6 +128,8 @@ queries:
           rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval})
         )
       )
+    datadogQuery: |
+      p99:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:consensus_cas}
 
   - id: materialize.consensus.health.waiting
     stability: experimental
@@ -143,6 +150,9 @@ queries:
     promQL: |
       sum(clamp_min(-mz_persist_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0))
       + (sum(clamp_min(-mz_ts_oracle_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0)) or vector(0))
+    datadogQuery: |
+      sum(clamp_min(-1 * max:mz_persist_postgres_connpool_available{%%{mzEnvironmentFilter}} by {pod}, 0), {*})
+        + default_zero(sum(clamp_min(-1 * max:mz_ts_oracle_postgres_connpool_available{%%{mzEnvironmentFilter}} by {pod}, 0), {*}))
 
   - id: materialize.consensus.health.connections_held
     stability: experimental
@@ -165,6 +175,9 @@ queries:
     promQL: |
       sum(mz_persist_postgres_connpool_size{%%{mzEnvironmentFilter}})
       + (sum(mz_ts_oracle_postgres_connpool_size{%%{mzEnvironmentFilter}}) or vector(0))
+    datadogQuery: |
+      sum:mz_persist_postgres_connpool_size{%%{mzEnvironmentFilter}}
+        + default_zero(sum:mz_ts_oracle_postgres_connpool_size{%%{mzEnvironmentFilter}})
 
   - id: materialize.consensus.health.commits
     stability: experimental
@@ -181,6 +194,8 @@ queries:
         _Operations -> Load_ for where it comes from.
     promQL: |
       sum(rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval}))
+    datadogQuery: |
+      sum:mz_persist_external_started_count{%%{mzEnvironmentFilter} AND op:consensus_cas}.as_rate().rollup(sum, 60)
 
   # --- Overview: latency and failures -----------------------------------------
   - id: materialize.consensus.latency.commit
@@ -208,6 +223,11 @@ queries:
             rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval})
           )
         )
+    datadogQuery:
+      - |
+        p50:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:consensus_cas}
+      - |
+        p99:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:consensus_cas}
 
   - id: materialize.consensus.latency.round_trip
     stability: experimental
@@ -233,6 +253,8 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      max:mz_persist_external_rtt_latency{%%{mzEnvironmentFilter} AND external:consensus} by {app,cluster_environmentd_materialize_cloud_cluster_id}
 
   - id: materialize.consensus.failures.by_operation
     stability: experimental
@@ -256,6 +278,11 @@ queries:
         sum by (op) (
           rate(mz_ts_oracle_failed_count{%%{mzEnvironmentFilter}}%%{interval})
         )
+    datadogQuery:
+      - |
+        sum:mz_persist_external_failed_count{%%{mzEnvironmentFilter} AND op:consensus_*} by {op}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_ts_oracle_failed_count{%%{mzEnvironmentFilter}} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.failures.connection_errors
     stability: experimental
@@ -276,6 +303,12 @@ queries:
             args: ["cluster_environmentd_materialize_cloud_cluster_id"]
       - |
         sum(rate(mz_ts_oracle_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery:
+      - |
+        sum:mz_persist_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}
+          by {app,cluster_environmentd_materialize_cloud_cluster_id}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_ts_oracle_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.logs.retries
     stability: experimental
@@ -324,6 +357,8 @@ queries:
       sum by (op) (
         rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval})
       )
+    datadogQuery: |
+      sum:mz_persist_external_started_count{%%{mzEnvironmentFilter} AND op:consensus_*} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.ops.commits_by_process
     stability: experimental
@@ -345,6 +380,9 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      sum:mz_persist_external_started_count{%%{mzEnvironmentFilter} AND op:consensus_cas}
+        by {app,cluster_environmentd_materialize_cloud_cluster_id}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.ops.bytes
     stability: experimental
@@ -361,6 +399,8 @@ queries:
       sum by (op) (
         rate(mz_persist_external_bytes_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval})
       )
+    datadogQuery: |
+      sum:mz_persist_external_bytes_count{%%{mzEnvironmentFilter} AND op:consensus_*} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.ops.collections
     stability: experimental
@@ -382,6 +422,10 @@ queries:
         s.object_id`.
     promQL: |
       count(group by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
+    datadogQuery: |
+      count_not_null(
+        max:mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}} by {shard}
+      )
 
   - id: materialize.consensus.latency.mean_by_operation
     stability: experimental
@@ -407,6 +451,9 @@ queries:
           rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval})
         )
       ) >= 0
+    datadogQuery: |
+      sum:mz_persist_external_seconds{%%{mzEnvironmentFilter} AND op:consensus_*} by {op}.as_rate().rollup(sum, 60)
+        / sum:mz_persist_external_started_count{%%{mzEnvironmentFilter} AND op:consensus_*} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.latency.commit_by_process
     stability: experimental
@@ -430,6 +477,8 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      p99:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:consensus_cas} by {app,cluster_environmentd_materialize_cloud_cluster_id}
 
   - id: materialize.consensus.contention.conflicts
     stability: experimental
@@ -453,6 +502,8 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      sum:mz_persist_cmd_cas_mismatch_count{%%{mzEnvironmentFilter}} by {app,cluster_environmentd_materialize_cloud_cluster_id}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.retries.by_operation
     stability: experimental
@@ -478,6 +529,13 @@ queries:
         sum by (op) (
           rate(mz_ts_oracle_retry_retries_count{%%{mzEnvironmentFilter}}%%{interval})
         )
+    datadogQuery:
+      - |
+        sum:mz_persist_retry_retries_count{%%{mzEnvironmentFilter} AND op IN (
+          fetch_state::scan,apply_unbatched_cmd::cas,gc::truncate,maybe_init::cas,consensus::open
+        )} by {op}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_ts_oracle_retry_retries_count{%%{mzEnvironmentFilter}} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.oracle.ops
     stability: experimental
@@ -496,6 +554,8 @@ queries:
       sum by (op) (
         rate(mz_ts_oracle_started_count{%%{mzEnvironmentFilter}}%%{interval})
       )
+    datadogQuery: |
+      sum:mz_ts_oracle_started_count{%%{mzEnvironmentFilter}} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.oracle.latency
     stability: experimental
@@ -518,6 +578,9 @@ queries:
           rate(mz_ts_oracle_started_count{%%{mzEnvironmentFilter}}%%{interval})
         )
       ) >= 0
+    datadogQuery: |
+      sum:mz_ts_oracle_seconds{%%{mzEnvironmentFilter}} by {op}.as_rate().rollup(sum, 60)
+        / sum:mz_ts_oracle_started_count{%%{mzEnvironmentFilter}} by {op}.as_rate().rollup(sum, 60)
 
   # --- Connections ------------------------------------------------------------
   - id: materialize.consensus.pool.size
@@ -542,6 +605,11 @@ queries:
             args: ["cluster_environmentd_materialize_cloud_cluster_id"]
       - |
         sum(mz_ts_oracle_postgres_connpool_size{%%{mzEnvironmentFilter}})
+    datadogQuery:
+      - |
+        sum:mz_persist_postgres_connpool_size{%%{mzEnvironmentFilter}} by {app,cluster_environmentd_materialize_cloud_cluster_id}
+      - |
+        sum:mz_ts_oracle_postgres_connpool_size{%%{mzEnvironmentFilter}}
 
   - id: materialize.consensus.pool.in_use
     stability: experimental
@@ -568,6 +636,22 @@ queries:
           mz_ts_oracle_postgres_connpool_size{%%{mzEnvironmentFilter}}
           - clamp_min(mz_ts_oracle_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0)
         )
+    datadogQuery:
+      - |
+        sum(
+          max:mz_persist_postgres_connpool_size{%%{mzEnvironmentFilter}} by {app,cluster_environmentd_materialize_cloud_cluster_id,pod}
+            - clamp_min(
+              max:mz_persist_postgres_connpool_available{%%{mzEnvironmentFilter}} by {app,cluster_environmentd_materialize_cloud_cluster_id,pod},
+              0
+            ),
+          {app,cluster_environmentd_materialize_cloud_cluster_id}
+        )
+      - |
+        sum(
+          max:mz_ts_oracle_postgres_connpool_size{%%{mzEnvironmentFilter}} by {pod}
+            - clamp_min(max:mz_ts_oracle_postgres_connpool_available{%%{mzEnvironmentFilter}} by {pod}, 0),
+          {*}
+        )
 
   - id: materialize.consensus.pool.waiting
     stability: experimental
@@ -592,6 +676,17 @@ queries:
             args: ["cluster_environmentd_materialize_cloud_cluster_id"]
       - |
         sum(clamp_min(-mz_ts_oracle_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0))
+    datadogQuery:
+      - |
+        sum(
+          clamp_min(
+            -1 * max:mz_persist_postgres_connpool_available{%%{mzEnvironmentFilter}} by {app,cluster_environmentd_materialize_cloud_cluster_id,pod},
+            0
+          ),
+          {app,cluster_environmentd_materialize_cloud_cluster_id}
+        )
+      - |
+        sum(clamp_min(-1 * max:mz_ts_oracle_postgres_connpool_available{%%{mzEnvironmentFilter}} by {pod}, 0), {*})
 
   - id: materialize.consensus.pool.acquire_wait
     stability: experimental
@@ -623,6 +718,15 @@ queries:
           /
           sum(rate(mz_ts_oracle_postgres_connpool_acquires{%%{mzEnvironmentFilter}}%%{interval}))
         ) >= 0
+    datadogQuery:
+      - |
+        sum:mz_persist_postgres_connpool_acquire_seconds{%%{mzEnvironmentFilter}}
+          by {app,cluster_environmentd_materialize_cloud_cluster_id}.as_rate().rollup(sum, 60)
+          / sum:mz_persist_postgres_connpool_acquires{%%{mzEnvironmentFilter}}
+            by {app,cluster_environmentd_materialize_cloud_cluster_id}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_ts_oracle_postgres_connpool_acquire_seconds{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+          / sum:mz_ts_oracle_postgres_connpool_acquires{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.pool.churn
     stability: experimental
@@ -646,6 +750,13 @@ queries:
       - |
         sum(rate(mz_persist_postgres_connpool_ttl_reconnections{%%{mzEnvironmentFilter}}%%{interval}))
         + (sum(rate(mz_ts_oracle_postgres_connpool_ttl_reconnections{%%{mzEnvironmentFilter}}%%{interval})) or vector(0))
+    datadogQuery:
+      - |
+        sum:mz_persist_postgres_connpool_connections_created{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+          + default_zero(sum:mz_ts_oracle_postgres_connpool_connections_created{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60))
+      - |
+        sum:mz_persist_postgres_connpool_ttl_reconnections{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+          + default_zero(sum:mz_ts_oracle_postgres_connpool_ttl_reconnections{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60))
 
   # --- State and Cleanup ------------------------------------------------------
   - id: materialize.consensus.state.versions
@@ -668,6 +779,11 @@ queries:
         sum(rate(mz_persist_external_succeeded_count{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval}))
       - |
         sum(rate(mz_persist_external_consensus_truncated_count{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery:
+      - |
+        sum:mz_persist_external_succeeded_count{%%{mzEnvironmentFilter} AND op:consensus_cas}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_external_consensus_truncated_count{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.state.live
     stability: experimental
@@ -686,6 +802,8 @@ queries:
         Measured at each object's last cleanup, so it moves in steps.
     promQL: |
       sum(max by (shard) (mz_persist_shard_gc_live_diffs{%%{mzEnvironmentFilter}}))
+    datadogQuery: |
+      sum(max:mz_persist_shard_gc_live_diffs{%%{mzEnvironmentFilter}} by {shard}, {*})
 
   - id: materialize.consensus.state.held
     stability: experimental
@@ -706,6 +824,8 @@ queries:
         mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`.
     promQL: |
       topk(10, max by (shard) (mz_persist_shard_seqnos_held{%%{mzEnvironmentFilter}}))
+    datadogQuery: |
+      top(max:mz_persist_shard_seqnos_held{%%{mzEnvironmentFilter}} by {shard}, 10, 'max', 'desc')
 
   - id: materialize.consensus.gc.runs
     stability: experimental
@@ -726,6 +846,13 @@ queries:
         sum(rate(mz_persist_gc_finished{%%{mzEnvironmentFilter}}%%{interval}))
       - |
         sum(rate(mz_persist_gc_noop{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery:
+      - |
+        sum:mz_persist_gc_started{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_gc_finished{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_gc_noop{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.consensus.gc.lease_timeouts
     stability: experimental
@@ -742,6 +869,8 @@ queries:
         _Versions Held by Object_.
     promQL: |
       sum(rate(mz_persist_lease_timeout_read{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery: |
+      sum:mz_persist_lease_timeout_read{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
 metricOverrides:
   # The latency histogram is per operation, per process, per bucket — the bulk

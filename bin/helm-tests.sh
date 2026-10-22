@@ -16,9 +16,14 @@
 # defaults to 400: about a third less CPU for about twice the heap, which peaks
 # near 1.2GB for the largest suite.
 #
-# Each suite's output is held back and printed in full only if the suite fails,
-# so parallel suites do not interleave their output. A line per suite reports
+# Each suite's output is held back and printed only if the suite fails, so
+# parallel suites do not interleave their output. A line per suite reports
 # progress as each one finishes.
+#
+# The printed output drops one line Helm logs on every render of a dashboards
+# chart. Those charts carry the dashboards-common library chart as a symlink,
+# and Helm reports every symlink it follows, on stderr and without failing. The
+# line names the symlink and says nothing about why a suite failed.
 #
 # Environment:
 #   HELM                the helm binary (default: helm)
@@ -50,6 +55,9 @@ if ! "${HELM}" unittest --help >/dev/null 2>&1; then
     _error "the helm-unittest plugin is not installed; run \`make helm-unittest-install\`"
     exit 1
 fi
+
+# Helm 3's wording, which helm-unittest renders with, and Helm 4's share this.
+SYMLINK_NOTICE='found symbolic link in path'
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
@@ -105,7 +113,8 @@ tests=$(awk '/^Tests:/ { n += $(NF - 1) } END { print n + 0 }' "${WORK_DIR}"/*.l
 if [ -s "${WORK_DIR}/failed" ]; then
     while read -r suite; do
         _error "${suite}"
-        cat "$(_log_for "${suite}")"
+        # `|| true`: grep exits non-zero when it filters out every line.
+        grep -v -F "${SYMLINK_NOTICE}" "$(_log_for "${suite}")" || true
     done < <(sort "${WORK_DIR}/failed")
     _error "$(wc -l <"${WORK_DIR}/failed" | tr -d ' ') of ${#suites[@]} suites failed (${tests} tests, ${SECONDS}s)"
     exit 1

@@ -372,6 +372,102 @@ main.container {
   }
 }
 
+// Code block copy button; see assets/code-copy.js.
+$code-copy-inset: rem(0.8);
+$code-copy-padding: rem(0.4);
+$code-copy-line-height: 1.4;
+
+.highlight {
+  position: relative;
+}
+
+.code-copy {
+  position: absolute;
+  top: $code-copy-inset;
+  right: $code-copy-inset;
+  padding: $code-copy-padding rem(1.2);
+  font-family: inherit;
+  font-size: var(--font-size-smaller);
+  line-height: $code-copy-line-height;
+  // Monokai's foreground and background, not --gray-* variables: chroma
+  // renders Monokai in both site themes, so the block is dark either way.
+  // The fill is opaque so the code the button sits over doesn't show through.
+  color: #f8f8f2;
+  background: #272822;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--mz-brand);
+    outline: none;
+  }
+}
+
+// Out of the way until the reader points at the block, like the Mermaid
+// button.
+@media (hover: hover) {
+  .code-copy {
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .highlight:hover .code-copy,
+  .code-copy:focus-visible {
+    opacity: 1;
+  }
+}
+
+// Devices with no hover keep it in view, so the block gets a strip above its
+// first line for the button to sit in. Without it, the button would hide the
+// end of that line for good. The strip is the button's height plus an inset
+// above and below.
+@media (hover: none) {
+  .highlight:has(> .code-copy) pre {
+    padding-top: calc(
+      2 * #{$code-copy-inset} + 2 * #{$code-copy-padding} + 2px +
+        var(--font-size-smaller) * #{$code-copy-line-height}
+    );
+  }
+}
+
+// Expand-all and collapse-all buttons; see assets/details-toggle.js.
+.details-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: rem(1.2);
+  margin: rem(1.6) 0;
+
+  button {
+    padding: rem(0.6) rem(1.6);
+    font-family: inherit;
+    font-size: var(--font-size-smaller);
+    color: var(--color-link);
+    background: transparent;
+    border: 1px solid var(--color-link);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--gray-100);
+      outline: none;
+    }
+
+    &:focus-visible {
+      box-shadow: 0 0 0 rem(0.3) var(--color-link);
+    }
+  }
+}
+
+@media print {
+  .code-copy,
+  .details-toggle {
+    display: none;
+  }
+}
+
 .warning,
 .note,
 .info,

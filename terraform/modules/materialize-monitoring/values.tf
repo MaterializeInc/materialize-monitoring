@@ -27,17 +27,28 @@ locals {
   # on its own, leaving `charts/` behind. `helm_release.monitoring` carries a
   # precondition for that case, because silently dropping the sizing profile
   # is a far worse failure than refusing to plan.
-  chart_dir            = "${path.module}/../../../charts/materialize-monitoring"
-  crds_chart_dir       = "${path.module}/../../../charts/materialize-monitoring-crds"
-  dashboards_chart_dir = "${path.module}/../../../charts/materialize-monitoring-dashboards"
-  profile_dir          = "${local.chart_dir}/profiles"
+  chart_dir      = "${path.module}/../../../charts/materialize-monitoring"
+  crds_chart_dir = "${path.module}/../../../charts/materialize-monitoring-crds"
+  profile_dir    = "${local.chart_dir}/profiles"
+
+  # The three dashboards charts, one per Grafana folder, keyed by what they
+  # carry. Each key's release is `mzmon-dashboards` plus the chart's suffix.
+  dashboards_chart_dirs = {
+    environment = "${path.module}/../../../charts/materialize-monitoring-dashboards"
+    infra       = "${path.module}/../../../charts/materialize-monitoring-dashboards-infra"
+    meta        = "${path.module}/../../../charts/materialize-monitoring-dashboards-meta"
+  }
 
   # Version comes from the chart itself unless the caller pins one. This is what
   # makes "the module ref names the chart version" structurally true rather than
   # a convention someone has to remember on every bump.
-  chart_version            = coalesce(var.chart_version, yamldecode(file("${local.chart_dir}/Chart.yaml")).version)
-  crds_chart_version       = coalesce(var.crds_chart_version, yamldecode(file("${local.crds_chart_dir}/Chart.yaml")).version)
-  dashboards_chart_version = coalesce(var.dashboards_chart_version, yamldecode(file("${local.dashboards_chart_dir}/Chart.yaml")).version)
+  chart_version      = coalesce(var.chart_version, yamldecode(file("${local.chart_dir}/Chart.yaml")).version)
+  crds_chart_version = coalesce(var.crds_chart_version, yamldecode(file("${local.crds_chart_dir}/Chart.yaml")).version)
+  # The dashboards charts share one version stream, so one pin covers all three.
+  dashboards_chart_versions = {
+    for key, dir in local.dashboards_chart_dirs :
+    key => coalesce(var.dashboards_chart_version, yamldecode(file("${dir}/Chart.yaml")).version)
+  }
 
   # The tier's Loki profile is the sentinel: it ships with every version of the
   # chart, so its absence means the chart directory is unreachable rather than
@@ -511,13 +522,16 @@ locals {
 }
 
 # ==============================================================================
-# Dashboards chart
+# Dashboards charts
 # ==============================================================================
-# The dashboards ship as a release of their own, so everything that used to be
-# resolved inside one chart is now a value one chart hands the other. None of it
+# The dashboards ship as releases of their own, so everything that used to be
+# resolved inside one chart is now a value one chart hands another. None of it
 # is discoverable at apply time -- a `GrafanaManifest` names its folder by UID
 # and its instance by label, and both belong to the main release -- so the module
 # derives them here from the same `values.yaml` the main release renders from.
+#
+# All three dashboards charts take the same values. Each carries one folder's
+# dashboards and ignores `folderUids` entries for the other two.
 #
 # That derivation is the point. Written out as literals, these would be three
 # strings that agree with the other chart today and silently stop agreeing the
@@ -531,7 +545,7 @@ locals {
   # the release's fullname, unless that folder adopted an existing UID.
   #
   # Only folders the main chart actually creates are included. A dashboard
-  # naming one that is absent has its annotation dropped by the dashboards chart
+  # naming one that is absent has its annotation dropped by its dashboards chart
   # and lands at the root, which is what Grafana would do with it anyway.
   dashboard_folder_uids = {
     for key, folder in try(local.chart_values.dashboards.config.grafana.folders, {}) :
@@ -561,4 +575,27 @@ locals {
     },
     var.dashboards_selected == null ? {} : { selected = var.dashboards_selected },
   ))
+
+  # Which dashboards charts to install.
+  #
+  # `dashboards_selected` is matched against every dashboard, across all three
+  # charts, and each chart is handed the whole list; a chart ignores patterns
+  # that match nothing it carries. What a chart refuses is a list that matches
+  # *none* of its dashboards, so a chart the selection leaves empty is not
+  # installed at all. `fileset` uses the same glob syntax as the chart's
+  # `Files.Glob` for the stem patterns `selected` takes.
+  #
+  # A chart whose rendered tree is not readable from here is installed anyway,
+  # so that a selection matching nothing in it fails loudly in the chart rather
+  # than quietly dropping it.
+  dashboards_install = {
+    for key, dir in local.dashboards_chart_dirs : key => var.enable_dashboards && (
+      var.dashboards_selected == null
+      || !fileexists("${dir}/Chart.yaml")
+      || length(flatten([
+        for pattern in coalesce(var.dashboards_selected, []) :
+        tolist(fileset("${dir}/pre-rendered/dashboards/grafana", "${pattern}.yaml"))
+      ])) > 0
+    )
+  }
 }

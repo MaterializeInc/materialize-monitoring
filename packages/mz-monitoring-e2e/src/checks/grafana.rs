@@ -19,8 +19,8 @@
 //! Those resources are **cluster-wide reads**, not scoped to a release, which is
 //! what lets this keep working now that the dashboards ship in a chart of their
 //! own. The Grafana instance and the folders come from `materialize-monitoring`;
-//! the `GrafanaManifest`s come from `materialize-monitoring-dashboards`. The
-//! suite asserts the result rather than which release produced it.
+//! the `GrafanaManifest`s come from the three `materialize-monitoring-dashboards*`
+//! charts. The suite asserts the result rather than which release produced it.
 
 use std::time::Duration;
 
@@ -147,12 +147,12 @@ pub async fn dashboards_provisioned(ctx: &Ctx) -> Result<()> {
         bail!(
             "no dashboard resources exist in {ns} — nothing declared any.\n\
              \n\
-             The dashboards are a release of their own: `materialize-monitoring` \
+             The dashboards are releases of their own: `materialize-monitoring` \
              creates the Grafana instance, its datasources and the folders, and \
-             `materialize-monitoring-dashboards` creates the `GrafanaManifest`s. \
-             An install of the first without the second reaches exactly this \
-             state — every other Grafana assertion passes and there is simply \
-             nothing to provision.\n\
+             the `materialize-monitoring-dashboards*` charts create the \
+             `GrafanaManifest`s. An install of the first without the others \
+             reaches exactly this state — every other Grafana assertion passes \
+             and there is simply nothing to provision.\n\
              \n\
              Check: helm list -n {ns}",
             ns = ctx.cluster.namespace()

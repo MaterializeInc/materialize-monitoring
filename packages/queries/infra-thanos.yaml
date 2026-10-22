@@ -81,7 +81,17 @@ queries:
           container=~"$thanosComponent"
         }
       )
+    datadogQuery: |
+      default_zero(
+        count_not_null(
+          cutoff_max(
+            min:up{app:thanos AND $thanosNamespace AND $thanosComponent} by {service,service.instance.id},
+            0
+          )
+        )
+      )
 
+  # No Datadog form: Datadog alerts are monitors, not a series.
   - id: infra.thanos.health.alerts_firing
     stability: experimental
     description:
@@ -143,7 +153,6 @@ queries:
           < 300
         )
       )
-
   - id: infra.thanos.health.write_errors
     stability: experimental
     description:
@@ -193,6 +202,11 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      default_zero(
+        sum:http_requests_total{app:thanos AND $thanosNamespace AND container:receive AND handler:receive AND code:5*}.as_rate().rollup(sum, 60)
+      )
+      / sum:http_requests_total{app:thanos AND $thanosNamespace AND container:receive AND handler:receive}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.health.query_errors
     stability: experimental
@@ -245,6 +259,11 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      default_zero(
+        sum:http_requests_total{app:thanos AND $thanosNamespace AND container:query AND handler IN (query,query_range) AND code:5*}.as_rate().rollup(sum, 60)
+      )
+      / sum:http_requests_total{app:thanos AND $thanosNamespace AND container:query AND handler IN (query,query_range)}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.health.rule_failures
     stability: experimental
@@ -267,6 +286,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:prometheus_rule_evaluation_failures_total{app:thanos AND $thanosNamespace AND container:ruler}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.health.compactor_halted
     stability: experimental
@@ -288,8 +309,11 @@ queries:
           container="compactor"
         }
       )
+    datadogQuery: |
+      max:thanos_compact_halted{app:thanos AND $thanosNamespace AND container:compactor}
 
   # --- overview: alerts --------------------------------------------------------
+  # No Datadog form: Datadog alerts are monitors, not a series.
   - id: infra.thanos.health.alerts
     stability: experimental
     description:
@@ -312,7 +336,6 @@ queries:
       max by (alertname, alertstate, severity, job, pod) (
         ALERTS{alertname=~"Thanos.*"}
       )
-
   - id: infra.thanos.health.alert_history
     stability: experimental
     description:
@@ -353,6 +376,8 @@ queries:
           container=~"$thanosComponent"
         }
       )
+    datadogQuery: |
+      max:up{app:thanos AND $thanosNamespace AND $thanosComponent} by {container,pod}
 
   - id: infra.thanos.health.restarts
     stability: experimental
@@ -388,6 +413,13 @@ queries:
           %%{range}
         )
       )
+    datadogQuery: |
+      cutoff_min(
+        sum:kube_pod_container_status_restarts_total{$thanosNamespace AND $thanosComponent}
+          by {container,pod}.as_count(),
+        1e-9
+      )
+      * (max:up{app:thanos AND $thanosNamespace AND $thanosComponent} by {pod} * 0 + 1)
 
   - id: infra.thanos.health.versions
     stability: experimental
@@ -406,6 +438,12 @@ queries:
           namespace=~"$thanosNamespace",
           container=~"$thanosComponent"
         }
+      )
+    datadogQuery: |
+      count(
+        max:thanos_build_info{app:thanos AND $thanosNamespace AND $thanosComponent}
+          by {container,version,pod},
+        {container,version}
       )
 
   # --- overview: throughput ----------------------------------------------------
@@ -437,6 +475,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:thanos_receive_write_samples_sum{app:thanos AND $thanosNamespace AND container:receive AND code:2*}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.health.query_rate
     stability: experimental
@@ -462,6 +502,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:http_requests_total{app:thanos AND $thanosNamespace AND container:query AND handler IN (query,query_range)}
+        by {handler}.as_rate().rollup(sum, 60)
 
   # --- writes: receive ---------------------------------------------------------
   - id: infra.thanos.write.requests
@@ -489,6 +532,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:http_requests_total{app:thanos AND $thanosNamespace AND container:receive AND handler:receive}
+        by {code}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.write.latency
     stability: experimental
@@ -531,6 +577,11 @@ queries:
             )
           )
         )
+    datadogQuery:
+      - |
+        p50:http_request_duration_seconds{app:thanos AND $thanosNamespace AND container:receive AND handler:receive}
+      - |
+        p99:http_request_duration_seconds{app:thanos AND $thanosNamespace AND container:receive AND handler:receive}
 
   - id: infra.thanos.write.samples_rejected
     stability: experimental
@@ -579,6 +630,13 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:prometheus_tsdb_out_of_order_samples_total{app:thanos AND $thanosNamespace AND container:receive}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_tsdb_out_of_bound_samples_total{app:thanos AND $thanosNamespace AND container:receive}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_tsdb_too_old_samples_total{app:thanos AND $thanosNamespace AND container:receive}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.write.head_series
     stability: experimental
@@ -602,6 +660,8 @@ queries:
           container="receive"
         }
       )
+    datadogQuery: |
+      sum:prometheus_tsdb_head_series{app:thanos AND $thanosNamespace AND container:receive} by {pod}
 
   - id: infra.thanos.write.pending
     stability: experimental
@@ -620,6 +680,9 @@ queries:
           container="receive"
         }
       )
+    datadogQuery: |
+      max:thanos_receive_pending_write_requests{app:thanos AND $thanosNamespace AND container:receive}
+        by {pod}
 
   - id: infra.thanos.write.replication
     stability: experimental
@@ -642,6 +705,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:thanos_receive_replications_total{app:thanos AND $thanosNamespace AND container:receive}
+        by {result}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.write.forward
     stability: experimental
@@ -664,6 +730,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:thanos_receive_forward_requests_total{app:thanos AND $thanosNamespace AND container:receive}
+        by {result}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.write.hashring
     stability: experimental
@@ -684,6 +753,8 @@ queries:
           container="receive"
         }
       )
+    datadogQuery: |
+      max:thanos_receive_hashring_nodes{app:thanos AND $thanosNamespace AND container:receive} by {pod}
 
   - id: infra.thanos.write.config_failed
     stability: experimental
@@ -711,6 +782,16 @@ queries:
           container="receive"
         }
       )
+    datadogQuery: |
+      default_zero(
+        count_not_null(
+          cutoff_max(
+            max:thanos_receive_config_last_reload_successful{app:thanos AND $thanosNamespace AND container:receive}
+              by {pod},
+            0
+          )
+        )
+      )
 
   - id: infra.thanos.write.upload_age
     stability: experimental
@@ -732,6 +813,14 @@ queries:
           namespace=~"$thanosNamespace",
           container="receive"
         } > 0
+      )
+    # Datadog has no `time()`, so this is the raw timestamp of each receiver's
+    # last upload rather than the age derived from it.
+    datadogQuery: |
+      cutoff_min(
+        max:thanos_objstore_bucket_last_successful_upload_time{app:thanos AND $thanosNamespace AND container:receive}
+          by {pod},
+        1e-9
       )
 
   - id: infra.thanos.write.upload_failures
@@ -756,6 +845,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:thanos_shipper_upload_failures_total{app:thanos AND $thanosNamespace AND container:receive}
+        by {pod}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.write.database_failures
     stability: experimental
@@ -836,6 +928,17 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:prometheus_tsdb_compactions_failed_total{app:thanos AND $thanosNamespace AND container:receive}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_tsdb_head_truncations_failed_total{app:thanos AND $thanosNamespace AND container:receive}.as_rate().rollup(sum, 60)
+        + sum:prometheus_tsdb_wal_truncations_failed_total{app:thanos AND $thanosNamespace AND container:receive}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_tsdb_reloads_failures_total{app:thanos AND $thanosNamespace AND container:receive}.as_rate().rollup(sum, 60)
+        + sum:prometheus_tsdb_checkpoint_creations_failed_total{app:thanos AND $thanosNamespace AND container:receive}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_tsdb_wal_corruptions_total{app:thanos AND $thanosNamespace AND container:receive}.as_rate().rollup(sum, 60)
 
   # --- reads: query and store gateway -----------------------------------------
   - id: infra.thanos.read.requests
@@ -860,6 +963,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:http_requests_total{app:thanos AND $thanosNamespace AND container:query}
+        by {handler,code}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.read.latency
     stability: experimental
@@ -888,6 +994,9 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:http_request_duration_seconds{app:thanos AND $thanosNamespace AND container:query AND handler IN (query,query_range)}
+        by {handler}
 
   - id: infra.thanos.read.concurrency
     stability: experimental
@@ -915,6 +1024,11 @@ queries:
             container="query"
           }
         )
+    datadogQuery:
+      - |
+        sum:thanos_query_concurrent_gate_queries_in_flight{app:thanos AND $thanosNamespace AND container:query}
+      - |
+        sum:thanos_query_concurrent_gate_queries_max{app:thanos AND $thanosNamespace AND container:query}
 
   - id: infra.thanos.read.endpoints
     stability: experimental
@@ -941,6 +1055,12 @@ queries:
             container="query"
           }
         )
+      )
+    datadogQuery: |
+      min(
+        sum:thanos_store_nodes_grpc_connections{app:thanos AND $thanosNamespace AND container:query}
+          by {pod,store_type},
+        {store_type}
       )
 
   - id: infra.thanos.read.store_errors
@@ -990,6 +1110,18 @@ queries:
           %%{interval}
         )
       )
+    # One minus the share of requests that did not fail stands in for `or`, so a
+    # process that has never failed a store request reads zero rather than having
+    # no series.
+    datadogQuery: |
+      1 - (
+        sum:grpc_server_handled_total{
+          app:thanos AND $thanosNamespace AND $thanosComponent AND grpc_service:thanos.store
+          AND grpc_code NOT IN (unknown,resourceexhausted,internal,unavailable,dataloss,deadlineexceeded)
+        } by {container}.as_rate().rollup(sum, 60)
+        / sum:grpc_server_handled_total{app:thanos AND $thanosNamespace AND $thanosComponent AND grpc_service:thanos.store}
+          by {container}.as_rate().rollup(sum, 60)
+      )
 
   - id: infra.thanos.read.series_latency
     stability: experimental
@@ -1020,6 +1152,9 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:grpc_server_handling_seconds{app:thanos AND $thanosNamespace AND $thanosComponent AND grpc_service:thanos.store AND grpc_method:series}
+        by {container}
 
   - id: infra.thanos.read.blocks_loaded
     stability: experimental
@@ -1040,6 +1175,9 @@ queries:
           container="storegateway"
         }
       )
+    datadogQuery: |
+      sum:thanos_bucket_store_blocks_loaded{app:thanos AND $thanosNamespace AND container:storegateway}
+        by {pod}
 
   - id: infra.thanos.read.block_failures
     stability: experimental
@@ -1070,6 +1208,11 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:thanos_bucket_store_block_load_failures_total{app:thanos AND $thanosNamespace AND container:storegateway}
+        by {pod}.as_rate().rollup(sum, 60)
+      + sum:thanos_bucket_store_block_drop_failures_total{app:thanos AND $thanosNamespace AND container:storegateway}
+        by {pod}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.read.index_cache_hits
     stability: experimental
@@ -1102,6 +1245,11 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:thanos_store_index_cache_hits_total{app:thanos AND $thanosNamespace AND container:storegateway}
+        by {item_type}.as_rate().rollup(sum, 60)
+      / sum:thanos_store_index_cache_requests_total{app:thanos AND $thanosNamespace AND container:storegateway}
+        by {item_type}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.read.queries_dropped
     stability: experimental
@@ -1135,6 +1283,13 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:thanos_store_selects_dropped_total{app:thanos AND $thanosNamespace AND $thanosComponent}
+          by {container}.as_rate().rollup(sum, 60)
+      - |
+        sum:thanos_bucket_store_queries_dropped_total{app:thanos AND $thanosNamespace AND container:storegateway}
+          by {container}.as_rate().rollup(sum, 60)
 
   # --- ruler -------------------------------------------------------------------
   - id: infra.thanos.rule.evaluations
@@ -1159,6 +1314,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:prometheus_rule_evaluations_total{app:thanos AND $thanosNamespace AND container:ruler}
+        by {pod}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.rule.failures
     stability: experimental
@@ -1184,6 +1342,14 @@ queries:
           "group", "$1", "rule_group", ".*;(.*)"
         )
       ) > 0
+    # Datadog can't extract the group name from `rule_group`, so the series are
+    # by the whole `rule_group`, which holds the rule file's path as well.
+    datadogQuery: |
+      cutoff_min(
+        sum:prometheus_rule_evaluation_failures_total{app:thanos AND $thanosNamespace AND container:ruler}
+          by {rule_group}.as_rate().rollup(sum, 60),
+        1e-9
+      )
 
   - id: infra.thanos.rule.missed
     stability: experimental
@@ -1209,6 +1375,14 @@ queries:
           "group", "$1", "rule_group", ".*;(.*)"
         )
       ) > 0
+    # Datadog can't extract the group name from `rule_group`, so the series are
+    # by the whole `rule_group`, which holds the rule file's path as well.
+    datadogQuery: |
+      cutoff_min(
+        sum:prometheus_rule_group_iterations_missed_total{app:thanos AND $thanosNamespace AND container:ruler}
+          by {rule_group}.as_count(),
+        1e-9
+      )
 
   - id: infra.thanos.rule.slowest_groups
     stability: experimental
@@ -1239,6 +1413,19 @@ queries:
           )
         )
       )
+    # Datadog can't extract the group name from `rule_group`, so the series are
+    # by the whole `rule_group`, which holds the rule file's path as well.
+    datadogQuery: |
+      top(
+        max(
+          max:prometheus_rule_group_last_duration_seconds{app:thanos AND $thanosNamespace AND container:ruler}
+            by {pod,rule_group}
+          / max:prometheus_rule_group_interval_seconds{app:thanos AND $thanosNamespace AND container:ruler}
+            by {pod,rule_group},
+          {rule_group}
+        ),
+        10, 'max', 'desc'
+      )
 
   - id: infra.thanos.rule.loaded
     stability: experimental
@@ -1259,6 +1446,8 @@ queries:
           container="ruler"
         }
       )
+    datadogQuery: |
+      sum:thanos_rule_loaded_rules{app:thanos AND $thanosNamespace AND container:ruler} by {pod}
 
   - id: infra.thanos.rule.config_failed
     stability: experimental
@@ -1285,6 +1474,16 @@ queries:
           container="ruler"
         }
       )
+    datadogQuery: |
+      default_zero(
+        count_not_null(
+          cutoff_max(
+            max:thanos_rule_config_last_reload_successful{app:thanos AND $thanosNamespace AND container:ruler}
+              by {pod},
+            0
+          )
+        )
+      )
 
   - id: infra.thanos.rule.alerts_sent
     stability: experimental
@@ -1308,6 +1507,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:thanos_alert_sender_alerts_sent_total{app:thanos AND $thanosNamespace AND container:ruler}
+        by {alertmanager}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.rule.alerts_dropped
     stability: experimental
@@ -1342,6 +1544,11 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:thanos_alert_queue_alerts_dropped_total{app:thanos AND $thanosNamespace AND container:ruler}.as_rate().rollup(sum, 60)
+      - |
+        sum:thanos_alert_sender_alerts_dropped_total{app:thanos AND $thanosNamespace AND container:ruler}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.rule.queue
     stability: experimental
@@ -1369,6 +1576,11 @@ queries:
             container="ruler"
           }
         )
+    datadogQuery:
+      - |
+        sum:thanos_alert_queue_length{app:thanos AND $thanosNamespace AND container:ruler}
+      - |
+        sum:thanos_alert_queue_capacity{app:thanos AND $thanosNamespace AND container:ruler}
 
   - id: infra.thanos.rule.sender_latency
     stability: experimental
@@ -1393,6 +1605,9 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:thanos_alert_sender_latency_seconds{app:thanos AND $thanosNamespace AND container:ruler}
+        by {alertmanager}
 
   - id: infra.thanos.rule.remote_write_lag
     stability: experimental
@@ -1421,6 +1636,11 @@ queries:
           container="ruler"
         }
       )
+    datadogQuery: |
+      max:prometheus_remote_storage_highest_timestamp_in_seconds{app:thanos AND $thanosNamespace AND container:ruler}
+        by {pod}
+      - max:prometheus_remote_storage_queue_highest_sent_timestamp_seconds{app:thanos AND $thanosNamespace AND container:ruler}
+        by {pod,remote_name,url}
 
   - id: infra.thanos.rule.remote_write_failures
     stability: experimental
@@ -1441,6 +1661,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:prometheus_remote_storage_samples_failed_total{app:thanos AND $thanosNamespace AND container:ruler}
+        by {pod}.as_rate().rollup(sum, 60)
 
   # --- storage: compactor ------------------------------------------------------
   - id: infra.thanos.storage.backlog
@@ -1489,6 +1712,15 @@ queries:
             container="compactor"
           }
         )
+    datadogQuery:
+      - |
+        sum:thanos_compact_todo_compactions{app:thanos AND $thanosNamespace AND container:compactor}
+      - |
+        sum:thanos_compact_todo_compaction_blocks{app:thanos AND $thanosNamespace AND container:compactor}
+      - |
+        sum:thanos_compact_todo_downsample_blocks{app:thanos AND $thanosNamespace AND container:compactor}
+      - |
+        sum:thanos_compact_todo_deletion_blocks{app:thanos AND $thanosNamespace AND container:compactor}
 
   - id: infra.thanos.storage.compactions
     stability: experimental
@@ -1516,6 +1748,9 @@ queries:
           [1h]
         )
       )
+    datadogQuery: |
+      sum:thanos_compact_group_compactions_total{app:thanos AND $thanosNamespace AND container:compactor}
+        by {resolution}.as_count().rollup(sum, 3600)
 
   - id: infra.thanos.storage.compactor_failures
     stability: experimental
@@ -1572,6 +1807,15 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:thanos_compact_group_compactions_failures_total{app:thanos AND $thanosNamespace AND container:compactor}.as_rate().rollup(sum, 60)
+      - |
+        sum:thanos_compact_downsample_failures_total{app:thanos AND $thanosNamespace AND container:compactor}.as_rate().rollup(sum, 60)
+      - |
+        sum:thanos_compact_garbage_collection_failures_total{app:thanos AND $thanosNamespace AND container:compactor}.as_rate().rollup(sum, 60)
+      - |
+        sum:thanos_compact_block_cleanup_failures_total{app:thanos AND $thanosNamespace AND container:compactor}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.storage.blocks
     stability: experimental
@@ -1594,6 +1838,11 @@ queries:
           container="compactor"
         }
       ) > 0
+    datadogQuery: |
+      cutoff_min(
+        max:thanos_blocks_meta_synced{app:thanos AND $thanosNamespace AND container:compactor} by {state},
+        1e-9
+      )
 
   # --- storage: object storage -------------------------------------------------
   - id: infra.thanos.storage.operations
@@ -1615,6 +1864,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:thanos_objstore_bucket_operations_total{app:thanos AND $thanosNamespace AND $thanosComponent}
+        by {container,operation}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.storage.failures
     stability: experimental
@@ -1647,6 +1899,11 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:thanos_objstore_bucket_operation_failures_total{app:thanos AND $thanosNamespace AND $thanosComponent}
+        by {container}.as_rate().rollup(sum, 60)
+      / sum:thanos_objstore_bucket_operations_total{app:thanos AND $thanosNamespace AND $thanosComponent}
+        by {container}.as_rate().rollup(sum, 60)
 
   - id: infra.thanos.storage.latency
     stability: experimental
@@ -1674,6 +1931,9 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:thanos_objstore_bucket_operation_duration_seconds{app:thanos AND $thanosNamespace AND $thanosComponent}
+        by {container,operation}
 
   - id: infra.thanos.storage.upload_age
     stability: experimental
@@ -1697,6 +1957,14 @@ queries:
           namespace=~"$thanosNamespace",
           container=~"$thanosComponent"
         } > 0
+      )
+    # Datadog has no `time()`, so this is the raw timestamp of each pod's last
+    # upload rather than the age derived from it.
+    datadogQuery: |
+      cutoff_min(
+        max:thanos_objstore_bucket_last_successful_upload_time{app:thanos AND $thanosNamespace AND $thanosComponent}
+          by {container,pod},
+        1e-9
       )
 
   # --- resources ---------------------------------------------------------------
@@ -1730,6 +1998,10 @@ queries:
           namespace=~"$thanosNamespace"
         }
       )
+    datadogQuery: |
+      max:container_memory_working_set_bytes{$thanosNamespace AND $thanosComponent AND container:*}
+        by {container,pod}
+      * (max:up{app:thanos AND $thanosNamespace} by {pod} * 0 + 1)
 
   - id: infra.thanos.resources.cpu
     stability: experimental
@@ -1759,6 +2031,10 @@ queries:
           namespace=~"$thanosNamespace"
         }
       )
+    datadogQuery: |
+      sum:container_cpu_usage_seconds_total{$thanosNamespace AND $thanosComponent AND container:*}
+        by {container,pod}.as_rate().rollup(sum, 60)
+      * (max:up{app:thanos AND $thanosNamespace} by {pod}.rollup(max, 60) * 0 + 1)
 
   - id: infra.thanos.resources.goroutines
     stability: experimental
@@ -1777,6 +2053,8 @@ queries:
           container=~"$thanosComponent"
         }
       )
+    datadogQuery: |
+      max:go_goroutines{app:thanos AND $thanosNamespace AND $thanosComponent} by {container,pod}
 
   - id: infra.thanos.resources.terminations
     stability: experimental
@@ -1803,6 +2081,10 @@ queries:
           namespace=~"$thanosNamespace"
         }
       )
+    datadogQuery: |
+      max:kube_pod_container_status_last_terminated_reason{$thanosNamespace AND $thanosComponent}
+        by {container,pod,reason}
+      * (max:up{app:thanos AND $thanosNamespace} by {pod} * 0 + 1)
 
   # --- logs --------------------------------------------------------------------
   - id: infra.thanos.logs.stream

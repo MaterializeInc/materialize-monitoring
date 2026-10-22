@@ -13,12 +13,12 @@ tests:
   # `selected` is a list of *patterns* globbed against the pre-rendered tree, so
   # a new dashboard ships the moment its artifact lands under a matching stem.
   # That is convenient and completely silent, which is why it is worth
-  # asserting: nothing else would notice a stem that stopped matching, or an
-  # artifact that stopped being written.
+  # asserting: nothing else would notice a stem that stopped matching, an
+  # artifact that stopped being written, or one rendered into the wrong chart.
   - it: should ship every dashboard the default patterns select
     asserts:
       - hasDocuments:
-          count: 14
+          count: 5
       - containsDocument:
           any: true
           apiVersion: grafana.integreatly.org/v1beta1
@@ -38,62 +38,17 @@ tests:
           any: true
           apiVersion: grafana.integreatly.org/v1beta1
           kind: GrafanaManifest
-          name: mzmon-dashboards-infra-logs-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
-          name: mzmon-dashboards-infra-loki-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
-          name: mzmon-dashboards-infra-alloy-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
-          name: mzmon-dashboards-infra-thanos-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
-          name: mzmon-dashboards-infra-nodes-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
-          name: mzmon-dashboards-infra-net-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
           name: mzmon-dashboards-env-persist-dashboard
       - containsDocument:
           any: true
           apiVersion: grafana.integreatly.org/v1beta1
           kind: GrafanaManifest
           name: mzmon-dashboards-env-consensus-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
-          name: mzmon-dashboards-infra-cloud-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
-          name: mzmon-dashboards-infra-autoscaling-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
-          name: mzmon-dashboards-infra-karpenter-dashboard
 
   # The resource names must NOT collide with the ones the umbrella chart used to
   # create (`mzmon-<stem>-dashboard`). Helm refuses an object owned by another
   # release, so a collision would make the install order load-bearing.
-  - it: should not reuse the resource names the umbrella chart created
+  - it: should not reuse the resource names an earlier release created
     asserts:
       - containsDocument:
           any: true
@@ -102,8 +57,8 @@ tests:
           name: mzmon-env-top-dashboard
         not: true
 
-  # Both families are selected by default. Narrowing to one is the supported way
-  # to hold the other back, so the pattern list has to actually narrow.
+  # Every dashboard is selected by default. Narrowing is the supported way to
+  # hold one back, so the pattern list has to actually narrow.
   - it: should install only what the patterns match
     set:
       selected:
@@ -138,30 +93,46 @@ tests:
           value: mzmon-dashboards-env-top-dashboard
       - equal:
           path: spec.template.metadata.annotations["grafana.app/folder"]
-          value: mzmon-infra
+          value: mzmon-materialize
         documentSelector:
           path: metadata.name
-          value: mzmon-dashboards-infra-nodes-dashboard
-      # The meta-monitoring dashboards are the only occupants of this folder,
-      # so nothing else would catch the key going missing from the defaults.
+          value: mzmon-dashboards-env-logs-dashboard
       - equal:
           path: spec.template.metadata.annotations["grafana.app/folder"]
-          value: mzmon-meta-o11y
+          value: mzmon-materialize
         documentSelector:
           path: metadata.name
-          value: mzmon-dashboards-infra-loki-dashboard
+          value: mzmon-dashboards-env-upgrade-dashboard
       - equal:
           path: spec.template.metadata.annotations["grafana.app/folder"]
-          value: mzmon-meta-o11y
+          value: mzmon-materialize
         documentSelector:
           path: metadata.name
-          value: mzmon-dashboards-infra-alloy-dashboard
+          value: mzmon-dashboards-env-persist-dashboard
       - equal:
           path: spec.template.metadata.annotations["grafana.app/folder"]
-          value: mzmon-meta-o11y
+          value: mzmon-materialize
         documentSelector:
           path: metadata.name
-          value: mzmon-dashboards-infra-thanos-dashboard
+          value: mzmon-dashboards-env-consensus-dashboard
+
+  # One `folderUids` map serves all three dashboards charts, so entries for the
+  # other charts' folders have to be harmless here.
+  - it: should ignore folder UIDs for folders it does not carry
+    set:
+      grafana.folderUids:
+        materialize: mzmon-materialize
+        infra: mzmon-infra
+        meta-o11y: mzmon-meta-o11y
+    asserts:
+      - hasDocuments:
+          count: 5
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-materialize
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-env-top-dashboard
 
   # The whole point of resolving in the chart rather than at render time: the UID
   # is a value, and the dashboards follow it without being re-rendered. This is
@@ -191,12 +162,6 @@ tests:
         documentSelector:
           path: metadata.name
           value: mzmon-dashboards-env-top-dashboard
-      - equal:
-          path: spec.template.metadata.annotations["grafana.app/folder"]
-          value: mzmon-infra
-        documentSelector:
-          path: metadata.name
-          value: mzmon-dashboards-infra-nodes-dashboard
       # The other annotations are untouched by the rewrite.
       - equal:
           path: spec.template.metadata.annotations["monitoring.materialize.cloud/min-mz-version"]

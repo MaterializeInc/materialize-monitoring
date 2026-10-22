@@ -159,6 +159,10 @@ jobs:
         run: |
           helm lint charts/materialize-monitoring
           helm lint charts/materialize-monitoring-crds
+          helm lint charts/materialize-monitoring-dashboards
+          helm lint charts/materialize-monitoring-dashboards-infra
+          helm lint charts/materialize-monitoring-dashboards-meta
+          helm lint charts/_dashboards-common
       - name: helm-docs is up to date
         # Regenerate then assert no diff. Detects stale chart README or
         # docsite values reference. helm-docs version comes from go.mod.

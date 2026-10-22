@@ -71,6 +71,8 @@ queries:
         blocked, which persist reports as failed uploads.
     promQL: |
       max(ceph_health_status{namespace=~"$cephNamespace"})
+    datadogQuery: |
+      max:ceph_health_status{$cephNamespace}
 
   - id: infra.ceph.health.osds_down
     stability: experimental
@@ -87,6 +89,8 @@ queries:
         objects unavailable, and persist's reads and writes against them fail.
     promQL: |
       count(ceph_osd_up{namespace=~"$cephNamespace"} == 0) or vector(0)
+    datadogQuery: |
+      default_zero(count(cutoff_max(max:ceph_osd_up{$cephNamespace} by {ceph_daemon}, 0), {*}))
 
   - id: infra.ceph.health.raw_used
     stability: experimental
@@ -110,6 +114,9 @@ queries:
     promQL: |
       sum(ceph_cluster_total_used_raw_bytes{namespace=~"$cephNamespace"})
       / sum(ceph_cluster_total_bytes{namespace=~"$cephNamespace"})
+    datadogQuery: |
+      sum:ceph_cluster_total_used_raw_bytes{$cephNamespace}
+        / sum:ceph_cluster_total_bytes{$cephNamespace}
 
   - id: infra.ceph.health.bucket_pool_available
     stability: experimental
@@ -131,6 +138,13 @@ queries:
         * on (namespace, pool_id) group_left (name)
           max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~"$cephNamespace", name=~".+\\.rgw\\.buckets\\.data"})
       )
+    datadogQuery: |
+      max(
+        max:ceph_pool_max_avail{$cephNamespace} by {namespace,pool_id}
+          * (max:ceph_pool_metadata{$cephNamespace AND name:*.rgw.buckets.data}
+            by {namespace,pool_id,name} * 0 + 1),
+        {name}
+      )
 
   - id: infra.ceph.health.objects_degraded
     stability: experimental
@@ -146,6 +160,8 @@ queries:
         too few disks left to place another copy on.
     promQL: |
       sum(ceph_num_objects_degraded{namespace=~"$cephNamespace"})
+    datadogQuery: |
+      sum:ceph_num_objects_degraded{$cephNamespace}
 
   - id: infra.ceph.health.rgw_failure_ratio
     stability: experimental
@@ -164,6 +180,9 @@ queries:
         sum(rate(ceph_rgw_failed_req{namespace=~"$cephNamespace"}%%{interval}))
         / sum(rate(ceph_rgw_req{namespace=~"$cephNamespace"}%%{interval}))
       ) >= 0
+    datadogQuery: |
+      sum:ceph_rgw_failed_req{$cephNamespace}.as_rate().rollup(sum, 60)
+        / sum:ceph_rgw_req{$cephNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.ceph.health.version
     stability: experimental
@@ -185,6 +204,10 @@ queries:
           "ceph_version", "$1 $2", "ceph_version", "ceph version ([^ ]+) \\([0-9a-f]+\\) ([a-z]+).*"
         )
       )
+    # Datadog can't rewrite a tag value, so this groups by Ceph's full version
+    # string, commit hash included, rather than the release and code name.
+    datadogQuery: |
+      count(max:ceph_osd_metadata{$cephNamespace} by {ceph_daemon,ceph_version}, {ceph_version})
     instant: true
 
   - id: infra.ceph.health.checks
@@ -199,6 +222,8 @@ queries:
         `ceph health detail` in the Rook toolbox explains each.
     promQL: |
       max by (name, severity) (ceph_health_detail{namespace=~"$cephNamespace"} == 1)
+    datadogQuery: |
+      cutoff_min(max:ceph_health_detail{$cephNamespace} by {name,severity}, 1)
     instant: true
 
   # --- Object gateway ---------------------------------------------------------
@@ -228,6 +253,15 @@ queries:
         sum(rate(ceph_rgw_op_del_obj_ops{namespace=~"$cephNamespace"}%%{interval}))
       - |
         sum(rate(ceph_rgw_failed_req{namespace=~"$cephNamespace"}%%{interval}))
+    datadogQuery:
+      - |
+        sum:ceph_rgw_op_put_obj_ops{$cephNamespace}.as_rate().rollup(sum, 60)
+      - |
+        sum:ceph_rgw_op_get_obj_ops{$cephNamespace}.as_rate().rollup(sum, 60)
+      - |
+        sum:ceph_rgw_op_del_obj_ops{$cephNamespace}.as_rate().rollup(sum, 60)
+      - |
+        sum:ceph_rgw_failed_req{$cephNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.ceph.rgw.latency
     stability: experimental
@@ -254,6 +288,16 @@ queries:
       - |
         (sum(rate(ceph_rgw_op_del_obj_lat_sum{namespace=~"$cephNamespace"}%%{interval}))
           / sum(rate(ceph_rgw_op_del_obj_lat_count{namespace=~"$cephNamespace"}%%{interval}))) >= 0
+    datadogQuery:
+      - |
+        per_second(sum:ceph_rgw_op_put_obj_lat_sum{$cephNamespace}.rollup(max, 60))
+          / sum:ceph_rgw_op_put_obj_lat_count{$cephNamespace}.as_rate().rollup(sum, 60)
+      - |
+        per_second(sum:ceph_rgw_op_get_obj_lat_sum{$cephNamespace}.rollup(max, 60))
+          / sum:ceph_rgw_op_get_obj_lat_count{$cephNamespace}.as_rate().rollup(sum, 60)
+      - |
+        per_second(sum:ceph_rgw_op_del_obj_lat_sum{$cephNamespace}.rollup(max, 60))
+          / sum:ceph_rgw_op_del_obj_lat_count{$cephNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.ceph.rgw.throughput
     stability: experimental
@@ -268,6 +312,11 @@ queries:
         sum(rate(ceph_rgw_op_put_obj_bytes{namespace=~"$cephNamespace"}%%{interval}))
       - |
         sum(rate(ceph_rgw_op_get_obj_bytes{namespace=~"$cephNamespace"}%%{interval}))
+    datadogQuery:
+      - |
+        sum:ceph_rgw_op_put_obj_bytes{$cephNamespace}.as_rate().rollup(sum, 60)
+      - |
+        sum:ceph_rgw_op_get_obj_bytes{$cephNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.ceph.rgw.queue
     stability: experimental
@@ -284,6 +333,11 @@ queries:
         sum by (instance_id) (ceph_rgw_qactive{namespace=~"$cephNamespace"})
       - |
         sum by (instance_id) (ceph_rgw_qlen{namespace=~"$cephNamespace"})
+    datadogQuery:
+      - |
+        sum:ceph_rgw_qactive{$cephNamespace} by {instance_id}
+      - |
+        sum:ceph_rgw_qlen{$cephNamespace} by {instance_id}
 
   # --- Capacity ---------------------------------------------------------------
   - id: infra.ceph.capacity.raw
@@ -300,6 +354,11 @@ queries:
         sum(ceph_cluster_total_used_raw_bytes{namespace=~"$cephNamespace"})
       - |
         sum(ceph_cluster_total_bytes{namespace=~"$cephNamespace"})
+    datadogQuery:
+      - |
+        sum:ceph_cluster_total_used_raw_bytes{$cephNamespace}
+      - |
+        sum:ceph_cluster_total_bytes{$cephNamespace}
 
   - id: infra.ceph.capacity.pools
     stability: experimental
@@ -320,6 +379,15 @@ queries:
         * on (namespace, pool_id) group_left (name)
           max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~"$cephNamespace"})
       ) > 0
+    datadogQuery: |
+      cutoff_min(
+        max(
+          max:ceph_pool_stored{$cephNamespace} by {namespace,pool_id}
+            * (max:ceph_pool_metadata{$cephNamespace} by {namespace,pool_id,name} * 0 + 1),
+          {name}
+        ),
+        1e-9
+      )
 
   # --- Disks ------------------------------------------------------------------
   - id: infra.ceph.osd.utilization
@@ -341,6 +409,9 @@ queries:
         ceph_osd_stat_bytes_used{namespace=~"$cephNamespace"}
         / ceph_osd_stat_bytes{namespace=~"$cephNamespace"}
       )
+    datadogQuery: |
+      max:ceph_osd_stat_bytes_used{$cephNamespace} by {ceph_daemon}
+        / max:ceph_osd_stat_bytes{$cephNamespace} by {ceph_daemon}
 
   - id: infra.ceph.osd.latency
     stability: experimental
@@ -357,6 +428,8 @@ queries:
         Ceph's own recent average, published by the manager.
     promQL: |
       max by (ceph_daemon) (ceph_osd_commit_latency_ms{namespace=~"$cephNamespace"}) / 1000
+    datadogQuery: |
+      max:ceph_osd_commit_latency_ms{$cephNamespace} by {ceph_daemon} / 1000
 
   - id: infra.ceph.osd.placement_groups
     stability: experimental
@@ -382,3 +455,12 @@ queries:
         sum(ceph_pg_undersized{namespace=~"$cephNamespace"})
       - |
         sum(ceph_pg_total{namespace=~"$cephNamespace"}) - sum(ceph_pg_clean{namespace=~"$cephNamespace"})
+    datadogQuery:
+      - |
+        sum:ceph_pg_total{$cephNamespace} - sum:ceph_pg_active{$cephNamespace}
+      - |
+        sum:ceph_pg_degraded{$cephNamespace}
+      - |
+        sum:ceph_pg_undersized{$cephNamespace}
+      - |
+        sum:ceph_pg_total{$cephNamespace} - sum:ceph_pg_clean{$cephNamespace}

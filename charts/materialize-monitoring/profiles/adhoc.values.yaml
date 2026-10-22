@@ -54,8 +54,9 @@
 #     cluster has none; `kubectl top` and HPAs need one.
 #   * Loki is on. Turn it off if the cluster cannot fit even one more pod.
 #
-# Dashboards are a separate chart, `materialize-monitoring-dashboards`, and this
-# profile does not install them. See Getting started > Ad-hoc install.
+# Dashboards are separate charts, `materialize-monitoring-dashboards` and its
+# `-infra` and `-meta` siblings, and this profile does not install them. See
+# Getting started > Ad-hoc install.
 
 # ---------------------------------------------------------------------------
 # NetworkPolicies — SWITCH

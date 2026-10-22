@@ -107,6 +107,8 @@ queries:
         Those differ exactly when a CNI is present but unscraped.
     promQL: |
       max by (network_component) (up{network_component=~".+"})
+    datadogQuery: |
+      max:up{network_component:*} by {network_component}
 
   - id: infra.net.overview.throughput
     stability: best-effort
@@ -140,6 +142,21 @@ queries:
             rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
           ) %%{excludeHostNetworkPods}
         )
+    datadogQuery:
+      - |
+        sum(
+          sum:container_network_receive_bytes_total{$namespaceList AND NOT interface:lo}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+          %%{excludeHostNetworkPods},
+          {*}
+        )
+      - |
+        sum(
+          sum:container_network_transmit_bytes_total{$namespaceList AND NOT interface:lo}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+          %%{excludeHostNetworkPods},
+          {*}
+        )
 
   - id: infra.net.overview.errors
     stability: best-effort
@@ -171,6 +188,29 @@ queries:
             + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
           ) %%{excludeHostNetworkPods}
         )
+    datadogQuery:
+      - |
+        sum(
+          (
+            sum:container_network_receive_errors_total{$namespaceList}
+              by {namespace,pod}.as_rate().rollup(sum, 60)
+            + sum:container_network_transmit_errors_total{$namespaceList}
+              by {namespace,pod}.as_rate().rollup(sum, 60)
+          )
+          %%{excludeHostNetworkPods},
+          {*}
+        )
+      - |
+        sum(
+          (
+            sum:container_network_receive_packets_dropped_total{$namespaceList}
+              by {namespace,pod}.as_rate().rollup(sum, 60)
+            + sum:container_network_transmit_packets_dropped_total{$namespaceList}
+              by {namespace,pod}.as_rate().rollup(sum, 60)
+          )
+          %%{excludeHostNetworkPods},
+          {*}
+        )
 
   - id: infra.net.overview.top_talkers
     stability: best-effort
@@ -193,6 +233,17 @@ queries:
           rate(container_network_receive_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
           + rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
         ) %%{excludeHostNetworkPods}
+      )
+    datadogQuery: |
+      top(
+        (
+          sum:container_network_receive_bytes_total{$namespaceList AND NOT interface:lo}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+          + sum:container_network_transmit_bytes_total{$namespaceList AND NOT interface:lo}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+        )
+        %%{excludeHostNetworkPods},
+        10, 'max', 'desc'
       )
 
   # --- Kubernetes ----------------------------------------------------------
@@ -221,6 +272,21 @@ queries:
             rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}%%{interval})
           ) %%{excludeHostNetworkPods}
         )
+    datadogQuery:
+      - |
+        sum(
+          sum:container_network_receive_bytes_total{$namespaceList AND NOT interface:lo}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+          %%{excludeHostNetworkPods},
+          {namespace}
+        )
+      - |
+        sum(
+          sum:container_network_transmit_bytes_total{$namespaceList AND NOT interface:lo}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+          %%{excludeHostNetworkPods},
+          {namespace}
+        )
 
   - id: infra.net.k8s.errors.by_namespace
     stability: best-effort
@@ -242,6 +308,21 @@ queries:
           + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}%%{interval})
         ) %%{excludeHostNetworkPods}
       )
+    datadogQuery: |
+      sum(
+        (
+          sum:container_network_receive_errors_total{$namespaceList}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+          + sum:container_network_transmit_errors_total{$namespaceList}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+          + sum:container_network_receive_packets_dropped_total{$namespaceList}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+          + sum:container_network_transmit_packets_dropped_total{$namespaceList}
+            by {namespace,pod}.as_rate().rollup(sum, 60)
+        )
+        %%{excludeHostNetworkPods},
+        {namespace}
+      )
 
   - id: infra.net.k8s.services.by_type
     stability: best-effort
@@ -259,6 +340,11 @@ queries:
     promQL: |
       max by (type) (
         sum by (instance, type) (kube_service_spec_type)
+      )
+    datadogQuery: |
+      max(
+        sum:kube_service_spec_type{*} by {service.instance.id,type},
+        {type}
       )
 
   - id: infra.net.k8s.endpoints.by_namespace
@@ -283,6 +369,11 @@ queries:
     promQL: |
       max by (namespace) (
         sum by (instance, namespace) (kube_endpointslice_endpoints{namespace=~"$namespaceList"})
+      )
+    datadogQuery: |
+      max(
+        sum:kube_endpointslice_endpoints{$namespaceList} by {service.instance.id,namespace},
+        {namespace}
       )
 
   - id: infra.net.k8s.proxy.sync_latency
@@ -309,6 +400,8 @@ queries:
           rate(kubeproxy_sync_proxy_rules_duration_seconds_bucket%%{interval})
         )
       )
+    datadogQuery: |
+      p99:kubeproxy_sync_proxy_rules_duration_seconds{*}
 
   - id: infra.net.k8s.proxy.programming_latency
     stability: experimental
@@ -330,6 +423,8 @@ queries:
           rate(kubeproxy_network_programming_duration_seconds_bucket%%{interval})
         )
       )
+    datadogQuery: |
+      p99:kubeproxy_network_programming_duration_seconds{*}
 
   # --- CNI: AWS VPC --------------------------------------------------------
   - id: infra.net.cni.aws.ip_utilization
@@ -356,6 +451,9 @@ queries:
       max by (node) (awscni_assigned_ip_addresses)
       /
       max by (node) (awscni_ip_max)
+    datadogQuery: |
+      max:awscni_assigned_ip_addresses{*} by {node}
+        / max:awscni_ip_max{*} by {node}
 
   - id: infra.net.cni.aws.addresses
     stability: experimental
@@ -379,6 +477,13 @@ queries:
       - max by (node) (awscni_assigned_ip_addresses)
       - max by (node) (awscni_total_ip_addresses)
       - max by (node) (awscni_ip_max)
+    datadogQuery:
+      - |
+        max:awscni_assigned_ip_addresses{*} by {node}
+      - |
+        max:awscni_total_ip_addresses{*} by {node}
+      - |
+        max:awscni_ip_max{*} by {node}
 
   - id: infra.net.cni.aws.enis
     stability: experimental
@@ -398,6 +503,11 @@ queries:
     promQL:
       - max by (node) (awscni_eni_allocated)
       - max by (node) (awscni_eni_max)
+    datadogQuery:
+      - |
+        max:awscni_eni_allocated{*} by {node}
+      - |
+        max:awscni_eni_max{*} by {node}
 
   - id: infra.net.cni.aws.exhaustion
     stability: experimental
@@ -413,6 +523,10 @@ queries:
         order of effort.
     promQL: |
       sum (max by (node) (awscni_no_available_ip_addresses))
+    # The counter arrives as increments, so this counts the failed assignments in
+    # each interval rather than every one since the CNI started.
+    datadogQuery: |
+      sum(max:awscni_no_available_ip_addresses{*} by {node}.as_count(), {*})
 
   - id: infra.net.cni.aws.api_latency
     stability: experimental
@@ -434,6 +548,9 @@ queries:
       sum by (api) (rate(awscni_aws_api_latency_ms_sum%%{interval}))
       /
       sum by (api) (rate(awscni_aws_api_latency_ms_count%%{interval}))
+    datadogQuery: |
+      sum:awscni_aws_api_latency_ms_sum{*} by {api}.as_rate().rollup(sum, 60)
+        / sum:awscni_aws_api_latency_ms_count{*} by {api}.as_rate().rollup(sum, 60)
 
   # --- CNI: Cilium ---------------------------------------------------------
   - id: infra.net.cni.cilium.endpoints
@@ -450,6 +567,8 @@ queries:
         Kubernetes considers them running.
     promQL: |
       sum by (node, endpoint_state) (cilium_endpoint_state)
+    datadogQuery: |
+      sum:cilium_endpoint_state{*} by {node,endpoint_state}
 
   - id: infra.net.cni.cilium.drops
     stability: experimental
@@ -469,6 +588,8 @@ queries:
         reason is what selects the remedy and the direction rarely changes it.
     promQL: |
       sum by (reason) (rate(cilium_drop_count_total%%{interval}))
+    datadogQuery: |
+      sum:cilium_drop_count_total{*} by {reason}.as_rate().rollup(sum, 60)
 
   - id: infra.net.cni.cilium.policy_verdicts
     stability: experimental
@@ -485,6 +606,8 @@ queries:
         _Security -> NetworkPolicy Inventory_ to find which one.
     promQL: |
       sum by (action) (rate(cilium_policy_verdict_total%%{interval}))
+    datadogQuery: |
+      sum:cilium_policy_verdict_total{*} by {action}.as_rate().rollup(sum, 60)
 
   - id: infra.net.cni.cilium.bpf_map_pressure
     stability: experimental
@@ -503,6 +626,8 @@ queries:
         on every node.
     promQL: |
       max by (node, map_name) (cilium_bpf_map_pressure)
+    datadogQuery: |
+      max:cilium_bpf_map_pressure{*} by {node,map_name}
 
   - id: infra.net.cni.cilium.endpoint_regeneration
     stability: experimental
@@ -530,6 +655,8 @@ queries:
           rate(cilium_endpoint_regeneration_time_stats_seconds_bucket%%{interval})
         )
       )
+    datadogQuery: |
+      p99:cilium_endpoint_regeneration_time_stats_seconds{*} by {scope}
 
   - id: infra.net.cni.cilium.unreachable
     stability: experimental
@@ -552,6 +679,11 @@ queries:
     promQL:
       - sum (max by (node) (cilium_unreachable_nodes))
       - sum (max by (node) (cilium_unreachable_health_endpoints))
+    datadogQuery:
+      - |
+        sum(max:cilium_unreachable_nodes{*} by {node}, {*})
+      - |
+        sum(max:cilium_unreachable_health_endpoints{*} by {node}, {*})
 
   - id: infra.net.cni.cilium.hubble_flows
     stability: experimental
@@ -570,6 +702,8 @@ queries:
         only its own health counters, so this is empty there.
     promQL: |
       sum by (verdict) (rate(hubble_flows_processed_total%%{interval}))
+    datadogQuery: |
+      sum:hubble_flows_processed_total{*} by {verdict}.as_rate().rollup(sum, 60)
 
   # --- Security ------------------------------------------------------------
   - id: infra.net.security.policies.by_namespace
@@ -591,6 +725,11 @@ queries:
     promQL: |
       max by (namespace) (
         count by (instance, namespace) (kube_networkpolicy_spec_ingress_rules{namespace=~"$namespaceList"})
+      )
+    datadogQuery: |
+      count(
+        max:kube_networkpolicy_spec_ingress_rules{$namespaceList} by {namespace,networkpolicy},
+        {namespace}
       )
 
   - id: infra.net.security.policies.uncovered
@@ -614,6 +753,12 @@ queries:
       count by (namespace) (kube_pod_info{namespace=~"$namespaceList"})
       unless on (namespace)
       count by (namespace) (kube_networkpolicy_spec_ingress_rules)
+    # Datadog has no `unless`, and arithmetic between gauges drops a namespace
+    # with no policy rather than keeping it, so this is every namespace's pod
+    # count; the uncovered namespaces are the ones missing from
+    # `infra.net.security.policies.by_namespace`.
+    datadogQuery: |
+      count(max:kube_pod_info{$namespaceList} by {namespace,pod}, {namespace})
 
   - id: infra.net.security.policies.rules
     stability: best-effort
@@ -639,6 +784,11 @@ queries:
         max by (namespace, networkpolicy) (kube_networkpolicy_spec_ingress_rules{namespace=~"$namespaceList"})
       - |
         max by (namespace, networkpolicy) (kube_networkpolicy_spec_egress_rules{namespace=~"$namespaceList"})
+    datadogQuery:
+      - |
+        max:kube_networkpolicy_spec_ingress_rules{$namespaceList} by {namespace,networkpolicy}
+      - |
+        max:kube_networkpolicy_spec_egress_rules{$namespaceList} by {namespace,networkpolicy}
 
   - id: infra.net.security.drops.aws
     stability: experimental
@@ -659,6 +809,8 @@ queries:
         that exist rather than the packets they stopped.
     promQL: |
       sum by (node) (rate(network_policy_drop_count_total%%{interval}))
+    datadogQuery: |
+      sum:network_policy_drop_count_total{*} by {node}.as_rate().rollup(sum, 60)
 
   - id: infra.net.security.drops.cilium
     stability: experimental
@@ -678,6 +830,9 @@ queries:
         are the only ones that are somebody's intent rather than a fault.
     promQL: |
       sum by (node) (rate(cilium_drop_count_total{reason=~"Policy denied.*"}%%{interval}))
+    # Datadog turns the space in `Policy denied` into an underscore.
+    datadogQuery: |
+      sum:cilium_drop_count_total{reason:policy_denied*} by {node}.as_rate().rollup(sum, 60)
 
   # --- Cloud networking ----------------------------------------------------
   - id: infra.net.cloud.load_balancers
@@ -714,6 +869,8 @@ queries:
         gateway's provider pulls where they are configured.
     promQL: |
       max by (namespace, service, ip, hostname) (kube_service_status_load_balancer_ingress)
+    datadogQuery: |
+      max:kube_service_status_load_balancer_ingress{*} by {namespace,service,ip,hostname}
 
   # --- Cloud Networking: the provider pulls ------------------------------------
   #
@@ -734,6 +891,14 @@ queries:
   #   minute's worth, and so is its value when it is new or has just reset,
   #   so `(idelta(...) >= 0) or last_over_time(...)` divides by 60 into a
   #   rate. `rate()` would read about a fifth of the truth.
+  #
+  # Every `datadogQuery` below drops the `last_over_time`: Datadog has no
+  # lookback window, so a provider sample plots at its own timestamp. Datadog
+  # lowercases tag keys as well as values, so `dimension_TargetGroup` is
+  # `dimension_targetgroup` there. A Cloud Monitoring counter arrives as a
+  # Datadog count holding each pull's one-minute increment, so
+  # `.as_count().rollup(max, 900)` takes the largest in 15 minutes in place of
+  # the last, and divides by 60 into the same rate.
 
   - id: infra.net.cloud.nlb.healthy_targets
     stability: experimental
@@ -763,6 +928,10 @@ queries:
           "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
         )
       )
+    # Datadog can't extract the target group's name from its dimension, so this
+    # groups by the whole `targetgroup/<name>/<id>` value.
+    datadogQuery: |
+      min:aws_networkelb_healthy_host_count_minimum{*} by {dimension_targetgroup}
 
   - id: infra.net.cloud.nlb.unhealthy_targets
     stability: experimental
@@ -782,6 +951,9 @@ queries:
           "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
         )
       )
+    # As above: grouped by the whole target group dimension.
+    datadogQuery: |
+      max:aws_networkelb_un_healthy_host_count_maximum{*} by {dimension_targetgroup}
 
   - id: infra.net.cloud.nlb.open_connections
     stability: experimental
@@ -799,6 +971,10 @@ queries:
           "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
         )
       )
+    # Datadog can't extract the load balancer's name from its dimension, so this
+    # groups by the whole `net/<name>/<id>` value.
+    datadogQuery: |
+      max:aws_networkelb_active_flow_count_average{*} by {dimension_loadbalancer}
 
   - id: infra.net.cloud.nlb.new_connections
     stability: experimental
@@ -816,6 +992,9 @@ queries:
           "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
         )
       ) / 60
+    # As above: grouped by the whole load balancer dimension.
+    datadogQuery: |
+      max:aws_networkelb_new_flow_count_sum{*} by {dimension_loadbalancer} / 60
 
   - id: infra.net.cloud.nlb.throughput
     stability: experimental
@@ -830,6 +1009,9 @@ queries:
           "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
         )
       ) / 60
+    # As above: grouped by the whole load balancer dimension.
+    datadogQuery: |
+      max:aws_networkelb_processed_bytes_sum{*} by {dimension_loadbalancer} / 60
 
   - id: infra.net.cloud.nlb.resets
     stability: experimental
@@ -870,6 +1052,14 @@ queries:
             "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
           )
         )
+    # As above: grouped by the whole load balancer dimension.
+    datadogQuery:
+      - |
+        max:aws_networkelb_tcp_client_reset_count_sum{*} by {dimension_loadbalancer}
+      - |
+        max:aws_networkelb_tcp_target_reset_count_sum{*} by {dimension_loadbalancer}
+      - |
+        max:aws_networkelb_tcp_elb_reset_count_sum{*} by {dimension_loadbalancer}
 
   - id: infra.net.cloud.gcp_lb.packets
     stability: experimental
@@ -909,6 +1099,27 @@ queries:
           or
           (idelta(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[10m])
         ) / 60
+    # Datadog fills a count missing from one side of `+` with zero, so the sum
+    # keeps a rule that only one of the three metrics has, as `or` does.
+    datadogQuery:
+      - |
+        (
+          sum:stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+          + sum:stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+          + sum:stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+        ) / 60
+      - |
+        (
+          sum:stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+          + sum:stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+          + sum:stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+        ) / 60
 
   - id: infra.net.cloud.gcp_lb.throughput
     stability: experimental
@@ -935,6 +1146,26 @@ queries:
           or
           (idelta(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[10m])
         ) / 60
+    # As above: `+` keeps a rule that only one of the three metrics has.
+    datadogQuery:
+      - |
+        (
+          sum:stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+          + sum:stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+          + sum:stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+        ) / 60
+      - |
+        (
+          sum:stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+          + sum:stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+          + sum:stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count{*}
+            by {region,forwarding_rule_name}.as_count().rollup(max, 900)
+        ) / 60
 
   - id: infra.net.cloud.azure_lb.availability
     stability: experimental
@@ -956,6 +1187,10 @@ queries:
           "frontend", "$1", "dimension", "(.*)"
         )
       ) / 100
+    # Datadog can't rename a tag, so the frontend address is the `dimension` tag.
+    datadogQuery: |
+      min:azure_microsoft_network_loadbalancers_vipavailability_average_count{*}
+        by {resourcegroup,resourcename,dimension} / 100
 
   - id: infra.net.cloud.azure_lb.healthy_backends
     stability: experimental
@@ -985,6 +1220,17 @@ queries:
           "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
         ) == bool 100
       )
+    # Datadog can't rename a tag, so the frontend address is the
+    # `dimensionfrontendipaddress` tag.
+    # `floor(x / 100)` is 1 only for a backend at 100%, as `== bool 100` is.
+    datadogQuery: |
+      sum(
+        floor(
+          max:azure_microsoft_network_loadbalancers_dipavailability_average_count{*}
+            by {resourcegroup,resourcename,dimensionfrontendipaddress,dimensionbackendipaddress} / 100
+        ),
+        {resourcegroup,resourcename,dimensionfrontendipaddress}
+      )
 
   - id: infra.net.cloud.azure_lb.new_connections
     stability: experimental
@@ -999,6 +1245,11 @@ queries:
           "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
         )
       ) / 60
+    # Datadog can't rename a tag, so the frontend address is the
+    # `dimensionfrontendipaddress` tag.
+    datadogQuery: |
+      sum:azure_microsoft_network_loadbalancers_syncount_total_count{dimensiondirection:in}
+        by {resourcegroup,resourcename,dimensionfrontendipaddress} / 60
 
   - id: infra.net.cloud.azure_lb.throughput
     stability: experimental
@@ -1021,6 +1272,14 @@ queries:
             "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
           )
         ) / 60
+    # As above: the frontend address is the `dimensionfrontendipaddress` tag.
+    datadogQuery:
+      - |
+        sum:azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensiondirection:in}
+          by {resourcegroup,resourcename,dimensionfrontendipaddress} / 60
+      - |
+        sum:azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensiondirection:out}
+          by {resourcegroup,resourcename,dimensionfrontendipaddress} / 60
 
   - id: infra.net.cloud.aws_nat.exhaustion
     stability: experimental
@@ -1047,6 +1306,11 @@ queries:
         max by (dimension_NatGatewayId) (
           last_over_time(aws_natgateway_packets_drop_count_sum[15m])
         )
+    datadogQuery:
+      - |
+        max:aws_natgateway_error_port_allocation_sum{*} by {dimension_natgatewayid}
+      - |
+        max:aws_natgateway_packets_drop_count_sum{*} by {dimension_natgatewayid}
 
   - id: infra.net.cloud.aws_nat.idle_timeouts
     stability: experimental
@@ -1063,6 +1327,8 @@ queries:
       max by (dimension_NatGatewayId) (
         last_over_time(aws_natgateway_idle_timeout_count_sum[15m])
       )
+    datadogQuery: |
+      max:aws_natgateway_idle_timeout_count_sum{*} by {dimension_natgatewayid}
 
   - id: infra.net.cloud.aws_nat.connections
     stability: experimental
@@ -1074,6 +1340,8 @@ queries:
       max by (dimension_NatGatewayId) (
         last_over_time(aws_natgateway_active_connection_count_maximum[15m])
       )
+    datadogQuery: |
+      max:aws_natgateway_active_connection_count_maximum{*} by {dimension_natgatewayid}
 
   - id: infra.net.cloud.aws_nat.established
     stability: experimental
@@ -1093,6 +1361,9 @@ queries:
       max by (dimension_NatGatewayId) (last_over_time(aws_natgateway_connection_established_count_sum[15m]))
         /
       (max by (dimension_NatGatewayId) (last_over_time(aws_natgateway_connection_attempt_count_sum[15m])) > 0)
+    datadogQuery: |
+      max:aws_natgateway_connection_established_count_sum{*} by {dimension_natgatewayid}
+        / cutoff_min(max:aws_natgateway_connection_attempt_count_sum{*} by {dimension_natgatewayid}, 1e-9)
 
   - id: infra.net.cloud.cloud_nat.allocation_failed
     stability: experimental
@@ -1109,6 +1380,9 @@ queries:
       max by (region, router_id, gateway_name) (
         last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_nat_allocation_failed[15m])
       )
+    datadogQuery: |
+      max:stackdriver_nat_gateway_router_googleapis_com_nat_nat_allocation_failed{*}
+        by {region,router_id,gateway_name}
 
   - id: infra.net.cloud.cloud_nat.port_usage
     stability: experimental
@@ -1125,6 +1399,9 @@ queries:
       max by (region, router_id, gateway_name) (
         last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_port_usage[15m])
       )
+    datadogQuery: |
+      max:stackdriver_nat_gateway_router_googleapis_com_nat_port_usage{*}
+        by {region,router_id,gateway_name}
 
   - id: infra.net.cloud.cloud_nat.open_connections
     stability: experimental
@@ -1134,6 +1411,9 @@ queries:
       sum by (region, router_id, gateway_name) (
         last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_open_connections[15m])
       )
+    datadogQuery: |
+      sum:stackdriver_nat_gateway_router_googleapis_com_nat_open_connections{*}
+        by {region,router_id,gateway_name}
 
   - id: infra.net.cloud.cloud_nat.dropped
     stability: experimental
@@ -1153,6 +1433,9 @@ queries:
         or
         last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count[10m])
       ) / 60
+    datadogQuery: |
+      sum:stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count{*}
+        by {region,router_id,gateway_name,reason}.as_count().rollup(max, 900) / 60
 
   - id: infra.net.cloud.azure_nat.availability
     stability: experimental
@@ -1168,6 +1451,9 @@ queries:
       min by (resourceGroup, resourceName) (
         last_over_time(azure_microsoft_network_natgateways_datapathavailability_average_count[15m])
       ) / 100
+    datadogQuery: |
+      min:azure_microsoft_network_natgateways_datapathavailability_average_count{*}
+        by {resourcegroup,resourcename} / 100
 
   - id: infra.net.cloud.azure_nat.snat_connections
     stability: experimental
@@ -1194,6 +1480,13 @@ queries:
         max by (resourceGroup, resourceName) (
           last_over_time(azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension="Failed"}[15m])
         )
+    datadogQuery:
+      - |
+        max:azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension:attempted}
+          by {resourcegroup,resourcename}
+      - |
+        max:azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension:failed}
+          by {resourcegroup,resourcename}
 
   - id: infra.net.cloud.azure_nat.dropped
     stability: experimental
@@ -1206,6 +1499,9 @@ queries:
       max by (resourceGroup, resourceName) (
         last_over_time(azure_microsoft_network_natgateways_packetdropcount_total_count[15m])
       )
+    datadogQuery: |
+      max:azure_microsoft_network_natgateways_packetdropcount_total_count{*}
+        by {resourcegroup,resourcename}
 
 metricOverrides:
   # The provider families, which each provider's `metricImportance` value should

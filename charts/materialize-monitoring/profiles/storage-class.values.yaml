@@ -19,7 +19,7 @@
 # comes from the replication factor or from object storage, and a volume that
 # cannot cross availability zones makes a zone failure worse rather than safer — a
 # pod whose zone is gone stays `Pending` instead of rescheduling. See
-# [Storage: ephemeral by default](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/#thanos-ephemeral-storage).
+# [Storage: ephemeral by default](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/thanos/#thanos-ephemeral-storage).
 #
 # What is left:
 #

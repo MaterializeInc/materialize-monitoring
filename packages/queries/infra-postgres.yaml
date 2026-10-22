@@ -68,6 +68,11 @@ queries:
     promQL: |
       (1 - max(pg_up{job="postgres-exporter", target="$postgresTarget"}))
       or (1 - max(up{job="postgres-exporter", target="$postgresTarget"}))
+    # Datadog has no `or`, so `pg_up` reads as zero while it is missing and is
+    # multiplied by `up`: either one at zero reads as unreachable.
+    datadogQuery: |
+      1 - default_zero(max:pg_up{service:postgres-exporter AND $postgresTarget})
+        * max:up{service:postgres-exporter AND $postgresTarget}
 
   - id: infra.postgres.health.connections_used
     stability: experimental
@@ -101,6 +106,17 @@ queries:
             or vector(0)
           )
       )
+    datadogQuery: |
+      sum(
+        max:pg_stat_activity_count{service:postgres-exporter AND $postgresTarget AND backend_type:client_backend}
+          by {datname,usename,application_name,state,wait_event_type,wait_event},
+        {*}
+      )
+        / (
+          max:pg_settings_max_connections{service:postgres-exporter AND $postgresTarget}
+            - max:pg_settings_superuser_reserved_connections{service:postgres-exporter AND $postgresTarget}
+            - default_zero(max:pg_settings_reserved_connections{service:postgres-exporter AND $postgresTarget})
+        )
 
   - id: infra.postgres.health.oldest_transaction
     stability: experimental
@@ -119,6 +135,8 @@ queries:
         state it is in.
     promQL: |
       max(pg_stat_activity_max_tx_duration{job="postgres-exporter", target="$postgresTarget"})
+    datadogQuery: |
+      max:pg_stat_activity_max_tx_duration{service:postgres-exporter AND $postgresTarget}
 
   - id: infra.postgres.health.xid_used
     stability: experimental
@@ -143,6 +161,9 @@ queries:
         exporter names it `…_seconds`, but it counts transactions.
     promQL: |
       max(pg_database_wraparound_age_datfrozenxid_seconds{job="postgres-exporter", target="$postgresTarget"}) / 2147483648
+    datadogQuery: |
+      max:pg_database_wraparound_age_datfrozenxid_seconds{service:postgres-exporter AND $postgresTarget}
+        / 2147483648
 
   - id: infra.postgres.health.dead_tuples
     stability: experimental
@@ -172,6 +193,19 @@ queries:
           > 1000
         )
       )
+    datadogQuery: |
+      max(
+        max:pg_stat_user_tables_n_dead_tup{service:postgres-exporter AND $postgresTarget}
+          by {datname,schemaname,relname}
+          / cutoff_min(
+            max:pg_stat_user_tables_n_live_tup{service:postgres-exporter AND $postgresTarget}
+              by {datname,schemaname,relname}
+              + max:pg_stat_user_tables_n_dead_tup{service:postgres-exporter AND $postgresTarget}
+                by {datname,schemaname,relname},
+            1000
+          ),
+        {*}
+      )
 
   - id: infra.postgres.health.version
     stability: experimental
@@ -184,6 +218,8 @@ queries:
         this is the one place it is visible without a database login.
     promQL: |
       max by (short_version) (pg_static{job="postgres-exporter", target="$postgresTarget"})
+    datadogQuery: |
+      max:pg_static{service:postgres-exporter AND $postgresTarget} by {short_version}
     instant: true
 
   # --- Connections ------------------------------------------------------------
@@ -213,6 +249,20 @@ queries:
             max(pg_settings_reserved_connections{job="postgres-exporter", target="$postgresTarget"})
             or vector(0)
           )
+    datadogQuery:
+      - |
+        cutoff_min(
+          sum(
+            max:pg_stat_activity_count{service:postgres-exporter AND $postgresTarget AND backend_type:client_backend}
+              by {datname,usename,application_name,state,wait_event_type,wait_event},
+            {datname,usename}
+          ),
+          1e-9
+        )
+      - |
+        max:pg_settings_max_connections{service:postgres-exporter AND $postgresTarget}
+          - max:pg_settings_superuser_reserved_connections{service:postgres-exporter AND $postgresTarget}
+          - default_zero(max:pg_settings_reserved_connections{service:postgres-exporter AND $postgresTarget})
 
   - id: infra.postgres.connections.by_state
     stability: experimental
@@ -230,6 +280,12 @@ queries:
         client that opened it.
     promQL: |
       sum by (state) (max without (pod) (pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"}))
+    datadogQuery: |
+      sum(
+        max:pg_stat_activity_count{service:postgres-exporter AND $postgresTarget AND backend_type:client_backend}
+          by {datname,usename,application_name,state,wait_event_type,wait_event},
+        {state}
+      )
 
   - id: infra.postgres.connections.oldest_transaction
     stability: experimental
@@ -242,6 +298,11 @@ queries:
         the consensus table grows and every commit slows.
     promQL: |
       max by (datname, state) (pg_stat_activity_max_tx_duration{job="postgres-exporter", target="$postgresTarget"}) > 0
+    datadogQuery: |
+      cutoff_min(
+        max:pg_stat_activity_max_tx_duration{service:postgres-exporter AND $postgresTarget} by {datname,state},
+        1e-9
+      )
 
   - id: infra.postgres.connections.locks
     stability: experimental
@@ -262,6 +323,8 @@ queries:
         in lowercase. Compare with commit latency on the Operations tab.
     promQL: |
       sum by (datname, mode) (max without (pod) (pg_locks_count{job="postgres-exporter", target="$postgresTarget"})) > 0
+    datadogQuery: |
+      cutoff_min(max:pg_locks_count{service:postgres-exporter AND $postgresTarget} by {datname,mode}, 1e-9)
 
   # --- Activity ---------------------------------------------------------------
   - id: infra.postgres.activity.transactions
@@ -284,6 +347,19 @@ queries:
         sum by (datname) (max without (pod) (rate(pg_stat_database_xact_commit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))) > 0
       - |
         sum by (datname) (max without (pod) (rate(pg_stat_database_xact_rollback{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))) > 0
+    datadogQuery:
+      - |
+        cutoff_min(
+          max:pg_stat_database_xact_commit{service:postgres-exporter AND $postgresTarget AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
+      - |
+        cutoff_min(
+          max:pg_stat_database_xact_rollback{service:postgres-exporter AND $postgresTarget AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
 
   - id: infra.postgres.activity.rows
     stability: experimental
@@ -306,6 +382,25 @@ queries:
         sum by (datname) (max without (pod) (rate(pg_stat_database_tup_updated{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))) > 0
       - |
         sum by (datname) (max without (pod) (rate(pg_stat_database_tup_deleted{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))) > 0
+    datadogQuery:
+      - |
+        cutoff_min(
+          max:pg_stat_database_tup_inserted{service:postgres-exporter AND $postgresTarget AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
+      - |
+        cutoff_min(
+          max:pg_stat_database_tup_updated{service:postgres-exporter AND $postgresTarget AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
+      - |
+        cutoff_min(
+          max:pg_stat_database_tup_deleted{service:postgres-exporter AND $postgresTarget AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
 
   - id: infra.postgres.activity.cache_hit
     stability: experimental
@@ -328,6 +423,15 @@ queries:
           + sum by (datname) (max without (pod) (rate(pg_stat_database_blks_read{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})))
         )
       ) >= 0
+    datadogQuery: |
+      max:pg_stat_database_blks_hit{service:postgres-exporter AND $postgresTarget AND datname:*}
+        by {datname}.as_rate().rollup(sum, 60)
+        / (
+          max:pg_stat_database_blks_hit{service:postgres-exporter AND $postgresTarget AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60)
+            + max:pg_stat_database_blks_read{service:postgres-exporter AND $postgresTarget AND datname:*}
+              by {datname}.as_rate().rollup(sum, 60)
+        )
 
   # --- Storage and vacuum -----------------------------------------------------
   - id: infra.postgres.storage.database_size
@@ -345,6 +449,8 @@ queries:
         database, and this is what tells them apart.
     promQL: |
       max by (datname) (pg_database_size_bytes{job="postgres-exporter", target="$postgresTarget"})
+    datadogQuery: |
+      max:pg_database_size_bytes{service:postgres-exporter AND $postgresTarget} by {datname}
 
   - id: infra.postgres.storage.xid_age
     stability: experimental
@@ -360,6 +466,9 @@ queries:
         holding it back.
     promQL: |
       max by (datname) (pg_database_wraparound_age_datfrozenxid_seconds{job="postgres-exporter", target="$postgresTarget"}) / 2147483648
+    datadogQuery: |
+      max:pg_database_wraparound_age_datfrozenxid_seconds{service:postgres-exporter AND $postgresTarget}
+        by {datname} / 2147483648
 
   - id: infra.postgres.storage.dead_tuples
     stability: experimental
@@ -376,6 +485,11 @@ queries:
         scans the dead rows, so commits slow while nothing else changes.
     promQL: |
       topk(10, max by (datname, relname) (pg_stat_user_tables_n_dead_tup{job="postgres-exporter", target="$postgresTarget"}))
+    datadogQuery: |
+      top(
+        max:pg_stat_user_tables_n_dead_tup{service:postgres-exporter AND $postgresTarget} by {datname,relname},
+        10, 'max', 'desc'
+      )
 
   - id: infra.postgres.storage.since_autovacuum
     stability: experimental
@@ -398,6 +512,20 @@ queries:
         and on (datname, relname)
           topk(10, max by (datname, relname) (pg_stat_user_tables_n_dead_tup{job="postgres-exporter", target="$postgresTarget"}))
       )
+    # Datadog has no `time()`, so this is the raw timestamp of each table's last
+    # autovacuum rather than the time since it.
+    datadogQuery: |
+      cutoff_min(
+        max:pg_stat_user_tables_last_autovacuum{service:postgres-exporter AND $postgresTarget} by {datname,relname},
+        1e-9
+      )
+        * (
+          top(
+            max:pg_stat_user_tables_n_dead_tup{service:postgres-exporter AND $postgresTarget} by {datname,relname},
+            10, 'max', 'desc'
+          )
+            * 0 + 1
+        )
 
   - id: infra.postgres.storage.autovacuum_running
     stability: experimental
@@ -413,3 +541,8 @@ queries:
         cancelled by a lock it conflicts with.
     promQL: |
       time() - max by (relname) (pg_stat_activity_autovacuum_timestamp_seconds{job="postgres-exporter", target="$postgresTarget"})
+    # Datadog has no `time()`, so this is the raw start timestamp of each
+    # running autovacuum rather than how long it has run.
+    datadogQuery: |
+      max:pg_stat_activity_autovacuum_timestamp_seconds{service:postgres-exporter AND $postgresTarget}
+        by {relname}

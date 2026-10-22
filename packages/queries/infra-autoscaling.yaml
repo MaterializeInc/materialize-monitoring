@@ -63,6 +63,8 @@ queries:
         image or mounting a volume.
     promQL: |
       sum(max by (namespace, pod) (kube_pod_status_phase{phase="Pending"}))
+    datadogQuery: |
+      sum(max:kube_pod_status_phase{phase:pending} by {namespace,pod,phase}, {phase})
 
   - id: infra.autoscaling.pods.unscheduled
     stability: experimental
@@ -82,6 +84,8 @@ queries:
         while the scheduler has not found it a node.
     promQL: |
       sum(max by (namespace, pod) (kube_pod_status_scheduled{condition="false"}))
+    datadogQuery: |
+      sum(max:kube_pod_status_scheduled{condition:false} by {namespace,pod,condition}, {condition})
 
   - id: infra.autoscaling.nodes.count
     stability: experimental
@@ -92,6 +96,8 @@ queries:
         Ready or are being drained.
     promQL: |
       count(max by (node) (kube_node_info))
+    datadogQuery: |
+      count_not_null(max:kube_node_info{*} by {node})
 
   - id: infra.autoscaling.nodes.not_ready
     stability: experimental
@@ -106,6 +112,11 @@ queries:
         Node Detail has the node's own view.
     promQL: |
       sum(1 - max by (node) (kube_node_status_condition{condition="Ready", status="true"}))
+    datadogQuery: |
+      sum(
+        1 - max:kube_node_status_condition{condition:ready AND status:true} by {node,condition},
+        {condition}
+      )
 
   - id: infra.autoscaling.nodes.added
     stability: experimental
@@ -124,6 +135,15 @@ queries:
         unless max by (node) (kube_node_info offset %%{rangeWindow})
       )
       or 0 * count(max by (node) (kube_node_info))
+    # Datadog has no `unless`, so this is the growth in the node count since the
+    # start of the range rather than the nodes added: a node that replaced
+    # another reads zero.
+    datadogQuery: |
+      clamp_min(
+        count_not_null(max:kube_node_info{*} by {node})
+        - timeshift(count_not_null(max:kube_node_info{*} by {node}), -%%{rangeWindow}),
+        0
+      )
     instant: true
 
   - id: infra.autoscaling.nodes.removed
@@ -160,6 +180,14 @@ queries:
         >= max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas)
       )
       or 0 * count(max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas))
+    datadogQuery: |
+      count_not_null(
+        cutoff_min(
+          max:kube_horizontalpodautoscaler_status_current_replicas{*} by {namespace,horizontalpodautoscaler}
+          - max:kube_horizontalpodautoscaler_spec_max_replicas{*} by {namespace,horizontalpodautoscaler},
+          0
+        )
+      )
 
   # --- Demand and capacity -------------------------------------------------------
   - id: infra.autoscaling.pods.unscheduled_by_namespace
@@ -174,6 +202,11 @@ queries:
         each pod and the scheduler's reason.
     promQL: |
       sum by (namespace) (max by (namespace, pod) (kube_pod_status_scheduled{condition="false"})) > 0
+    datadogQuery: |
+      cutoff_min(
+        sum(max:kube_pod_status_scheduled{condition:false} by {namespace,pod}, {namespace}),
+        1e-9
+      )
 
   - id: infra.autoscaling.pods.pending_by_namespace
     stability: experimental
@@ -185,6 +218,11 @@ queries:
         volumes.
     promQL: |
       sum by (namespace) (max by (namespace, pod) (kube_pod_status_phase{phase="Pending"})) > 0
+    datadogQuery: |
+      cutoff_min(
+        sum(max:kube_pod_status_phase{phase:pending} by {namespace,pod}, {namespace}),
+        1e-9
+      )
 
   - id: infra.autoscaling.nodes.by_pool
     stability: experimental
@@ -199,6 +237,17 @@ queries:
         the chart configures.
     promQL: |
       count by (pool) (%%{nodePools})
+    # Datadog can't coalesce tags, so the pool is the four provisioners' node-label
+    # tags side by side, and a node with none of them reads N/A on all four rather
+    # than `unpooled`.
+    datadogQuery: |
+      count(
+        max:kube_node_labels{*}
+          by {node,label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+            label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool},
+        {label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+          label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+      )
 
   - id: infra.autoscaling.nodes.by_instance_type
     stability: experimental
@@ -206,6 +255,13 @@ queries:
       summary: Nodes of each instance type over time.
     promQL: |
       count by (instance_type) (%%{nodePools})
+    # Datadog can't rename a tag, so the instance type is `kube_node_labels`'
+    # own `label_node_kubernetes_io_instance_type` tag.
+    datadogQuery: |
+      count(
+        max:kube_node_labels{*} by {node,label_node_kubernetes_io_instance_type},
+        {label_node_kubernetes_io_instance_type}
+      )
 
   - id: infra.autoscaling.nodes.by_zone
     stability: experimental
@@ -216,6 +272,13 @@ queries:
         for its instance type, or no subnet for it.
     promQL: |
       count by (zone) (%%{nodePools})
+    # Datadog can't rename a tag, so the zone is `kube_node_labels`' own
+    # `label_topology_kubernetes_io_zone` tag.
+    datadogQuery: |
+      count(
+        max:kube_node_labels{*} by {node,label_topology_kubernetes_io_zone},
+        {label_topology_kubernetes_io_zone}
+      )
 
   - id: infra.autoscaling.capacity.requested
     stability: experimental
@@ -249,6 +312,23 @@ queries:
         )
         /
         sum(max by (node) (kube_node_status_allocatable{resource="memory"}))
+    datadogQuery:
+      - |
+        sum(
+          max:kube_pod_container_resource_requests{resource:cpu AND node:*}
+            by {namespace,pod,container,node,resource}
+          * (1 - max:kube_pod_status_phase{phase IN (succeeded,failed)} by {namespace,pod}),
+          {resource}
+        )
+        / sum(max:kube_node_status_allocatable{resource:cpu} by {node,resource}, {resource})
+      - |
+        sum(
+          max:kube_pod_container_resource_requests{resource:memory AND node:*}
+            by {namespace,pod,container,node,resource}
+          * (1 - max:kube_pod_status_phase{phase IN (succeeded,failed)} by {namespace,pod}),
+          {resource}
+        )
+        / sum(max:kube_node_status_allocatable{resource:memory} by {node,resource}, {resource})
 
   # --- Node pools -----------------------------------------------------------------
   - id: infra.autoscaling.pools.cpu_requested
@@ -276,6 +356,33 @@ queries:
         max by (node) (kube_node_status_allocatable{resource="cpu"})
         * on (node) group_left (pool) %%{nodePools}
       )
+    # Datadog can't coalesce tags, so the pool is the four provisioners' node-label
+    # tags side by side (N/A on all four for an unpooled node). It also rejects a
+    # nested group-by inside the join, so requests are summed per node without
+    # excluding completed pods or deduplicating kube-state-metrics replicas.
+    datadogQuery: |
+      sum(
+        sum:kube_pod_container_resource_requests{resource:cpu AND node:*} by {node}
+        * (
+          max:kube_node_labels{*}
+            by {node,label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+              label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+          * 0 + 1
+        ),
+        {label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+          label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+      )
+      / sum(
+        max:kube_node_status_allocatable{resource:cpu} by {node}
+        * (
+          max:kube_node_labels{*}
+            by {node,label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+              label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+          * 0 + 1
+        ),
+        {label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+          label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+      )
 
   - id: infra.autoscaling.pools.memory_requested
     stability: experimental
@@ -301,6 +408,33 @@ queries:
         max by (node) (kube_node_status_allocatable{resource="memory"})
         * on (node) group_left (pool) %%{nodePools}
       )
+    # Datadog can't coalesce tags, so the pool is the four provisioners' node-label
+    # tags side by side (N/A on all four for an unpooled node). It also rejects a
+    # nested group-by inside the join, so requests are summed per node without
+    # excluding completed pods or deduplicating kube-state-metrics replicas.
+    datadogQuery: |
+      sum(
+        sum:kube_pod_container_resource_requests{resource:memory AND node:*} by {node}
+        * (
+          max:kube_node_labels{*}
+            by {node,label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+              label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+          * 0 + 1
+        ),
+        {label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+          label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+      )
+      / sum(
+        max:kube_node_status_allocatable{resource:memory} by {node}
+        * (
+          max:kube_node_labels{*}
+            by {node,label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+              label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+          * 0 + 1
+        ),
+        {label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+          label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+      )
 
   - id: infra.autoscaling.pools.not_ready
     stability: experimental
@@ -314,6 +448,21 @@ queries:
       sum by (pool) (
         (1 - max by (node) (kube_node_status_condition{condition="Ready", status="true"}))
         * on (node) group_left (pool) %%{nodePools}
+      )
+    # Datadog can't coalesce tags, so the pool is the four provisioners' node-label
+    # tags side by side, and a node with none of them reads N/A on all four rather
+    # than `unpooled`.
+    datadogQuery: |
+      sum(
+        (1 - max:kube_node_status_condition{condition:ready AND status:true} by {node})
+        * (
+          max:kube_node_labels{*}
+            by {node,label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+              label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+          * 0 + 1
+        ),
+        {label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+          label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
       )
 
   - id: infra.autoscaling.pools.cordoned
@@ -332,6 +481,21 @@ queries:
         max by (node) (kube_node_spec_unschedulable)
         * on (node) group_left (pool) %%{nodePools}
       )
+    # Datadog can't coalesce tags, so the pool is the four provisioners' node-label
+    # tags side by side, and a node with none of them reads N/A on all four rather
+    # than `unpooled`.
+    datadogQuery: |
+      sum(
+        max:kube_node_spec_unschedulable{*} by {node}
+        * (
+          max:kube_node_labels{*}
+            by {node,label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+              label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+          * 0 + 1
+        ),
+        {label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+          label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool}
+      )
 
   - id: infra.autoscaling.nodes.age
     stability: experimental
@@ -346,6 +510,19 @@ queries:
     promQL: |
       (time() - max by (node) (kube_node_created))
       * on (node) group_left (pool, instance_type, zone) %%{nodePools}
+    # Datadog has no `time()`, so this is each node's creation timestamp rather
+    # than its age. It can't coalesce or rename tags either, so the pool is the
+    # four provisioners' node-label tags side by side, and the instance type
+    # and zone keep their `label_` names.
+    datadogQuery: |
+      max:kube_node_created{*} by {node}
+      * (
+        max:kube_node_labels{*}
+          by {node,label_karpenter_sh_nodepool,label_eks_amazonaws_com_nodegroup,
+            label_cloud_google_com_gke_nodepool,label_kubernetes_azure_com_agentpool,
+            label_node_kubernetes_io_instance_type,label_topology_kubernetes_io_zone}
+        * 0 + 1
+      )
     instant: true
 
   # --- Pending pods ---------------------------------------------------------------
@@ -362,6 +539,12 @@ queries:
     promQL: |
       (time() - max by (namespace, pod) (kube_pod_created))
       and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_scheduled{condition="false"}) == 1)
+    # Datadog has no `time()`, so this is each waiting pod's creation timestamp
+    # rather than its age. Multiplying by the pod's unscheduled indicator, cut
+    # to its 1s, keeps only the waiting pods, as the `and` does.
+    datadogQuery: |
+      max:kube_pod_created{*} by {namespace,pod}
+      * cutoff_min(max:kube_pod_status_scheduled{condition:false} by {namespace,pod}, 1)
     instant: true
 
   - id: infra.autoscaling.events.scheduling_failures
@@ -434,6 +617,15 @@ queries:
         max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_min_replicas)
       - |
         max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas)
+    datadogQuery:
+      - |
+        max:kube_horizontalpodautoscaler_status_current_replicas{*} by {namespace,horizontalpodautoscaler}
+      - |
+        max:kube_horizontalpodautoscaler_status_desired_replicas{*} by {namespace,horizontalpodautoscaler}
+      - |
+        max:kube_horizontalpodautoscaler_spec_min_replicas{*} by {namespace,horizontalpodautoscaler}
+      - |
+        max:kube_horizontalpodautoscaler_spec_max_replicas{*} by {namespace,horizontalpodautoscaler}
     instant: true
 
   - id: infra.autoscaling.hpa.share_of_max
@@ -449,6 +641,9 @@ queries:
       max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas)
       /
       max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas)
+    datadogQuery: |
+      max:kube_horizontalpodautoscaler_status_current_replicas{*} by {namespace,horizontalpodautoscaler}
+      / max:kube_horizontalpodautoscaler_spec_max_replicas{*} by {namespace,horizontalpodautoscaler}
 
   - id: infra.autoscaling.hpa.unable_to_scale
     stability: experimental
@@ -468,6 +663,12 @@ queries:
         max by (namespace, horizontalpodautoscaler, condition) (
           kube_horizontalpodautoscaler_status_condition{condition=~"AbleToScale|ScalingActive", status="false"}
         )
+      )
+    datadogQuery: |
+      sum(
+        max:kube_horizontalpodautoscaler_status_condition{condition IN (abletoscale,scalingactive) AND status:false}
+          by {namespace,horizontalpodautoscaler,condition},
+        {condition}
       )
 
   - id: infra.autoscaling.events.hpa_rate
@@ -518,6 +719,13 @@ queries:
         sum(last_over_time(aws_ec2_status_check_failed_instance_maximum[15m]))
       - |
         sum(last_over_time(aws_ec2_status_check_failed_attached_ebs_maximum[15m]))
+    datadogQuery:
+      - |
+        sum:aws_ec2_status_check_failed_system_maximum{*}.fill(last, 900)
+      - |
+        sum:aws_ec2_status_check_failed_instance_maximum{*}.fill(last, 900)
+      - |
+        sum:aws_ec2_status_check_failed_attached_ebs_maximum{*}.fill(last, 900)
 
   - id: infra.autoscaling.cloud.ec2.node_groups
     stability: experimental
@@ -540,6 +748,16 @@ queries:
         max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_in_service_instances_average[15m]))
       - |
         max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_max_size_average[15m]))
+    datadogQuery:
+      - |
+        max:aws_autoscaling_group_desired_capacity_average{*}
+          by {tag_eks_nodegroup_name}.fill(last, 900)
+      - |
+        max:aws_autoscaling_group_in_service_instances_average{*}
+          by {tag_eks_nodegroup_name}.fill(last, 900)
+      - |
+        max:aws_autoscaling_group_max_size_average{*}
+          by {tag_eks_nodegroup_name}.fill(last, 900)
 
   - id: infra.autoscaling.cloud.ec2.vcpus
     stability: experimental
@@ -557,6 +775,8 @@ queries:
         instance type the Terraform examples use.
     promQL: |
       max(last_over_time(aws_usage_resource_count_maximum{dimension_Resource="vCPU"}[15m]))
+    datadogQuery: |
+      max:aws_usage_resource_count_maximum{dimension_resource:vcpu}.fill(last, 900)
 
   # --- Cloud capacity: Compute Engine ---------------------------------------------
   - id: infra.autoscaling.cloud.gce.cpu_quota
@@ -582,6 +802,12 @@ queries:
       max by (vm_family, location) (
         last_over_time(stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_limit{limit_name=~".*per-project-region"}[15m])
       )
+    datadogQuery: |
+      max:stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_usage{limit_name:*per-project-region}
+        by {vm_family,location}.fill(last, 900)
+      /
+      max:stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_limit{limit_name:*per-project-region}
+        by {vm_family,location}.fill(last, 900)
 
   - id: infra.autoscaling.cloud.gce.ssd_quota
     stability: experimental
@@ -600,6 +826,12 @@ queries:
       max by (vm_family, location) (
         last_over_time(stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_limit{limit_name=~".*per-project-region"}[15m])
       )
+    datadogQuery: |
+      max:stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_usage{limit_name:*per-project-region}
+        by {vm_family,location}.fill(last, 900)
+      /
+      max:stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_limit{limit_name:*per-project-region}
+        by {vm_family,location}.fill(last, 900)
 
   - id: infra.autoscaling.cloud.gce.refusals
     stability: experimental
@@ -624,6 +856,16 @@ queries:
         sum by (vm_family, location) (
           increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_exceeded(_total)?"}[1h])
         )
+    # Datadog can't match a metric name by pattern, so this reads the `_total`
+    # spelling only. Each point counts an hour-long bucket rather than the hour
+    # before it.
+    datadogQuery:
+      - |
+        sum:stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_exceeded_total{*}
+          by {vm_family,location}.as_count().rollup(sum, 3600)
+      - |
+        sum:stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_exceeded_total{*}
+          by {vm_family,location}.as_count().rollup(sum, 3600)
 
   # --- Cloud capacity: AKS --------------------------------------------------------
   - id: infra.autoscaling.cloud.aks.unschedulable
@@ -646,6 +888,9 @@ queries:
       max by (resourceName) (
         last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unschedulable_pods_count_maximum_count[15m])
       )
+    datadogQuery: |
+      max:azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unschedulable_pods_count_maximum_count{*}
+        by {resourcename}.fill(last, 900)
 
   - id: infra.autoscaling.cloud.aks.state
     stability: experimental
@@ -672,6 +917,16 @@ queries:
         max by (resourceName) (
           last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unneeded_nodes_count_maximum_count[15m])
         )
+    datadogQuery:
+      - |
+        min:azure_microsoft_containerservice_managedclusters_cluster_autoscaler_cluster_safe_to_autoscale_minimum_count{*}
+          by {resourcename}.fill(last, 900)
+      - |
+        max:azure_microsoft_containerservice_managedclusters_cluster_autoscaler_scale_down_in_cooldown_maximum_count{*}
+          by {resourcename}.fill(last, 900)
+      - |
+        max:azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unneeded_nodes_count_maximum_count{*}
+          by {resourcename}.fill(last, 900)
 
   - id: infra.autoscaling.cloud.aks.vms_down
     stability: experimental
@@ -692,6 +947,12 @@ queries:
         1 - min by (resourceName, dimensionVmname) (
           last_over_time(azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[15m])
         )
+      )
+    datadogQuery: |
+      sum(
+        1 - min:azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count{*}
+          by {resourcename,dimensionvmname}.fill(last, 900),
+        {resourcename}
       )
 
   # --- Events ---------------------------------------------------------------------
