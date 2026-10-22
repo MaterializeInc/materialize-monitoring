@@ -14,7 +14,7 @@ For a short-lived install to troubleshoot a cluster, see [Ad-hoc install](../adh
 >
 >  The charts are the full-fidelity surface — everything Terraform does is a layer over them — so reach for Helm when you need a setting the modules do not model, or when Terraform is not how you deploy.
 >
->  What you take on by installing directly is the `[consumer]` half of the [shared responsibility model](../../operating/production-best-practices/#shared-responsibility-model): cloud resources, secrets, version pinning, and the Alloy rollout below.
+>  What you take on by installing directly is the `[consumer]` half of the [shared responsibility model](../../operating/production-best-practices/checklist/#shared-responsibility-model): cloud resources, secrets, version pinning, and the Alloy rollout below.
 
 ## Dependency: Installing CRDs
 
@@ -158,7 +158,7 @@ Pick one from each row you deploy; they compose.
 | `profiles/loki-test.values.yaml` | CI only: SingleBinary Loki on local filesystem, no object storage |
 | `profiles/kind.values.yaml` | CI only: shrinks **every** workload to fit one `kind` node. Sizing only — see below |
 
-See Production Best Practices for the envelope each tier assumes: [logging throughput](../../operating/production-best-practices/#sizing-the-logging-backend) for Loki, [active series and collections](../../operating/production-best-practices/#sizing-the-metrics-backend) for Thanos, including how to pick a tier from cluster inventory before you have any metrics to measure.
+See Production Best Practices for the envelope each tier assumes: [logging throughput](../../operating/production-best-practices/loki/#sizing-the-logging-backend) for Loki, [active series and collections](../../operating/production-best-practices/thanos/#sizing-the-metrics-backend) for Thanos, including how to pick a tier from cluster inventory before you have any metrics to measure.
 
 #### The `kind` profile is sizing only, and composes last {#kind-profile}
 
@@ -188,10 +188,10 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/scheduling.values.yaml` | node selector, tolerations, and priority-class names, fanned out to every subchart. Edit the four anchors at the top; see below |
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
 | `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last. On an existing install, delete the four StatefulSets first; see [StatefulSet fields that cannot be patched](../../operating/upgrading/#statefulset-fields-that-cannot-be-patched) |
-| `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/#thanos-few-zones) |
+| `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/stack-wide/#fewer-than-two-zones) |
 | `profiles/s3-compatible.values.yaml` | Ceph RGW, MinIO, or another S3-compatible store with static keys, for both backends. The keys come from two Secrets you create; the header has the commands |
 | `profiles/adhoc.values.yaml` | the whole stack in one file: one replica of everything, no volumes, no NetworkPolicies. For troubleshooting, not production; see [Ad-hoc install](../adhoc/) |
-| `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/#namespace-layout) |
+| `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/stack-wide/#namespace-layout) |
 | `profiles/noop.values.yaml` | a release that creates no resources. Install it first, then turn components on over it one tag at a time |
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
 | `profiles/otlp-metrics-honeycomb.values.yaml` | a generic OTLP metrics backend |
@@ -368,11 +368,11 @@ The admin credentials are in the `grafana` Secret (keys `admin-user` and `admin-
 kubectl --namespace monitoring rollout restart deployment/alloy-gateway daemonset/alloy-agent
 ```
 
-The mechanism, and why a reload cannot substitute for a restart, is in [Production Best Practices](../../operating/production-best-practices/#collection-alloy). The short version: the pipeline's `-env` ConfigMaps are consumed with `envFrom`, and environment variables are fixed at container start, so neither Alloy's `/-/reload` nor a config-reloader sidecar can pick up a filter change.
+The mechanism, and why a reload cannot substitute for a restart, is in [Production Best Practices](../../operating/production-best-practices/alloy/#restart-after-a-config-change). The short version: the pipeline's `-env` ConfigMaps are consumed with `envFrom`, and environment variables are fixed at container start, so neither Alloy's `/-/reload` nor a config-reloader sidecar can pick up a filter change.
 
 ## Going to production
 
-[Production Best Practices](../../operating/production-best-practices/) is the deployment checklist, organized by backend and tagged with who owns each item — the chart, you as the chart consumer, or you as the operator.
+[Production Best Practices](../../operating/production-best-practices/checklist/) is the deployment checklist, ordered by what goes wrong if you skip an item and tagged with who owns it: the chart, you as the chart consumer, or you as the operator.
 
 On the Helm path every `[consumer]` item is yours, including the buckets and workload-identity bindings that the [Terraform modules](../terraform/) would otherwise create.
 
