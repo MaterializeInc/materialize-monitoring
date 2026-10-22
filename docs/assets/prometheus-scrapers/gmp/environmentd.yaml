@@ -31,18 +31,42 @@ spec:
       replacement: $1
       action: replace
     - sourceLabels:
-      - collection_id
-      - global_id
+      - cluster_id
+      - compute_cluster_id
       separator: ;
-      targetLabel: collection_id
-      regex: ;(.+)
+      targetLabel: cluster_id
+      regex: ;([su][0-9]+)
       replacement: $1
       action: replace
     - sourceLabels:
-      - shard_id
-      - shard
+      - cluster_id
+      - cluster_environmentd_materialize_cloud_cluster_id
       separator: ;
-      targetLabel: shard_id
+      targetLabel: cluster_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - replica_id
+      - compute_replica_id
+      separator: ;
+      targetLabel: replica_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - replica_id
+      - cluster_environmentd_materialize_cloud_replica_id
+      separator: ;
+      targetLabel: replica_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - cluster_name
+      - compute_cluster_name
+      separator: ;
+      targetLabel: cluster_name
       regex: ;(.+)
       replacement: $1
       action: replace
@@ -98,6 +122,22 @@ spec:
       separator: ;
       targetLabel: object_type
       regex: mz_object_info;;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - collection_id
+      - global_id
+      separator: ;
+      targetLabel: collection_id
+      regex: ;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - shard_id
+      - shard
+      separator: ;
+      targetLabel: shard_id
+      regex: ;(.+)
       replacement: $1
       action: replace
   targetLabels:

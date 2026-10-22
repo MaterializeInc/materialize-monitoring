@@ -52,7 +52,12 @@ impl Monitor {
     ///
     /// Mirrors `alloy::pipeline::Pipeline::from_yaml_str`.
     pub fn from_yaml_str(yaml: &str) -> Result<Self> {
-        let value: Value = crate::yaml::from_str(yaml)?;
+        Self::from_value(crate::yaml::from_str(yaml)?)
+    }
+
+    /// [`Monitor::from_yaml_str`] for a document already parsed, such as one
+    /// the label vocabulary has added rules to.
+    pub fn from_value(value: Value) -> Result<Self> {
         let kind = value
             .get("kind")
             .and_then(Value::as_str)
@@ -747,7 +752,7 @@ mod tests {
     //     (no `namespaces:` on the SD config).
     // ========================================================
 
-    use crate::scrape::test_support::{assert_jobs, fixture, without_metric_relabelings};
+    use crate::scrape::test_support::{assert_jobs, fixture};
 
     /// Core PodMonitor spec: one label, one endpoint, no path. Pins the selector
     /// `keep` shape, the port `keep`, and the namespace/pod/container relabels.
@@ -796,9 +801,7 @@ mod tests {
     /// `metrics_path`. (Real `podmonitor-environmentd.yaml` fixture.)
     #[test]
     fn pod_monitor_environmentd_fixture() {
-        let monitor = without_metric_relabelings(
-            Monitor::from_yaml_str(fixture("podmonitor-environmentd")).unwrap(),
-        );
+        let monitor = Monitor::from_yaml_str(fixture("podmonitor-environmentd")).unwrap();
         assert_jobs(
             monitor.transpile(),
             r#"
@@ -1018,9 +1021,7 @@ mod tests {
     /// the missing `interval` is defaulted.
     #[test]
     fn pod_monitor_environmentd_to_gmp() {
-        let monitor = without_metric_relabelings(
-            Monitor::from_yaml_str(fixture("podmonitor-environmentd")).unwrap(),
-        );
+        let monitor = Monitor::from_yaml_str(fixture("podmonitor-environmentd")).unwrap();
         let resources = monitor.to_gmp().unwrap();
         assert_eq!(resources.len(), 1);
         assert_serializes_to(

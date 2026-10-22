@@ -1,0 +1,26 @@
+{{/*
+  list-label-aliases: renders the label vocabulary as a description list.
+
+  Reads assets/metrics/labels.yaml, a copy of packages/prometheus-scrapers/labels.yaml,
+  and lists each canonical label with the aliases the shipped monitors copy
+  into it.
+
+  Usage:
+    {{< list-label-aliases >}}
+*/}}
+{{- $vocabulary := resources.Get "metrics/labels.yaml" | transform.Unmarshal -}}
+<dl class="label-aliases">
+{{- range $vocabulary.canonical }}
+  <dt id="label-{{ .name }}"><code>{{ .name }}</code></dt>
+  <dd>
+    Copied from
+    {{- range $i, $alias := .aliases }}
+      {{- if $i }},{{ end }}
+      <code>{{ $alias.label }}</code>
+      {{- with $alias.families }} on {{ range $j, $family := . }}{{ if $j }}, {{ end }}<code>{{ $family }}</code>{{ end }}{{ end }}
+      (deprecated in {{ $alias.deprecatedIn }})
+    {{- end }}
+    {{- with .values }}, where the value matches <code>{{ . }}</code>{{ end }}.
+  </dd>
+{{- end }}
+</dl>

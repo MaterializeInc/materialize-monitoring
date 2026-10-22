@@ -457,25 +457,25 @@ pub async fn consensus_recorded(ctx: &Ctx) -> Result<()> {
 /// Selectors for Materialize series that carry a label alias without its
 /// canonical name, one per alias the shipped monitors fill (DEP-421).
 ///
-/// The list is `LabelAlias::missing_canonical_selector` over
-/// `mzmon_lib::scrape::label_aliases::LABEL_ALIASES`, copied here so the
-/// assertion binary needs no source tree. A test proves the two still agree.
+/// The list is `LabelAlias::missing_canonical_selector` over every alias in
+/// `packages/prometheus-scrapers/labels.yaml`, copied here so the assertion
+/// binary needs no source tree. A test proves the two still agree.
 pub const LABEL_ALIAS_SELECTORS: &[&str] = &[
     r#"{__name__=~"(v2_)?mz_.+", instance_id=~"[su][0-9]+", cluster_id=""}"#,
     r#"{__name__=~"(v2_)?mz_.+", compute_instance=~"[su][0-9]+", cluster_id=""}"#,
     r#"{__name__=~"(v2_)?mz_.+", compute_cluster_id=~"[su][0-9]+", cluster_id=""}"#,
     r#"{__name__=~"(v2_)?mz_.+", cluster_environmentd_materialize_cloud_cluster_id=~"[su][0-9]+", cluster_id=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", compute_replica_id=~"[su][0-9]+", replica_id=""}"#,
     r#"{__name__=~"(v2_)?mz_.+", cluster_environmentd_materialize_cloud_replica_id=~"[su][0-9]+", replica_id=""}"#,
     r#"{__name__=~"(v2_)?mz_.+", compute_cluster_name=~".+", cluster_name=""}"#,
-    r#"{__name__=~"(v2_)?mz_.+", compute_replica_id=~"[su][0-9]+", replica_id=""}"#,
-    r#"{__name__=~"(v2_)?mz_.+", global_id=~".+", collection_id=""}"#,
-    r#"{__name__=~"(v2_)?mz_.+", shard=~".+", shard_id=""}"#,
     r#"{__name__="mz_cluster_info", name=~".+", cluster_name=""}"#,
     r#"{__name__="mz_cluster_info", size=~".+", cluster_size=""}"#,
     r#"{__name__="mz_replica_info", name=~".+", replica_name=""}"#,
     r#"{__name__="mz_replica_info", size=~".+", replica_size=""}"#,
     r#"{__name__="mz_object_info", name=~".+", object_name=""}"#,
     r#"{__name__="mz_object_info", type=~".+", object_type=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", global_id=~".+", collection_id=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", shard=~".+", shard_id=""}"#,
 ];
 
 /// No Materialize series carries a label alias without its canonical name.
@@ -524,9 +524,9 @@ pub async fn label_aliases_filled(ctx: &Ctx) -> Result<()> {
             }
             bail!(
                 "series carry a label alias without its canonical name: {}. Check that the \
-                 Materialize monitors carry the metricRelabelings in packages/prometheus-scrapers, \
-                 and that values do not replace materialize.*.serviceMonitor.metricEndpoints \
-                 without restating them",
+                 Materialize monitors carry the metricRelabelings rendered from \
+                 packages/prometheus-scrapers/labels.yaml, and that values do not replace \
+                 materialize.*.serviceMonitor.metricEndpoints without restating them",
                 missing.join("; ")
             )
         },
@@ -639,8 +639,12 @@ mod tests {
 
     #[test]
     fn label_alias_selectors_match_the_vocabulary() {
-        let derived: Vec<String> = mzmon_lib::scrape::label_aliases::LABEL_ALIASES
-            .iter()
+        let vocabulary = mzmon_lib::scrape::labels::LabelVocabulary::from_yaml_str(include_str!(
+            "../../../prometheus-scrapers/labels.yaml"
+        ))
+        .unwrap();
+        let derived: Vec<String> = vocabulary
+            .aliases()
             .map(|alias| alias.missing_canonical_selector())
             .collect();
         assert_eq!(LABEL_ALIAS_SELECTORS, derived.as_slice());

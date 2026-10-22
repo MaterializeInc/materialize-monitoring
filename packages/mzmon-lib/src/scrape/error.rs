@@ -36,6 +36,10 @@ pub enum Error {
     #[error("unsupported: {0}")]
     Unsupported(String),
 
+    /// `labels.yaml` passes its schema but contradicts itself.
+    #[error("label vocabulary: {0}")]
+    Vocabulary(String),
+
     #[error("{}", format_multiple(.0))]
     Multiple(Vec<Error>),
 }

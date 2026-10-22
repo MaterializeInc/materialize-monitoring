@@ -22,7 +22,6 @@ use serde_json::Value;
 
 use crate::scrape::classic::config::ScrapeJob;
 use crate::scrape::error::Result;
-use crate::scrape::transpile::Monitor;
 
 /// The real Monitor fixtures under `packages/prometheus-scrapers/`, embedded so
 /// tests run hermetically. Keep in sync with that directory.
@@ -60,18 +59,6 @@ pub(crate) fn fixture(name: &str) -> &'static str {
 
 /// Assert the produced jobs match `expected_yaml` structurally (order- and
 /// quoting-independent map comparison via `serde_json::Value`).
-/// The real monitors' `metricRelabelings` are the label aliases, which
-/// `label_aliases` pins in every flavor. A test that pins the rest of a real
-/// monitor's render strips them first.
-pub(crate) fn without_metric_relabelings(mut monitor: Monitor) -> Monitor {
-    if let Monitor::PodMonitor(pm) = &mut monitor {
-        for endpoint in &mut pm.spec.pod_metrics_endpoints {
-            endpoint.metric_relabelings.clear();
-        }
-    }
-    monitor
-}
-
 pub(crate) fn assert_jobs(produced: Result<Vec<ScrapeJob>>, expected_yaml: &str) {
     let produced = produced.expect("transpile should succeed");
     let produced_val = serde_json::to_value(&produced).expect("serialize produced jobs");

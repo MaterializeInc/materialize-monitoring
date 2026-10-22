@@ -44,7 +44,11 @@ jobs:
               - packages/queries/**
               - packages/mzmon-lib/**
               - packages/mz-monitoring-build/**
+              - packages/prometheus-scrapers/**
               - charts/materialize-monitoring/pre-rendered/pipelines/**
+              - charts/materialize-monitoring/pre-rendered/scrapers/**
+              - docs/assets/prometheus-scrapers/**
+              - docs/assets/metrics/labels.yaml
               - charts/materialize-monitoring/pre-rendered/metrics/**
               - charts/materialize-monitoring/pre-rendered/rules/**
               - Cargo.toml
@@ -134,6 +138,21 @@ jobs:
           if [ -n "$(git status --porcelain -- "$dir")" ]; then
             echo "::error::Generated alerting rules are stale or uncommitted. Run 'make rules' locally and commit."
             git status --porcelain -- "$dir"
+            exit 1
+          fi
+      # The scrapers are rendered from packages/prometheus-scrapers/, the label
+      # vocabulary included, and checked in with their docsite copies: the same
+      # freshness contract again.
+      - name: make prometheus-scrapers
+        run: |
+          rm -rf charts/materialize-monitoring/pre-rendered/scrapers \
+            docs/assets/prometheus-scrapers docs/assets/metrics/labels.yaml
+          make prometheus-scrapers
+      - name: rendered scrapers are up to date
+        run: |
+          if [ -n "$(git status --porcelain -- charts/materialize-monitoring/pre-rendered/scrapers docs/assets/prometheus-scrapers docs/assets/metrics/labels.yaml)" ]; then
+            echo "::error::Rendered scrapers are stale or uncommitted. Run 'make prometheus-scrapers' locally and commit."
+            git status --porcelain -- charts/materialize-monitoring/pre-rendered/scrapers docs/assets/prometheus-scrapers docs/assets/metrics/labels.yaml
             exit 1
           fi
 

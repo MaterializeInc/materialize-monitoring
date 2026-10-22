@@ -27,9 +27,10 @@ endpoints.
 Curate labels at the source rather than promoting everything and cleaning up downstream.
 
 - **PodMonitors** set an explicit `podTargetLabels` allowlist (the org / cluster / replica ids the dashboards consume), not a blanket promotion.
-- **The Materialize PodMonitors** carry `metricRelabelings` that copy each label alias into its canonical name, such as `instance_id` into `cluster_id`, only where the canonical label is empty.
-  They're written by hand and tested against the table in `packages/mzmon-lib/src/scrape/label_aliases.rs`, so change the two together.
-  The E2E suite's `thanos::label_aliases_filled` holds a copy of the table's selectors.
+- **`labels.yaml`** is the label vocabulary: canonical label names, and the aliases copied into them, such as `instance_id` into `cluster_id`.
+  `gen-scrape-configs` renders every alias as a fill-if-empty `metricRelabelings` rule on every endpoint of every monitor `labels.yaml` names, in all three flavors, so the monitor sources carry no alias rules of their own.
+  Its schema is `packages/mzmon-lib/schemas/scrape/mzmon-labels.schema.yaml`.
+  The E2E suite's `thanos::label_aliases_filled` holds a test-checked copy of its selectors, so an alias added here changes that list too.
 - **`scrapeconfig-cadvisor.yaml`** uses an explicit node-label allowlist (a `replace` per kept label) instead of `labelmap __meta_kubernetes_node_label_(.+)`, which would drag every node label (karpenter/cluster-autoscaler/hostname) onto every cAdvisor series. It also sets `node` from the node name explicitly, since `__address__` is the apiserver proxy and identical for every node.
 
 Cross-cutting target-phase rules that apply to *all* monitors (pod-liveness drop, `app`-label coalescing) live in the alloy `prometheus.operator.*` components' `rule` blocks (`packages/alloy-pipelines/gateway.yaml`), not repeated here.

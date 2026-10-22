@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/scrape/mzmon-labels.schema.yaml
+# The label vocabulary for Materialize's metrics, as the shipped monitors apply it.
+#
+# An alias is a label Materialize emits under a name the vocabulary spells
+# differently. `mz-monitoring-build gen-scrape-configs` renders every alias as a
+# fill-if-empty `metricRelabelings` rule on every endpoint of every monitor named
+# in `monitors`, in all three flavors. A rule copies its alias into the canonical
+# label only where the canonical label is empty, so a value Materialize emits
+# under the canonical name is never overwritten, and a rule whose alias is absent
+# does nothing. Rules render in the order listed here.
+#
+# Designed in docs/content/reference/development/design-docs/20261002-metric-label-vocabulary.md.
+# `deprecatedIn` is the materialize-monitoring release whose notes deprecate the
+# alias. DEP-360 retires each one at least 30 days after that release.
+
+# Materialize's own processes, by the monitors' `app.kubernetes.io/name`. The SQL
+# exporter's monitor is named `environmentd` too.
+monitors:
+  - environmentd
+  - clusterd
+  - materialize-operator
+
+canonical:
+  - name: cluster_id
+    # `instance_id` is "none" on mz_time_to_first_row_seconds, which names no
+    # cluster, so only an id is copied.
+    values: "[su][0-9]+"
+    aliases:
+      - label: instance_id
+        deprecatedIn: "1.6.0"
+      - label: compute_instance
+        deprecatedIn: "1.6.0"
+      - label: compute_cluster_id
+        deprecatedIn: "1.6.0"
+      # Copied from the pod label by `podTargetLabels`.
+      - label: cluster_environmentd_materialize_cloud_cluster_id
+        deprecatedIn: "1.6.0"
+
+  - name: replica_id
+    values: "[su][0-9]+"
+    aliases:
+      - label: compute_replica_id
+        deprecatedIn: "1.6.0"
+      # Copied from the pod label by `podTargetLabels`.
+      - label: cluster_environmentd_materialize_cloud_replica_id
+        deprecatedIn: "1.6.0"
+
+  # `name`, `type` and `size` mean other things on other families, such as a
+  # persist shard's name, so they are copied only on their _info family.
+  - name: cluster_name
+    aliases:
+      - label: compute_cluster_name
+        deprecatedIn: "1.6.0"
+      - label: name
+        families: [mz_cluster_info]
+        deprecatedIn: "1.6.0"
+
+  - name: cluster_size
+    aliases:
+      - label: size
+        families: [mz_cluster_info]
+        deprecatedIn: "1.6.0"
+
+  - name: replica_name
+    aliases:
+      - label: name
+        families: [mz_replica_info]
+        deprecatedIn: "1.6.0"
+
+  - name: replica_size
+    aliases:
+      - label: size
+        families: [mz_replica_info]
+        deprecatedIn: "1.6.0"
+
+  - name: object_name
+    aliases:
+      - label: name
+        families: [mz_object_info]
+        deprecatedIn: "1.6.0"
+
+  - name: object_type
+    aliases:
+      - label: type
+        families: [mz_object_info]
+        deprecatedIn: "1.6.0"
+
+  - name: collection_id
+    aliases:
+      - label: global_id
+        deprecatedIn: "1.6.0"
+
+  - name: shard_id
+    aliases:
+      - label: shard
+        deprecatedIn: "1.6.0"

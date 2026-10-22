@@ -84,7 +84,7 @@ dashboards: grafana-dashboards
 pipelines: alloy-pipelines
 .PHONY: pipelines
 
-prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scrapers docs/assets/prometheus-scrapers
+prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scrapers docs/assets/prometheus-scrapers docs/assets/metrics/labels.yaml
 .PHONY: prometheus-scrapers
 
 scrapers: prometheus-scrapers
@@ -204,6 +204,11 @@ charts/materialize-monitoring/pre-rendered/rules/_index.yaml: $(wildcard package
 	target/debug/mz-monitoring-build gen-rules \
 		--source-dir packages/queries \
 		--out-dir "$(@D)"
+
+# The label vocabulary, copied for the docsite's `list-label-aliases` shortcode.
+docs/assets/metrics/labels.yaml: packages/prometheus-scrapers/labels.yaml
+	mkdir -p "$(@D)"
+	cp "$<" "$@"
 
 docs/assets/metrics/metrics.yaml: $(wildcard packages/queries/*.yaml) target/debug/mz-monitoring-build
 	mkdir -p "$(@D)"
