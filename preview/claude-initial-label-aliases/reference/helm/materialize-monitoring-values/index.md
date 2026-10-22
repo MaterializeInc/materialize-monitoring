@@ -1227,7 +1227,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-materialize-operator.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
   </tbody>
