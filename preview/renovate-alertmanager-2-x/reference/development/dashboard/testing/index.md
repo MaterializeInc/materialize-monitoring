@@ -21,7 +21,7 @@ For broader code-quality tooling see
 | `mzmon-lib/tests/grafana_golden.rs` | that the generated models round-trip a real Dashboard v2 document |
 | `mzmon-lib/tests/grafana_end_to_end.rs` | a complete dashboard built through every layer, then deserialized back through the models |
 | `mzmon-lib/tests/grafana_query_bridge.rs` | the query bridge against the real registry under `packages/queries/` |
-| `charts/materialize-monitoring-dashboards/tests/dashboards_test.yaml` | that the chart ships what `selected` selects — the patterns are globbed against the pre-rendered tree, so a dashboard joins or leaves the release silently otherwise — and that its resource names do not collide with the ones the umbrella chart used to create |
+| `charts/materialize-monitoring-dashboards*/tests/dashboards_test.yaml` | that each dashboards chart ships what `selected` selects, and only its own folder's dashboards. The patterns are globbed against the pre-rendered tree, so a dashboard joins or leaves a release silently otherwise. It also checks that resource names don't collide with ones an earlier release created |
 | in-module tests | per-tab structure, selector shapes, threshold ladders, panel presets |
 
 The models carry `deny_unknown_fields`, so anything invented along the way fails at deserialization rather than at push

@@ -12,13 +12,18 @@
 
 What exists today is the query material to build one yourself.
 
-[Common Queries](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/common-queries/) renders every query in the registry with a **Datadog** tab beside its PromQL, in the metric query syntax you paste into a dashboard widget or a monitor.
+[Common Queries](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/common-queries/) renders the registry's queries with a **Datadog** tab beside the PromQL wherever a query has a Datadog form, in the metric query syntax you paste into a dashboard widget or a monitor.
+The translations are validated against a live Datadog organization that receives a self-managed install's metrics through the gateway.
+Where Datadog's query language can't express what the PromQL does, the translation is the closest form, and the registry says what it drops.
 
-> [!WARNING]
->   **These translations have not been run against a live Datadog account**, so expect to correct some of them.
->   Where Datadog's query language cannot express what the PromQL does, the translation is approximate rather than equivalent.
+Before you paste one, check the following:
 
-The conventions behind them — how Prometheus metric names and labels land in Datadog, and where the two query languages diverge — are written up in [Datadog Translations](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/queries/datadog/).
+- **Replace the placeholders with Datadog filters.** A placeholder such as `mzEnvironmentFilter` takes a Datadog filter term, such as `materialize_cloud_organization_name:your-env`, and terms join with `AND`.
+- **Write tag values in lowercase.** Datadog stores tag values lowercased and matches filters case-sensitively, so `phase:running` matches and `phase:Running` doesn't.
+- **Enable percentiles for `p50:`, `p95:`, and `p99:` queries.** A percentile query fails until percentiles are enabled for its metric under **Metrics** > **Summary** in Datadog.
+- **Read `job` as `service` and `instance` as `service.instance.id`.** The gateway's exporter renames the two Prometheus target labels on the way to Datadog.
+
+For the conventions behind the translations, including how metric names, labels, and types land in Datadog, see [Datadog translations](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/queries/datadog/).
 
 ## Getting the metrics there
 

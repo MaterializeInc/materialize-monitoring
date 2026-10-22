@@ -20,7 +20,7 @@ The other pages in this section cover each stage in depth:
 | [Querying](../querying/) | PromQL through Grafana and the Thanos Query API |
 | [Alerting > Configuring](../../alerting/configuring/) | The Thanos Ruler, and how `PrometheusRule` resources reach it |
 
-The production checklist for this backend is [Production Best Practices > Metrics (Thanos)](../../operating/production-best-practices/#metrics-thanos).
+The production checklist for this backend is [Production Best Practices > Metrics (Thanos)](../../operating/production-best-practices/thanos/).
 The gateway's component-level pipeline is in the [metrics pipeline reference](../../reference/development/pipelines/metrics/).
 
 ## End-to-end dataflow
@@ -172,8 +172,8 @@ Local retention is 6h, which serves the recent window to queries until the Store
 Every pod uploads its own copy of what it holds, labelled with its own `receive_replica`.
 The [Compactor](#block-lifecycle) later merges those copies into one.
 
-*See more:* [Production Best Practices > Receive](../../operating/production-best-practices/#receive-replication-is-the-availability-lever-not-mode) for the quorum table and zone spread,
-and [Storage: ephemeral by default](../../operating/production-best-practices/#thanos-ephemeral-storage) for why Receive has no volume.
+*See more:* [Production Best Practices > Receive](../../operating/production-best-practices/thanos/#receive-replication) for the quorum table and zone spread,
+and [Storage: ephemeral by default](../../operating/production-best-practices/thanos/#thanos-ephemeral-storage) for why Receive has no volume.
 
 ## Object storage and the block lifecycle {#block-lifecycle}
 
@@ -216,7 +216,7 @@ Without it, the first overlap halts the Compactor, and a halted Compactor runs n
 The Store Gateway reads blocks directly from the bucket and keeps an index-header cache on its own volume.
 
 *See more:* [Storing > Retention and downsampling](../storing/#retention-and-downsampling),
-[Production Best Practices > Retention & compaction](../../operating/production-best-practices/#thanos-retention-compaction),
+[Production Best Practices > Retention & compaction](../../operating/production-best-practices/thanos/#thanos-retention-compaction),
 and [Thanos Compactor halted](../../operating/runbooks/thanos/#thanos-compactor-halted).
 
 ## Read path {#read-path}
