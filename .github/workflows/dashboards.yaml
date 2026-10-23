@@ -47,6 +47,7 @@ jobs:
             charts/materialize-monitoring-dashboards-infra/pre-rendered/dashboards/grafana
             charts/materialize-monitoring-dashboards-meta/pre-rendered/dashboards/grafana
             docs/assets/dashboards/grafana
+            docs/assets/dashboards/datadog
           )
           if [ -n "$(git status --porcelain -- "${paths[@]}")" ]; then
             echo "::error::Rendered dashboards are stale or uncommitted. Run 'make dashboards' locally and commit."

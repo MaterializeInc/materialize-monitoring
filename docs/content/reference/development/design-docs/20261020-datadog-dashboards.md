@@ -426,9 +426,9 @@ None of it is ticketed yet.
 
 | Item | Why it's needed | Blocking? |
 |---|---|---|
-| **The Datadog backend** under `packages/dashboards/src/datadog/`, with `make datadog-dashboards` rendering into `docs/assets/dashboards/datadog/` and the freshness check in the dashboards workflow | The feature | **Blocking** |
+| **The Datadog backend** under `packages/dashboards/src/datadog/`, with `make datadog-dashboards` rendering into `docs/assets/dashboards/datadog/` and the freshness check in the dashboards workflow | The feature | ✅ Done, with an `env-top` preview |
 | **Panel manifests and the parity ledger**: both backends record a manifest as they build, and a test compares them against a list of reasoned differences | Keeps the two sets in step | **Blocking** for the first Datadog dashboard |
-| **The Datadog dashboards page**, rewritten from its placeholder into import steps | Download is the primary way to install the set | **Blocking** |
+| **The Datadog dashboards page**, rewritten from its placeholder into import steps | Download is the primary way to install the set | ✅ Done |
 | **`cluster` on the Datadog chain**, filled from `CLUSTER_NAME` where it's absent | Environment scoping across Kubernetes clusters, and the Kubernetes-cluster identity every other destination already has | **Blocking** for organizations with several Kubernetes clusters |
 | **`functions` on `datadogQuery` templates**, and a Datadog rendering context that turns the enrichment functions into a hidden `_info` query and a formula factor | How a panel asks for names | Blocking for names |
 | **Tier extraction that counts the `_info` family an enrichment function reads** | Puts `mz_object_info` and `mz_replica_info` in the tier list | Blocking for names |
@@ -467,6 +467,7 @@ The following tests cover the design:
 - [ ] **Is the custom-metric cost of the `_info` series acceptable at the default tier**, or do they belong in a tier an operator opts into?
 - [x] ~~**Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?~~ **Neither.** [DEP-421](https://linear.app/materializeinc/issue/DEP-421) ships the canonical labels on every destination, Datadog included.
 - [ ] **When are reference tables worth adding?** [Other ways to get names](#reference-tables) lists the conditions.
+- [ ] **How does a Datadog panel stay scoped to one environment?** Grafana's environment picker selects exactly one, and a Datadog template variable always offers `*`. Environments reuse cluster and replica ids, so a count grouped by id merges them: the `env-top` preview showed 2 clusters for two environments with 2 each. Grouping by the environment's tags as well works for a timeseries, and needs the registry's Datadog templates to group through a fragment. A query value can't group at all.
 - [ ] **What duplication moves the panel list into a shared layer?** Two or more dashboards whose manifests match panel for panel would be a clear signal, and the threshold is a judgment call.
 - [ ] **Does CI get a Datadog test organization** for the acceptance job and the live-data checks?
 - [ ] **Which dashboards follow `env-top`?** Field Engineering's input, as DEP-115 asks.

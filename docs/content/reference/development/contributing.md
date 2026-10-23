@@ -63,7 +63,7 @@ Everything is wired through [the top-level `Makefile`](https://github.com/Materi
 ```sh
 make all              # build everything (charts + dashboards)
 make charts           # package the Helm charts
-make dashboards       # regenerate Grafana dashboards from Python sources
+make dashboards       # regenerate the Grafana and Datadog dashboards
 make helm-docs        # regenerate chart README + docsite values reference
 make serve-docs       # serve this Hugo docsite locally
 make terraform-check  # fmt + validate + the tier-0 render check (no cluster)

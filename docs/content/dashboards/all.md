@@ -19,10 +19,13 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 ## Formats
 
-Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
-Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
+Every dashboard has a **Grafana dashboard schema v2** render, which needs **Grafana 12 or later**.
+For more information, see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
+`env-top` also has a **Datadog** preview, which [Datadog]({{< relref "datadog.md" >}}) describes.
+Each table below lists every format, so you can see which ones a dashboard has no render for.
 Grafana 10 and 11 (schema v1) renders are not planned.
-The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
+The rest of the Datadog set, and the Google Cloud Monitoring and Honeycomb sets, are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).
+[Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
 
 ### Checking your Grafana version
 

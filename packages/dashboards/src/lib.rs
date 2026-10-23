@@ -9,15 +9,18 @@
 
 //! Materialize's dashboards.
 //!
-//! One module per backend. [`grafana`] is the only one today; a Datadog or Google
-//! Cloud Monitoring backend would sit beside it rather than inside it, because
-//! very little is genuinely shared: the queries differ per engine (that is what
-//! the query registry's per-engine templates are for), and each backend's SDK
-//! has its own panel and layout model.
+//! One module per backend: [`grafana`] and [`datadog`]. A Google Cloud Monitoring
+//! backend would sit beside them rather than inside either, because very little is
+//! genuinely shared: the queries differ per engine (that is what the query
+//! registry's per-engine templates are for), and each backend's SDK has its own
+//! panel and layout model.
 //!
 //! What *is* worth sharing lives in the query registry, not here — a query
 //! defined once renders to PromQL, LogQL, or a Datadog metric query through
-//! [`mzmon_lib::query`]. Expect shared structure to grow out of a second backend
-//! existing rather than being designed ahead of one.
+//! [`mzmon_lib::query`]. Shared structure grows out of the backends existing
+//! rather than being designed ahead of them; [`canonical`], which both use to
+//! write their artifacts, is the first piece.
 
+pub mod canonical;
+pub mod datadog;
 pub mod grafana;

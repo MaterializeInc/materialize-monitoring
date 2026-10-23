@@ -10,41 +10,46 @@
 //! `gen-dashboards`: render the dashboards under `packages/dashboards/` into the
 //! artifacts that ship.
 //!
-//! Two consumers, one command:
+//! `--flavor` picks the backend, and each backend has its consumers:
 //!
-//! * `--format yaml` into each `charts/materialize-monitoring-dashboards*/pre-rendered/dashboards/grafana/`,
+//! * Grafana, `--format yaml`, into each
+//!   `charts/materialize-monitoring-dashboards*/pre-rendered/dashboards/grafana/`,
 //!   which that Helm chart globs by filename stem. There is one chart per Grafana
 //!   folder, so the Makefile renders each with `--folder`.
-//! * `--format json` into `docs/assets/dashboards/grafana/`, which the docsite
-//!   offers for download. One tree for every folder.
+//! * Grafana, `--format json`, into `docs/assets/dashboards/grafana/`, which the
+//!   docsite offers for download. One tree for every folder.
+//! * Datadog, JSON only, into `docs/assets/dashboards/datadog/`, which the
+//!   docsite offers for download beside the Grafana file of the same stem.
 //!
-//! Both trees are checked in, so the render is deterministic — see
-//! `mz_dashboards::grafana::render`. Repeated runs over unchanged sources produce
+//! Every tree is checked in, so the render is deterministic — see
+//! `mz_dashboards::canonical`. Repeated runs over unchanged sources produce
 //! byte-identical files, which is what keeps a regeneration reviewable.
-//!
-//! Every artifact the chart and the docsite ship comes from here, one file per
-//! dashboard. There was briefly a second, `gcp-` prefixed set; it recorded nothing
-//! but its own name once the clouds stopped differing in panel content, and was
-//! dropped along with the `--cloud` and `--prefix` flags that produced it.
 
 use anyhow::Context;
-use mz_dashboards::grafana::{self, Options, render};
+use mz_dashboards::{datadog, grafana};
 use mzmon_lib::grafana::folder::Folder;
 use mzmon_lib::query::QueryRegistry;
 use std::path::PathBuf;
 
-/// Output format, mirroring `render::Format` at the CLI boundary.
+/// Which dashboard backend to render.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum Flavor {
+    Grafana,
+    Datadog,
+}
+
+/// Output format, mirroring `grafana::render::Format` at the CLI boundary.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum OutputFormat {
     Yaml,
     Json,
 }
 
-impl From<OutputFormat> for render::Format {
+impl From<OutputFormat> for grafana::render::Format {
     fn from(format: OutputFormat) -> Self {
         match format {
-            OutputFormat::Yaml => render::Format::Yaml,
-            OutputFormat::Json => render::Format::Json,
+            OutputFormat::Yaml => grafana::render::Format::Yaml,
+            OutputFormat::Json => grafana::render::Format::Json,
         }
     }
 }
@@ -80,19 +85,25 @@ pub struct GenDashboardsArgs {
     #[arg(long, required_unless_present = "list")]
     output_dir: Option<PathBuf>,
 
-    /// Output format. `yaml` for the chart's pre-rendered tree, `json` for docs.
-    #[arg(long, value_enum, default_value = "yaml")]
-    format: OutputFormat,
+    /// Dashboard backend to render.
+    #[arg(long, value_enum, default_value = "grafana")]
+    flavor: Flavor,
+
+    /// Output format. For Grafana, `yaml` (the default) for the charts'
+    /// pre-rendered trees and `json` for docs. Datadog renders only `json`.
+    #[arg(long, value_enum)]
+    format: Option<OutputFormat>,
 
     /// Specific dashboard(s) to render by filename stem. Defaults to all.
     #[arg(long)]
     dashboard: Vec<String>,
 
-    /// Render only the dashboards filed in these Grafana folders. Defaults to all.
+    /// Render only the Grafana dashboards filed in these folders. Defaults to all.
     ///
     /// Each `materialize-monitoring-dashboards*` chart carries one folder's
     /// dashboards, so this is what routes a render to its chart. Combines with
-    /// `--dashboard` as an intersection.
+    /// `--dashboard` as an intersection. Datadog dashboards are filed in no
+    /// folder, so `--flavor datadog` refuses it.
     #[arg(long, value_enum)]
     folder: Vec<FolderArg>,
 
@@ -120,38 +131,111 @@ pub struct GenDashboardsArgs {
     check: bool,
 }
 
+/// The stem and summary of every dashboard a flavor has, in artifact order.
+fn catalog(flavor: Flavor) -> Vec<(&'static str, &'static str)> {
+    match flavor {
+        Flavor::Grafana => grafana::ALL.iter().map(|d| (d.name, d.summary)).collect(),
+        Flavor::Datadog => datadog::ALL.iter().map(|d| (d.name, d.summary)).collect(),
+    }
+}
+
+/// The format a flavor renders, given what was asked for.
+fn resolve_format(flavor: Flavor, asked: Option<OutputFormat>) -> anyhow::Result<OutputFormat> {
+    match (flavor, asked) {
+        (Flavor::Grafana, asked) => Ok(asked.unwrap_or(OutputFormat::Yaml)),
+        (Flavor::Datadog, None | Some(OutputFormat::Json)) => Ok(OutputFormat::Json),
+        (Flavor::Datadog, Some(OutputFormat::Yaml)) => {
+            anyhow::bail!(
+                "Datadog dashboards render only as JSON: no chart carries them, so there is \
+                 no YAML consumer"
+            )
+        }
+    }
+}
+
+/// Render one dashboard of a flavor, already known to exist, to its artifact.
+///
+/// `None` when `folders` is non-empty and the dashboard is filed in none of them.
+/// A Grafana dashboard is built before that check, because the folder is a
+/// property of the built dashboard rather than of its registry entry.
+fn render_one(
+    flavor: Flavor,
+    name: &str,
+    format: OutputFormat,
+    folders: &[String],
+    args: &GenDashboardsArgs,
+    registry: &QueryRegistry,
+) -> anyhow::Result<Option<String>> {
+    match flavor {
+        Flavor::Grafana => {
+            let dashboard = grafana::find(name).context("listed but not found")?;
+            let options = grafana::Options {
+                sql_metric_prefix: args.sql_metric_prefix.clone(),
+            };
+            let resource = (dashboard.render)(&options, registry)?;
+            if !folders.is_empty() && !folders.iter().any(|folder| folder == resource.folder()) {
+                return Ok(None);
+            }
+            Ok(Some(grafana::render::serialize(
+                dashboard.name,
+                &resource,
+                format.into(),
+            )?))
+        }
+        Flavor::Datadog => {
+            let dashboard = datadog::find(name).context("listed but not found")?;
+            let options = datadog::Options {
+                sql_metric_prefix: args.sql_metric_prefix.clone(),
+            };
+            Ok(Some(datadog::render::render(
+                dashboard, &options, registry,
+            )?))
+        }
+    }
+}
+
 /// Main entrypoint for `gen-dashboards`.
 pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
+    let available = catalog(args.flavor);
     if args.list {
-        for dashboard in grafana::ALL {
-            println!("{:<16} {}", dashboard.name, dashboard.summary);
+        for (name, summary) in &available {
+            println!("{name:<16} {summary}");
         }
         return Ok(());
     }
 
-    let selected: Vec<&'static grafana::Renderable> = if args.dashboard.is_empty() {
-        grafana::ALL.iter().collect()
+    let format = resolve_format(args.flavor, args.format)?;
+    let extension = match format {
+        OutputFormat::Yaml => "yaml",
+        OutputFormat::Json => "json",
+    };
+    if args.flavor == Flavor::Datadog && !args.folder.is_empty() {
+        anyhow::bail!("--folder selects Grafana folders, and Datadog dashboards are filed in none");
+    }
+
+    let selected: Vec<&'static str> = if args.dashboard.is_empty() {
+        available.iter().map(|(name, _)| *name).collect()
     } else {
         let mut out = Vec::with_capacity(args.dashboard.len());
         for name in &args.dashboard {
-            out.push(grafana::find(name).with_context(|| {
-                let available: Vec<&str> = grafana::ALL.iter().map(|d| d.name).collect();
-                format!(
-                    "unknown dashboard {name:?}; available: {}",
-                    available.join(", ")
-                )
-            })?);
+            let found = available
+                .iter()
+                .find(|(stem, _)| stem == name)
+                .with_context(|| {
+                    let names: Vec<&str> = available.iter().map(|(stem, _)| *stem).collect();
+                    format!(
+                        "unknown {:?} dashboard {name:?}; available: {}",
+                        args.flavor,
+                        names.join(", ")
+                    )
+                })?;
+            out.push(found.0);
         }
         out
     };
 
     let registry = QueryRegistry::from_directory(&args.queries_dir)
         .with_context(|| format!("loading query registry from {}", args.queries_dir.display()))?;
-
-    let options = Options {
-        sql_metric_prefix: args.sql_metric_prefix.clone(),
-    };
-    let format = render::Format::from(args.format);
 
     // `required_unless_present = "list"` has already rejected the missing case, and
     // the `--list` path returned above.
@@ -173,18 +257,14 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
 
     let mut stale = Vec::new();
     let mut rendered_any = false;
-    for dashboard in selected {
-        // Built before filtering, because the folder is a property of the
-        // built dashboard rather than of its registry entry.
-        let resource = (dashboard.render)(&options, &registry)
-            .with_context(|| format!("rendering {}", dashboard.name))?;
-        if !folders.is_empty() && !folders.iter().any(|folder| folder == resource.folder()) {
+    for name in selected {
+        let Some(rendered) = render_one(args.flavor, name, format, &folders, &args, &registry)
+            .with_context(|| format!("rendering {name}"))?
+        else {
             continue;
-        }
+        };
         rendered_any = true;
-        let rendered = render::serialize(dashboard.name, &resource, format)
-            .with_context(|| format!("rendering {}", dashboard.name))?;
-        let path = output_dir.join(format!("{}.{}", dashboard.name, format.extension()));
+        let path = output_dir.join(format!("{name}.{extension}"));
 
         if args.check {
             match std::fs::read_to_string(&path) {
@@ -231,4 +311,36 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grafana_defaults_to_yaml_and_takes_either() {
+        assert_eq!(
+            resolve_format(Flavor::Grafana, None).unwrap(),
+            OutputFormat::Yaml
+        );
+        assert_eq!(
+            resolve_format(Flavor::Grafana, Some(OutputFormat::Json)).unwrap(),
+            OutputFormat::Json
+        );
+    }
+
+    #[test]
+    fn datadog_renders_json_and_refuses_yaml() {
+        assert_eq!(
+            resolve_format(Flavor::Datadog, None).unwrap(),
+            OutputFormat::Json
+        );
+        assert!(resolve_format(Flavor::Datadog, Some(OutputFormat::Yaml)).is_err());
+    }
+
+    #[test]
+    fn every_flavor_lists_its_dashboards() {
+        assert!(!catalog(Flavor::Grafana).is_empty());
+        assert!(!catalog(Flavor::Datadog).is_empty());
+    }
 }
