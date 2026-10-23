@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+# JSONSchema for packages/prometheus-scrapers/labels.yaml, the label vocabulary
+# the shipped monitors apply.
+#
+# DESIGN NOTE: strict, like the query schema. Every block sets
+# additionalProperties: false, so an undocumented field is rejected rather than
+# silently ignored. Fields the design sketches but nothing reads yet, such as a
+# label's meaning or its catalog join target, are added with their first reader.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/scrape/mzmon-labels.schema.yaml"
+title: "Label vocabulary"
+description: |
+  Canonical label names for Materialize's metrics, and the aliases that the
+  shipped monitors copy into them.
+type: object
+additionalProperties: false
+required: [monitors, canonical]
+properties:
+  monitors:
+    description: |
+      The `app.kubernetes.io/name` label of every monitor the vocabulary's rules
+      render into.
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      type: string
+      minLength: 1
+  canonical:
+    description: The canonical labels, in the order their rules render.
+    type: array
+    minItems: 1
+    items:
+      $ref: "#/$defs/canonical"
+
+$defs:
+  labelName:
+    type: string
+    pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+
+  metricName:
+    type: string
+    pattern: "^[a-zA-Z_:][a-zA-Z0-9_:]*$"
+
+  canonical:
+    type: object
+    additionalProperties: false
+    required: [name, aliases]
+    properties:
+      name:
+        $ref: "#/$defs/labelName"
+        description: The canonical label name.
+      values:
+        type: string
+        minLength: 1
+        description: |
+          A regex every value copied into this label must match, such as
+          `[su][0-9]+` for a cluster id. A value that does not match is not
+          copied. Relabel regexes are anchored. Omitted, any non-empty value is
+          copied.
+      aliases:
+        type: array
+        minItems: 1
+        items:
+          $ref: "#/$defs/alias"
+
+  alias:
+    type: object
+    additionalProperties: false
+    required: [label, deprecatedIn]
+    properties:
+      label:
+        $ref: "#/$defs/labelName"
+        description: The label Materialize emits.
+      families:
+        description: |
+          The only metric families the alias is copied on, for a label that
+          means something else on other families. Omitted, it is copied on
+          every family.
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/metricName"
+      deprecatedIn:
+        description: |
+          The materialize-monitoring release whose notes deprecate the alias.
+        type: string
+        pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"

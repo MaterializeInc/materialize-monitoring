@@ -52,7 +52,12 @@ impl Monitor {
     ///
     /// Mirrors `alloy::pipeline::Pipeline::from_yaml_str`.
     pub fn from_yaml_str(yaml: &str) -> Result<Self> {
-        let value: Value = crate::yaml::from_str(yaml)?;
+        Self::from_value(crate::yaml::from_str(yaml)?)
+    }
+
+    /// [`Monitor::from_yaml_str`] for a document already parsed, such as one
+    /// the label vocabulary has added rules to.
+    pub fn from_value(value: Value) -> Result<Self> {
         let kind = value
             .get("kind")
             .and_then(Value::as_str)
