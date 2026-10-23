@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v1.7.0 (Unreleased)
+
+_Changes Pending_
+
 ## Prometheus Scrapers v0.6.0 (Unreleased)
 
 _Changes Pending_
@@ -16,9 +20,68 @@ _Changes Pending_
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v1.6.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.6.0
 
-_Changes Pending_
+* Render canonical label names from labels.yaml in the Materialize monitors (DEP-421)
+    * [materialize-monitoring#582](https://github.com/MaterializeInc/materialize-monitoring/pull/582)
+    * The Materialize PodMonitors, and the classic and Google Cloud Managed Prometheus scrape configs, add canonical label names beside the labels Materialize emits: `cluster_id`, `replica_id`, `cluster_name`, `cluster_size`, `replica_name`, `replica_size`, `object_name`, `object_type`, `collection_id` and `shard_id`. Each is copied only where it's absent, so it adds no series. [Canonical label names](https://materializeinc.github.io/materialize-monitoring/metrics/scraping/#canonical-labels) lists where each comes from.
+    * **Deprecated:** the labels they're copied from. Both names stay on every series for at least 30 days after this release; move queries and alert routes to the canonical names.
+        * `instance_id`, `compute_instance`, `compute_cluster_id` and `cluster_environmentd_materialize_cloud_cluster_id` are `cluster_id`
+        * `compute_replica_id` and `cluster_environmentd_materialize_cloud_replica_id` are `replica_id`
+        * `compute_cluster_name`, and `name` on `mz_cluster_info`, are `cluster_name`; `size` on `mz_cluster_info` is `cluster_size`
+        * `name` and `size` on `mz_replica_info` are `replica_name` and `replica_size`
+        * `name` and `type` on `mz_object_info` are `object_name` and `object_type`
+        * `global_id` is `collection_id`, and `shard` is `shard_id`
+    * If you replace `materialize.environmentd.serviceMonitor.metricEndpoints`, `materialize.environmentdSQL.serviceMonitor.metricEndpoints`, `materialize.clusterd.serviceMonitor.metricEndpoints` or `materialize-operator.serviceMonitor.metricEndpoints`, restate the default `metricRelabelings`, or those series lack the canonical labels.
+* Split the dashboards chart into one chart per Grafana folder
+    * [materialize-monitoring#585](https://github.com/MaterializeInc/materialize-monitoring/pull/585)
+    * The dashboards ship in three charts, one per Grafana folder: `materialize-monitoring-dashboards` for the Materialize environment (`env-*`), `materialize-monitoring-dashboards-infra` for the platform underneath it, and `materialize-monitoring-dashboards-meta` for Alloy, Loki, and Thanos.
+        * The Terraform module installs all three, with no variable changes.
+        * If you install with Helm directly, upgrading `materialize-monitoring-dashboards` removes the infrastructure and meta-monitoring dashboards from it. To keep them, install `materialize-monitoring-dashboards-infra` and `materialize-monitoring-dashboards-meta` after that upgrade.
+        * Each chart's `selected` defaults to `["*"]`, and its `grafana.folderUids` default names only its own folder. Pass the same values file to all three; each ignores folder entries it doesn't use.
+        * Dashboard UIDs, titles, and links don't change.
+* Update alloy Helm Chart to v1.14.0
+    * [materialize-monitoring#590](https://github.com/MaterializeInc/materialize-monitoring/pull/590)
+    * [`v1.14.0`](https://redirect.github.com/grafana/helm-charts/releases/tag/alloy-1.14.0)
+* Update thanos Helm Chart to v0.47.3
+    * [materialize-monitoring#589](https://github.com/MaterializeInc/materialize-monitoring/pull/589)
+    * [`v0.47.3`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.47.3)
+* Production best practices: order the checklist by consequence
+    * [materialize-monitoring#584](https://github.com/MaterializeInc/materialize-monitoring/pull/584)
+* Update loki Helm Chart to v19
+    * [materialize-monitoring#579](https://github.com/MaterializeInc/materialize-monitoring/pull/579)
+    * [`v19.0.2`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-19.0.2)
+    * [`v19.0.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-19.0.1)
+    * [`v19.0.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-19.0.0)
+    * [`v18.17.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.17.1)
+    * [`v18.17.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.17.0)
+    * [`v18.16.2`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.16.2)
+    * [`v18.16.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.16.1)
+    * [`v18.16.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.16.0)
+* Add adhoc, s3-compatible and no-storage-class profiles
+    * [materialize-monitoring#558](https://github.com/MaterializeInc/materialize-monitoring/pull/558)
+    * New profiles: `adhoc` (the whole stack, single replica, no volumes, for troubleshooting), `s3-compatible` (Ceph RGW, MinIO, or rustfs with static keys from Secrets), and `no-storage-class` (`emptyDir` in place of every PVC, Grafana's included).
+    * The install NOTES give the dashboards chart's OCI address in place of a `<repo>` placeholder.
+* Update docker.io/nginxinc/nginx-unprivileged Docker tag to v1.31.7
+    * [materialize-monitoring#562](https://github.com/MaterializeInc/materialize-monitoring/pull/562)
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.5.0..v0.6.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.13.0..v0.14.0</summary>
+
+    * Lock file maintenance (pep621)
+        * [materialize-monitoring#592](https://github.com/MaterializeInc/materialize-monitoring/pull/592)
+    * Update dependency uv_build to >=0.13,<0.14
+        * [materialize-monitoring#527](https://github.com/MaterializeInc/materialize-monitoring/pull/527)
+        * [`v0.13.1`](https://redirect.github.com/astral-sh/uv/blob/HEAD/CHANGELOG.md#0131)
+        * [`v0.13.0`](https://redirect.github.com/astral-sh/uv/blob/HEAD/CHANGELOG.md#0130)
+    * Update Rust crate jsonschema to 0.59.0
+        * [materialize-monitoring#578](https://github.com/MaterializeInc/materialize-monitoring/pull/578)
+        * [`v0.59.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0590---2026-10-16)
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.5.0
 
