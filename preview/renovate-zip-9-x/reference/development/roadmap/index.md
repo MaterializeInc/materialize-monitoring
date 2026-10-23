@@ -135,11 +135,11 @@ The key is `environment_id` from `Materialize.spec.environmentId`, with `environ
 Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/).
 The work lands in two passes, ordered so that consumers never observe the second.
 This repository's monitors first fill the canonical labels where they are empty, and Materialize then adopts the names upstream behind a label lint.
+The monitors already fill the initial aliases, rendered from `packages/prometheus-scrapers/labels.yaml`.
 
 | Where | Items, all ⬜ |
 |---|---|
-| Design | [DEP-346] review and acceptance |
-| This repository | [DEP-349] `labels.yaml` and generated relabel rules · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-361] `mz_environment_info` through kube-state-metrics · [DEP-360] retire the aliases after 30 days |
+| This repository | [DEP-349] target aliases, and reserved moves and drops, rendered from `labels.yaml` · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-361] `mz_environment_info` through kube-state-metrics · [DEP-360] retire the aliases after 30 days |
 | Upstream | [DEP-348] the orchestratord pod label and `mz_environment_info` · [DEP-347] clusterd's `cluster="compute"` · [DEP-352] the label lint · [DEP-353] `/metrics/public` replica labels · [DEP-357] `cluster_id` · [DEP-358] entity-qualified `_info` labels · [DEP-359] the `cluster` and `honeycomb` const labels · [DEP-362] shard, persist-name and version renames · [DEP-363] an optional `spec.environmentName` · [DEP-364] wallclock lag as a histogram · [DEP-365] `environment_id` on reconciliation metrics |
 
 ### Metrics contract (upstream dependency)
@@ -301,7 +301,7 @@ Its adapters are therefore the ones this repository can test end to end.
 | [DEP-225] Sizing (Day 1) | ⬜ |
 | [DEP-378] `infra-pods`: one workload's health, logs and metrics | ⬜ |
 | [DEP-379] Meta-monitoring for Grafana, Thanos and Alertmanager | ⬜ |
-| [DEP-115] A Datadog dashboard set, starting with `env-top`, downloaded from the docs site as JSON. Names join from the `_info` series by formula arithmetic after [DEP-349]. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | ⬜ |
+| [DEP-115] A Datadog dashboard set, starting with `env-top`, downloaded from the docs site as JSON. Names join from the `_info` series by formula arithmetic, on the canonical labels the monitors carry. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | ⬜ |
 | [DEP-217] A Google Cloud Monitoring dashboard set | ⬜ |
 | [DEP-218] A Honeycomb dashboard set | ⬜ |
 | [DEP-325] `infra-*` variables that reference variables those dashboards never define | ⬜ |
@@ -374,7 +374,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 | [Call-Home](../design-docs/20260917-call-home-self-managed/) | Ready | [Call-home from self-managed](#call-home-from-self-managed) |
 | [Monitoring Materialize's External Dependencies](../design-docs/20260920-external-dependency-monitoring/) | Ready | [External dependencies](#external-dependencies) |
 | [Secret Filtering](../design-docs/20260924-log-secret-filtering/) | Ready | [Secret filtering](#secret-filtering) |
-| [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/) | Draft | [Metric label standardization](#metric-label-standardization) |
+| [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/) | Ready | [Metric label standardization](#metric-label-standardization) |
 | Cost visibility with OpenCost | Draft, in review as [#365] | [Collection](#collection) |
 | [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | Draft | [Dashboards](#dashboards) |
 
@@ -477,7 +477,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-339]: https://linear.app/materializeinc/issue/DEP-339
 [DEP-340]: https://linear.app/materializeinc/issue/DEP-340
 [DEP-345]: https://linear.app/materializeinc/issue/DEP-345
-[DEP-346]: https://linear.app/materializeinc/issue/DEP-346
 [DEP-347]: https://linear.app/materializeinc/issue/DEP-347
 [DEP-348]: https://linear.app/materializeinc/issue/DEP-348
 [DEP-349]: https://linear.app/materializeinc/issue/DEP-349
