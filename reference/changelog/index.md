@@ -15,6 +15,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Prometheus Scrapers v0.6.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards (Helm chart) v0.21.0 (Unreleased)
 
 _Changes Pending_
@@ -1254,9 +1258,334 @@ _Changes Pending_
         * [materialize-monitoring#302](https://github.com/MaterializeInc/materialize-monitoring/pull/302)
         * [`v1.11.1`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1111-2026-08-27)
 
-## Prometheus Scrapers v0.5.0 (Unreleased)
+## Prometheus Scrapers v0.5.0
 
-_Changes Pending_
+* Render canonical label names from labels.yaml in the Materialize monitors (DEP-421)
+    * [materialize-monitoring#582](https://github.com/MaterializeInc/materialize-monitoring/pull/582)
+    * The Materialize PodMonitors, and the classic and Google Cloud Managed Prometheus scrape configs, add canonical label names beside the labels Materialize emits: `cluster_id`, `replica_id`, `cluster_name`, `cluster_size`, `replica_name`, `replica_size`, `object_name`, `object_type`, `collection_id` and `shard_id`. Each is copied only where it's absent, so it adds no series. [Canonical label names](https://materializeinc.github.io/materialize-monitoring/metrics/scraping/#canonical-labels) lists where each comes from.
+    * **Deprecated:** the labels they're copied from. Both names stay on every series for at least 30 days after this release; move queries and alert routes to the canonical names.
+        * `instance_id`, `compute_instance`, `compute_cluster_id` and `cluster_environmentd_materialize_cloud_cluster_id` are `cluster_id`
+        * `compute_replica_id` and `cluster_environmentd_materialize_cloud_replica_id` are `replica_id`
+        * `compute_cluster_name`, and `name` on `mz_cluster_info`, are `cluster_name`; `size` on `mz_cluster_info` is `cluster_size`
+        * `name` and `size` on `mz_replica_info` are `replica_name` and `replica_size`
+        * `name` and `type` on `mz_object_info` are `object_name` and `object_type`
+        * `global_id` is `collection_id`, and `shard` is `shard_id`
+    * If you replace `materialize.environmentd.serviceMonitor.metricEndpoints`, `materialize.environmentdSQL.serviceMonitor.metricEndpoints`, `materialize.clusterd.serviceMonitor.metricEndpoints` or `materialize-operator.serviceMonitor.metricEndpoints`, restate the default `metricRelabelings`, or those series lack the canonical labels.
+* Rename docs reference/internal to reference/development
+    * [materialize-monitoring#498](https://github.com/MaterializeInc/materialize-monitoring/pull/498)
+* Thanos: datasource scrape interval, distinct SQL endpoint series, ruler on subchart remoteWrite
+    * [materialize-monitoring#447](https://github.com/MaterializeInc/materialize-monitoring/pull/447)
+    * The Thanos Grafana datasource now sets `jsonData.timeInterval` to the slower of `pipeline.metrics.kubelet.scrapeInterval` and `pipeline.metrics.kubeProxy.scrapeInterval` (60s by default), so `rate()` panels over cAdvisor and kube-proxy metrics draw continuously instead of as scattered points. Panels over faster-scraped metrics get a 60s minimum step. `connections.datasources.thanos.jsonData.timeInterval` overrides it, and the render warns when an override is shorter than the chart's value.
+    * Series from the environmentd SQL `PodMonitor` (`/metrics/mz_compute`, `mz_frontier`, `mz_storage`, `mz_usage`) carry a new `metrics_path` label, so that job's `up` and `scrape_*` have one series per path rather than one shared series.
+    * The Thanos ruler's stateless mode is now the subchart's `thanos.ruler.remoteWrite`, and the ruler no longer passes `--objstore.config-file` or runs a block shipper.
+        * The remote-write configuration is a Secret, `thanos-ruler-remote-write-v2` or `-v2-tls`, named by `thanos.ruler.remoteWrite.secretName`; it was a ConfigMap mounted through `thanos.ruler.extraVolumes`. `profiles/mtls.values.yaml` now sets `secretName`.
+        * `thanos.ruler.extraArgs` no longer carries `--remote-write.config-file`, and `extraVolumes` / `extraVolumeMounts` no longer carry a `remote-write` entry. A values override that still restates either now fails the render with what to remove. Terraform installs are unaffected; Helm installs upgrading with `--reuse-values` or a copied mTLS override need the entries dropped.
+        * To write rule results elsewhere, name another Secret in `secretName`, or set `secretName: ""` with `createSecret: true` and the configuration in `config`.
+* Re-enable the nginx Loki gateway so Grafana lists Loki rules
+    * [materialize-monitoring#432](https://github.com/MaterializeInc/materialize-monitoring/pull/432)
+    * The Loki gateway (nginx) is enabled by default, and Grafana's Loki datasource points at it: `connections.datasources.loki.url` defaults to `http://loki-gateway.<namespace>.svc:8080`. Grafana's alerting UI now lists the Loki ruler's rules and their state, read-only.
+        * The gateway routes only Grafana's reads and the ruler's rule and alert state. Pushes, rule definitions, ring pages, flushes and deletes are refused.
+        * A values file that sets `loki.gateway.enabled: false` now fails the render until `connections.datasources.loki.url` points at the query frontend (`http://loki-query-frontend.<namespace>.svc:3100`).
+        * New `loki.gateway.nginxConfig.tls`: certificate paths for the gateway's listener and its connections to Loki. `profiles/mtls.values.yaml` and `mtls-phase2.values.yaml` set them; phase 2 also has Grafana present its certificate on the Loki datasource.
+        * `loki-gateway` is added to `certificates.components.loki.services`.
+        * Under `profiles/split-namespace.values.yaml`, `loki.networkPolicy.ingress.namespaceSelector` must admit the `grafana` namespace: it now governs Grafana's access to the gateway.
+        * `profiles/registry/chainguard.values.yaml` pins the gateway's nginx tag to `1.31.6`. Under `profiles/registry/docker-hardened-images.values.yaml`, restate `loki.gateway.image.tag` to a variant your mirror holds.
+    * The Terraform module's `logs_url` output is now the Loki gateway (`http://loki-gateway.<namespace>.svc.cluster.local:8080`), and `https` whenever `internal_tls` is not `off`. It was `http` under every `internal_tls` before, which was wrong for the TLS stages.
+* Add a Loki meta-monitoring dashboard, and split dashboards into their own chart
+    * [materialize-monitoring#383](https://github.com/MaterializeInc/materialize-monitoring/pull/383)
+    * **Dashboards now install from a separate chart.** `materialize-monitoring-dashboards` is a release of its own, installed beside `materialize-monitoring` in the same namespace. The umbrella chart no longer creates dashboards; a release that upgrades without installing the new chart will have its dashboards removed. Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
+        * Terraform installs it automatically — set `enable_dashboards = false` to opt out.
+        * `dashboards.selected` → the new chart's `selected`.
+        * `dashboards.config.grafana.manifest.apiTarget` → the new chart's `grafana.apiTarget`.
+        * `dashboards.config.datadog` is removed; it drove nothing.
+        * The new chart cannot read the umbrella release's values, so `grafana.instanceSelector` and `grafana.folderUids` must match it. The umbrella chart's install notes print the folder UIDs.
+        * Dashboard UIDs are unchanged, so saved links, playlists and alerts keep working.
+    * **New dashboard: Loki Meta Monitoring** (`mz-mon-infra-loki`), in the Meta Observability folder. Ingest, queries, object storage, retention, and Loki's own logs.
+    * **Fixed: the Loki canary and both memcached exporters were never scraped under `profiles/mtls`.** The subchart's single ServiceMonitor applied one `scheme` to every target, including three that only serve plaintext. They are now collected by a separate monitor, and carry `prometheus.io/service-monitor: "false"` plus `monitoring.materialize.cloud/scrape-scheme: plaintext` on their Services. Installs using mTLS gain `loki_canary_*` and `memcached_*` series that were previously absent.
+    * New Terraform inputs: `enable_dashboards`, `dashboards_chart_version`, `dashboards_selected`, `dashboards_instance_selector`, `dashboards_allow_cross_namespace_import`.
+* DEP-211 Add infra-net dashboard, and the CNI collection it needs
+    * [materialize-monitoring#366](https://github.com/MaterializeInc/materialize-monitoring/pull/366)
+
+### Dependencies
+
+* <details><summary>Included mzmon-lib (shared library) @ v0.13.0..v0.14.0</summary>
+
+    * Split the dashboards chart into one chart per Grafana folder
+        * [materialize-monitoring#585](https://github.com/MaterializeInc/materialize-monitoring/pull/585)
+        * The dashboards ship in three charts, one per Grafana folder: `materialize-monitoring-dashboards` for the Materialize environment (`env-*`), `materialize-monitoring-dashboards-infra` for the platform underneath it, and `materialize-monitoring-dashboards-meta` for Alloy, Loki, and Thanos.
+            * The Terraform module installs all three, with no variable changes.
+            * If you install with Helm directly, upgrading `materialize-monitoring-dashboards` removes the infrastructure and meta-monitoring dashboards from it. To keep them, install `materialize-monitoring-dashboards-infra` and `materialize-monitoring-dashboards-meta` after that upgrade.
+            * Each chart's `selected` defaults to `["*"]`, and its `grafana.folderUids` default names only its own folder. Pass the same values file to all three; each ignores folder entries it doesn't use.
+            * Dashboard UIDs, titles, and links don't change.
+    * Lock file maintenance (pep621)
+        * [materialize-monitoring#592](https://github.com/MaterializeInc/materialize-monitoring/pull/592)
+    * Update dependency uv_build to >=0.13,<0.14
+        * [materialize-monitoring#527](https://github.com/MaterializeInc/materialize-monitoring/pull/527)
+        * [`v0.13.1`](https://redirect.github.com/astral-sh/uv/blob/HEAD/CHANGELOG.md#0131)
+        * [`v0.13.0`](https://redirect.github.com/astral-sh/uv/blob/HEAD/CHANGELOG.md#0130)
+    * Update Rust crate jsonschema to 0.59.0
+        * [materialize-monitoring#578](https://github.com/MaterializeInc/materialize-monitoring/pull/578)
+        * [`v0.59.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0590---2026-10-16)
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#567](https://github.com/MaterializeInc/materialize-monitoring/pull/567)
+    * Lock file maintenance (pep621)
+        * [materialize-monitoring#568](https://github.com/MaterializeInc/materialize-monitoring/pull/568)
+    * Pull load balancer and NAT gateway metrics, and fill infra-net's Cloud Networking tab
+        * [materialize-monitoring#552](https://github.com/MaterializeInc/materialize-monitoring/pull/552)
+        * Six new cloud provider pulls cover the load balancers in front of the cluster and the NAT gateways its traffic leaves through. Each is off until resources are listed.
+            * `pipeline.metrics.provider.cloudwatch.nlb.loadBalancers`: Network Load Balancers, each as `arn` with its `targetGroups`, for open and new connections, bytes, resets by sender, and healthy and unhealthy targets. An ARN or its CloudWatch form, such as `net/<name>/<id>`, is accepted; Application Load Balancers are refused.
+            * `pipeline.metrics.provider.cloudwatch.natGateway.ids`: NAT gateway IDs, for port allocation errors, dropped packets, idle timeouts, and connections.
+            * `pipeline.metrics.provider.gcp.loadBalancing.forwardingRules`: passthrough load balancer forwarding rules, external or internal, for packets and bytes in each direction.
+            * `pipeline.metrics.provider.gcp.cloudNat.gateways`: Cloud NAT gateway names, for allocation failures, per-VM port use, open connections, and dropped packets by reason.
+            * `pipeline.metrics.provider.azure.loadBalancer.clusters`: AKS cluster names, whose `kubernetes` and `kubernetes-internal` load balancers are pulled for data path availability, backend health probes, bytes, and new connections.
+            * `pipeline.metrics.provider.azure.natGateway.names`: NAT gateway names, for data path availability, SNAT connections attempted and failed, and dropped packets.
+        * The AWS pulls need only `cloudwatch:GetMetricStatistics`, and the GCP pulls only `roles/monitoring.viewer`, which the existing pulls already use. On Azure, the identity needs Monitoring Reader on the AKS cluster's node resource group and on each NAT gateway.
+        * Series from the new pulls carry a `provider_pull` label, `up` included. Series from the existing pulls are unchanged.
+        * The new families are tiered by each provider's `metricImportance`, like the existing provider families.
+        * Infrastructure Networking's Cloud Networking tab draws the new pulls: target and backend health, connections, resets, traffic, and NAT port exhaustion. Each row renders only where its pull runs, with a note on how to turn on the rest. The two placeholder rows are gone.
+    * Update Rust crate rustls to v0.23.46
+        * [materialize-monitoring#560](https://github.com/MaterializeInc/materialize-monitoring/pull/560)
+    * Update Rust crate tokio to v1.53.3
+        * [materialize-monitoring#557](https://github.com/MaterializeInc/materialize-monitoring/pull/557)
+        * [`v1.53.3`](https://redirect.github.com/tokio-rs/tokio/releases/tag/tokio-1.53.3): Tokio v1.53.3
+    * Lead the Loki, Alloy and environment overviews with firing alerts
+        * [materialize-monitoring#551](https://github.com/MaterializeInc/materialize-monitoring/pull/551)
+        * Loki Meta Monitoring, Alloy Meta Monitoring, and the Summary tab of Materialize Environment Overview now count the alerts firing about their subject, and list every alert firing or pending in an **Alerts** row. Each alert's name links to its entry under Common Alerts.
+        * An alert count shows the current value. It reads zero only while the Thanos ruler, and every Loki rule group where a Loki ruler runs, are being evaluated and written back. Otherwise it's empty.
+        * The `recommended` metric tier adds `loki_prometheus_rule_group_last_evaluation_timestamp_seconds`, `loki_prometheus_rule_group_interval_seconds`, `loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds`, and `loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds`.
+    * Update Rust crate serde-saphyr to v2
+        * [materialize-monitoring#553](https://github.com/MaterializeInc/materialize-monitoring/pull/553)
+        * [`v2.0.0`](https://redirect.github.com/bourumir-wyngs/serde-saphyr/blob/HEAD/CHANGELOG.md#200-Unreleased)
+    * Truncate oversized log lines and add a development alert tier
+        * [materialize-monitoring#549](https://github.com/MaterializeInc/materialize-monitoring/pull/549)
+        * Oversized log lines are cut rather than dropped, and the cut line ends in a suffix that names the rule: `[TRUNCATED:SAFETYCLAMP]`, `[TRUNCATED:LINE]`, or `[TRUNCATED:FIELDS]`.
+            * The agent and the gateway clamp every line to `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`). The gateway then cuts lines to `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), with a fixed `250KiB` backstop. Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
+            * The gateway cuts label values to `2KiB` and structured metadata to a per-entry budget: `512B` for each key it sets, `16KiB` for `msg` and for keys a Loki push client sends, and `16KiB` held back for a push client's own structured metadata. Entries then fit Loki's default limits rather than being refused, as long as a push client's own structured metadata stays under `16KiB`.
+            * A clamped JSON or logfmt line no longer parses, so it reaches Loki without its extracted fields.
+        * `loki_process_dropped_lines_total` no longer reports the `too large` reason. Cuts count in `loki_process_truncated_fields_total`, labeled by `field`, which the default metric tier keeps.
+        * Alloy Meta Monitoring: the **Truncated Lines** panel counts those cuts by `field`, beside the agents' CRI reassembly cuts.
+        * Alerts can carry `audience: development`, for conditions the stack has already contained that the people who write the software can remove. An extra route on `audience="development"` sends them to a development channel, and `rules.overrides` accepts the value.
+            * `oversized-log-lines` (`severity: notice`, not in the default set) fires when Alloy cut a log line in the past hour. Select it with `rules.selected`.
+    * Terraform: run the postgres-exporter and declare metadata databases
+        * [materialize-monitoring#542](https://github.com/MaterializeInc/materialize-monitoring/pull/542)
+        * The Terraform module runs the postgres-exporter with `enable_postgres_exporter = true`. It watches Grafana's database whenever the module configures one with a password, plus any database in `postgres_exporter_targets`, with passwords from `postgres_exporter_passwords`. The module creates the exporter's `postgres-exporter` Secret and rolls the exporter when a password changes.
+        * The Terraform module takes `metadata_databases` (`flavor` and `resource_id`) for the metadata databases a provider pull watches, and a `metadata_database` flag on an exporter target. Both become `externalDependencies.consensus` entries.
+        * `node_selector` and `tolerations` reach the postgres-exporter.
+    * Add a postgres_exporter subchart for the metadata and Grafana databases
+        * [materialize-monitoring#540](https://github.com/MaterializeInc/materialize-monitoring/pull/540)
+        * A `postgres-exporter` subchart (`prometheus-postgres-exporter` 8.2.0, `postgres_exporter` v0.20.1) watches PostgreSQL databases from the inside. It is off by default: enable it with `tags.postgres-exporter: true` and list the databases under `postgres-exporter.targets`. Credentials come from a `postgres-exporter` Secret you create. See the PostgreSQL exporter page for the Secret's shape and the least-privilege `pg_monitor` grant.
+        * `externalDependencies.consensus` accepts `flavor: postgres`, with an exporter target's name as `resourceId`. The new `postgres` adapter records `ext:consensus_up`, `ext:consensus_connections_used_ratio`, `ext:consensus_xid_used_ratio`, `ext:consensus_database_bytes` (with a `database` label) and `ext:consensus_version_info` (with a `version` label) for that target.
+        * `rules.capabilities` gains a derived capability, `postgres-exporter`, present when the exporter runs.
+        * The Materialize Consensus (Metadata) dashboard's Database Internals tab has a PostgreSQL section, rendered where the exporter is scraped, with a Database picker.
+    * Add a Thanos meta-monitoring dashboard, with firing alerts on its Overview
+        * [materialize-monitoring#525](https://github.com/MaterializeInc/materialize-monitoring/pull/525)
+    * Release mzmon-lib (shared library) v0.13.0
+        * [materialize-monitoring#484](https://github.com/MaterializeInc/materialize-monitoring/pull/484)
+    * Replace serde_yaml_ng with serde-saphyr
+        * [materialize-monitoring#529](https://github.com/MaterializeInc/materialize-monitoring/pull/529)
+        * Pre-rendered dashboards and the rules `_index.yaml` now use double quotes where a string needs quoting. The parsed content is unchanged, but a byte-level diff of vendored files will show the requoting.
+    * Port the Terraform render check to Rust
+        * [materialize-monitoring#506](https://github.com/MaterializeInc/materialize-monitoring/pull/506)
+    * Add CNPG and Rook Ceph tabs to the Consensus and Persist dashboards
+        * [materialize-monitoring#509](https://github.com/MaterializeInc/materialize-monitoring/pull/509)
+        * Materialize Consensus has a new Database Internals tab for metadata databases on CloudNativePG, and Materialize Persist a new Object Store Internals tab for persist buckets on Ceph run by Rook. Each appears only when the dependency is scraped — a `PodMonitor` for the CNPG cluster, or Rook's manager and `rook-ceph-exporter` `ServiceMonitor`s — and has a picker, shown only inside that tab's section, for which cluster serves the environment.
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#520](https://github.com/MaterializeInc/materialize-monitoring/pull/520)
+    * Lock file maintenance (pep621)
+        * [materialize-monitoring#521](https://github.com/MaterializeInc/materialize-monitoring/pull/521)
+    * Update Rust crate hyper to v1.12.0
+        * [materialize-monitoring#507](https://github.com/MaterializeInc/materialize-monitoring/pull/507)
+        * [`v1.12.0`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1120-2026-10-06)
+    * Update Rust crate jsonschema to v0.58.6
+        * [materialize-monitoring#505](https://github.com/MaterializeInc/materialize-monitoring/pull/505)
+        * [`v0.58.6`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0586---2026-10-06)
+    * Update Rust crate tokio to v1.53.2
+        * [materialize-monitoring#490](https://github.com/MaterializeInc/materialize-monitoring/pull/490)
+        * [`v1.53.2`](https://redirect.github.com/tokio-rs/tokio/releases/tag/tokio-1.53.2): Tokio v1.53.2
+    * Write the chart README badge in release PRs, and collapse dependency rollups
+        * [materialize-monitoring#489](https://github.com/MaterializeInc/materialize-monitoring/pull/489)
+        * Dependency rollups in `CHANGELOG.md` (`Included <component> @ vPREV..vNEW`) collapse the PRs nested under them in a `<details>`.
+    * Update Rust crate jsonschema to v0.58.5
+        * [materialize-monitoring#486](https://github.com/MaterializeInc/materialize-monitoring/pull/486)
+        * [`v0.58.5`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0585---2026-10-02)
+    * Let alerts read recorded series, and split persist-failures by dependency
+        * [materialize-monitoring#483](https://github.com/MaterializeInc/materialize-monitoring/pull/483)
+        * Alerts can read the normalized `ext:*` recorded series. Such an alert installs wherever any recording rule producing what it reads installs, and Common Alerts lists what each one reads.
+        * **`persist-failures` is split.** Three new alerts join the default set:
+            * `consensus-unreachable` (critical) fires when no call to the metadata database has succeeded for five minutes, or a cloud provider reports it down.
+            * `consensus-failures` (warning) fires on ten minutes of indeterminate metadata-database failures.
+            * `blob-failures` (warning) fires on ten minutes of failed object-storage calls, by operation.
+        * `persist-failures` now covers only persist's own failures: compaction, read leases, state updates, columnar validation and statistics. It no longer fires on a failing metadata database or object store, or on `mz_persist_cmd_failed_count`. It remains outside the default set.
+        * A metric destination filtering by `minMetricImportance` now receives `ext:consensus_up`, and no longer receives `mz_persist_blob_failures` or `mz_persist_cmd_failed_count`, which no bundled rule reads any more.
+    * Release mzmon-lib (shared library) v0.12.0
+        * [materialize-monitoring#295](https://github.com/MaterializeInc/materialize-monitoring/pull/295)
+    * Record the normalized ext:consensus_* series, with a producer for the registry's rules: branch
+        * [materialize-monitoring#475](https://github.com/MaterializeInc/materialize-monitoring/pull/475)
+        * New recording rules record the metadata (consensus) database as normalized `ext:consensus_*` series, listed on the new Recorded Series reference page. They install wherever `rules.enabled` is true and their source is present; no selection is needed.
+            * `ext:consensus_up` and `ext:consensus_commit_latency_seconds:p99` come from Materialize's own calls, carry `flavor="persist"` and `namespace`, and need no configuration.
+            * `ext:consensus_up`, `ext:consensus_storage_used_ratio` and `ext:consensus_xid_used_ratio` from the CloudWatch, Cloud Monitoring and Azure Monitor pulls carry `flavor` (`rds`, `cloudsql`, `azure-postgres`) and `resource`, where the provider publishes each.
+        * New value `externalDependencies.consensus`, a list of `{flavor, resourceId}` naming which databases a provider pull watches are a metadata database. The provider-sourced `ext:consensus_*` series record only these, so a pull that also watches Grafana's database no longer needs to be told apart by hand. The render warns when a pull watches databases and none is named.
+        * `rules.capabilities` gains three derived capabilities, `cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the matching `pipeline.metrics.provider.*` pull is enabled.
+    * Google Cloud metrics: export over OTLP to the Telemetry API, typed
+        * [materialize-monitoring#474](https://github.com/MaterializeInc/materialize-monitoring/pull/474)
+        * **Changed:** the Google Cloud metrics destination writes somewhere else. `googleCloudExporter` (Terraform `google_cloud_metrics`) now sends OTLP to Google's Telemetry API instead of using `otelcol.exporter.googlecloud`, and metrics land as `prometheus.googleapis.com/<name>/<kind>` instead of `workload.googleapis.com/mzmon/<name>`. **Cloud Monitoring dashboards, alerting policies and anything else reading the old metric types stop receiving data and have to be repointed.** The old types are not deleted.
+            * **Enable the `telemetry.googleapis.com` API on the project before upgrading with this destination on.** Without it every export is refused, and nothing else fails. `roles/monitoring.metricWriter` is still the only role needed.
+            * Metrics are billed per sample ingested instead of per byte, about $75 a month at `recommended` on a test install where the old export cost about $2,400.
+            * Series carry the `prometheus_target` labels (`project_id`, `location`, `cluster`, `namespace`, `job`, `instance`) and `collected_by="materialize-monitoring"`.
+            * Counter values start from zero at the gateway's first scrape, so they differ from Thanos; `rate()` and `increase()` agree.
+            * New values `googleCloudExporter.project` and `googleCloudExporter.location` are needed only off GKE.
+        * **Changed:** there is no metric prefix any more. `googleCloudExporter.prefix` is removed from the chart values, along with `instrumentation_library_labels`, `skip_create_descriptor` and `service_resource_labels`; setting any of them renders a warning and does nothing.
+        * **Deprecated:** Terraform `google_cloud_metrics.prefix` is ignored and warns at plan time; remove it. There is no replacement, because the Telemetry API has no prefix to choose. Everything else in `google_cloud_metrics` is unchanged.
+        * **Changed:** the gateway's scrapes honor metric metadata, so every OTLP destination (Google Cloud, Datadog, generic OTLP) receives typed metrics: counters as cumulative sums, histograms as histograms. Metric names in Datadog change accordingly. Thanos and other remote-write destinations are unchanged.
+        * `alloy-gateway.alloy.stabilityLevel` now defaults to `experimental`, which the scrapes require; the chart refuses any other level.
+        * The agent and gateway now run the Alloy v1.20.0 image their `image.tag` names. Since the bump to `v1.20.0-mz3`, a stale `image.digest` had kept both on Alloy v1.19.2.
+        * `denyMetrics` entries match per Prometheus series against typed histograms: denying `foo_bucket` still keeps `foo_count` and `foo_sum`.
+    * Update Rust crate hyper-util to v0.1.21
+        * [materialize-monitoring#404](https://github.com/MaterializeInc/materialize-monitoring/pull/404)
+        * [`v0.1.21`](https://redirect.github.com/hyperium/hyper-util/blob/HEAD/CHANGELOG.md#0121-2026-09-24)
+    * Update Rust crate jsonschema to 0.58.0
+        * [materialize-monitoring#407](https://github.com/MaterializeInc/materialize-monitoring/pull/407)
+        * [`v0.58.2`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0582---2026-09-28)
+        * [`v0.58.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0581---2026-09-26)
+        * [`v0.58.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0580---2026-09-25)
+    * Renovate: unblock pending updates, automerge crates, split lock files; DEP-324 pin subchart images
+        * [materialize-monitoring#446](https://github.com/MaterializeInc/materialize-monitoring/pull/446)
+        * Every subchart image the chart renders under its shipped profiles is now pinned in `values.yaml` (`loki.loki.image`, `loki.lokiCanary.image`, `loki.memcached.image`, `loki.memcachedExporter.image`, `loki.sidecar.image`, `thanos.global.image`, `grafana-operator.image`, `kube-state-metrics.image`, `metrics-server.image`, `grafana.initChownData.image`). Rendered images are unchanged. These are the subcharts' own value paths, so existing overrides keep applying.
+    * docs: flatten reference/stable-metrics into reference, and reorder by use
+        * [materialize-monitoring#442](https://github.com/MaterializeInc/materialize-monitoring/pull/442)
+    * dashboards: say object, freshness, and orphaned instead of collection, lag, and leaked
+        * [materialize-monitoring#435](https://github.com/MaterializeInc/materialize-monitoring/pull/435)
+        * Dashboard panels now use Materialize's product terms: _object_ for collection, _freshness_ for lag, and _orphaned_ for leaked persist data. Several panel titles on `env-top`, `env-upgrade`, `env-persist`, and `env-consensus` changed accordingly; dashboard UIDs and queries did not.
+    * dashboards: add Infrastructure Autoscaling and Karpenter
+        * [materialize-monitoring#425](https://github.com/MaterializeInc/materialize-monitoring/pull/425)
+        * Two new dashboards, installed by the default `infra-*` pattern: **Infrastructure Autoscaling** (`infra-autoscaling`), on every cloud, and **Karpenter** (`infra-karpenter`), which has data on EKS where Karpenter's ServiceMonitor is applied.
+        * kube-state-metrics now publishes `kube_node_labels` for each provisioner's pool label, the instance type and the zone, set by the new default `kube-state-metrics.metricLabelsAllowlist`. An install that brings its own kube-state-metrics needs the same allowlist for the Node Pools tab.
+    * Update Rust crate promql-parser to 0.11.0
+        * [materialize-monitoring#428](https://github.com/MaterializeInc/materialize-monitoring/pull/428)
+        * [`v0.11.0`](https://redirect.github.com/GreptimeTeam/promql-parser/releases/tag/v0.11.0)
+    * Render LogQL alerts from the query registry and deliver them to the Loki ruler
+        * [materialize-monitoring#426](https://github.com/MaterializeInc/materialize-monitoring/pull/426)
+        * Bundled log-derived alerts, evaluated by the Loki ruler. `materialize-panic`, `data-correctness-error` and `persist-filter-pushdown-violation` are in the default set. `trace-logging-enabled` installs when selected.
+        * Every bundled `PrometheusRule` now carries `mzmon.materialize.cloud/flavor: promql` or `logql`. The alloy-gateway writes `logql` ones into the Loki ruler through its API, including a deployment's own. They install only where the ruler's rule store accepts writes; a `local` store, which a filesystem-only Loki gets, leaves them out with a render warning.
+        * `thanos.ruler.autoImportPrometheusRules.labelSelector` defaults to `mzmon.materialize.cloud/flavor!: logql`. A replacement selector has to keep that key, or select `flavor: promql`. A cluster running a Prometheus Operator admission webhook has to exclude `flavor: logql` from it.
+        * New `rules.logTenants`: the Loki tenants the log-derived rules are written into. Empty means `pipeline.logging.tenancy.staticTenant`. List them under `byEnvironment` tenancy.
+        * The generated rule index moved from `pre-rendered/rules/prometheus/_index.yaml` to `pre-rendered/rules/_index.yaml`, and records each rule's `engine`.
+    * chore(deps): update rust crate tokio-rustls to v0.26.6
+        * [materialize-monitoring#427](https://github.com/MaterializeInc/materialize-monitoring/pull/427)
+    * DEP-233 Pull instance availability from each cloud's monitoring API
+        * [materialize-monitoring#422](https://github.com/MaterializeInc/materialize-monitoring/pull/422)
+        * Pull what each cloud publishes about instance availability, off by default:
+            * `pipeline.metrics.provider.cloudwatch.eks.clusters` pulls EC2 status checks for every node of the listed EKS clusters, their managed node groups' sizes, and the region's On-Demand vCPU usage. It needs `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, `tag:GetResources` and `autoscaling:DescribeAutoScalingGroups`.
+            * `pipeline.metrics.provider.gcp.compute.regions` pulls per-family CPU and local-SSD quota, usage against limit, and refusals. `roles/monitoring.viewer` already covers it.
+            * `pipeline.metrics.provider.azure.aks.clusters` pulls the AKS cluster autoscaler's gauges and each node VM's availability. It needs Monitoring Reader on each cluster and its node resource group.
+            * The new families (`aws_ec2_*`, `aws_autoscaling_*`, `aws_usage_*`, `stackdriver_compute_googleapis_com_location_*`, `azure_microsoft_containerservice_managedclusters_*` and `azure_microsoft_compute_virtualmachinescalesets_*`) take each provider's `metricImportance`.
+    * dashboards: add Persist, Consensus and Cloud Provider dashboards
+        * [materialize-monitoring#419](https://github.com/MaterializeInc/materialize-monitoring/pull/419)
+        * Three new dashboards, installed by default: **Materialize Persist (Storage)** (`env-persist`) and **Materialize Consensus (Metadata)** (`env-consensus`), Materialize's own view of object storage and the metadata database, and **Infrastructure Cloud Provider** (`infra-cloud`), which draws the metrics collected by `pipeline.metrics.provider`.
+        * **Infrastructure Networking** (`infra-net`) now shows its CNI and Security vendor rows. They were hidden on every cluster, which read as "No Dataplane Metrics".
+        * About 50 persist and timestamp-oracle metric families now ship to destinations at `minMetricImportance: recommended`, and the cloud provider families named by `infra-cloud` join the `diagnostic` tier. `pipeline.metrics.provider.*.metricImportance` still decides every tier above `diagnostic`.
+    * DEP-301 Pull Azure Monitor metrics into the gateway
+        * [materialize-monitoring#417](https://github.com/MaterializeInc/materialize-monitoring/pull/417)
+        * **New `pipeline.metrics.provider.azure`**, off by default.
+            * It pulls a fixed, minimal set of PostgreSQL Flexible Server and Blob Storage metrics from Azure Monitor, for the servers and storage accounts listed under it. Nothing is discovered.
+            * Join on `resourceName`. `instance` is `postgres`, `blob_capacity` or `blob_requests`.
+            * See [Cloud Provider Metrics](https://materializeinc.github.io/materialize-monitoring/metrics/collecting/cloud-provider-metrics/).
+        * **Credentials come from the gateway pod's identity, never from values.** The identity needs Monitoring Reader on each named resource.
+            * Workload identity needs both the `azure.workload.identity/client-id` annotation on `alloy-gateway.serviceAccount` and the `azure.workload.identity/use: "true"` label in `alloy-gateway.controller.podLabels`.
+            * The Terraform module sets the label whenever the annotation is present.
+        * **Azure families default to the `extended` tier**, like the other providers.
+    * Alert on freshness, hydration and replica health, split by who acts on it
+        * [materialize-monitoring#418](https://github.com/MaterializeInc/materialize-monitoring/pull/418)
+        * The default set gains ten alerting rules: `environmentd-down`, `environmentd-not-scraped`, `system-cluster-falling-behind`, `system-cluster-stale`, `system-cluster-hydration-stuck`, `system-cluster-memory-near-limit`, `cluster-replica-not-ready`, `cluster-hydration-stuck`, `cluster-memory-near-limit` and `cluster-replica-oomkilled`.
+            * `cluster-falling-behind`, `cluster-stale`, `cluster-memory-high`, `cluster-cpu-high` and `source-disconnected` are new and install only when selected.
+            * The user-cluster rules install as a third `PrometheusRule`, `<release>-materialize-workload-alerts`.
+        * Every bundled alert carries an `audience` label, `platform` or `workload`, for routing with `alerting.routes.extra`. Alerts about a cluster also carry `cluster_name`.
+        * `rules.overrides.<alert>` is new: it sets a rule's `for` and adds or replaces its labels. A deployment whose clusters take longer than an hour to hydrate should lengthen `cluster-hydration-stuck`'s `for`.
+    * Adopt the registry's parameters in the alerts, fix what that exposed, and generate the rules
+        * [materialize-monitoring#413](https://github.com/MaterializeInc/materialize-monitoring/pull/413)
+    * Add an alerting render context, capabilities and gen-rules to the query registry
+        * [materialize-monitoring#412](https://github.com/MaterializeInc/materialize-monitoring/pull/412)
+    * Add an Alloy meta-monitoring dashboard, and fix infra-loki's level picker
+        * [materialize-monitoring#397](https://github.com/MaterializeInc/materialize-monitoring/pull/397)
+        * **New dashboard: Alloy Meta Monitoring** (`mz-mon-infra-alloy`), in the Meta Observability folder. Collector health, both pipelines hop by hop, ingest over log push, remote write and OTLP, component and configuration state with uptime, gateway clustering, resource limits including `GOMEMLIMIT`, Kubernetes events including the pre-install validation Jobs, and Alloy's own logs.
+        * Fixed the Level picker on Loki Meta Monitoring, which offered only "All".
+        * Metric tiers now include the Alloy families the new dashboard reads. `loki_source_file_read_bytes_total` leaves the tiers, and the generic Go runtime families it adds are `extended`, so a metered destination on the default tier does not receive every target's copy.
+    * DEP-301 Pull CloudWatch and Cloud Monitoring metrics into the gateway
+        * [materialize-monitoring#396](https://github.com/MaterializeInc/materialize-monitoring/pull/396)
+        * **New `pipeline.metrics.provider.cloudwatch` and `pipeline.metrics.provider.gcp`**, both off by default.
+            * They pull a fixed, minimal set of RDS and S3 metrics from CloudWatch, and of Cloud SQL and GCS metrics from Cloud Monitoring, for the resources listed under each. Nothing is discovered.
+            * On CloudWatch series `instance` is the resource; join on `dimension_DBInstanceIdentifier` or `dimension_BucketName`.
+            * See [Cloud Provider Metrics](https://materializeinc.github.io/materialize-monitoring/metrics/collecting/cloud-provider-metrics/).
+        * **Credentials come from the gateway pod's identity, never from values.**
+            * CloudWatch needs `cloudwatch:GetMetricStatistics`, and `iam:ListAccountAliases` for the `account_alias` label, through IRSA, EKS Pod Identity, or static keys in the `mzmon-alloy-gateway-env` Secret.
+            * GCP needs `roles/monitoring.viewer` through Workload Identity.
+        * **Outside Google Cloud, a GCP pull needs `GOOGLE_APPLICATION_CREDENTIALS`.** With no credential at all, the exporter cannot start and the gateway fails to load.
+        * **Provider families default to the `extended` tier.** They reach the bundled Thanos, and not a destination that filters at `recommended` or `essential`, unless `metricImportance` is raised.
+        * **Provider data is minutes old.** Query it with `last_over_time(...[15m])` or wider. Each gateway restart leaves a gap in Cloud Monitoring series as long as that lag.
+    * Update Rust crate thiserror to v2.0.21
+        * [materialize-monitoring#399](https://github.com/MaterializeInc/materialize-monitoring/pull/399)
+        * [`v2.0.21`](https://redirect.github.com/dtolnay/thiserror/releases/tag/2.0.21)
+    * Update Rust crate jsonschema to 0.57.0
+        * [materialize-monitoring#390](https://github.com/MaterializeInc/materialize-monitoring/pull/390)
+        * [`v0.57.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0570---2026-09-22)
+    * Fall back to CLUSTER_NAME for the gateway's log cluster label
+        * [materialize-monitoring#385](https://github.com/MaterializeInc/materialize-monitoring/pull/385)
+    * Reassemble and classify Rust panics, and parse tracing's plain text format
+        * [materialize-monitoring#376](https://github.com/MaterializeInc/materialize-monitoring/pull/376)
+        * Rust panics from Materialize services now arrive as a **single log entry** rather than one entry per line of the backtrace, carrying `level=CRITICAL` and `panic_thread` / `panic_location` as structured metadata. The `msg` names the source location and the panic message.
+        * `balancerd` and `materialize-operator` logs now carry a parsed `level` and `target`. Both previously landed as `level="UNKNOWN"` for every line.
+        * **React to this if you filter or size on log level.** Those services' `WARN` and `ERROR` lines are no longer swept into the `UNKNOWN` rate-limit bucket, which drops, so they now reach Loki reliably and ingested volume from the operator namespace rises. A saved query or alert matching `level="UNKNOWN"` on these services will stop matching.
+    * Update Rust crate clap to v4.6.7
+        * [materialize-monitoring#355](https://github.com/MaterializeInc/materialize-monitoring/pull/355)
+        * [`v4.6.7`](https://redirect.github.com/clap-rs/clap/compare/clap_complete-v4.6.6...clap_complete-v4.6.7)
+    * Update Rust crate rustls to v0.23.45
+        * [materialize-monitoring#349](https://github.com/MaterializeInc/materialize-monitoring/pull/349)
+    * Update Rust crate jsonschema to 0.56.0
+        * [materialize-monitoring#267](https://github.com/MaterializeInc/materialize-monitoring/pull/267)
+        * [`v0.56.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0560---2026-09-10)
+        * [`v0.55.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0551---2026-09-08)
+        * [`v0.55.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0550---2026-09-06)
+        * [`v0.54.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0540---2026-09-06)
+        * [`v0.53.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0530---2026-09-02)
+        * [`v0.52.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0521---2026-08-30)
+        * [`v0.52.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0520---2026-08-26)
+        * [`v0.51.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0510---2026-08-23)
+        * [`v0.50.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0501---2026-08-22)
+        * [`v0.50.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0500---2026-08-20)
+    * Update Rust crate reqwest to v0.13.5
+        * [materialize-monitoring#335](https://github.com/MaterializeInc/materialize-monitoring/pull/335)
+        * [`v0.13.5`](https://redirect.github.com/seanmonstar/reqwest/blob/HEAD/CHANGELOG.md#v0135)
+    * Update Rust crate rustls to v0.23.44
+        * [materialize-monitoring#332](https://github.com/MaterializeInc/materialize-monitoring/pull/332)
+    * Update Rust crate tokio-rustls to v0.26.5
+        * [materialize-monitoring#326](https://github.com/MaterializeInc/materialize-monitoring/pull/326)
+    * Add some sample prose in heather's voice
+        * [materialize-monitoring#331](https://github.com/MaterializeInc/materialize-monitoring/pull/331)
+    * Add Dashboard Folders; Update tags
+        * [materialize-monitoring#329](https://github.com/MaterializeInc/materialize-monitoring/pull/329)
+        * Added several GrafanaFolder resources (default enabled: mzmon-infra, mzmon-materialize, mzmon-meta-o11y)
+        * Changed monitoring tag to mzmon within dashboards
+    * Update Rust crate indexmap to v2.14.2
+        * [materialize-monitoring#328](https://github.com/MaterializeInc/materialize-monitoring/pull/328)
+        * [`v2.14.2`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2142-2026-09-04)
+    * Show total lag in env-top / env-upgrade
+        * [materialize-monitoring#312](https://github.com/MaterializeInc/materialize-monitoring/pull/312)
+        * Add new queries around max lag (materialize.compute.freshness.lag_total_by_cluster, materialize.generations.lag.total)
+        * Show max lag as new panels (including per-cluster breakdown) in env-top and env-upgrade dashboards
+    * DEP-242 Add infra-nodes dashboard
+        * [materialize-monitoring#311](https://github.com/MaterializeInc/materialize-monitoring/pull/311)
+        * Adds an infra-nodes dashboard that is installed by default
+    * Update Rust crate indexmap to v2.14.1
+        * [materialize-monitoring#309](https://github.com/MaterializeInc/materialize-monitoring/pull/309)
+        * [`v2.14.1`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2141-2026-08-28)
+    * DEP-209 Add Infrastructure Logs & Events Dashboard
+        * [materialize-monitoring#307](https://github.com/MaterializeInc/materialize-monitoring/pull/307)
+        * Adds new infra-logs dashboard that is enabled by default
+    * Update Rust crate hyper to v1.11.1
+        * [materialize-monitoring#302](https://github.com/MaterializeInc/materialize-monitoring/pull/302)
+        * [`v1.11.1`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1111-2026-08-27)
+
+  </details>
 
 ## mzmon-lib (shared library) v0.12.0
 
