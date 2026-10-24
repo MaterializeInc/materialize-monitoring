@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Dashboards (Helm chart) v0.22.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.7.0 (Unreleased)
 
 _Changes Pending_
@@ -16,9 +20,25 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Dashboards (Helm chart) v0.21.0 (Unreleased)
+## Dashboards (Helm chart) v0.21.0
 
-_Changes Pending_
+### Dependencies
+
+* <details><summary>Included mzmon-lib (shared library) @ v0.13.0..v0.14.0</summary>
+
+    * Render canonical label names from labels.yaml in the Materialize monitors (DEP-421)
+        * [materialize-monitoring#582](https://github.com/MaterializeInc/materialize-monitoring/pull/582)
+        * The Materialize PodMonitors, and the classic and Google Cloud Managed Prometheus scrape configs, add canonical label names beside the labels Materialize emits: `cluster_id`, `replica_id`, `cluster_name`, `cluster_size`, `replica_name`, `replica_size`, `object_name`, `object_type`, `collection_id` and `shard_id`. Each is copied only where it's absent, so it adds no series. [Canonical label names](https://materializeinc.github.io/materialize-monitoring/metrics/scraping/#canonical-labels) lists where each comes from.
+        * **Deprecated:** the labels they're copied from. Both names stay on every series for at least 30 days after this release; move queries and alert routes to the canonical names.
+            * `instance_id`, `compute_instance`, `compute_cluster_id` and `cluster_environmentd_materialize_cloud_cluster_id` are `cluster_id`
+            * `compute_replica_id` and `cluster_environmentd_materialize_cloud_replica_id` are `replica_id`
+            * `compute_cluster_name`, and `name` on `mz_cluster_info`, are `cluster_name`; `size` on `mz_cluster_info` is `cluster_size`
+            * `name` and `size` on `mz_replica_info` are `replica_name` and `replica_size`
+            * `name` and `type` on `mz_object_info` are `object_name` and `object_type`
+            * `global_id` is `collection_id`, and `shard` is `shard_id`
+        * If you replace `materialize.environmentd.serviceMonitor.metricEndpoints`, `materialize.environmentdSQL.serviceMonitor.metricEndpoints`, `materialize.clusterd.serviceMonitor.metricEndpoints` or `materialize-operator.serviceMonitor.metricEndpoints`, restate the default `metricRelabelings`, or those series lack the canonical labels.
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.6.0
 
