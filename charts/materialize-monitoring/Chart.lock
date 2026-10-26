@@ -7,7 +7,7 @@ dependencies:
   version: 1.14.0
 - name: loki
   repository: oci://ghcr.io/grafana-community/helm-charts
-  version: 19.0.2
+  version: 19.4.0
 - name: thanos
   repository: oci://ghcr.io/thanos-community/helm-charts
   version: 0.47.3
@@ -32,5 +32,5 @@ dependencies:
 - name: prometheus-postgres-exporter
   repository: oci://ghcr.io/prometheus-community/charts
   version: 8.2.0
-digest: sha256:492eceb2d799a7fb9c1dc19de78f049646f26c2bde785ffdc6d173668b2ea540
-generated: "2026-10-22T13:35:06.70738131Z"
+digest: sha256:cc7d9af8639b90f8a9a7e1c98b78545f13b579c417e291832be9c012ac2af9e5
+generated: "2026-10-26T18:19:06.76760352Z"
