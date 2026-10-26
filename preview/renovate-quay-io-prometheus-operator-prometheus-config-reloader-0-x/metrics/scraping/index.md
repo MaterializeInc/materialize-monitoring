@@ -70,6 +70,94 @@ Without it, the four endpoints' `up` and `scrape_*` series are one series writte
 A copy of the `PodMonitor` that replaces its endpoints keeps that relabeling on each of them.
 The Classic and Google Cloud Managed Prometheus configs scrape each path as its own job, so their `job` label already differs.
 
+### Canonical label names {#canonical-labels}
+
+Materialize spells some ids and names more than one way.
+A cluster id is `instance_id` on most environmentd metrics, `compute_cluster_id` on the SQL endpoints, and `cluster_environmentd_materialize_cloud_cluster_id` on clusterd metrics.
+Every scrape config here copies each of those labels into one canonical name, such as `cluster_id`, on every Materialize monitor, and keeps the original beside it.
+A copy is made only where the canonical label is absent, so a value Materialize emits under the canonical name is never overwritten.
+A copy adds no series.
+
+Each canonical label is copied from the following labels, as [`labels.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/packages/prometheus-scrapers/labels.yaml) lists them:
+
+<dl class="label-aliases">
+  <dt id="label-cluster_id"><code>cluster_id</code></dt>
+  <dd>
+    Copied from
+      <code>instance_id</code>
+      (deprecated in 1.6.0),
+      <code>compute_instance</code>
+      (deprecated in 1.6.0),
+      <code>compute_cluster_id</code>
+      (deprecated in 1.6.0),
+      <code>cluster_environmentd_materialize_cloud_cluster_id</code>
+      (deprecated in 1.6.0), where the value matches <code>[su][0-9]&#43;</code>.
+  </dd>
+  <dt id="label-replica_id"><code>replica_id</code></dt>
+  <dd>
+    Copied from
+      <code>compute_replica_id</code>
+      (deprecated in 1.6.0),
+      <code>cluster_environmentd_materialize_cloud_replica_id</code>
+      (deprecated in 1.6.0), where the value matches <code>[su][0-9]&#43;</code>.
+  </dd>
+  <dt id="label-cluster_name"><code>cluster_name</code></dt>
+  <dd>
+    Copied from
+      <code>compute_cluster_name</code>
+      (deprecated in 1.6.0),
+      <code>name</code> on <code>mz_cluster_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-cluster_size"><code>cluster_size</code></dt>
+  <dd>
+    Copied from
+      <code>size</code> on <code>mz_cluster_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-replica_name"><code>replica_name</code></dt>
+  <dd>
+    Copied from
+      <code>name</code> on <code>mz_replica_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-replica_size"><code>replica_size</code></dt>
+  <dd>
+    Copied from
+      <code>size</code> on <code>mz_replica_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-object_name"><code>object_name</code></dt>
+  <dd>
+    Copied from
+      <code>name</code> on <code>mz_object_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-object_type"><code>object_type</code></dt>
+  <dd>
+    Copied from
+      <code>type</code> on <code>mz_object_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-collection_id"><code>collection_id</code></dt>
+  <dd>
+    Copied from
+      <code>global_id</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-shard_id"><code>shard_id</code></dt>
+  <dd>
+    Copied from
+      <code>shard</code>
+      (deprecated in 1.6.0).
+  </dd>
+</dl>
+
+
+Write new queries against the canonical names, because the labels they're copied from are deprecated.
+A copy of a `PodMonitor` that replaces its endpoints keeps their `metricRelabelings`, or its series lack the canonical labels.
+clusterd's `up` and `scrape_*` series carry only the long-form ids, because metric relabeling doesn't apply to them.
+
 ### Which Prometheus Distribution Am I Using?
 
 An easy way to check if you are using Prometheus Operator is to see
@@ -207,9 +295,15 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
   <tbody>
       
     <tr>
+      <td>balancerd</td>
+      <td>monitoring.coreos.com/v1/PodMonitor</td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/prometheus-operator/podmonitor-balancerd.yaml?xxhash=01ddf10bf6241dff" download="balancerd-01ddf10bf6241dff.yaml"><code>podmonitor-balancerd.yaml</code></a></td>
+    </tr>
+      
+    <tr>
       <td>clusterd</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/prometheus-operator/podmonitor-clusterd.yaml?xxhash=d1343768d3865164" download="clusterd-d1343768d3865164.yaml"><code>podmonitor-clusterd.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/prometheus-operator/podmonitor-clusterd.yaml?xxhash=71a4a158fe9f00ca" download="clusterd-71a4a158fe9f00ca.yaml"><code>podmonitor-clusterd.yaml</code></a></td>
     </tr>
       
     <tr>
@@ -227,19 +321,19 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
     <tr>
       <td>environmentd</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/prometheus-operator/podmonitor-environmentd.yaml?xxhash=cb80961f5213b005" download="environmentd-cb80961f5213b005.yaml"><code>podmonitor-environmentd.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/prometheus-operator/podmonitor-environmentd.yaml?xxhash=5d8260a46712e25a" download="environmentd-5d8260a46712e25a.yaml"><code>podmonitor-environmentd.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-operator</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/prometheus-operator/podmonitor-materialize-operator.yaml?xxhash=64335808148e4ef8" download="materialize-operator-64335808148e4ef8.yaml"><code>podmonitor-materialize-operator.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/prometheus-operator/podmonitor-materialize-operator.yaml?xxhash=9aa2d98647b26c02" download="materialize-operator-9aa2d98647b26c02.yaml"><code>podmonitor-materialize-operator.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/prometheus-operator/podmonitor-sql.yaml?xxhash=3e68e90143aa7c63" download="materialize-sql-3e68e90143aa7c63.yaml"><code>podmonitor-sql.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/prometheus-operator/podmonitor-sql.yaml?xxhash=877469b446904928" download="materialize-sql-877469b446904928.yaml"><code>podmonitor-sql.yaml</code></a></td>
     </tr>
       
     <tr>
@@ -298,7 +392,7 @@ These are placed into your Prometheus configuration (prometheus.yml) as a single
     <tr>
       <td>scrape_config</td>
       <td>Classic ScrapeConfig</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/classic/scrape_config.yaml?xxhash=e1b762b30355985f" download="scrape_config-e1b762b30355985f.yaml"><code>scrape_config.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/classic/scrape_config.yaml?xxhash=0367b6ad8e977aa4" download="scrape_config-0367b6ad8e977aa4.yaml"><code>scrape_config.yaml</code></a></td>
     </tr>
   </tbody>
 </table>
@@ -326,9 +420,15 @@ These are PodMonitoring resources specifically for [Google Cloud Managed Service
   <tbody>
       
     <tr>
+      <td>balancerd</td>
+      <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/balancerd.yaml?xxhash=170e0bd3bfce8ad4" download="balancerd-170e0bd3bfce8ad4.yaml"><code>balancerd.yaml</code></a></td>
+    </tr>
+      
+    <tr>
       <td>clusterd</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/clusterd.yaml?xxhash=94899a50af87d083" download="clusterd-94899a50af87d083.yaml"><code>clusterd.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/clusterd.yaml?xxhash=7f1f7dde8e057381" download="clusterd-7f1f7dde8e057381.yaml"><code>clusterd.yaml</code></a></td>
     </tr>
       
     <tr>
@@ -358,37 +458,37 @@ These are PodMonitoring resources specifically for [Google Cloud Managed Service
     <tr>
       <td>environmentd</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/environmentd.yaml?xxhash=7e24b75a0d93e8bb" download="environmentd-7e24b75a0d93e8bb.yaml"><code>environmentd.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/environmentd.yaml?xxhash=a76d0a0070bc8dae" download="environmentd-a76d0a0070bc8dae.yaml"><code>environmentd.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-operator</td>
       <td>monitoring.googleapis.com/v1/PodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-operator.yaml?xxhash=d216820a50b4ec53" download="materialize-operator-d216820a50b4ec53.yaml"><code>materialize-operator.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-operator.yaml?xxhash=ea1eb3848383dc08" download="materialize-operator-ea1eb3848383dc08.yaml"><code>materialize-operator.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql-mz-compute</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-sql-mz-compute.yaml?xxhash=ada272b9fa0082c2" download="materialize-sql-mz-compute-ada272b9fa0082c2.yaml"><code>materialize-sql-mz-compute.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-sql-mz-compute.yaml?xxhash=0f7efa55286948ca" download="materialize-sql-mz-compute-0f7efa55286948ca.yaml"><code>materialize-sql-mz-compute.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql-mz-frontier</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-sql-mz-frontier.yaml?xxhash=db50e8f025eeb840" download="materialize-sql-mz-frontier-db50e8f025eeb840.yaml"><code>materialize-sql-mz-frontier.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-sql-mz-frontier.yaml?xxhash=1ed7675feca674c5" download="materialize-sql-mz-frontier-1ed7675feca674c5.yaml"><code>materialize-sql-mz-frontier.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql-mz-storage</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-sql-mz-storage.yaml?xxhash=af6b93d644fb3d5c" download="materialize-sql-mz-storage-af6b93d644fb3d5c.yaml"><code>materialize-sql-mz-storage.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-sql-mz-storage.yaml?xxhash=685715878b214006" download="materialize-sql-mz-storage-685715878b214006.yaml"><code>materialize-sql-mz-storage.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql-mz-usage</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-sql-mz-usage.yaml?xxhash=7b4c9342ed2545d5" download="materialize-sql-mz-usage-7b4c9342ed2545d5.yaml"><code>materialize-sql-mz-usage.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-quay-io-prometheus-operator-prometheus-config-reloader-0-x/prometheus-scrapers/gmp/materialize-sql-mz-usage.yaml?xxhash=c0be82b87c43b574" download="materialize-sql-mz-usage-c0be82b87c43b574.yaml"><code>materialize-sql-mz-usage.yaml</code></a></td>
     </tr>
   </tbody>
 </table>

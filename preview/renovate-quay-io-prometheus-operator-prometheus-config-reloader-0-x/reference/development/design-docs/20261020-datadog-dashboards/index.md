@@ -125,7 +125,7 @@ The following table lists what a Datadog dashboard set can build on, as of 2026-
 | Name enrichment for Datadog | ❌ Missing | `mzClusterName`, `mzObjectName`, and `mzEnvironmentName` attach only to `promQL` templates, where `packages/mzmon-lib/src/query/enrich.rs` renders them as `group_left` joins. No `datadogQuery` takes a `functions` list |
 | Arithmetic matching, as a known Datadog behavior | ⚠️ Noted | [Datadog Translations](../../queries/datadog/) records that Datadog matches tags automatically in arithmetic between two queries, and uses it for nothing yet |
 | `_info` series at Datadog's default tier | ⚠️ Partial | `mz_cluster_info` is in the tier allowlist, because a query names it directly. `mz_object_info` and `mz_replica_info` are reached only through enrichment functions, which tier extraction treats as the identity, so a destination below `all` drops them |
-| Matching tag names on both sides of a join | ❌ Missing | `mz_cluster_info` carries `cluster_id` and `name`, and the series it names carry `instance_id`. `mz_object_info` carries `global_id`, and the series it names carry `collection_id`. [DEP-349](https://linear.app/materializeinc/issue/DEP-349) relabels both sides to canonical names |
+| Matching tag names on both sides of a join | ✅ Shipped | The shipped monitors copy each alias into its canonical name on both sides: `cluster_id` beside `instance_id`, `cluster_name` beside `name` on `mz_cluster_info`, and `collection_id` beside `global_id` on `mz_object_info` ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)) |
 | `cluster` on Datadog series | ❌ Missing | Remote-write destinations get it from `external_labels`, and the Google Cloud chain fills it from `CLUSTER_NAME`. The Datadog chain doesn't |
 | `environment_id` on series | ⬜ Designed | In the label-vocabulary design. [DEP-351](https://linear.app/materializeinc/issue/DEP-351) waits on the orchestratord pod label in [DEP-348](https://linear.app/materializeinc/issue/DEP-348) |
 | A Datadog backend in `packages/dashboards` | ⬜ Not started | `packages/dashboards/src/lib.rs` already places one beside `grafana/` |
@@ -287,9 +287,8 @@ The join needs the following from the series that reach Datadog:
 Matching tag names
 : Datadog can't rename a tag inside a query, so an id has to carry the same tag name on both sides.
   A pair that doesn't is rejected with HTTP 400, so the mismatch shows up as an error rather than as wrong names.
-  Today it doesn't: `mz_cluster_info` names a cluster `cluster_id` where the series it names say `instance_id`, and `mz_object_info` says `global_id` where they say `collection_id`.
-  The relabel rules in [DEP-349](https://linear.app/materializeinc/issue/DEP-349) copy each alias to its canonical name in the shipped monitors, on both sides.
-  Names in Datadog wait on them.
+  Materialize's own labels don't: `mz_cluster_info` names a cluster `cluster_id` where the series it names say `instance_id`, and `mz_object_info` says `global_id` where they say `collection_id`.
+  The shipped monitors copy each alias to its canonical name on both sides ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)), so a join written against the canonical names matches.
 
 The environment's tags on both sides
 : Both queries group by `cluster` and the environment's id, so the match can't cross environments.
@@ -354,7 +353,8 @@ Its registry entries already carry Datadog templates, and the other dashboards l
 Field Engineering sets the order after that, as DEP-115 recommends.
 
 The first set shows ids.
-Names are a **Should**, and they wait on the canonical labels from [DEP-349](https://linear.app/materializeinc/issue/DEP-349), so each panel gains them when its labels match.
+Names are a **Should**.
+The canonical labels they join on ship with [DEP-421](https://linear.app/materializeinc/issue/DEP-421), so each panel gains its names once [the join's behavior](#how-the-arithmetic-join-behaves) is settled for its widget.
 
 The `datadogQuery` templates were written for completeness, and the PromQL is the tested half.
 Each panel's Datadog query is checked against live data when it's ported.
@@ -448,7 +448,7 @@ None of it is ticketed yet.
 | **`cluster` on the Datadog chain**, filled from `CLUSTER_NAME` where it's absent | Environment scoping across Kubernetes clusters, and the Kubernetes-cluster identity every other destination already has | **Blocking** for organizations with several Kubernetes clusters |
 | **`functions` on `datadogQuery` templates**, and a Datadog rendering context that turns the enrichment functions into a hidden `_info` query and a formula factor | How a panel asks for names | Blocking for names |
 | **Tier extraction that counts the `_info` family an enrichment function reads** | Puts `mz_object_info` and `mz_replica_info` in the tier list | Blocking for names |
-| **Canonical label names on both sides of a join**, from [DEP-349](https://linear.app/materializeinc/issue/DEP-349) | The join matches on tag names | Blocking for names. Owned by the label-vocabulary design |
+| **Canonical label names on both sides of a join**, from [DEP-421](https://linear.app/materializeinc/issue/DEP-421) | The join matches on tag names | ✅ Done |
 | **The placeholder under `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/datadog/`** removed | No chart carries Datadog JSON | ✅ Done in this change |
 
 ## Testing
@@ -481,7 +481,7 @@ The following tests cover the design:
 - [x] ~~**Can a template variable on the `_info` query's name tag filter the joined result?**~~ Yes. A filter on a tag that only the `_info` query carries filters the panel.
 - [ ] **Which ids does each `_info` family not cover?** A joined panel loses their series. Transient collections, and environments older than the release that added `mz_object_info`, are the candidates to check.
 - [ ] **Is the custom-metric cost of the `_info` series acceptable at the default tier**, or do they belong in a tier an operator opts into?
-- [ ] **Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?
+- [x] ~~**Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?~~ **Neither.** [DEP-421](https://linear.app/materializeinc/issue/DEP-421) ships the canonical labels on every destination, Datadog included.
 - [ ] **When are reference tables worth adding?** [Other ways to get names](#reference-tables) lists the conditions.
 - [ ] **What duplication moves the panel list into a shared layer?** Two or more dashboards whose manifests match panel for panel would be a clear signal, and the threshold is a judgment call.
 - [ ] **Does CI get a Datadog test organization** for the acceptance job and the live-data checks?
