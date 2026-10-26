@@ -295,6 +295,12 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
   <tbody>
       
     <tr>
+      <td>balancerd</td>
+      <td>monitoring.coreos.com/v1/PodMonitor</td>
+      <td><a href="/materialize-monitoring/preview/renovate-debian-13/prometheus-scrapers/prometheus-operator/podmonitor-balancerd.yaml?xxhash=01ddf10bf6241dff" download="balancerd-01ddf10bf6241dff.yaml"><code>podmonitor-balancerd.yaml</code></a></td>
+    </tr>
+      
+    <tr>
       <td>clusterd</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
       <td><a href="/materialize-monitoring/preview/renovate-debian-13/prometheus-scrapers/prometheus-operator/podmonitor-clusterd.yaml?xxhash=71a4a158fe9f00ca" download="clusterd-71a4a158fe9f00ca.yaml"><code>podmonitor-clusterd.yaml</code></a></td>
@@ -386,7 +392,7 @@ These are placed into your Prometheus configuration (prometheus.yml) as a single
     <tr>
       <td>scrape_config</td>
       <td>Classic ScrapeConfig</td>
-      <td><a href="/materialize-monitoring/preview/renovate-debian-13/prometheus-scrapers/classic/scrape_config.yaml?xxhash=268953895fe04e50" download="scrape_config-268953895fe04e50.yaml"><code>scrape_config.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-debian-13/prometheus-scrapers/classic/scrape_config.yaml?xxhash=0367b6ad8e977aa4" download="scrape_config-0367b6ad8e977aa4.yaml"><code>scrape_config.yaml</code></a></td>
     </tr>
   </tbody>
 </table>
@@ -412,6 +418,12 @@ These are PodMonitoring resources specifically for [Google Cloud Managed Service
     </tr>
   </thead>
   <tbody>
+      
+    <tr>
+      <td>balancerd</td>
+      <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
+      <td><a href="/materialize-monitoring/preview/renovate-debian-13/prometheus-scrapers/gmp/balancerd.yaml?xxhash=170e0bd3bfce8ad4" download="balancerd-170e0bd3bfce8ad4.yaml"><code>balancerd.yaml</code></a></td>
+    </tr>
       
     <tr>
       <td>clusterd</td>
