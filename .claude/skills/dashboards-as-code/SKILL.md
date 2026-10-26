@@ -633,9 +633,10 @@ How users reach an environment, one hop per tab. Queries are `packages/queries/m
 | # | Tab title | Module |
 |---|---|---|
 | 1 | Overview | `overview.rs` |
-| 2 | Balancer | `balancer.rs` |
-| 3 | Console | `console.rs` |
-| 4 | SQL and HTTP API | `api.rs` |
+| 2 | Load Balancer | `load_balancer.rs` |
+| 3 | Balancer | `balancer.rs` |
+| 4 | Console | `console.rs` |
+| 5 | SQL and HTTP API | `api.rs` |
 
 These things about it are not re-derivable by reading the modules:
 
@@ -652,6 +653,13 @@ These things about it are not re-derivable by reading the modules:
   operator's calls and the metric scrapes would swamp the client traffic otherwise.
 - **The console's error feed drops health checks first.** On the AWS reference install the load balancer's checks
   are nearly every console line, and half are answered `400`.
+- **The Load Balancer tab reuses `infra-net`'s pull detection.** Its provider rows render on `$cloudNetworkPullList`
+  with `infra_networking::cloud`'s pull constants, and one fallback. The pulled series carry no environment, so each
+  provider joins back to it differently: AWS by the wrappers' target group names (`<prefix>-<instance>-<pgwire|http|console>`,
+  where `<instance>` is the Materialize resource and so the environment picker's value), GKE by forwarding rule
+  (`a` plus the Service UID's first 31 hex characters, from `kube_service_info`), and Azure by frontend IP against
+  `kube_service_status_load_balancer_ingress`. AKS's Services are `externalTrafficPolicy: Local`, so only nodes
+  running the pod pass the probe.
 - **The console scrape is `podmonitor-console.yaml`**, beside `podmonitor-balancerd.yaml`. Both are PodMonitors
   because neither Service exposes `internal-http`, and an operator that predates the console's port yields no target.
 

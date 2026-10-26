@@ -47,8 +47,14 @@ pub const API: Theme = Theme {
     shade: palette::THEME[3],
 };
 
+/// The cloud load balancer in front of balancerd and the console.
+pub const LOAD_BALANCER: Theme = Theme {
+    title: "Load Balancer",
+    shade: palette::THEME[4],
+};
+
 /// Every themed tab, in the order they appear.
-pub const THEMED: [Theme; 4] = [OVERVIEW, BALANCER, CONSOLE, API];
+pub const THEMED: [Theme; 5] = [OVERVIEW, LOAD_BALANCER, BALANCER, CONSOLE, API];
 
 #[cfg(test)]
 mod tests {

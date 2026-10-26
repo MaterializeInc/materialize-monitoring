@@ -726,3 +726,360 @@ queries:
           rate(mz_time_to_first_row_seconds_bucket{%%{mzEnvironmentFilter}, application_name=~"web_console|web_console_shell"}%%{interval})
         )
       ) >= 0
+
+  # --- Load balancer -----------------------------------------------------------
+  #
+  # The cloud load balancer in front of balancerd and the console, from the
+  # gateway's provider pulls (`infra-networking.yaml` reads the same families
+  # for every load balancer in the cluster, and its header explains the
+  # `last_over_time` windows and the per-minute arithmetic). Those series carry
+  # no environment, so each provider is tied back to this one its own way:
+  #
+  # * AWS: the Terraform wrappers name target groups
+  #   `<prefix>-<instance>-<pgwire|http|console>`, and `<instance>` is the
+  #   Materialize resource's name, which is the environment picker's value. A
+  #   load balancer's own series are kept when one of those target groups is
+  #   pulled beside it.
+  # * Google Cloud: GKE names a Service's forwarding rule `a` plus the first 31
+  #   characters of the Service's UID without dashes, so `kube_service_info` in
+  #   the environment's namespace maps each rule to its Service.
+  # * Azure: each series names its frontend IP, which is the address
+  #   Kubernetes gave the environment's LoadBalancer Service.
+
+  - id: materialize.ingress.lb.addresses
+    stability: experimental
+    instant: true
+    description:
+      summary: |
+        The environment's LoadBalancer Services, and the address each was
+        given.
+      nominal: |
+        One for balancerd and one for the console, where the deployment
+        exposes them through Kubernetes. The AWS Terraform wrappers make their
+        Network Load Balancer in Terraform instead, so there are none on those
+        installs.
+      degraded: |
+        A Service with no address has not been given a load balancer yet.
+        That is normal for a minute after it is created, and a fault after
+        several: subnets missing their tags, no free public addresses, or a
+        controller without permission.
+    promQL: |
+      max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}})
+
+  - id: materialize.ingress.lb.aws.healthy_targets
+    stability: experimental
+    description:
+      summary: |
+        balancerd and console pods passing the Network Load Balancer's health
+        check, per target group, at the worst moment of the last five minutes.
+      nominal: |
+        One target per pod: the balancerd pods in `pgwire` and `http`, and the
+        console pods in `console`.
+      unhealthy: |
+        **Zero is a target group the load balancer has nowhere to send.** An
+        NLB whose targets are all unhealthy sends to all of them anyway, so
+        connections may still work, but a check that never passes means the
+        check itself is wrong: its port or path, or a security group that
+        does not admit it.
+      notes: |
+        CloudWatch publishes health only per target group, so this needs the
+        target groups pulled beside the load balancer.
+    promQL: |
+      min by (target_group) (
+        label_replace(
+          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+        )
+      )
+
+  - id: materialize.ingress.lb.aws.unhealthy_targets
+    stability: experimental
+    description:
+      summary: |
+        balancerd and console pods failing the Network Load Balancer's health
+        check, per target group, at the worst moment of the last five minutes.
+      nominal: Zero.
+      degraded: |
+        A pod here that Kubernetes reports Ready is one the load balancer cannot
+        check: usually the network between them, or a check aimed at the wrong
+        port. balancerd fails its check on purpose while it is over its high
+        watermark; _Balancer -> Taking New Connections by Pod_ says when.
+    promQL: |
+      max by (target_group) (
+        label_replace(
+          last_over_time(aws_networkelb_un_healthy_host_count_maximum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+        )
+      )
+
+  - id: materialize.ingress.lb.aws.open_connections
+    stability: experimental
+    description:
+      summary: |
+        Connections open through the Network Load Balancer in front of this
+        environment, averaged over the newest minute.
+      nominal: |
+        Close to balancerd's _Overview -> Open Connections_, plus any console
+        connections.
+      notes: |
+        Kept only for a load balancer whose target groups are pulled too,
+        because those are what name the environment.
+    promQL: |
+      max by (load_balancer) (
+        label_replace(
+          last_over_time(aws_networkelb_active_flow_count_average[15m])
+          and on (dimension_LoadBalancer)
+          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+        )
+      )
+
+  - id: materialize.ingress.lb.aws.new_connections
+    stability: experimental
+    description:
+      summary: |
+        New connections per second through the Network Load Balancer, over
+        the newest whole minute CloudWatch has published.
+      nominal: |
+        The rate clients connect at. Health checks are not counted.
+      degraded: |
+        Connections arriving here and missing from balancerd's
+        _Balancer -> Connection Outcomes_ are lost between the two.
+    promQL: |
+      max by (load_balancer) (
+        label_replace(
+          last_over_time(aws_networkelb_new_flow_count_sum[15m])
+          and on (dimension_LoadBalancer)
+          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+        )
+      ) / 60
+
+  - id: materialize.ingress.lb.aws.throughput
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second through the Network Load Balancer, both directions
+        together, over the newest whole minute.
+      nominal: |
+        Follows query results: most of it is data leaving Materialize.
+    promQL: |
+      max by (load_balancer) (
+        label_replace(
+          last_over_time(aws_networkelb_processed_bytes_sum[15m])
+          and on (dimension_LoadBalancer)
+          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+        )
+      ) / 60
+
+  - id: materialize.ingress.lb.aws.resets
+    stability: experimental
+    description:
+      summary: |
+        TCP resets through the Network Load Balancer in the last five minutes,
+        by which side sent them.
+      nominal: |
+        Some from clients, which close connections abruptly all the time. Few
+        or none from targets or the load balancer.
+      degraded: |
+        **Target** resets come from balancerd or the console: a pod restarting,
+        or balancerd refusing a connection. **Load balancer** resets are the
+        NLB itself: a connection idle past its timeout, or a target that went
+        away. A pooled SQL client that drops its connections every 350 seconds
+        is meeting the NLB's idle timeout, and needs TCP keepalives.
+      notes: |
+        Five-minute totals that end at the pull, so read them as "any", not
+        "how many".
+    promQL:
+      - |
+        max by (load_balancer) (
+          label_replace(
+            last_over_time(aws_networkelb_tcp_client_reset_count_sum[15m])
+            and on (dimension_LoadBalancer)
+            last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+            "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+          )
+        )
+      - |
+        max by (load_balancer) (
+          label_replace(
+            last_over_time(aws_networkelb_tcp_target_reset_count_sum[15m])
+            and on (dimension_LoadBalancer)
+            last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+            "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+          )
+        )
+      - |
+        max by (load_balancer) (
+          label_replace(
+            last_over_time(aws_networkelb_tcp_elb_reset_count_sum[15m])
+            and on (dimension_LoadBalancer)
+            last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+            "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+          )
+        )
+
+  - id: materialize.ingress.lb.gcp.packets
+    stability: experimental
+    description:
+      summary: |
+        Packets per second through each of the environment's load balancers,
+        by Service and direction.
+      nominal: |
+        Follows client traffic. Cloud Monitoring publishes no health or
+        connection counts for these load balancers, so traffic is the whole
+        of the provider's view.
+      degraded: |
+        Packets arriving with none leaving usually means the load balancer
+        has no backend to send them to: check that the balancerd and console
+        pods are Ready.
+      notes: |
+        Cloud Monitoring publishes a minute only when it carried traffic, so
+        an idle load balancer has gaps rather than zeros.
+    promQL:
+      - |
+        sum by (service) (
+          (
+            (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[10m])
+            or
+            (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[10m])
+          )
+          * on (forwarding_rule_name) group_left (service)
+          label_replace(
+            max by (service, uid) (kube_service_info{%%{mzEnvironmentNamespaceFilter}}),
+            "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+          )
+        ) / 60
+      - |
+        sum by (service) (
+          (
+            (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[10m])
+            or
+            (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[10m])
+          )
+          * on (forwarding_rule_name) group_left (service)
+          label_replace(
+            max by (service, uid) (kube_service_info{%%{mzEnvironmentNamespaceFilter}}),
+            "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+          )
+        ) / 60
+
+  - id: materialize.ingress.lb.gcp.throughput
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second through each of the environment's load balancers, by
+        Service and direction.
+      nominal: |
+        Follows query results: most of it leaves Materialize.
+      notes: |
+        As with packets, an idle minute is a gap rather than a zero.
+    promQL:
+      - |
+        sum by (service) (
+          (
+            (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[10m])
+            or
+            (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[10m])
+          )
+          * on (forwarding_rule_name) group_left (service)
+          label_replace(
+            max by (service, uid) (kube_service_info{%%{mzEnvironmentNamespaceFilter}}),
+            "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+          )
+        ) / 60
+      - |
+        sum by (service) (
+          (
+            (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[10m])
+            or
+            (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[10m])
+          )
+          * on (forwarding_rule_name) group_left (service)
+          label_replace(
+            max by (service, uid) (kube_service_info{%%{mzEnvironmentNamespaceFilter}}),
+            "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+          )
+        ) / 60
+
+  - id: materialize.ingress.lb.azure.backends
+    stability: experimental
+    description:
+      summary: |
+        Backends behind each of the environment's load balancer frontends, and
+        how many passed every health probe in the last five minutes.
+      nominal: |
+        Healthy equals the number of nodes running that Service's pods, and
+        total is every node in the pool. An AKS load balancer's backends are
+        nodes, and the Materialize Services set `externalTrafficPolicy: Local`,
+        so a node passes the probe only while it runs a balancerd or console
+        pod.
+      degraded: |
+        Fewer healthy nodes than pods is a node the load balancer cannot
+        probe. Zero healthy is a frontend with nowhere to send.
+    promQL:
+      - |
+        sum by (service) (
+          (last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m]) == bool 100)
+          * on (dimensionFrontendIPAddress) group_left (service)
+          label_replace(
+            max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+            "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+          )
+        )
+      - |
+        count by (service) (
+          last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m])
+          * on (dimensionFrontendIPAddress) group_left (service)
+          label_replace(
+            max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+            "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+          )
+        )
+
+  - id: materialize.ingress.lb.azure.new_connections
+    stability: experimental
+    description:
+      summary: |
+        New connections per second arriving at each of the environment's load
+        balancer frontends, from the SYN packets Azure counts.
+      nominal: |
+        The rate clients connect at.
+    promQL: |
+      sum by (service) (
+        last_over_time(azure_microsoft_network_loadbalancers_syncount_total_count{dimensionDirection="In"}[15m])
+        * on (dimensionFrontendIPAddress) group_left (service)
+        label_replace(
+          max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+        )
+      ) / 60
+
+  - id: materialize.ingress.lb.azure.throughput
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second through each of the environment's load balancer
+        frontends, by Service and direction.
+      nominal: |
+        Follows query results: most of it leaves Materialize.
+    promQL:
+      - |
+        sum by (service) (
+          last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="In"}[15m])
+          * on (dimensionFrontendIPAddress) group_left (service)
+          label_replace(
+            max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+            "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+          )
+        ) / 60
+      - |
+        sum by (service) (
+          last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="Out"}[15m])
+          * on (dimensionFrontendIPAddress) group_left (service)
+          label_replace(
+            max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+            "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+          )
+        ) / 60

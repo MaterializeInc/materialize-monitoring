@@ -28,7 +28,7 @@ spec:
   description: |-
     How users reach a Materialize environment.
 
-    Rate, errors and latency at each hop: balancerd, which every SQL and HTTPS connection passes through; the console, which serves the web app and forwards its API calls; and environmentd's SQL and HTTP APIs behind them both.
+    Rate, errors and latency at each hop: the cloud load balancer, where its metrics are pulled; balancerd, which every SQL and HTTPS connection passes through; the console, which serves the web app and forwards its API calls; and environmentd's SQL and HTTP APIs behind them both.
   editable: true
   elements:
     api-console-commands:
@@ -67,7 +67,7 @@ spec:
           **Nominal:** `web_console` is the console's own queries, which it runs to draw every page. `web_console_shell` is what users type into the SQL shell.
 
           **Degraded:** `error` from `web_console` is the console failing to load data, which users see as empty or broken pages. `error` from the shell is usually users' own SQL errors.
-        id: 1036
+        id: 1049
         links: []
         title: Console SQL Commands
         vizConfig:
@@ -133,7 +133,7 @@ spec:
           **Nominal:** Steady for `web_console`, whose queries read Materialize's catalog. The shell follows whatever users run.
 
           **Degraded:** Slow `web_console` queries make every console page slow. They run on the `mz_catalog_server` cluster, so check its CPU first.
-        id: 1037
+        id: 1050
         links: []
         title: Console Query Time to First Row (p99)
         vizConfig:
@@ -191,7 +191,7 @@ spec:
           **Nominal:** Zero.
 
           **Degraded:** environmentd itself failed the request. A query error is not a server error: `/api/sql` reports those inside a `200` response.
-        id: 1032
+        id: 1045
         links: []
         title: HTTP Server Errors by Path
         vizConfig:
@@ -249,7 +249,7 @@ spec:
           **Nominal:** `/api/sql` is SQL over HTTP, from the console and from HTTP clients. `/api/experimental/sql` is a WebSocket upgrade, one per streaming session.
 
           Only requests that arrived through balancerd. The operator's own calls and the metric scrapes are left out.
-        id: 1031
+        id: 1044
         links: []
         title: HTTP Requests by Path
         vizConfig:
@@ -315,7 +315,7 @@ spec:
           **Nominal:** For `/api/sql`, the slowest queries clients run over HTTP.
 
           WebSocket upgrades are left out: their time is the handshake, not the session.
-        id: 1033
+        id: 1046
         links: []
         title: HTTP Response Time (p99)
         vizConfig:
@@ -373,7 +373,7 @@ spec:
           **Nominal:** Close to balancerd's `pgwire` rate on _Balancer -> Connection Outcomes_. Each SQL connection is one connection at each hop.
 
           environmentd's `error` is any connection that ended in an error, whichever side caused it, so it does not match balancerd's.
-        id: 1035
+        id: 1048
         links: []
         title: SQL Connections Completed
         vizConfig:
@@ -431,7 +431,7 @@ spec:
           **Degraded:** A `user` count that climbs and never settles usually means a client is opening connections and never closing them; cross-check whether query activity rose to match, or whether connections are just accumulating idle.
 
           Environment-scoped — the cluster/replica selectors don't narrow it.
-        id: 1034
+        id: 1047
         links: []
         title: Open Sessions
         vizConfig:
@@ -490,7 +490,7 @@ spec:
           **Nominal:** 1 everywhere, all the time.
 
           **Degraded:** A pod at 0 passed its high watermark. It keeps its connections and rejoins at its low watermark.
-        id: 1017
+        id: 1030
         links: []
         title: Taking New Connections by Pod
         vizConfig:
@@ -603,7 +603,7 @@ spec:
           **Degraded:** A pod at its **high watermark** leaves the load balancer's rotation and takes no new connections until it falls to its **low watermark**. A pod at its **limit** refuses connections outright.
 
           The limit and the watermarks are the same on every pod.
-        id: 1016
+        id: 1029
         links: []
         title: Open Connections Against the Limit
         vizConfig:
@@ -697,7 +697,7 @@ spec:
           **Degraded:** A sudden drop for `pgwire` while clients did not change means something is cutting sessions short: an environmentd restart, or a load balancer idle timeout shorter than the clients expect.
 
           Measured from one second up, so connections shorter than that all read as one second.
-        id: 1021
+        id: 1034
         links: []
         title: Connection Lifetime
         vizConfig:
@@ -755,7 +755,7 @@ spec:
           **Nominal:** A shutdown notice each time a pod is replaced.
 
           **Degraded:** `failed to connect to upstream server` is environmentd refusing or not answering. Lines about the connection limit or the watermarks mark a pod running out of room.
-        id: 1022
+        id: 1035
         links: []
         title: Warnings and Errors
         vizConfig:
@@ -819,7 +819,7 @@ spec:
           **Nominal:** Roughly even. The load balancer in front spreads new connections across the pods.
 
           **Degraded:** One pod holding most of them is normal for a while after a pod restarts, because existing connections stay where they are. A lasting imbalance usually means the load balancer is not routing to every pod.
-        id: 1014
+        id: 1027
         links: []
         title: Open Connections by Pod
         vizConfig:
@@ -878,7 +878,7 @@ spec:
           **Nominal:** All `success`.
 
           **Degraded:** `error` is a connection balancerd or environmentd could not serve. The client's own failures, such as a wrong password or a dropped network, are `success` here.
-        id: 1013
+        id: 1026
         links: []
         title: Connection Outcomes
         vizConfig:
@@ -953,7 +953,7 @@ spec:
           **Nominal:** Zero for both.
 
           **Degraded:** **Connection limit:** a pod was full and refused the connection. More balancerd replicas, or a higher limit, are the fixes. **Timed out before routing:** a connection did not finish its setup in time. Usually clients that open a connection and send nothing, such as a port scanner or a misconfigured health check.
-        id: 1018
+        id: 1031
         links: []
         title: Refused Connections
         vizConfig:
@@ -1069,7 +1069,7 @@ spec:
           **Nominal:** Steady, with p99 a small multiple of p50.
 
           **Degraded:** A p99 far above p50 is a few slow connections rather than a slow balancerd, often clients on a slow network finishing TLS. Compare with _Time to Reach environmentd_.
-        id: 1019
+        id: 1032
         links: []
         title: Connection Setup Quantiles
         vizConfig:
@@ -1160,7 +1160,7 @@ spec:
           **Nominal:** A small part of the setup time, because both run in the same cluster.
 
           **Degraded:** environmentd is slow to accept connections: busy, starting up, or on an overloaded node. Failed attempts are not timed; they are on _Overview -> Connection Error Ratio_.
-        id: 1020
+        id: 1033
         links: []
         title: Time to Reach environmentd
         vizConfig:
@@ -1218,7 +1218,7 @@ spec:
           **Nominal:** Zero or close to it. Each connection spends a few milliseconds here.
 
           **Degraded:** Connections are stuck during setup: waiting on a slow client's startup message, or on a lookup. Connections that stay too long are closed and counted on _Refused Connections_.
-        id: 1015
+        id: 1028
         links: []
         title: Connections Not Yet Routed
         vizConfig:
@@ -1277,7 +1277,7 @@ spec:
           **Nominal:** Low and bursty. `401` from `api` is an expired sign-in, and `404` is a stale link or a bookmark.
 
           **Degraded:** A steady `401` stream means something keeps calling the API with credentials it does not have, such as a script or a forgotten browser tab.
-        id: 1027
+        id: 1040
         links: []
         title: Client Errors by Location
         vizConfig:
@@ -1335,7 +1335,7 @@ spec:
           **Nominal:** `waiting` (idle keep-alive connections) is most of them. `reading` and `writing` are requests in flight.
 
           `active` is the total of the other three.
-        id: 1025
+        id: 1038
         links: []
         title: Client Connections by State
         vizConfig:
@@ -1395,7 +1395,7 @@ spec:
           **Degraded:** Access lines show the request and its status. nginx's own `[error]` lines follow with the reason, such as `connect() failed` or `upstream timed out` for the hop to balancerd.
 
           Load balancer and Kubernetes health checks are left out.
-        id: 1030
+        id: 1043
         links: []
         title: Server Errors
         vizConfig:
@@ -1465,7 +1465,7 @@ spec:
           **The median time to serve a console request, by location.**
 
           **Nominal:** Milliseconds for `app` and `static`. `api` is the median query.
-        id: 1028
+        id: 1041
         links: []
         title: Response Time (p50)
         vizConfig:
@@ -1533,7 +1533,7 @@ spec:
           **Degraded:** `app` and `static` slow together is the console pod: check its CPU on the Materialize Environment Overview dashboard, under _Kubernetes Workloads_.
 
           Measured in buckets up to 10 seconds, so anything slower reads as 10.
-        id: 1029
+        id: 1042
         links: []
         title: Response Time (p99)
         vizConfig:
@@ -1591,7 +1591,7 @@ spec:
           **Nominal:** Zero.
 
           **Degraded:** `502` and `504` from `api`: nginx could not reach balancerd, or it timed out. Check _Overview -> Connection Error Ratio_ next. `5xx` from `app` or `static` is the console pod itself.
-        id: 1026
+        id: 1039
         links: []
         title: Server Errors by Location
         vizConfig:
@@ -1659,7 +1659,7 @@ spec:
           **Nominal:** Mostly `2xx` and `3xx`. Some `4xx` is normal: a session that expired gets `401` until the user signs in again.
 
           **Degraded:** Any `5xx`. See _Server Errors by Location_.
-        id: 1023
+        id: 1036
         links: []
         title: Requests by Status Class
         vizConfig:
@@ -1717,7 +1717,7 @@ spec:
           **Nominal:** One each time someone opens the shell or a page that streams results.
 
           Each one is also an `https` connection on balancerd, open for as long as the session.
-        id: 1024
+        id: 1037
         links: []
         title: WebSocket Sessions Opened
         vizConfig:
@@ -1742,6 +1742,1144 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
+          version: ""
+    lb-addresses:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"})
+                    format: table
+                    instant: true
+                    qryType: 2
+                    query: |
+                      max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"})
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations:
+            - group: organize
+              kind: Transformation
+              spec:
+                options:
+                  excludeByName:
+                    Time: true
+                    Value: true
+                    __name__: true
+                  indexByName:
+                    hostname: 2
+                    ip: 1
+                    service: 0
+        description: |-
+          **The environment's LoadBalancer Services, and the address each was given.**
+
+          **Nominal:** One for balancerd and one for the console, where the deployment exposes them through Kubernetes. The AWS Terraform wrappers make their Network Load Balancer in Terraform instead, so there are none on those installs.
+
+          **Degraded:** A Service with no address has not been given a load balancer yet. That is normal for a minute after it is created, and a fault after several: subnets missing their tags, no free public addresses, or a controller without permission.
+        id: 1013
+        links: []
+        title: Load Balancer Addresses
+        vizConfig:
+          group: table
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  align: auto
+                  filterable: true
+                  inspect: false
+                noValue: No LoadBalancer Service in this environment. The AWS wrappers make their Network Load Balancer outside Kubernetes, so it has no row here; its provider row is below.
+              overrides: []
+            options:
+              cellHeight: sm
+              footer:
+                countRows: false
+                reducer: []
+                show: false
+              frameIndex: 0
+              showHeader: true
+              showTypeIcons: false
+          version: ""
+    lb-aws-healthy:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (target_group) (
+                        label_replace(
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: "{{target_group}}"
+                    qryType: 1
+                    query: |
+                      min by (target_group) (
+                        label_replace(
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **balancerd and console pods passing the Network Load Balancer's health check, per target group, at the worst moment of the last five minutes.**
+
+          **Nominal:** One target per pod: the balancerd pods in `pgwire` and `http`, and the console pods in `console`.
+
+          **Unhealthy:** **Zero is a target group the load balancer has nowhere to send.** An NLB whose targets are all unhealthy sends to all of them anyway, so connections may still work, but a check that never passes means the check itself is wrong: its port or path, or a security group that does not admit it.
+
+          CloudWatch publishes health only per target group, so this needs the target groups pulled beside the load balancer.
+        id: 1014
+        links: []
+        title: Healthy Targets
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No target group of this environment is pulled. CloudWatch publishes health only per target group, so list the pgwire, http and console target groups beside the load balancer in values.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#AB0003"
+                    value: null
+                  - color: "#F19903"
+                    value: 1
+                  - color: "#A2F49B"
+                    value: 1
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-aws-new:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_new_flow_count_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      ) / 60
+                    legendFormat: "{{load_balancer}}"
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_new_flow_count_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **New connections per second through the Network Load Balancer, over the newest whole minute CloudWatch has published.**
+
+          **Nominal:** The rate clients connect at. Health checks are not counted.
+
+          **Degraded:** Connections arriving here and missing from balancerd's _Balancer -> Connection Outcomes_ are lost between the two.
+        id: 1018
+        links: []
+        title: New Connections
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-aws-open:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_active_flow_count_average[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: "{{load_balancer}}"
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_active_flow_count_average[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections open through the Network Load Balancer in front of this environment, averaged over the newest minute.**
+
+          **Nominal:** Close to balancerd's _Overview -> Open Connections_, plus any console connections.
+
+          Kept only for a load balancer whose target groups are pulled too, because those are what name the environment.
+        id: 1017
+        links: []
+        title: Open Connections
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-aws-resets:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_client_reset_count_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: client {{load_balancer}}
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_client_reset_count_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_target_reset_count_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: target {{load_balancer}}
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_target_reset_count_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_elb_reset_count_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: load balancer {{load_balancer}}
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_elb_reset_count_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **TCP resets through the Network Load Balancer in the last five minutes, by which side sent them.**
+
+          **Nominal:** Some from clients, which close connections abruptly all the time. Few or none from targets or the load balancer.
+
+          **Degraded:** **Target** resets come from balancerd or the console: a pod restarting, or balancerd refusing a connection. **Load balancer** resets are the NLB itself: a connection idle past its timeout, or a target that went away. A pooled SQL client that drops its connections every 350 seconds is meeting the NLB's idle timeout, and needs TCP keepalives.
+
+          Five-minute totals that end at the pull, so read them as "any", not "how many".
+        id: 1016
+        links: []
+        title: Connection Resets (per 5 min)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-aws-throughput:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_processed_bytes_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      ) / 60
+                    legendFormat: "{{load_balancer}}"
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_processed_bytes_sum[15m])
+                          and on (dimension_LoadBalancer)
+                          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Bytes per second through the Network Load Balancer, both directions together, over the newest whole minute.**
+
+          **Nominal:** Follows query results: most of it is data leaving Materialize.
+        id: 1019
+        links: []
+        title: Throughput
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-aws-unhealthy:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (target_group) (
+                        label_replace(
+                          last_over_time(aws_networkelb_un_healthy_host_count_maximum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: "{{target_group}}"
+                    qryType: 1
+                    query: |
+                      max by (target_group) (
+                        label_replace(
+                          last_over_time(aws_networkelb_un_healthy_host_count_maximum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+                          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **balancerd and console pods failing the Network Load Balancer's health check, per target group, at the worst moment of the last five minutes.**
+
+          **Nominal:** Zero.
+
+          **Degraded:** A pod here that Kubernetes reports Ready is one the load balancer cannot check: usually the network between them, or a check aimed at the wrong port. balancerd fails its check on purpose while it is over its high watermark; _Balancer -> Taking New Connections by Pod_ says when.
+        id: 1015
+        links: []
+        title: Unhealthy Targets
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#A2F49B"
+                    value: null
+                  - color: "#FEDA8B"
+                    value: 1
+                  - color: "#FDB366"
+                    value: 3.25
+                  - color: "#F67E4B"
+                    value: 5.5
+                  - color: "#DD3D2D"
+                    value: 7.75
+                  - color: "#A50026"
+                    value: 10
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-azure-backends:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (service) (
+                        (last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m]) == bool 100)
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      )
+                    legendFormat: "{{service}} healthy"
+                    qryType: 1
+                    query: |
+                      sum by (service) (
+                        (last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m]) == bool 100)
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      count by (service) (
+                        last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m])
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      )
+                    legendFormat: "{{service}} total"
+                    qryType: 1
+                    query: |
+                      count by (service) (
+                        last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m])
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Backends behind each of the environment's load balancer frontends, and how many passed every health probe in the last five minutes.**
+
+          **Nominal:** Healthy equals the number of nodes running that Service's pods, and total is every node in the pool. An AKS load balancer's backends are nodes, and the Materialize Services set `externalTrafficPolicy: Local`, so a node passes the probe only while it runs a balancerd or console pod.
+
+          **Degraded:** Fewer healthy nodes than pods is a node the load balancer cannot probe. Zero healthy is a frontend with nowhere to send.
+        id: 1022
+        links: []
+        title: Nodes Passing the Health Probe
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-azure-new:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (service) (
+                        last_over_time(azure_microsoft_network_loadbalancers_syncount_total_count{dimensionDirection="In"}[15m])
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      ) / 60
+                    legendFormat: "{{service}}"
+                    qryType: 1
+                    query: |
+                      sum by (service) (
+                        last_over_time(azure_microsoft_network_loadbalancers_syncount_total_count{dimensionDirection="In"}[15m])
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **New connections per second arriving at each of the environment's load balancer frontends, from the SYN packets Azure counts.**
+
+          **Nominal:** The rate clients connect at.
+        id: 1023
+        links: []
+        title: New Connections by Service
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-azure-throughput:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (service) (
+                        last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="In"}[15m])
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      ) / 60
+                    legendFormat: "{{service}} in"
+                    qryType: 1
+                    query: |
+                      sum by (service) (
+                        last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="In"}[15m])
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (service) (
+                        last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="Out"}[15m])
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      ) / 60
+                    legendFormat: "{{service}} out"
+                    qryType: 1
+                    query: |
+                      sum by (service) (
+                        last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="Out"}[15m])
+                        * on (dimensionFrontendIPAddress) group_left (service)
+                        label_replace(
+                          max by (service, ip) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"}),
+                          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Bytes per second through each of the environment's load balancer frontends, by Service and direction.**
+
+          **Nominal:** Follows query results: most of it leaves Materialize.
+        id: 1024
+        links: []
+        title: Throughput by Service
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-gcp-packets:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (service) (
+                        (
+                          (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[10m])
+                          or
+                          (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[10m])
+                        )
+                        * on (forwarding_rule_name) group_left (service)
+                        label_replace(
+                          max by (service, uid) (kube_service_info{namespace=~"$mzNamespaceList"}),
+                          "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+                        )
+                      ) / 60
+                    legendFormat: "{{service}} in"
+                    qryType: 1
+                    query: |
+                      sum by (service) (
+                        (
+                          (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[10m])
+                          or
+                          (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[10m])
+                        )
+                        * on (forwarding_rule_name) group_left (service)
+                        label_replace(
+                          max by (service, uid) (kube_service_info{namespace=~"$mzNamespaceList"}),
+                          "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (service) (
+                        (
+                          (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[10m])
+                          or
+                          (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[10m])
+                        )
+                        * on (forwarding_rule_name) group_left (service)
+                        label_replace(
+                          max by (service, uid) (kube_service_info{namespace=~"$mzNamespaceList"}),
+                          "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+                        )
+                      ) / 60
+                    legendFormat: "{{service}} out"
+                    qryType: 1
+                    query: |
+                      sum by (service) (
+                        (
+                          (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[10m])
+                          or
+                          (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[10m])
+                        )
+                        * on (forwarding_rule_name) group_left (service)
+                        label_replace(
+                          max by (service, uid) (kube_service_info{namespace=~"$mzNamespaceList"}),
+                          "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Packets per second through each of the environment's load balancers, by Service and direction.**
+
+          **Nominal:** Follows client traffic. Cloud Monitoring publishes no health or connection counts for these load balancers, so traffic is the whole of the provider's view.
+
+          **Degraded:** Packets arriving with none leaving usually means the load balancer has no backend to send them to: check that the balancerd and console pods are Ready.
+
+          Cloud Monitoring publishes a minute only when it carried traffic, so an idle load balancer has gaps rather than zeros.
+        id: 1020
+        links: []
+        title: Packets by Service
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                unit: pps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-gcp-throughput:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (service) (
+                        (
+                          (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[10m])
+                          or
+                          (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[10m])
+                        )
+                        * on (forwarding_rule_name) group_left (service)
+                        label_replace(
+                          max by (service, uid) (kube_service_info{namespace=~"$mzNamespaceList"}),
+                          "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+                        )
+                      ) / 60
+                    legendFormat: "{{service}} in"
+                    qryType: 1
+                    query: |
+                      sum by (service) (
+                        (
+                          (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[10m])
+                          or
+                          (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[10m])
+                        )
+                        * on (forwarding_rule_name) group_left (service)
+                        label_replace(
+                          max by (service, uid) (kube_service_info{namespace=~"$mzNamespaceList"}),
+                          "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (service) (
+                        (
+                          (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[10m])
+                          or
+                          (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[10m])
+                        )
+                        * on (forwarding_rule_name) group_left (service)
+                        label_replace(
+                          max by (service, uid) (kube_service_info{namespace=~"$mzNamespaceList"}),
+                          "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+                        )
+                      ) / 60
+                    legendFormat: "{{service}} out"
+                    qryType: 1
+                    query: |
+                      sum by (service) (
+                        (
+                          (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[10m])
+                          or
+                          (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[10m])
+                        )
+                        * on (forwarding_rule_name) group_left (service)
+                        label_replace(
+                          max by (service, uid) (kube_service_info{namespace=~"$mzNamespaceList"}),
+                          "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Bytes per second through each of the environment's load balancers, by Service and direction.**
+
+          **Nominal:** Follows query results: most of it leaves Materialize.
+
+          As with packets, an idle minute is a gap rather than a zero.
+        id: 1021
+        links: []
+        title: Throughput by Service
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    lb-no-pull:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: Why this tab has no provider load balancer rows on it.
+        id: 1025
+        links: []
+        title: No Load Balancer Metrics
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **No load balancer metrics are being collected.**
+
+                The table above is what Kubernetes knows about the load balancer in front of balancerd and the console: that it exists, and its address. What it is doing — whether its targets are healthy, what it carries, who resets its connections — is published by the cloud provider, and the gateway pulls it only for load balancers named in values.
+
+                - **AWS**: list the Network Load Balancer's ARN, with its pgwire, http and console target groups' ARNs, under `pipeline.metrics.provider.cloudwatch.nlb.loadBalancers`. From the Terraform wrappers, that is `provider_metrics.network_load_balancers`.
+                - **Google Cloud**: list the balancerd and console forwarding rules under `pipeline.metrics.provider.gcp.loadBalancing.forwardingRules`, or the cluster's VPC network under `.networks`. From the Terraform wrappers, that is `provider_metrics.forwarding_rules`.
+                - **Azure**: list the AKS cluster under `pipeline.metrics.provider.azure.loadBalancer.clusters`. From the Terraform wrappers, that is `provider_metrics.load_balancer_clusters`.
+
+                The Cloud Provider Metrics page of the documentation has the details.
+              mode: markdown
           version: ""
     overview-accepting:
       kind: Panel
@@ -2798,6 +3936,187 @@ spec:
                   layout:
                     kind: AutoGridLayout
                     spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-addresses
+                      maxColumnCount: 1
+                      rowHeightMode: standard
+                  title: Load Balancer Services
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cloudwatch_nlb
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-aws-healthy
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-aws-unhealthy
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-aws-resets
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-aws-open
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-aws-new
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-aws-throughput
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: AWS Network Load Balancer
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: gcp_load_balancing
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-gcp-packets
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-gcp-throughput
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Google Cloud Load Balancer
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: azure_load_balancer
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-azure-backends
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-azure-new
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-azure-throughput
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: Azure Load Balancer
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: notMatches
+                          value: cloudwatch_nlb|gcp_load_balancing|azure_load_balancer
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: lb-no-pull
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: No Load Balancer Metrics
+          title: Load Balancer
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
                       columnWidthMode: wide
                       fillScreen: false
                       items:
@@ -3213,3 +4532,32 @@ spec:
       label: Advanced Metric Filter
       name: metricAdhoc
       skipUrlSync: false
+  - kind: QueryVariable
+    spec:
+      allowCustomValue: true
+      current:
+        text: ""
+        value: ""
+      definition: label_values(up{provider_pull=~".+"}, provider_pull)
+      description: Load balancer and NAT gateway pulls the gateway was found to be running
+      hide: hideVariable
+      includeAll: true
+      label: Network Pulls
+      multi: true
+      name: cloudNetworkPullList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(up{provider_pull=~".+"}, provider_pull)
+          qryType: 1
+          query: label_values(up{provider_pull=~".+"}, provider_pull)
+        version: v0
+      refresh: never
+      regex: ""
+      regexApplyTo: value
+      skipUrlSync: true
+      sort: alphabeticalAsc

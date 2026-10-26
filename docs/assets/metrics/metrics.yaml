@@ -1506,15 +1506,27 @@
   - infra.autoscaling.pods.unscheduled_by_namespace
   - infra.autoscaling.pods.unscheduled_list
 - importance: recommended
+  labels:
+  - namespace
+  name: kube_service_info
+  usage:
+  - materialize.ingress.lb.gcp.packets
+  - materialize.ingress.lb.gcp.throughput
+- importance: recommended
   labels: []
   name: kube_service_spec_type
   usage:
   - infra.net.k8s.services.by_type
 - importance: recommended
-  labels: []
+  labels:
+  - namespace
   name: kube_service_status_load_balancer_ingress
   usage:
   - infra.net.cloud.load_balancers
+  - materialize.ingress.lb.addresses
+  - materialize.ingress.lb.azure.backends
+  - materialize.ingress.lb.azure.new_connections
+  - materialize.ingress.lb.azure.throughput
 - importance: recommended
   labels: []
   name: kubeproxy_network_programming_duration_seconds_bucket
@@ -4657,41 +4669,55 @@
   name: aws_networkelb_active_flow_count_average
   usage:
   - infra.net.cloud.nlb.open_connections
+  - materialize.ingress.lb.aws.open_connections
 - importance: diagnostic
-  labels: []
+  labels:
+  - dimension_TargetGroup
   name: aws_networkelb_healthy_host_count_minimum
   usage:
   - infra.net.cloud.nlb.healthy_targets
+  - materialize.ingress.lb.aws.healthy_targets
+  - materialize.ingress.lb.aws.new_connections
+  - materialize.ingress.lb.aws.open_connections
+  - materialize.ingress.lb.aws.resets
+  - materialize.ingress.lb.aws.throughput
 - importance: diagnostic
   labels: []
   name: aws_networkelb_new_flow_count_sum
   usage:
   - infra.net.cloud.nlb.new_connections
+  - materialize.ingress.lb.aws.new_connections
 - importance: diagnostic
   labels: []
   name: aws_networkelb_processed_bytes_sum
   usage:
   - infra.net.cloud.nlb.throughput
+  - materialize.ingress.lb.aws.throughput
 - importance: diagnostic
   labels: []
   name: aws_networkelb_tcp_client_reset_count_sum
   usage:
   - infra.net.cloud.nlb.resets
+  - materialize.ingress.lb.aws.resets
 - importance: diagnostic
   labels: []
   name: aws_networkelb_tcp_elb_reset_count_sum
   usage:
   - infra.net.cloud.nlb.resets
+  - materialize.ingress.lb.aws.resets
 - importance: diagnostic
   labels: []
   name: aws_networkelb_tcp_target_reset_count_sum
   usage:
   - infra.net.cloud.nlb.resets
+  - materialize.ingress.lb.aws.resets
 - importance: diagnostic
-  labels: []
+  labels:
+  - dimension_TargetGroup
   name: aws_networkelb_un_healthy_host_count_maximum
   usage:
   - infra.net.cloud.nlb.unhealthy_targets
+  - materialize.ingress.lb.aws.unhealthy_targets
 - importance: diagnostic
   labels: []
   name: aws_rds_burst_balance_minimum
@@ -4865,17 +4891,20 @@
   name: azure_microsoft_network_loadbalancers_bytecount_total_bytes
   usage:
   - infra.net.cloud.azure_lb.throughput
+  - materialize.ingress.lb.azure.throughput
 - importance: diagnostic
   labels: []
   name: azure_microsoft_network_loadbalancers_dipavailability_average_count
   usage:
   - infra.net.cloud.azure_lb.healthy_backends
+  - materialize.ingress.lb.azure.backends
 - importance: diagnostic
   labels:
   - dimensionDirection
   name: azure_microsoft_network_loadbalancers_syncount_total_count
   usage:
   - infra.net.cloud.azure_lb.new_connections
+  - materialize.ingress.lb.azure.new_connections
 - importance: diagnostic
   labels: []
   name: azure_microsoft_network_loadbalancers_vipavailability_average_count
@@ -5015,21 +5044,25 @@
   name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count
   usage:
   - infra.net.cloud.gcp_lb.throughput
+  - materialize.ingress.lb.gcp.throughput
 - importance: diagnostic
   labels: []
   name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count
   usage:
   - infra.net.cloud.gcp_lb.packets
+  - materialize.ingress.lb.gcp.packets
 - importance: diagnostic
   labels: []
   name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count
   usage:
   - infra.net.cloud.gcp_lb.throughput
+  - materialize.ingress.lb.gcp.throughput
 - importance: diagnostic
   labels: []
   name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count
   usage:
   - infra.net.cloud.gcp_lb.packets
+  - materialize.ingress.lb.gcp.packets
 - importance: diagnostic
   labels: []
   name: stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count
@@ -5055,21 +5088,25 @@
   name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count
   usage:
   - infra.net.cloud.gcp_lb.throughput
+  - materialize.ingress.lb.gcp.throughput
 - importance: diagnostic
   labels: []
   name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count
   usage:
   - infra.net.cloud.gcp_lb.packets
+  - materialize.ingress.lb.gcp.packets
 - importance: diagnostic
   labels: []
   name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count
   usage:
   - infra.net.cloud.gcp_lb.throughput
+  - materialize.ingress.lb.gcp.throughput
 - importance: diagnostic
   labels: []
   name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count
   usage:
   - infra.net.cloud.gcp_lb.packets
+  - materialize.ingress.lb.gcp.packets
 - importance: diagnostic
   labels: []
   name: stackdriver_monitoring_api_calls_total

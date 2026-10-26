@@ -101,13 +101,17 @@ It needs both a metrics and a logs datasource.
 
 ### Materialize Ingress (Balancer, Console) (`env-ingress`)
 
-How users reach a Materialize environment, across four tabs: Overview, Balancer, Console, and SQL and HTTP API.
-Every SQL client, HTTP API call, and console session enters through balancerd, and the console's own API calls pass through the console's nginx first.
+How users reach a Materialize environment, across five tabs: Overview, Load Balancer, Balancer, Console, and SQL and HTTP API.
+Every SQL client, HTTP API call, and console session arrives through a cloud load balancer and enters balancerd, and the console's own API calls pass through the console's nginx first.
 Both forward to environmentd, which serves the SQL and HTTP APIs.
 Each tab measures one of those hops with its rate, errors, and latency, so you can tell which hop a complaint like "users can't connect" or "the console is slow" belongs to.
 
 The Overview tab's verdict row reads each hop's error ratio and latency, and whether every balancerd pod is taking new connections.
 Below it, balancerd and the console sit side by side for each signal: when both fail, look behind them at environmentd, and when one fails, look at that one.
+The Load Balancer tab shows the address Kubernetes gave each LoadBalancer Service, and what the cloud provider reports about the load balancer in front of this environment:
+target health and connection resets on AWS, health probes on Azure, and traffic on all three clouds.
+Its provider rows appear when the gateway pulls that load balancer's metrics, and otherwise the tab says how to turn the pull on;
+see [Cloud Provider Metrics](../../metrics/collecting/cloud-provider-metrics/).
 The Balancer tab adds each pod's connections against its limit and watermarks, the time spent reaching environmentd, and balancerd's warnings.
 The Console tab splits every request by what it asked for, the page itself or an API call, and carries nginx's server-error lines.
 The SQL and HTTP API tab is environmentd's side of the same traffic, including the SQL the console runs.

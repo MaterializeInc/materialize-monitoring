@@ -9,11 +9,12 @@
 
 //! The ingress dashboard: how users reach a Materialize environment.
 //!
-//! Every SQL client, HTTP API call and console session enters through
-//! balancerd, and the console's own API calls pass through its nginx first. Both
-//! forward to environmentd, which serves the SQL and HTTP APIs. This dashboard
-//! measures each hop with rate, errors and duration, so that "users cannot
-//! connect" or "the console is slow" can be placed on one of them.
+//! Every SQL client, HTTP API call and console session arrives through a cloud
+//! load balancer and enters balancerd, and the console's own API calls pass
+//! through its nginx first. Both forward to environmentd, which serves the SQL
+//! and HTTP APIs. This dashboard measures each hop with rate, errors and
+//! duration, so that "users cannot connect" or "the console is slow" can be
+//! placed on one of them.
 //!
 //! # Who it is for
 //!
@@ -34,15 +35,23 @@
 //! not, so on older versions those panels are empty and their empty-state text
 //! says why. The SQL and HTTP API tab reads environmentd alone, and is complete
 //! on every supported version.
+//!
+//! # The load balancer is optional
+//!
+//! Its rows read the gateway's provider pulls, which are opt-in, so they render
+//! on `infra-net`'s pull detection with a fallback that says how to turn one
+//! on. See [`load_balancer`].
 
 pub mod api;
 pub mod balancer;
 pub mod console;
+pub mod load_balancer;
 pub mod overview;
 pub mod theme;
 
 use mzmon_lib::grafana::context::DashboardScope;
 use mzmon_lib::grafana::dashboard::{CursorSync, Dashboard, Resource};
+use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{Layout, Tab};
 use mzmon_lib::grafana::panel::NoValue;
 use mzmon_lib::grafana::{dashboard, folder::Folder, tags, variable};
@@ -107,16 +116,26 @@ pub(crate) fn no_environmentd() -> NoValue {
 
 /// The tabs, in order.
 ///
-/// Overview answers "can users get in". Balancer comes next because every
-/// connection passes through it, the console's included. Console is the
-/// browser's side, and the SQL and HTTP API tab is where both lead.
+/// Overview answers "can users get in". The rest follow a connection from the
+/// outside in: the cloud load balancer, then balancerd, which every connection
+/// passes through, the console's included. Console is the browser's side, and
+/// the SQL and HTTP API tab is where both lead.
 fn tabs(q: &Queries) -> Vec<Tab> {
     vec![
         Tab::new(theme::OVERVIEW.title).rows(overview::rows(q)),
+        Tab::new(theme::LOAD_BALANCER.title).rows(load_balancer::rows(q)),
         Tab::new(theme::BALANCER.title).rows(balancer::rows(q)),
         Tab::new(theme::CONSOLE.title).rows(console::rows(q)),
         Tab::new(theme::API.title).rows(api::rows(q)),
     ]
+}
+
+/// [`variable::dependency_scoped`], plus `infra-net`'s hidden detection of the
+/// gateway's load balancer pulls, which the Load Balancer tab's rows render on.
+fn variables() -> Vec<dashboardv2::VariableKind> {
+    let mut variables = variable::dependency_scoped();
+    variables.push(variable::cloud_network_pulls());
+    variables
 }
 
 /// The export target this crate produces.
@@ -139,15 +158,16 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
     Dashboard::new(NAME, TITLE)
         .description(
             "How users reach a Materialize environment.\n\n\
-             Rate, errors and latency at each hop: balancerd, which every SQL \
-             and HTTPS connection passes through; the console, which serves the \
-             web app and forwards its API calls; and environmentd's SQL and HTTP \
-             APIs behind them both.",
+             Rate, errors and latency at each hop: the cloud load balancer, \
+             where its metrics are pulled; balancerd, which every SQL and HTTPS \
+             connection passes through; the console, which serves the web app \
+             and forwards its API calls; and environmentd's SQL and HTTP APIs \
+             behind them both.",
         )
         .tags([tags::MATERIALIZE, tags::MZMON, tags::content::NETWORK])
         .folder(Folder::Materialize)
         .cursor_sync(CursorSync::Crosshair)
-        .variables(variable::dependency_scoped())
+        .variables(variables())
         .metadata_annotation(
             "monitoring.materialize.cloud/min-mz-version",
             MIN_MZ_VERSION,
@@ -271,5 +291,100 @@ mod tests {
         assert!(json.contains("HealthChecker"), "{json}");
         assert!(json.contains("kube-probe"), "{json}");
         assert!(q.failures().is_empty(), "{:?}", q.failures());
+    }
+
+    /// Every PromQL expression on the dashboard.
+    fn expressions() -> Vec<String> {
+        let json = serde_json::to_value(&built().spec.elements).expect("serialize");
+        let mut out = Vec::new();
+        for element in json.as_object().expect("elements").values() {
+            let Some(queries) = element
+                .pointer("/spec/data/spec/queries")
+                .and_then(serde_json::Value::as_array)
+            else {
+                continue;
+            };
+            for query in queries {
+                if let Some(expr) = query
+                    .pointer("/spec/query/spec/expr")
+                    .and_then(serde_json::Value::as_str)
+                {
+                    out.push(expr.to_string());
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn each_provider_row_renders_on_its_own_pull() {
+        use crate::grafana::infra_networking::cloud::{AWS_LB, AZURE_LB, GCP_LB};
+        let conditions = test_support::variable_conditioned_rows(&built());
+        let mut when: Vec<_> = conditions
+            .iter()
+            .filter(|(_, op, _)| op == "matches")
+            .map(|(_, _, value)| value.as_str())
+            .collect();
+        when.sort();
+        let mut expected = vec![AWS_LB, AZURE_LB, GCP_LB];
+        expected.sort();
+        assert_eq!(when, expected, "{conditions:?}");
+    }
+
+    #[test]
+    fn exactly_one_fallback_covers_every_load_balancer_pull() {
+        // A fallback that missed a pull would render its note beside that
+        // pull's rows.
+        let conditions = test_support::variable_conditioned_rows(&built());
+        let fallbacks: Vec<_> = conditions
+            .iter()
+            .filter(|(_, op, _)| op == "notMatches")
+            .collect();
+        assert_eq!(fallbacks.len(), 1, "{fallbacks:?}");
+        assert_eq!(fallbacks[0].2, load_balancer::load_balancer_pulls());
+    }
+
+    #[test]
+    fn the_pull_rows_render_when_every_pull_is_selected() {
+        test_support::assert_row_conditions_can_read_all(&built());
+    }
+
+    #[test]
+    fn every_load_balancer_query_is_tied_to_the_environment() {
+        // The pulled series carry no environment, and the pull may name
+        // Grafana's load balancer too. Each provider reaches the environment
+        // through its own join: target group names on AWS, Services in the
+        // environment's namespace on Google Cloud and Azure.
+        let mut found = 0;
+        for expr in expressions() {
+            if expr.contains("aws_networkelb_") {
+                found += 1;
+                assert!(
+                    expr.contains(
+                        r#"dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-"#
+                    ),
+                    "{expr}"
+                );
+            }
+            if expr.contains("stackdriver_") || expr.contains("azure_microsoft_network_") {
+                found += 1;
+                assert!(expr.contains("$mzNamespaceList"), "{expr}");
+            }
+        }
+        assert!(found > 0, "no load balancer queries found");
+    }
+
+    #[test]
+    fn the_fallback_says_how_to_turn_each_pull_on() {
+        for key in [
+            "cloudwatch.nlb.loadBalancers",
+            "loadBalancing.forwardingRules",
+            "azure.loadBalancer.clusters",
+            "provider_metrics.network_load_balancers",
+            "provider_metrics.forwarding_rules",
+            "provider_metrics.load_balancer_clusters",
+        ] {
+            assert!(load_balancer::NO_LOAD_BALANCER.contains(key), "{key}");
+        }
     }
 }
