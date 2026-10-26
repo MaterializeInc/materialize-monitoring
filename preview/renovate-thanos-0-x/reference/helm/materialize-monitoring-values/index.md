@@ -1058,7 +1058,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-environmentd.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
     <tr>
@@ -1106,7 +1106,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide.
+      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide. The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-sql.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
     <tr>
@@ -1145,11 +1145,59 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics The default `metricRelabelings` fill `cluster_id` and `replica_id` from the `cluster.environmentd.materialize.cloud/cluster-id` and `replica-id` labels copied here, so a replacement keeps both.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-clusterd.yaml`, or its series lack the canonical labels.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for balancerd
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect balancerd's connection metrics (`mz_balancer_*`).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 []</pre>
@@ -1227,7 +1275,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-materialize-operator.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
   </tbody>

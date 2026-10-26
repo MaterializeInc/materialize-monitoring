@@ -2803,6 +2803,22 @@ Without it, the four endpoints' `up` and `scrape_*` series are one series writte
 A copy of the `PodMonitor` that replaces its endpoints keeps that relabeling on each of them.
 The Classic and Google Cloud Managed Prometheus configs scrape each path as its own job, so their `job` label already differs.
 
+### Canonical label names {#canonical-labels}
+
+Materialize spells some ids and names more than one way.
+A cluster id is `instance_id` on most environmentd metrics, `compute_cluster_id` on the SQL endpoints, and `cluster_environmentd_materialize_cloud_cluster_id` on clusterd metrics.
+Every scrape config here copies each of those labels into one canonical name, such as `cluster_id`, on every Materialize monitor, and keeps the original beside it.
+A copy is made only where the canonical label is absent, so a value Materialize emits under the canonical name is never overwritten.
+A copy adds no series.
+
+Each canonical label is copied from the following labels, as [`labels.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/packages/prometheus-scrapers/labels.yaml) lists them:
+
+{{< list-label-aliases >}}
+
+Write new queries against the canonical names, because the labels they're copied from are deprecated.
+A copy of a `PodMonitor` that replaces its endpoints keeps their `metricRelabelings`, or its series lack the canonical labels.
+clusterd's `up` and `scrape_*` series carry only the long-form ids, because metric relabeling doesn't apply to them.
+
 ### Which Prometheus Distribution Am I Using?
 
 An easy way to check if you are using Prometheus Operator is to see
@@ -14621,7 +14637,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-environmentd.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
     <tr>
@@ -14669,7 +14685,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide.
+      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide. The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-sql.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
     <tr>
@@ -14708,11 +14724,59 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics The default `metricRelabelings` fill `cluster_id` and `replica_id` from the `cluster.environmentd.materialize.cloud/cluster-id` and `replica-id` labels copied here, so a replacement keeps both.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-clusterd.yaml`, or its series lack the canonical labels.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for balancerd
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect balancerd's connection metrics (`mz_balancer_*`).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 []</pre>
@@ -14790,7 +14854,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-materialize-operator.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
   </tbody>
@@ -25804,7 +25868,8 @@ Where a query hits one of the following gaps, the `datadogQuery` carries the clo
 This also removes the pod-start grace periods from several alerts, where the monitor's new-data delay stands in.
 
 **`label_replace`.** Datadog can't rename or extract a tag value.
-An id-to-name join through `mz_cluster_info` or `mz_object_info` needs the id tag to have the same name on both sides, which it doesn't on every family yet.
+An id-to-name join through `mz_cluster_info` or `mz_object_info` needs the id tag to have the same name on both sides.
+The shipped monitors give it one: every series carries the canonical id, such as `cluster_id` beside `instance_id`, so a join written against the [canonical names](../../../../metrics/scraping/#canonical-labels) matches.
 `materialize.environmentd.pod_pending_critical` also loses its generation-suffix deduplication.
 
 **Joins Datadog can't match.** An [arithmetic join](#arithmetic-joins) needs the matched tags to have the same name on both sides, and one side's tags to be a subset of the other's.
@@ -26769,7 +26834,8 @@ Note `mz_compute_peek_duration_seconds_*` has `instance_id` but **no `replica_id
 
 The shipped monitors copy only the `*_cluster_id` / `*_replica_id` pair through `podTargetLabels`.
 The other long-form labels come from Cloud's blanket pod-label `labelmap` and are absent on self-managed.
-[A Label Vocabulary for Materialize Metrics](../../design-docs/20261002-metric-label-vocabulary/) proposes replacing both families with one set of canonical names.
+The shipped monitors also copy both families' ids into the canonical `cluster_id` and `replica_id`, as designed in [A Label Vocabulary for Materialize Metrics](../../design-docs/20261002-metric-label-vocabulary/).
+Registry queries keep matching the family names until [DEP-355](https://linear.app/materializeinc/issue/DEP-355) moves them all at once.
 
 Examples: `mz_arrangement_maintenance_seconds_total`, `mz_compute_replica_history_dataflow_count`, and (expected,
 unverified — no sources/sinks in the test env) `mz_source_*` / `mz_sink_*`.
@@ -28765,11 +28831,11 @@ The key is `environment_id` from `Materialize.spec.environmentId`, with `environ
 Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/).
 The work lands in two passes, ordered so that consumers never observe the second.
 This repository's monitors first fill the canonical labels where they are empty, and Materialize then adopts the names upstream behind a label lint.
+The monitors already fill the initial aliases, rendered from `packages/prometheus-scrapers/labels.yaml`.
 
 | Where | Items, all ⬜ |
 |---|---|
-| Design | [DEP-346] review and acceptance |
-| This repository | [DEP-349] `labels.yaml` and generated relabel rules · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-361] `mz_environment_info` through kube-state-metrics · [DEP-360] retire the aliases after 30 days |
+| This repository | [DEP-349] target aliases, and reserved moves and drops, rendered from `labels.yaml` · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-361] `mz_environment_info` through kube-state-metrics · [DEP-360] retire the aliases after 30 days |
 | Upstream | [DEP-348] the orchestratord pod label and `mz_environment_info` · [DEP-347] clusterd's `cluster="compute"` · [DEP-352] the label lint · [DEP-353] `/metrics/public` replica labels · [DEP-357] `cluster_id` · [DEP-358] entity-qualified `_info` labels · [DEP-359] the `cluster` and `honeycomb` const labels · [DEP-362] shard, persist-name and version renames · [DEP-363] an optional `spec.environmentName` · [DEP-364] wallclock lag as a histogram · [DEP-365] `environment_id` on reconciliation metrics |
 
 ### Metrics contract (upstream dependency)
@@ -28789,10 +28855,11 @@ environmentd has to emit those families natively before that path can retire.
 | Native hydration and frontier / freshness signals | The Hydration and Freshness drilldowns | ⛓️ |
 | Label-family harmonization | Joins across families. Now carried by [Metric label standardization](#metric-label-standardization) | ⬜ |
 | Latency histograms for `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle, which publish only a mean | Tail latency on `env-persist` and `env-consensus` | ⬜ |
-| `balancerd` and `console` metrics on self-managed. None reach Thanos today | Dashboards for the two components users connect through | ⬜ |
+| A latency histogram for `balancerd`, and any metrics at all from `console` | Duration panels for the two components users connect through | ⬜ |
 
-`balancerd` does publish connection metrics, whose semantics [CLO-282] questions.
-Its half of the last row may therefore be a scrape gap rather than an upstream one.
+The chart scrapes `balancerd`'s connection metrics, but their `status` label can't carry an error rate until [CLO-282] lands.
+The console serves no metrics, and its nginx access log records no request time.
+Its rate and errors come from that log and from environmentd's `application_name="web_console"` series.
 
 ### Materialize-side emission
 
@@ -28800,7 +28867,7 @@ Its half of the last row may therefore be a scrape gap rather than an upstream o
 |---|---|
 | [CLO-55] Reconciliation timing, stalls, errors and successes for the k8s controllers, and an optional reconcile timeout | ⬜ |
 | [CLO-299] The controller crate logs every failed reconcile at error level, transient Kubernetes errors included | ⬜ |
-| [CLO-282] What `mz_balancer_connection_status{status="success"}` means for a refused connection | ⬜ |
+| [CLO-282] `mz_balancer_connection_status` counts a refused connection as `success` and a client's dropped connection as `error` | ⬜ |
 | [CLO-256] Reduce less-essential environmentd metrics on very large environments | ⬜ |
 | [CLO-255] Compress the metrics endpoint's responses | ⬜ |
 | [DEP-221] Move the scrapers into the `materialize-operator` chart, which should own them | ⬜ |
@@ -28931,7 +28998,7 @@ Its adapters are therefore the ones this repository can test end to end.
 | [DEP-225] Sizing (Day 1) | ⬜ |
 | [DEP-378] `infra-pods`: one workload's health, logs and metrics | ⬜ |
 | [DEP-379] Meta-monitoring for Grafana, Thanos and Alertmanager | ⬜ |
-| [DEP-115] A Datadog dashboard set, starting with `env-top`, downloaded from the docs site as JSON. Names join from the `_info` series by formula arithmetic after [DEP-349]. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | ⬜ |
+| [DEP-115] A Datadog dashboard set, starting with `env-top`, downloaded from the docs site as JSON. Names join from the `_info` series by formula arithmetic, on the canonical labels the monitors carry. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | ⬜ |
 | [DEP-217] A Google Cloud Monitoring dashboard set | ⬜ |
 | [DEP-218] A Honeycomb dashboard set | ⬜ |
 | [DEP-325] `infra-*` variables that reference variables those dashboards never define | ⬜ |
@@ -29004,7 +29071,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 | [Call-Home](../design-docs/20260917-call-home-self-managed/) | Ready | [Call-home from self-managed](#call-home-from-self-managed) |
 | [Monitoring Materialize's External Dependencies](../design-docs/20260920-external-dependency-monitoring/) | Ready | [External dependencies](#external-dependencies) |
 | [Secret Filtering](../design-docs/20260924-log-secret-filtering/) | Ready | [Secret filtering](#secret-filtering) |
-| [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/) | Draft | [Metric label standardization](#metric-label-standardization) |
+| [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/) | Ready | [Metric label standardization](#metric-label-standardization) |
 | Cost visibility with OpenCost | Draft, in review as [#365] | [Collection](#collection) |
 | [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | Draft | [Dashboards](#dashboards) |
 
@@ -29107,7 +29174,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-339]: https://linear.app/materializeinc/issue/DEP-339
 [DEP-340]: https://linear.app/materializeinc/issue/DEP-340
 [DEP-345]: https://linear.app/materializeinc/issue/DEP-345
-[DEP-346]: https://linear.app/materializeinc/issue/DEP-346
 [DEP-347]: https://linear.app/materializeinc/issue/DEP-347
 [DEP-348]: https://linear.app/materializeinc/issue/DEP-348
 [DEP-349]: https://linear.app/materializeinc/issue/DEP-349
@@ -37175,7 +37241,9 @@ If a fleet ever needs both keys at once, the fragment can render either, and the
 | Recording rules | Whatever reads the recorded name | Rejected. A rename needs no arithmetic, and a recorded copy doubles the series. The [external-dependency design](../20260920-external-dependency-monitoring/#a-normalized-contract-with-flavor-native-passthrough) chose recording rules because its mapping needed ratios and unit conversion; this one does not |
 | `label_replace` at query time | One query | Today's answer. It puts the cost on every consumer, which is the cost being removed |
 
-The per-target placement has one cost: a rule appears in every monitor that needs it.
+The per-target placement has one cost: a rule appears in every monitor.
+Every alias renders on every Materialize monitor, whether or not that monitor's process emits it.
+A rule whose alias is absent does nothing, and the rule keeps working if Materialize moves a metric from one process to another.
 Generating the rules from one file makes the replication free, and keeps a cross-cutting rule from becoming the one monitor that forgot it.
 
 ### Four rule forms
@@ -37234,41 +37302,37 @@ It adds index entries and bytes per series, which is the whole of the cost.
 ### One vocabulary file
 
 The vocabulary lives in `packages/prometheus-scrapers/labels.yaml`, owned by the Prometheus Scrapers component, because that is the component whose output changes.
-A sketch of the shape:
+Its schema is `packages/mzmon-lib/schemas/scrape/mzmon-labels.schema.yaml`.
+The file holds only what something reads, in the following shape:
 
 ```yaml
-reserved:
-  - name: cluster
-    claimedBy: [this stack, gmp, mimir-ha, kube-prometheus]
+monitors: [environmentd, clusterd, materialize-operator]
 canonical:
   - name: cluster_id
-    meaning: Materialize cluster id
-    joinsTo: mz_clusters.id
-    valuePattern: "[su][0-9]+"
-    fromPodLabel: cluster.environmentd.materialize.cloud/cluster-id
+    values: "[su][0-9]+"
     aliases:
       - label: instance_id
-        deprecatedIn: "x.y.z"
-      - label: compute_instance
-        deprecatedIn: "x.y.z"
+        deprecatedIn: "1.6.0"
       - label: cluster_environmentd_materialize_cloud_cluster_id
-        deprecatedIn: "x.y.z"
-  - name: server_name
-    aliases:
-      - label: cluster
-        reserved: true
+        deprecatedIn: "1.6.0"
   - name: cluster_name
     aliases:
       - label: name
         families: [mz_cluster_info]
-drop:
-  - label: honeycomb
+        deprecatedIn: "1.6.0"
 ```
 
-The transpiler renders each monitor's rules from it, in every flavor.
-The query-registry build reads it to reject a query matching on a retired alias or on a reserved label.
-The docsite renders the customer-facing label contract from it.
-The upstream lint reads the `reserved` and `canonical` sections.
+`gen-scrape-configs` renders every alias into every endpoint of the monitors that `monitors` names, in every flavor.
+The docsite renders the list of canonical labels from it.
+
+The following fields wait for their first reader:
+
+- `meaning` and `joinsTo`, for the customer-facing label contract in [DEP-356](https://linear.app/materializeinc/issue/DEP-356).
+- `reserved` and `drop`, until more than clusterd's `cluster` move and `honeycomb` drop in [DEP-347](https://linear.app/materializeinc/issue/DEP-347) need rendering.
+- `fromPodLabel`, with target-alias rendering in [DEP-349](https://linear.app/materializeinc/issue/DEP-349).
+
+The query-registry check in DEP-356 reads the same file to reject a query matching on a retired alias or on a reserved label.
+The upstream lint in [DEP-352](https://linear.app/materializeinc/issue/DEP-352) takes a published copy rather than reading this repository.
 
 ### The three flavors
 
@@ -37413,10 +37477,11 @@ Tracked in the same milestone, gated on design acceptance in [DEP-346](https://l
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **`labels.yaml`** and its schema under `packages/mzmon-lib/schemas/` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | The single source every other row generates from | **Blocking** |
+| **`labels.yaml`** and its schema under `packages/mzmon-lib/schemas/`, with the aliases and their deprecation versions ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)) | The single source every other row generates from | ✅ Done |
 | **The `cluster` move and the `honeycomb` drop** on the clusterd monitor ([DEP-347](https://linear.app/materializeinc/issue/DEP-347)) | A live defect with no consumer to migrate. Can land by hand ahead of the generator | **Blocking**, and first |
-| **Target-alias rendering** in the transpiler, per flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | `podTargetLabels` cannot rename, so clusterd's ids cannot reach `cluster_id` without it | **Blocking** for clusterd |
-| **Metric-alias, reserved-move and drop rendering** into `metricRelabelings` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | The aliases themselves | **Blocking** |
+| **Metric-alias rendering** into `metricRelabelings` on every Materialize monitor, in every flavor ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)) | The aliases themselves. clusterd's ids reach `cluster_id` and `replica_id` from the long-form target labels, which works in every flavor | ✅ Done |
+| **Target-alias rendering** in the transpiler, per flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | `podTargetLabels` cannot rename, so once the long-form keys leave it, clusterd's ids reach `cluster_id` only through a target alias | **Blocking** for retiring the long-form ids |
+| **Reserved-move and drop rendering** from `labels.yaml` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | Generates the reserved moves and drops once there is more than DEP-347's one of each | Not blocking |
 | **GMP render refuses what it cannot express** — dropped target relabelings and rules on protected labels ([DEP-350](https://linear.app/materializeinc/issue/DEP-350)) | A silently dropped rule is a flavor-specific empty dashboard | **Blocking** for the GMP flavor |
 | **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
 | **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)) | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |
@@ -37584,7 +37649,7 @@ The following table lists what a Datadog dashboard set can build on, as of 2026-
 | Name enrichment for Datadog | ❌ Missing | `mzClusterName`, `mzObjectName`, and `mzEnvironmentName` attach only to `promQL` templates, where `packages/mzmon-lib/src/query/enrich.rs` renders them as `group_left` joins. No `datadogQuery` takes a `functions` list |
 | Arithmetic matching, as a known Datadog behavior | ⚠️ Noted | [Datadog Translations](../../queries/datadog/) records that Datadog matches tags automatically in arithmetic between two queries, and uses it for nothing yet |
 | `_info` series at Datadog's default tier | ⚠️ Partial | `mz_cluster_info` is in the tier allowlist, because a query names it directly. `mz_object_info` and `mz_replica_info` are reached only through enrichment functions, which tier extraction treats as the identity, so a destination below `all` drops them |
-| Matching tag names on both sides of a join | ❌ Missing | `mz_cluster_info` carries `cluster_id` and `name`, and the series it names carry `instance_id`. `mz_object_info` carries `global_id`, and the series it names carry `collection_id`. [DEP-349](https://linear.app/materializeinc/issue/DEP-349) relabels both sides to canonical names |
+| Matching tag names on both sides of a join | ✅ Shipped | The shipped monitors copy each alias into its canonical name on both sides: `cluster_id` beside `instance_id`, `cluster_name` beside `name` on `mz_cluster_info`, and `collection_id` beside `global_id` on `mz_object_info` ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)) |
 | `cluster` on Datadog series | ❌ Missing | Remote-write destinations get it from `external_labels`, and the Google Cloud chain fills it from `CLUSTER_NAME`. The Datadog chain doesn't |
 | `environment_id` on series | ⬜ Designed | In the label-vocabulary design. [DEP-351](https://linear.app/materializeinc/issue/DEP-351) waits on the orchestratord pod label in [DEP-348](https://linear.app/materializeinc/issue/DEP-348) |
 | A Datadog backend in `packages/dashboards` | ⬜ Not started | `packages/dashboards/src/lib.rs` already places one beside `grafana/` |
@@ -37746,9 +37811,8 @@ The join needs the following from the series that reach Datadog:
 Matching tag names
 : Datadog can't rename a tag inside a query, so an id has to carry the same tag name on both sides.
   A pair that doesn't is rejected with HTTP 400, so the mismatch shows up as an error rather than as wrong names.
-  Today it doesn't: `mz_cluster_info` names a cluster `cluster_id` where the series it names say `instance_id`, and `mz_object_info` says `global_id` where they say `collection_id`.
-  The relabel rules in [DEP-349](https://linear.app/materializeinc/issue/DEP-349) copy each alias to its canonical name in the shipped monitors, on both sides.
-  Names in Datadog wait on them.
+  Materialize's own labels don't: `mz_cluster_info` names a cluster `cluster_id` where the series it names say `instance_id`, and `mz_object_info` says `global_id` where they say `collection_id`.
+  The shipped monitors copy each alias to its canonical name on both sides ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)), so a join written against the canonical names matches.
 
 The environment's tags on both sides
 : Both queries group by `cluster` and the environment's id, so the match can't cross environments.
@@ -37813,7 +37877,8 @@ Its registry entries already carry Datadog templates, and the other dashboards l
 Field Engineering sets the order after that, as DEP-115 recommends.
 
 The first set shows ids.
-Names are a **Should**, and they wait on the canonical labels from [DEP-349](https://linear.app/materializeinc/issue/DEP-349), so each panel gains them when its labels match.
+Names are a **Should**.
+The canonical labels they join on ship with [DEP-421](https://linear.app/materializeinc/issue/DEP-421), so each panel gains its names once [the join's behavior](#how-the-arithmetic-join-behaves) is settled for its widget.
 
 The `datadogQuery` templates were written for completeness, and the PromQL is the tested half.
 Each panel's Datadog query is checked against live data when it's ported.
@@ -37907,7 +37972,7 @@ None of it is ticketed yet.
 | **`cluster` on the Datadog chain**, filled from `CLUSTER_NAME` where it's absent | Environment scoping across Kubernetes clusters, and the Kubernetes-cluster identity every other destination already has | **Blocking** for organizations with several Kubernetes clusters |
 | **`functions` on `datadogQuery` templates**, and a Datadog rendering context that turns the enrichment functions into a hidden `_info` query and a formula factor | How a panel asks for names | Blocking for names |
 | **Tier extraction that counts the `_info` family an enrichment function reads** | Puts `mz_object_info` and `mz_replica_info` in the tier list | Blocking for names |
-| **Canonical label names on both sides of a join**, from [DEP-349](https://linear.app/materializeinc/issue/DEP-349) | The join matches on tag names | Blocking for names. Owned by the label-vocabulary design |
+| **Canonical label names on both sides of a join**, from [DEP-421](https://linear.app/materializeinc/issue/DEP-421) | The join matches on tag names | ✅ Done |
 | **The placeholder under `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/datadog/`** removed | No chart carries Datadog JSON | ✅ Done in this change |
 
 ## Testing
@@ -37940,7 +38005,7 @@ The following tests cover the design:
 - [x] ~~**Can a template variable on the `_info` query's name tag filter the joined result?**~~ Yes. A filter on a tag that only the `_info` query carries filters the panel.
 - [ ] **Which ids does each `_info` family not cover?** A joined panel loses their series. Transient collections, and environments older than the release that added `mz_object_info`, are the candidates to check.
 - [ ] **Is the custom-metric cost of the `_info` series acceptable at the default tier**, or do they belong in a tier an operator opts into?
-- [ ] **Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?
+- [x] ~~**Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?~~ **Neither.** [DEP-421](https://linear.app/materializeinc/issue/DEP-421) ships the canonical labels on every destination, Datadog included.
 - [ ] **When are reference tables worth adding?** [Other ways to get names](#reference-tables) lists the conditions.
 - [ ] **What duplication moves the panel list into a shared layer?** Two or more dashboards whose manifests match panel for panel would be a clear signal, and the threshold is a judgment call.
 - [ ] **Does CI get a Datadog test organization** for the acceptance job and the live-data checks?
