@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# The balancerd PodMonitor.
+#
+# balancerd's Service exposes only its pgwire and http ports, so the monitor
+# selects pods and names the internal-http container port directly.
+suite: balancerd PodMonitor
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+templates:
+  - templates/scrapers/monitor-materialize-balancerd.yaml
+tests:
+  - it: should render one PodMonitor on balancerd's internal-http port
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: PodMonitor
+      - equal:
+          path: metadata.name
+          value: mzmon-materialize-balancerd
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: balancerd
+      - equal:
+          path: spec.podMetricsEndpoints
+          value:
+            - port: internal-http
+              path: /metrics
+              relabelings: []
+
+  - it: should apply the selector override
+    set:
+      materialize.balancerd.serviceMonitor.selector:
+        matchLabels:
+          app: balancerd
+    asserts:
+      - equal:
+          path: spec.selector
+          value:
+            matchLabels:
+              app: balancerd
+
+  - it: should render nothing when disabled
+    set:
+      materialize.balancerd.serviceMonitor.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
