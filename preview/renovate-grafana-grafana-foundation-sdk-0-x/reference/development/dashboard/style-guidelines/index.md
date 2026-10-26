@@ -558,9 +558,14 @@ Note `mz_compute_peek_duration_seconds_*` has `instance_id` but **no `replica_id
 
 - `cluster_environmentd_materialize_cloud_cluster_id`
 - `cluster_environmentd_materialize_cloud_replica_id`
-- `cluster_environmentd_materialize_cloud_replica_role`
-- `cluster_environmentd_materialize_cloud_size` / `*_scale` / `*_workers`
+- `cluster_environmentd_materialize_cloud_replica_role` (Cloud only)
+- `cluster_environmentd_materialize_cloud_size` / `*_scale` / `*_workers` (Cloud only)
 - `worker_id`
+
+The shipped monitors copy only the `*_cluster_id` / `*_replica_id` pair through `podTargetLabels`.
+The other long-form labels come from Cloud's blanket pod-label `labelmap` and are absent on self-managed.
+The shipped monitors also copy both families' ids into the canonical `cluster_id` and `replica_id`, as designed in [A Label Vocabulary for Materialize Metrics](../../design-docs/20261002-metric-label-vocabulary/).
+Registry queries keep matching the family names until [DEP-355](https://linear.app/materializeinc/issue/DEP-355) moves them all at once.
 
 Examples: `mz_arrangement_maintenance_seconds_total`, `mz_compute_replica_history_dataflow_count`, and (expected,
 unverified — no sources/sinks in the test env) `mz_source_*` / `mz_sink_*`.

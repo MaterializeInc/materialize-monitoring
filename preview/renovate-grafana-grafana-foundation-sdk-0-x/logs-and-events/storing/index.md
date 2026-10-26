@@ -75,7 +75,7 @@ Only the binding mechanism differs. Pick your provider:
 </span></span><span style="display:flex;"><span>  }]
 </span></span><span style="display:flex;"><span>}</span></span></code></pre></div><blockquote class='book-hint info'>
 <p>The default assumes the release is installed into <code>monitoring</code>.
-Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, the <code>:sub</code> is <code>system:serviceaccount:loki:loki</code> instead.</p></blockquote><p>A trust policy scoped to the wrong namespace/ServiceAccount is what produces <code>STS: AssumeRoleWithWebIdentity … 403 AccessDenied</code>.</p>
+Under <a href="../../operating/production-best-practices/stack-wide/#namespace-layout">split namespaces</a>, the <code>:sub</code> is <code>system:serviceaccount:loki:loki</code> instead.</p></blockquote><p>A trust policy scoped to the wrong namespace/ServiceAccount is what produces <code>STS: AssumeRoleWithWebIdentity … 403 AccessDenied</code>.</p>
 <p><em>Permissions policy</em> — least-privilege to the single bucket + <code>/loki/*</code>. <code>DeleteObject</code> is required (compactor retention/compaction and the delete-requests store).</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Version&#34;</span>: <span style="color:#e6db74">&#34;2012-10-17&#34;</span>,
@@ -104,7 +104,7 @@ Under <a href="../../operating/production-best-practices/#namespace-layout">spli
 </span></span></span><span style="display:flex;"><span>  --role<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;roles/iam.workloadIdentityUser&#34;</span> <span style="color:#ae81ff">\
 </span></span></span><span style="display:flex;"><span>  --member<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;serviceAccount:&lt;project&gt;.svc.id.goog[monitoring/loki]&#34;</span></span></span></code></pre></div><blockquote class='book-hint info'>
 <p>The default assumes the release is installed into <code>monitoring</code>.
-Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, use <code>--member=&quot;serviceAccount:&lt;project&gt;.svc.id.goog[loki/loki]&quot;</code> here.</p></blockquote></li>
+Under <a href="../../operating/production-best-practices/stack-wide/#namespace-layout">split namespaces</a>, use <code>--member=&quot;serviceAccount:&lt;project&gt;.svc.id.goog[loki/loki]&quot;</code> here.</p></blockquote></li>
 <li>
 <p>Annotate the ServiceAccount — and set the GCS backend in all four places from <a href="#selecting-the-backend">Selecting the backend</a>, which the annotation alone does not do:</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">loki</span>:
@@ -128,7 +128,7 @@ Under <a href="../../operating/production-best-practices/#namespace-layout">spli
 </ul>
 <blockquote class='book-hint info'>
 <p>The default assumes the release is installed into <code>monitoring</code>.
-Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, the subject is <code>system:serviceaccount:loki:loki</code> instead.</p></blockquote></li>
+Under <a href="../../operating/production-best-practices/stack-wide/#namespace-layout">split namespaces</a>, the subject is <code>system:serviceaccount:loki:loki</code> instead.</p></blockquote></li>
 <li>
 <p>Annotate the ServiceAccount, label the pods so the webhook injects the token, and set the Azure backend in all four places from <a href="#selecting-the-backend">Selecting the backend</a>:</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">loki</span>:
@@ -144,7 +144,7 @@ Under <a href="../../operating/production-best-practices/#namespace-layout">spli
 </div>
 
 > [!INFO]
->   **The token exchange and the object store are both 443 hops** to your cloud's identity and storage endpoints (AWS: STS + S3; GCP: `sts.googleapis.com`/`oauth2.googleapis.com` + GCS; Azure: `login.microsoftonline.com` + Blob). If you enable the Loki NetworkPolicy you must allow that egress (`networkPolicy.externalStorage`), or the credential fetch fails — a *blocked* egress hangs the compactor at startup (a silent connect timeout), while an *allowed* egress with a bad binding returns a fast auth error. See [Operating > Production Best Practices](../../operating/production-best-practices/#11-security--credentials).
+>   **The token exchange and the object store are both 443 hops** to your cloud's identity and storage endpoints (AWS: STS + S3; GCP: `sts.googleapis.com`/`oauth2.googleapis.com` + GCS; Azure: `login.microsoftonline.com` + Blob). If you enable the Loki NetworkPolicy you must allow that egress (`networkPolicy.externalStorage`), or the credential fetch fails — a *blocked* egress hangs the compactor at startup (a silent connect timeout), while an *allowed* egress with a bad binding returns a fast auth error. See [Operating > Production Best Practices](../../operating/production-best-practices/loki/#object-storage-egress).
 
 > [!NOTE]
 >   **Alternatives.** **EKS Pod Identity** is a newer AWS alternative to IRSA (a pod-identity *association*, no `oidc-provider` to manage). **Static keys / connection strings** are the last-resort escape hatch on any cloud — supply them as a Secret consumed by reference, for environments without workload identity.

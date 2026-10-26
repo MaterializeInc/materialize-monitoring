@@ -9,7 +9,12 @@ The dashboards come in two families: those scoped to a Materialize environment (
 The `infra-*` dashboards that watch the monitoring stack itself, rather than anything it collects, are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
-If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
+If you install the dashboards charts, you don't need to download anything.
+Each chart installs every dashboard it carries by default,
+and the [Grafana Operator](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
+`materialize-monitoring-dashboards` carries the `env-*` dashboards,
+`materialize-monitoring-dashboards-meta` carries the dashboards in the **Meta Observability** folder,
+and `materialize-monitoring-dashboards-infra` carries the rest of the `infra-*` dashboards.
 Download them when you are putting them into a Grafana you run yourself; [Importing Dashboards](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/importing/) covers the ways to do that.
 
 ## Formats
@@ -47,7 +52,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-top.json?xxhash=32634134048c665f" download="mz-mon-env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-top.json?xxhash=49ca0f374a896929" download="mz-mon-env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>mz-mon-env-top</code></small>
       </td>
       <td>
@@ -378,7 +383,7 @@ A NAT gateway out of source ports makes a Materialize source stall and reconnect
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-net.json?xxhash=1fb4681ea5f297fc" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-net.json?xxhash=f52b9ba00175c817" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
         <br /><small>UID <code>mz-mon-infra-net</code></small>
       </td>
       <td>

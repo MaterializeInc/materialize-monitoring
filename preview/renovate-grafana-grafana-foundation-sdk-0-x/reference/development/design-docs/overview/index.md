@@ -93,6 +93,20 @@ A new doc starts at Draft.
             <li><strong>status:</strong> Ready</li>
       </ul>
     </li>
+    <li>
+      <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/development/design-docs/20261002-metric-label-vocabulary/">A Label Vocabulary for Materialize Metrics</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-10-21 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Ready</li>
+      </ul>
+    </li>
+    <li>
+      <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/development/design-docs/20261020-datadog-dashboards/">Datadog dashboards from the query registry</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-10-21 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Draft</li>
+      </ul>
+    </li>
 </ul>
 
 

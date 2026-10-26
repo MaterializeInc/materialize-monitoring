@@ -83,7 +83,9 @@ Only then:
 helm uninstall mzmon -n monitoring
 ```
 
-With the Terraform module, the same first step applies before the destroy — the module orders its two releases (the main release is destroyed before the CRDs release), but ordering *within* a release is not something Terraform controls:
+With the Terraform module, the same first step applies before the destroy.
+The module orders its releases: it destroys the dashboards releases, then the main release, then the CRDs release.
+Ordering *within* a release isn't something Terraform controls:
 
 ```bash
 kubectl -n monitoring delete grafanadatasources,grafanamanifests,grafanafolders,grafanas --all

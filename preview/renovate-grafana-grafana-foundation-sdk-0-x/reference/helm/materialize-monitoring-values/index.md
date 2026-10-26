@@ -37,17 +37,17 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.1 |
-| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
+| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.14.0 |
+| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.14.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.1 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.15.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
-| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.47.2 |
+| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.47.3 |
 
 ## Values {#values}
 
@@ -1058,7 +1058,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-environmentd.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
     <tr>
@@ -1106,7 +1106,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide.
+      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide. The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-sql.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
     <tr>
@@ -1145,11 +1145,59 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics The default `metricRelabelings` fill `cluster_id` and `replica_id` from the `cluster.environmentd.materialize.cloud/cluster-id` and `replica-id` labels copied here, so a replacement keeps both.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.clusterd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-clusterd.yaml`, or its series lack the canonical labels.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for balancerd
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect balancerd's connection metrics (`mz_balancer_*`).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 []</pre>
@@ -1227,7 +1275,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults carry `metricRelabelings` that copy label aliases into their canonical names, such as `instance_id` into `cluster_id`. A replacement restates them from `pre-rendered/scrapers/prometheus-operator/podmonitor-materialize-operator.yaml`, or its series lack the canonical labels.
 </td>
     </tr>
   </tbody>
@@ -1914,7 +1962,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "loadBalancer":{"clusters":[]}, "metricImportance":"extended", "natGateway":{"names":[]}, "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "natGateway":{"ids":[]}, "nlb":{"loadBalancers":[]}, "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudNat":{"gateways":[]}, "cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "loadBalancing":{"forwardingRules":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "loadBalancer":{"clusters":[]}, "metricImportance":"extended", "natGateway":{"names":[]}, "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "natGateway":{"ids":[]}, "nlb":{"loadBalancers":[]}, "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudNat":{"gateways":[]}, "cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "loadBalancing":{"forwardingRules":[], "networks":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -1937,8 +1985,11 @@ replacement for it.
 
 **Resources are named, not discovered.** Each service lists the instances
 or buckets to watch, and nothing else is pulled. Tag discovery would find
-every resource in the account and bill for each of them. A provider that is
-enabled with nothing listed fails at render.
+every resource in the account and bill for each of them. Where a resource
+cannot be named in advance, a named scope stands in for it: EKS nodes are
+found by their cluster, AKS node VMs and load balancers by theirs, and
+GCP load balancers by their VPC network. A provider that is enabled with
+nothing listed fails at render.
 
 **Credentials never travel through values.** The pull uses the gateway
 pod's own cloud identity, bound through
@@ -2190,6 +2241,23 @@ characters; `gcloud compute forwarding-rules list` shows them, with
 the Service in each one's description. Each is pulled for the bytes
 and packets it carried in each direction. Cloud Monitoring
 publishes no health for these load balancers.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.loadBalancing<wbr>.networks</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">VPC network names whose passthrough Network Load Balancers to watch, external or internal.
+Every passthrough load balancer whose backends are in a listed
+network is pulled, whoever made it, beside any rule in
+`forwardingRules`. This is the way to reach a rule that cannot be
+named beforehand: GKE names a rule only once it makes it, so a
+LoadBalancer Service the same release creates, such as Grafana's,
+has no name to list. On a network that holds only the cluster, as
+the Terraform wrappers create it, that is the cluster's load
+balancers and nothing else.
 </td>
     </tr>
     <tr>
@@ -2840,15 +2908,17 @@ otelcol.auth.basic "oteldest" {
 
 Where the bundled dashboards are filed.
 
-**The dashboards themselves are not in this chart.** They ship in
-`materialize-monitoring-dashboards`, installed as a release of its own, because
-Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB
-— the rendered set outgrew that and took `helm upgrade` with it.
+**The dashboards themselves are not in this chart.** They ship in three charts
+of their own, one per folder below — `materialize-monitoring-dashboards`,
+`materialize-monitoring-dashboards-infra`, and
+`materialize-monitoring-dashboards-meta` — each installed as a release of its
+own, because Helm stores a release in a Kubernetes Secret and a Secret may not
+exceed 1 MiB, and the rendered set outgrew that and took `helm upgrade` with it.
 
 What stays here is what a dashboard is filed *into*: the `Grafana` instance,
-its datasources, and the folders below. The dashboards chart references the
-folder UIDs this one creates, spelled out in its own values rather than
-discovered, since it cannot see this release.
+its datasources, and the folders below. The dashboards charts reference the
+folder UIDs this one creates, spelled out in their own values rather than
+discovered, since they cannot see this release.
 
 <table class="helm-values">
   <thead>
@@ -2874,8 +2944,8 @@ discovered, since it cannot see this release.
       <td class="helm-value-default"><code>{"allowCrossNamespaceImport":null, "instanceSelector":{}, "resyncPeriod":"5m"}</code></td>
       <td class="helm-value-desc">Settings shared by the Grafana resources this chart creates.
 Named `manifest` from when it also covered the dashboard manifests; those
-moved to `materialize-monitoring-dashboards`, which carries its own copies
-of these under `grafana`. What is left applies to the folders.
+moved to the `materialize-monitoring-dashboards*` charts, which carry their
+own copies of these under `grafana`. What is left applies to the folders.
 </td>
     </tr>
     <tr>
@@ -2891,7 +2961,7 @@ of these under `grafana`. What is left applies to the folders.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift. Whatever this resolves to must also be set as `grafana.instanceSelector` in the dashboards chart, which has no way to read it from here.
+      <td class="helm-value-desc">Non-default label selector for a Grafana-operator Grafana instance. Defaults to the labels on the `Grafana` instance this chart creates (see `connections.grafana.labels`), so the two cannot drift. Whatever this resolves to must also be set as `grafana.instanceSelector` in each dashboards chart, none of which can read it from here.
 </td>
     </tr>
     <tr>
@@ -2964,6 +3034,13 @@ How to talk to a grafana instance
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">connections<wbr>.grafana<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Create the `Grafana` resource that grafana-operator reconciles this chart's folders, datasources, and dashboards into. Turn it off when no grafana-operator acts on this release, or when `dashboards.config.grafana.manifest.instanceSelector` points them at a `Grafana` resource you manage. The chart then creates none, whatever the `mode`, and refuses to render folders or datasources that still select it.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.mode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"bundled"</code></td>
@@ -4276,10 +4353,10 @@ only once the finalizers have been processed, and Helm proceeds from there.
 this release created, by the labels in `connections.grafana.labels` — the
 same ones the resources carry and their `instanceSelector` matches.
 
-That deliberately reaches beyond this release. The dashboards ship as
-`materialize-monitoring-dashboards`, a release of its own whose
-`GrafanaManifest`s carry grafana-operator's finalizer, and nothing in that
-release's teardown runs when this one is being removed. Take the operator
+That deliberately reaches beyond this release. The dashboards ship in the
+`materialize-monitoring-dashboards*` charts, releases of their own whose
+`GrafanaManifest`s carry grafana-operator's finalizer, and nothing in those
+releases' teardown runs when this one is being removed. Take the operator
 away without clearing them and they wedge in `Terminating` with no remover.
 It is still bounded: it cannot reach resources aimed at a Grafana this
 release did not create.
@@ -5639,7 +5716,7 @@ query frontend, and Grafana then shows no Loki rules.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "nginxinc/nginx-unprivileged",
-  "tag": "1.31.6-alpine-slim"
+  "tag": "1.31.7-alpine-slim"
 }</pre>
 </td>
       <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size.
@@ -7939,7 +8016,7 @@ Everything under `grafana.ini` is passed through to Grafana's own config file
 verbatim, so any section Grafana understands can be set here — see the
 `[auth.generic_oauth]` example on that key.
 
-See [Production Best Practices > Grafana](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/#grafana)
+See [Production Best Practices > Grafana](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/grafana/)
 for the full checklist.
 
 <table class="helm-values">
