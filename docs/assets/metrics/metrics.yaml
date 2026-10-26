@@ -725,6 +725,7 @@
   - materialize.connections.adapter.command_rate
   - materialize.connections.adapter.commands_by_application
   - materialize.console.errors
+  - materialize.ingress.api.console_commands
 - importance: essential
   labels:
   - path
@@ -934,9 +935,11 @@
   labels:
   - application_name
   - instance_id
+  - materialize_cloud_organization_name
   name: mz_time_to_first_row_seconds_bucket
   usage:
   - materialize.console.query_latency
+  - materialize.ingress.api.console_query_latency
 - importance: essential
   labels: []
   name: mz_views_query_successful
@@ -1832,6 +1835,87 @@
   - materialize.compute.arrangements.records.user
 - importance: recommended
   labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_accepting
+  usage:
+  - materialize.ingress.balancer.accepting_by_pod
+  - materialize.ingress.overview.accepting
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_active
+  usage:
+  - materialize.ingress.balancer.capacity
+  - materialize.ingress.balancer.open_by_pod
+  - materialize.ingress.overview.open_connections
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_duration_seconds_bucket
+  usage:
+  - materialize.ingress.balancer.lifetime
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_high_watermark
+  usage:
+  - materialize.ingress.balancer.capacity
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_limit
+  usage:
+  - materialize.ingress.balancer.capacity
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_low_watermark
+  usage:
+  - materialize.ingress.balancer.capacity
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_rejected_total
+  usage:
+  - materialize.ingress.balancer.refused
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_setup_duration_seconds_bucket
+  usage:
+  - materialize.ingress.balancer.setup_time
+  - materialize.ingress.overview.connection_setup
+  - materialize.ingress.overview.connection_setup_p99
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - status
+  name: mz_balancer_connection_status
+  usage:
+  - materialize.ingress.balancer.outcomes
+  - materialize.ingress.overview.balancer_error_ratio
+  - materialize.ingress.overview.balancer_errors_by_protocol
+  - materialize.ingress.overview.connections_by_protocol
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_pre_resolved_connection_active
+  usage:
+  - materialize.ingress.balancer.waiting_for_backend
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_pre_resolved_timeout_total
+  usage:
+  - materialize.ingress.balancer.refused
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_upstream_connect_duration_seconds_bucket
+  usage:
+  - materialize.ingress.balancer.upstream_connect
+- importance: recommended
+  labels:
   - compute_cluster_id
   - compute_replica_id
   - compute_replica_name
@@ -1891,12 +1975,66 @@
   - materialize.compute.dataflows.count_by_worker
 - importance: recommended
   labels:
+  - materialize_cloud_organization_name
+  - source
+  name: mz_connection_status
+  usage:
+  - materialize.ingress.api.pgwire_connections
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_console_http_connections
+  usage:
+  - materialize.ingress.console.connections
+- importance: recommended
+  labels:
+  - location
+  - materialize_cloud_organization_name
+  name: mz_console_http_request_duration_seconds_bucket
+  usage:
+  - materialize.ingress.console.response_p50
+  - materialize.ingress.console.response_p99
+  - materialize.ingress.overview.console_page_p99
+  - materialize.ingress.overview.console_response_time
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - status
+  name: mz_console_http_requests_total
+  usage:
+  - materialize.ingress.console.by_status_class
+  - materialize.ingress.console.client_errors
+  - materialize.ingress.console.server_errors
+  - materialize.ingress.console.websockets
+  - materialize.ingress.overview.console_error_ratio
+  - materialize.ingress.overview.console_errors_by_location
+  - materialize.ingress.overview.console_request_rate
+  - materialize.ingress.overview.console_requests_by_location
+- importance: recommended
+  labels:
   - instance_id
   - materialize_cloud_organization_name
   - replica_id
   name: mz_dataflow_elapsed_seconds_total
   usage:
   - materialize.compute.dataflows.elapsed_rate
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - path
+  - source
+  name: mz_http_request_duration_seconds_bucket
+  usage:
+  - materialize.ingress.api.http_response_p99
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - source
+  - status
+  name: mz_http_requests_total
+  usage:
+  - materialize.ingress.api.http_errors
+  - materialize.ingress.api.http_requests
 - importance: recommended
   labels:
   - materialize_cloud_organization_name

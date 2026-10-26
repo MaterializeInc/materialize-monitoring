@@ -122,6 +122,7 @@ The Chart column names the `materialize-monitoring-dashboards` chart that ships 
 | `infra-cloud` | `grafana/infra_cloud/` | `mz-mon-infra-cloud` | Infrastructure Cloud Provider | `-infra` |
 | `infra-autoscaling` | `grafana/infra_autoscaling/` | `mz-mon-infra-autoscaling` | Infrastructure Autoscaling | `-infra` |
 | `infra-karpenter` | `grafana/infra_karpenter/` | `mz-mon-infra-karpenter` | Karpenter | `-infra` |
+| `env-ingress` | `grafana/env_ingress/` | `mz-mon-env-ingress` | Materialize Ingress (Balancer, Console) | (main) |
 
 Each is rendered to `charts/<chart>/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -623,6 +624,36 @@ Queries are `packages/queries/infra-karpenter.yaml`, hinted `extended`.
 - **The quirks are in the style guide**: only the leader publishes `karpenter_*`, `_count` names that are gauges, the
   `service` label arriving as `exported_service`, `offering_available` reading zero for half its series at rest, and
   AWS SDK 412s being dry runs.
+
+## `env-ingress` tabs
+
+How users reach an environment, one hop per tab. Queries are `packages/queries/materialize-ingress.yaml`, hinted
+`recommended`, and the variable set is `variable::dependency_scoped`: balancerd and the console belong to no cluster.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Balancer | `balancer.rs` |
+| 3 | Console | `console.rs` |
+| 4 | SQL and HTTP API | `api.rs` |
+
+These things about it are not re-derivable by reading the modules:
+
+- **Most of it reads metrics Materialize had not shipped when it was built.** balancerd's three timing histograms and
+  its server-fault `status` are MaterializeInc/materialize#40192, and every `mz_console_*` family is #40193. Each
+  panel on one of them says so in its empty state, and `REC_MZ_VERSION` carries a TODO to name the release.
+- **balancerd counts a connection when it closes**, so its rates trail long SQL sessions; Overview's verdict leads
+  with ratios and open connections for that reason.
+- **The console's `location` label is the nginx block**: `app` and `static` are the console pod, and `api` is
+  the hop to balancerd and everything behind it, query time included. The page-load stat reads `app|static` only.
+- **nginx does not time WebSocket upgrades.** The SQL shell's latency is on the SQL and HTTP API tab, from
+  `mz_time_to_first_row_seconds{application_name="web_console_shell"}`.
+- **Every `mz_http_*` query reads `source="external"`**, the listener balancerd forwards to; a test holds it. The
+  operator's calls and the metric scrapes would swamp the client traffic otherwise.
+- **The console's error feed drops health checks first.** On the AWS reference install the load balancer's checks
+  are nearly every console line, and half are answered `400`.
+- **The console scrape is `podmonitor-console.yaml`**, beside `podmonitor-balancerd.yaml`. Both are PodMonitors
+  because neither Service exposes `internal-http`, and an operator that predates the console's port yields no target.
 
 ## Notes on the trickier panels
 

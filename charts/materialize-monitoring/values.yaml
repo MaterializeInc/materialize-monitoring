@@ -780,6 +780,18 @@ materialize:
       targetLabels: []
       # -- Override for default metric endpoints
       metricEndpoints: []
+  console:
+    # -- ServiceMonitor/PodMonitor configuration for the console
+    serviceMonitor:
+      # -- Deploy a PodMonitor to collect the console's request metrics (`mz_console_*`).
+      # Console pods from Materialize versions that don't declare an `internal-http` port yield no target.
+      enabled: true
+      # -- Override for default selector
+      selector: {}
+      # -- Override for default labels to copy from the pod into metrics
+      targetLabels: []
+      # -- Override for default metric endpoints
+      metricEndpoints: []
   # -- Where Materialize runs: `self-managed` or `cloud`. Decides the prefix the alerting rules expect on SQL-backed metrics (`mz_`, or Cloud's `v2_mz_`).
   deploymentMode: self-managed
 
