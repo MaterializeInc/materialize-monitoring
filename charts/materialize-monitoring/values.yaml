@@ -769,6 +769,17 @@ materialize:
       # `pre-rendered/scrapers/prometheus-operator/podmonitor-clusterd.yaml`, or its series
       # lack the canonical labels.
       metricEndpoints: []
+  balancerd:
+    # -- ServiceMonitor/PodMonitor configuration for balancerd
+    serviceMonitor:
+      # -- Deploy a PodMonitor to collect balancerd's connection metrics (`mz_balancer_*`).
+      enabled: true
+      # -- Override for default selector
+      selector: {}
+      # -- Override for default labels to copy from the pod into metrics
+      targetLabels: []
+      # -- Override for default metric endpoints
+      metricEndpoints: []
   # -- Where Materialize runs: `self-managed` or `cloud`. Decides the prefix the alerting rules expect on SQL-backed metrics (`mz_`, or Cloud's `v2_mz_`).
   deploymentMode: self-managed
 

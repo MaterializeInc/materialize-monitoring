@@ -42,6 +42,9 @@ materialize:
   clusterd:
     serviceMonitor:
       enabled: false
+  balancerd:
+    serviceMonitor:
+      enabled: false
 materialize-operator:
   serviceMonitor:
     enabled: false

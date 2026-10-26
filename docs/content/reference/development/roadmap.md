@@ -165,10 +165,11 @@ environmentd has to emit those families natively before that path can retire.
 | Native hydration and frontier / freshness signals | The Hydration and Freshness drilldowns | ⛓️ |
 | Label-family harmonization | Joins across families. Now carried by [Metric label standardization](#metric-label-standardization) | ⬜ |
 | Latency histograms for `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle, which publish only a mean | Tail latency on `env-persist` and `env-consensus` | ⬜ |
-| `balancerd` and `console` metrics on self-managed. None reach Thanos today | Dashboards for the two components users connect through | ⬜ |
+| A latency histogram for `balancerd`, and any metrics at all from `console` | Duration panels for the two components users connect through | ⬜ |
 
-`balancerd` does publish connection metrics, whose semantics [CLO-282] questions.
-Its half of the last row may therefore be a scrape gap rather than an upstream one.
+The chart scrapes `balancerd`'s connection metrics, but their `status` label can't carry an error rate until [CLO-282] lands.
+The console serves no metrics, and its nginx access log records no request time.
+Its rate and errors come from that log and from environmentd's `application_name="web_console"` series.
 
 ### Materialize-side emission
 
@@ -176,7 +177,7 @@ Its half of the last row may therefore be a scrape gap rather than an upstream o
 |---|---|
 | [CLO-55] Reconciliation timing, stalls, errors and successes for the k8s controllers, and an optional reconcile timeout | ⬜ |
 | [CLO-299] The controller crate logs every failed reconcile at error level, transient Kubernetes errors included | ⬜ |
-| [CLO-282] What `mz_balancer_connection_status{status="success"}` means for a refused connection | ⬜ |
+| [CLO-282] `mz_balancer_connection_status` counts a refused connection as `success` and a client's dropped connection as `error` | ⬜ |
 | [CLO-256] Reduce less-essential environmentd metrics on very large environments | ⬜ |
 | [CLO-255] Compress the metrics endpoint's responses | ⬜ |
 | [DEP-221] Move the scrapers into the `materialize-operator` chart, which should own them | ⬜ |

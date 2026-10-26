@@ -1160,6 +1160,54 @@ Materialize-specific configuration values.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for balancerd
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect balancerd's connection metrics (`mz_balancer_*`).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">materialize<wbr>.deploymentMode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"self-managed"</code></td>
