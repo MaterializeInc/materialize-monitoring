@@ -2143,6 +2143,17 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="kube_service_info">kube_service_info
+        <details>
+            Used labels: namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.ingress.lb.gcp.packets">materialize.ingress.lb.gcp.packets</a></li>
+                <li><a href="../common-queries#materialize.ingress.lb.gcp.throughput">materialize.ingress.lb.gcp.throughput</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="kube_service_spec_type">kube_service_spec_type
         <details>
             <br />
@@ -2154,10 +2165,15 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_service_status_load_balancer_ingress">kube_service_status_load_balancer_ingress
         <details>
+            Used labels: namespace
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.net.cloud.load_balancers">infra.net.cloud.load_balancers</a></li>
+                <li><a href="../common-queries#materialize.ingress.lb.addresses">materialize.ingress.lb.addresses</a></li>
+                <li><a href="../common-queries#materialize.ingress.lb.azure.backends">materialize.ingress.lb.azure.backends</a></li>
+                <li><a href="../common-queries#materialize.ingress.lb.azure.new_connections">materialize.ingress.lb.azure.new_connections</a></li>
+                <li><a href="../common-queries#materialize.ingress.lb.azure.throughput">materialize.ingress.lb.azure.throughput</a></li>
             </ul>
         </details>
     </li>

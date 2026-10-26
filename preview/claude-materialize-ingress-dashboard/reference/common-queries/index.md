@@ -17444,6 +17444,323 @@ first row.
 </span></span></code></pre></div>
   </div>
 </div>
+<h4 id="materialize.ingress.lb.addresses">materialize.ingress.lb.addresses
+  <a class="anchor" href="#materialize.ingress.lb.addresses">#</a>
+</h4>
+The environment&rsquo;s LoadBalancer Services, and the address each was
+given.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.addresses-tabs" id="materialize.ingress.lb.addresses-tab-0" checked>
+  <label for="materialize.ingress.lb.addresses-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, ip, hostname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_status_load_balancer_ingress{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.aws.healthy_targets">materialize.ingress.lb.aws.healthy_targets
+  <a class="anchor" href="#materialize.ingress.lb.aws.healthy_targets">#</a>
+</h4>
+balancerd and console pods passing the Network Load Balancer&rsquo;s health
+check, per target group, at the worst moment of the last five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.aws.healthy_targets-tabs" id="materialize.ingress.lb.aws.healthy_targets-tab-0" checked>
+  <label for="materialize.ingress.lb.aws.healthy_targets-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target_group<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">target_group</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_TargetGroup</span>&#34;, &#34;<span style="color:#e6db74">targetgroup/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.aws.unhealthy_targets">materialize.ingress.lb.aws.unhealthy_targets
+  <a class="anchor" href="#materialize.ingress.lb.aws.unhealthy_targets">#</a>
+</h4>
+balancerd and console pods failing the Network Load Balancer&rsquo;s health
+check, per target group, at the worst moment of the last five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.aws.unhealthy_targets-tabs" id="materialize.ingress.lb.aws.unhealthy_targets-tab-0" checked>
+  <label for="materialize.ingress.lb.aws.unhealthy_targets-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target_group<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_un_healthy_host_count_maximum{dimension_TargetGroup<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">target_group</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_TargetGroup</span>&#34;, &#34;<span style="color:#e6db74">targetgroup/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.aws.open_connections">materialize.ingress.lb.aws.open_connections
+  <a class="anchor" href="#materialize.ingress.lb.aws.open_connections">#</a>
+</h4>
+Connections open through the Network Load Balancer in front of this
+environment, averaged over the newest minute.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.aws.open_connections-tabs" id="materialize.ingress.lb.aws.open_connections-tab-0" checked>
+  <label for="materialize.ingress.lb.aws.open_connections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_active_flow_count_average[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimension_LoadBalancer<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.aws.new_connections">materialize.ingress.lb.aws.new_connections
+  <a class="anchor" href="#materialize.ingress.lb.aws.new_connections">#</a>
+</h4>
+New connections per second through the Network Load Balancer, over
+the newest whole minute CloudWatch has published.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.aws.new_connections-tabs" id="materialize.ingress.lb.aws.new_connections-tab-0" checked>
+  <label for="materialize.ingress.lb.aws.new_connections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_new_flow_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimension_LoadBalancer<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.aws.throughput">materialize.ingress.lb.aws.throughput
+  <a class="anchor" href="#materialize.ingress.lb.aws.throughput">#</a>
+</h4>
+Bytes per second through the Network Load Balancer, both directions
+together, over the newest whole minute.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.aws.throughput-tabs" id="materialize.ingress.lb.aws.throughput-tab-0" checked>
+  <label for="materialize.ingress.lb.aws.throughput-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_processed_bytes_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimension_LoadBalancer<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.aws.resets">materialize.ingress.lb.aws.resets
+  <a class="anchor" href="#materialize.ingress.lb.aws.resets">#</a>
+</h4>
+TCP resets through the Network Load Balancer in the last five minutes,
+by which side sent them.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.aws.resets-tabs" id="materialize.ingress.lb.aws.resets-tab-0" checked>
+  <label for="materialize.ingress.lb.aws.resets-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_tcp_client_reset_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimension_LoadBalancer<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_tcp_target_reset_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimension_LoadBalancer<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_tcp_elb_reset_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimension_LoadBalancer<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.gcp.packets">materialize.ingress.lb.gcp.packets
+  <a class="anchor" href="#materialize.ingress.lb.gcp.packets">#</a>
+</h4>
+Packets per second through each of the environment&rsquo;s load balancers,
+by Service and direction.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.gcp.packets-tabs" id="materialize.ingress.lb.gcp.packets-tab-0" checked>
+  <label for="materialize.ingress.lb.gcp.packets-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>forwarding_rule_name<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, uid<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">forwarding_rule_name</span>&#34;, &#34;<span style="color:#e6db74">a$1$2$3$4$5</span>&#34;, &#34;<span style="color:#e6db74">uid</span>&#34;, &#34;<span style="color:#e6db74">(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>forwarding_rule_name<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, uid<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">forwarding_rule_name</span>&#34;, &#34;<span style="color:#e6db74">a$1$2$3$4$5</span>&#34;, &#34;<span style="color:#e6db74">uid</span>&#34;, &#34;<span style="color:#e6db74">(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.gcp.throughput">materialize.ingress.lb.gcp.throughput
+  <a class="anchor" href="#materialize.ingress.lb.gcp.throughput">#</a>
+</h4>
+Bytes per second through each of the environment&rsquo;s load balancers, by
+Service and direction.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.gcp.throughput-tabs" id="materialize.ingress.lb.gcp.throughput-tab-0" checked>
+  <label for="materialize.ingress.lb.gcp.throughput-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>forwarding_rule_name<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, uid<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">forwarding_rule_name</span>&#34;, &#34;<span style="color:#e6db74">a$1$2$3$4$5</span>&#34;, &#34;<span style="color:#e6db74">uid</span>&#34;, &#34;<span style="color:#e6db74">(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>forwarding_rule_name<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, uid<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">forwarding_rule_name</span>&#34;, &#34;<span style="color:#e6db74">a$1$2$3$4$5</span>&#34;, &#34;<span style="color:#e6db74">uid</span>&#34;, &#34;<span style="color:#e6db74">(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.azure.backends">materialize.ingress.lb.azure.backends
+  <a class="anchor" href="#materialize.ingress.lb.azure.backends">#</a>
+</h4>
+Backends behind each of the environment&rsquo;s load balancer frontends, and
+how many passed every health probe in the last five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.azure.backends-tabs" id="materialize.ingress.lb.azure.backends-tab-0" checked>
+  <label for="materialize.ingress.lb.azure.backends-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_dipavailability_average_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#66d9ef">bool</span> <span style="color:#ae81ff">100</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimensionFrontendIPAddress<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, ip<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_status_load_balancer_ingress{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">dimensionFrontendIPAddress</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">ip</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_dipavailability_average_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimensionFrontendIPAddress<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, ip<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_status_load_balancer_ingress{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">dimensionFrontendIPAddress</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">ip</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.azure.new_connections">materialize.ingress.lb.azure.new_connections
+  <a class="anchor" href="#materialize.ingress.lb.azure.new_connections">#</a>
+</h4>
+New connections per second arriving at each of the environment&rsquo;s load
+balancer frontends, from the SYN packets Azure counts.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.azure.new_connections-tabs" id="materialize.ingress.lb.azure.new_connections-tab-0" checked>
+  <label for="materialize.ingress.lb.azure.new_connections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_syncount_total_count{dimensionDirection<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">In</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimensionFrontendIPAddress<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, ip<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_status_load_balancer_ingress{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">dimensionFrontendIPAddress</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">ip</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.lb.azure.throughput">materialize.ingress.lb.azure.throughput
+  <a class="anchor" href="#materialize.ingress.lb.azure.throughput">#</a>
+</h4>
+Bytes per second through each of the environment&rsquo;s load balancer
+frontends, by Service and direction.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.lb.azure.throughput-tabs" id="materialize.ingress.lb.azure.throughput-tab-0" checked>
+  <label for="materialize.ingress.lb.azure.throughput-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">In</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimensionFrontendIPAddress<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, ip<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_status_load_balancer_ingress{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">dimensionFrontendIPAddress</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">ip</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Out</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>dimensionFrontendIPAddress<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, ip<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_status_load_balancer_ingress{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">dimensionFrontendIPAddress</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">ip</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
 
 ## materialize-kubernetes
 

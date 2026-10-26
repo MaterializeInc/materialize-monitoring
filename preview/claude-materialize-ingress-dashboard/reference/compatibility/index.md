@@ -57,6 +57,7 @@ On those versions it degrades by tab:
 | Tab | On a Materialize version without them |
 |---|---|
 | Overview | Open Connections works, and so do the balancerd rate and error panels. Their error count includes clients that hung up, and leaves out connections balancerd refused. The latency, Taking New Connections, and console panels are empty. |
+| Load Balancer | Unaffected. Its provider rows depend on the gateway pulling the load balancer's metrics, not on Materialize. |
 | Balancer | Connections, the connection limit, and logs work. The watermarks, Taking New Connections by Pod, and Connection Timing are empty on versions that also predate balancerd's watermarks. |
 | Console | Only the logs row works. |
 | SQL and HTTP API | **Fully working.** Every panel reads environmentd. |
