@@ -580,6 +580,7 @@ queries:
         environment's events say why.
     promQL: |
       time() - max(container_start_time_seconds{%%{cAdvisorFilter}, container="balancerd"})
+    instant: true
 
   # --- Balancer: resources ----------------------------------------------------
   - id: materialize.ingress.balancer.cpu_by_pod

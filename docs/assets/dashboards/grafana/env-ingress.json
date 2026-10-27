@@ -2257,6 +2257,7 @@
                       "kind": "DataQuery",
                       "spec": {
                         "expr": "time() - max(container_start_time_seconds{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", container=\"balancerd\"})\n",
+                        "instant": true,
                         "legendFormat": "newest pod",
                         "qryType": 1,
                         "query": "time() - max(container_start_time_seconds{namespace=~\"$mzNamespaceList\",container!=\"\",container!=\"POD\", container=\"balancerd\"})\n"

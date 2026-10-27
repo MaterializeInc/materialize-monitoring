@@ -2031,6 +2031,7 @@ spec:
                   spec:
                     expr: |
                       time() - max(container_start_time_seconds{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"})
+                    instant: true
                     legendFormat: newest pod
                     qryType: 1
                     query: |
