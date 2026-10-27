@@ -32,6 +32,7 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 use mzmon_lib::grafana::variable::extra;
 
+use super::LOG_BASE;
 use crate::grafana::infra_networking::cloud::{AWS_LB, AZURE_LB, GCP_LB};
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
@@ -146,7 +147,7 @@ fn aws_resets(q: &Queries) -> dashboardv2::PanelKind {
         ))
         .unit("short")
         .decimals(0.0)
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(not_pulled())
         .build(0)
 }
@@ -208,7 +209,7 @@ fn gcp_packets(q: &Queries) -> dashboardv2::PanelKind {
             &["{{service}} in", "{{service}} out"],
         ))
         .unit("pps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(not_pulled())
         .build(0)
 }
@@ -220,7 +221,7 @@ fn gcp_throughput(q: &Queries) -> dashboardv2::PanelKind {
             &["{{service}} in", "{{service}} out"],
         ))
         .unit("Bps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(not_pulled())
         .build(0)
 }
@@ -259,7 +260,7 @@ fn azure_new(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{service}}"),
         )
         .unit("cps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(not_pulled())
         .build(0)
 }
@@ -271,7 +272,7 @@ fn azure_throughput(q: &Queries) -> dashboardv2::PanelKind {
             &["{{service}} in", "{{service}} out"],
         ))
         .unit("Bps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(not_pulled())
         .build(0)
 }

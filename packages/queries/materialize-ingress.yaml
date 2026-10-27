@@ -30,14 +30,15 @@ description: |
     the one balancerd forwards to, `internal` serves the operator, and
     `metrics` serves the scrapes.
 
-  ## Two things that are easy to get wrong
+  ## Easy to get wrong
 
   * balancerd counts a connection when it **closes**, so a SQL session that
     stays open for an hour reaches the rates an hour late. Open connections
     are the live view.
-  * nginx does not time WebSocket upgrades (status `101`), because their
-    duration is the length of the session. The console's SQL shell is one,
-    so its latency is on the SQL and HTTP API tab instead.
+  * nginx likewise counts a WebSocket (status `101`) when its session
+    **ends**, and does not time it, because its duration is the length of
+    the session. The console's SQL shell is one, so its latency is
+    on the SQL and HTTP API tab instead.
 
 metricImportanceHint: recommended
 
@@ -518,11 +519,17 @@ queries:
     stability: experimental
     description:
       summary: |
-        WebSocket sessions opened through the console per second, such as the
-        SQL shell.
+        WebSocket sessions through the console that ended, per second, such as
+        the SQL shell.
       nominal: |
-        One each time someone opens the shell or a page that streams results.
+        One each time someone closes the shell or leaves a page that streams
+        results.
       notes: |
+        nginx counts a WebSocket when its session ends, so a shell left open
+        for an hour reaches this panel an hour late. environmentd counts one
+        when it opens, as `/api/experimental/sql` on _SQL and HTTP API -> HTTP
+        Requests by Path_.
+
         Each one is also an `https` connection on balancerd, open for as long
         as the session.
     promQL: |

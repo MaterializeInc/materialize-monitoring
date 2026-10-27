@@ -647,8 +647,17 @@ These things about it are not re-derivable by reading the modules:
   with ratios and open connections for that reason.
 - **The console's `location` label is the nginx block**: `app` and `static` are the console pod, and `api` is
   the hop to balancerd and everything behind it, query time included. The page-load stat reads `app|static` only.
-- **nginx does not time WebSocket upgrades.** The SQL shell's latency is on the SQL and HTTP API tab, from
+- **nginx counts a WebSocket when its session ends, and does not time it.** It records in the log phase, which
+  for an upgraded connection runs at close, so the Console tab's WebSocket panel counts sessions closed; a test
+  socket held open for 80 seconds on AWS mzmon proved it. environmentd counts `/api/experimental/sql` at the
+  upgrade instead. The SQL shell's latency is on the SQL and HTTP API tab, from
   `mz_time_to_first_row_seconds{application_name="web_console_shell"}`.
+- **Panels that split into series of different sizes use a log axis** (`LOG_BASE` in `mod.rs`): health checks
+  beside API calls, `success` beside `error`, p50 beside p99. The multi-series panels that stay linear are listed,
+  with reasons, in `partitioned_panels_use_a_log_axis`.
+- **The console's counters appear on first use.** `metrics.js` creates each `location` and `status` pair on its
+  first request, so `rate()` never sees that first count; the first `5xx` of a kind on a pod is invisible to the
+  error panels.
 - **Every `mz_http_*` query reads `source="external"`**, the listener balancerd forwards to; a test holds it. The
   operator's calls and the metric scrapes would swamp the client traffic otherwise.
 - **The console's error feed drops health checks first.** On the AWS reference install the load balancer's checks

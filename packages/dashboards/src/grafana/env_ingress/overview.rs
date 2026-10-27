@@ -23,7 +23,7 @@ use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::{palette, threshold};
 
-use super::{no_balancer, no_console, no_timings, theme};
+use super::{LOG_BASE, no_balancer, no_console, no_timings, theme};
 use crate::grafana::dependency::{latency_ladder, value_map, zero_is_healthy};
 use crate::grafana::queries::Queries;
 
@@ -186,7 +186,7 @@ fn connections_by_protocol(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{source}}"),
         )
         .unit("cps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_balancer())
         .build(0)
 }
@@ -198,7 +198,7 @@ fn console_requests_by_location(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{location}}"),
         )
         .unit("reqps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_console())
         .build(0)
 }
@@ -210,7 +210,7 @@ fn balancer_errors(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{source}}"),
         )
         .unit("cps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_balancer())
         .build(0)
 }
@@ -222,7 +222,7 @@ fn console_errors(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{location}}"),
         )
         .unit("reqps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(NoValue::Custom(
             "No console request ended in a server error in this time range.".to_string(),
         ))
@@ -236,7 +236,7 @@ fn connection_setup(q: &Queries) -> dashboardv2::PanelKind {
             &["{{source}} p50", "{{source}} p99"],
         ))
         .unit("s")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_timings())
         .build(0)
 }
@@ -248,7 +248,7 @@ fn console_response(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{location}}"),
         )
         .unit("s")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_console())
         .build(0)
 }

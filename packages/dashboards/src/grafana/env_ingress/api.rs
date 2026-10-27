@@ -25,7 +25,7 @@ use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
-use super::no_environmentd;
+use super::{LOG_BASE, no_environmentd};
 use crate::grafana::queries::Queries;
 
 pub fn rows(q: &Queries) -> Vec<Row> {
@@ -67,7 +67,7 @@ fn http_requests(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{path}}"),
         )
         .unit("reqps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_environmentd())
         .build(0)
 }
@@ -79,7 +79,7 @@ fn http_errors(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{path}} {{status}}"),
         )
         .unit("reqps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(NoValue::Custom(
             "environmentd answered no HTTP request with a server error in this time range."
                 .to_string(),
@@ -94,7 +94,7 @@ fn http_response(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{path}}"),
         )
         .unit("s")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_environmentd())
         .build(0)
 }
@@ -107,7 +107,7 @@ fn sessions(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("short")
         .decimals(0.0)
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_environmentd())
         .build(0)
 }
@@ -119,7 +119,7 @@ fn pgwire_connections(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{status}}"),
         )
         .unit("cps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_environmentd())
         .build(0)
 }
@@ -131,7 +131,7 @@ fn console_commands(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{application_name}} {{status}}"),
         )
         .unit("ops")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(NoValue::Custom(
             "The console ran no SQL in this environment in this time range.".to_string(),
         ))
@@ -145,7 +145,7 @@ fn console_latency(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{application_name}}"),
         )
         .unit("s")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(NoValue::Custom(
             "The console ran no queries in this environment in this time range.".to_string(),
         ))

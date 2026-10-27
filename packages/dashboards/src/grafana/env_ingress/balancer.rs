@@ -22,7 +22,7 @@ use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
-use super::{no_balancer, no_timings};
+use super::{LOG_BASE, no_balancer, no_timings};
 use crate::grafana::queries::Queries;
 
 pub fn rows(q: &Queries) -> Vec<Row> {
@@ -74,7 +74,7 @@ fn outcomes(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{source}} {{status}}"),
         )
         .unit("cps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_balancer())
         .build(0)
 }
@@ -100,7 +100,7 @@ fn waiting_for_backend(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("short")
         .decimals(0.0)
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_balancer())
         .build(0)
 }
@@ -143,7 +143,7 @@ fn refused(q: &Queries) -> dashboardv2::PanelKind {
             &["connection limit", "{{source}} timed out before routing"],
         ))
         .unit("cps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_balancer())
         .build(0)
 }
@@ -155,7 +155,7 @@ fn setup_quantiles(q: &Queries) -> dashboardv2::PanelKind {
             &["{{source}} p50", "{{source}} p90", "{{source}} p99"],
         ))
         .unit("s")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_timings())
         .build(0)
 }
@@ -167,7 +167,7 @@ fn upstream_connect(q: &Queries) -> dashboardv2::PanelKind {
             &["{{source}} p50", "{{source}} p99"],
         ))
         .unit("s")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_timings())
         .build(0)
 }
@@ -179,7 +179,7 @@ fn lifetime(q: &Queries) -> dashboardv2::PanelKind {
             &["{{source}} p50", "{{source}} p99"],
         ))
         .unit("s")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_timings())
         .build(0)
 }

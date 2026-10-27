@@ -76,7 +76,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: The console ran no SQL in this environment in this time range.
                 unit: ops
               overrides: []
@@ -142,7 +145,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: The console ran no queries in this environment in this time range.
                 unit: s
               overrides: []
@@ -200,7 +206,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: environmentd answered no HTTP request with a server error in this time range.
                 unit: reqps
               overrides: []
@@ -258,7 +267,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from environmentd in this environment. Check the environment picker, and that Materialize is running.
                 unit: reqps
               overrides: []
@@ -324,7 +336,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from environmentd in this environment. Check the environment picker, and that Materialize is running.
                 unit: s
               overrides: []
@@ -382,7 +397,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from environmentd in this environment. Check the environment picker, and that Materialize is running.
                 unit: cps
               overrides: []
@@ -440,8 +458,11 @@ spec:
           spec:
             fieldConfig:
               defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 decimals: 0
-                min: 0
                 noValue: No metrics from environmentd in this environment. Check the environment picker, and that Materialize is running.
                 unit: short
               overrides: []
@@ -706,7 +727,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No connection timings from balancerd. Older Materialize versions don't publish them.
                 unit: s
               overrides: []
@@ -887,7 +911,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: cps
               overrides: []
@@ -962,7 +989,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: cps
               overrides: []
@@ -1078,7 +1108,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No connection timings from balancerd. Older Materialize versions don't publish them.
                 unit: s
               overrides: []
@@ -1169,7 +1202,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No connection timings from balancerd. Older Materialize versions don't publish them.
                 unit: s
               overrides: []
@@ -1227,8 +1263,11 @@ spec:
           spec:
             fieldConfig:
               defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 decimals: 0
-                min: 0
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: short
               overrides: []
@@ -1286,7 +1325,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No console request was rejected in this time range.
                 unit: reqps
               overrides: []
@@ -1344,8 +1386,11 @@ spec:
           spec:
             fieldConfig:
               defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 decimals: 0
-                min: 0
                 noValue: No metrics from the console. Older Materialize versions don't publish them, and the console PodMonitor must be installed.
                 unit: short
               overrides: []
@@ -1474,7 +1519,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from the console. Older Materialize versions don't publish them, and the console PodMonitor must be installed.
                 unit: s
               overrides: []
@@ -1542,7 +1590,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from the console. Older Materialize versions don't publish them, and the console PodMonitor must be installed.
                 unit: s
               overrides: []
@@ -1600,7 +1651,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No console request ended in a server error in this time range.
                 unit: reqps
               overrides: []
@@ -1668,7 +1722,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from the console. Older Materialize versions don't publish them, and the console PodMonitor must be installed.
                 unit: reqps
               overrides: []
@@ -1712,14 +1769,16 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **WebSocket sessions opened through the console per second, such as the SQL shell.**
+          **WebSocket sessions through the console that ended, per second, such as the SQL shell.**
 
-          **Nominal:** One each time someone opens the shell or a page that streams results.
+          **Nominal:** One each time someone closes the shell or leaves a page that streams results.
+
+          nginx counts a WebSocket when its session ends, so a shell left open for an hour reaches this panel an hour late. environmentd counts one when it opens, as `/api/experimental/sql` on _SQL and HTTP API -> HTTP Requests by Path_.
 
           Each one is also an `https` connection on balancerd, open for as long as the session.
         id: 1037
         links: []
-        title: WebSocket Sessions Opened
+        title: WebSocket Sessions Closed
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -1727,7 +1786,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: No WebSocket sessions were opened through the console in this time range.
+                noValue: No WebSocket session through the console ended in this time range.
                 unit: ops
               overrides: []
             options:
@@ -2157,8 +2216,11 @@ spec:
           spec:
             fieldConfig:
               defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 decimals: 0
-                min: 0
                 noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
                 unit: short
               overrides: []
@@ -2486,7 +2548,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
                 unit: cps
               overrides: []
@@ -2587,7 +2652,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
                 unit: Bps
               overrides: []
@@ -2708,7 +2776,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
                 unit: pps
               overrides: []
@@ -2827,7 +2898,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
                 unit: Bps
               overrides: []
@@ -3087,7 +3161,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: cps
               overrides: []
@@ -3178,7 +3255,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No connection timings from balancerd. Older Materialize versions don't publish them.
                 unit: s
               overrides: []
@@ -3313,7 +3393,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: cps
               overrides: []
@@ -3458,7 +3541,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No console request ended in a server error in this time range.
                 unit: reqps
               overrides: []
@@ -3660,7 +3746,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from the console. Older Materialize versions don't publish them, and the console PodMonitor must be installed.
                 unit: s
               overrides: []
@@ -3716,7 +3805,10 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                min: 0
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
                 noValue: No metrics from the console. Older Materialize versions don't publish them, and the console PodMonitor must be installed.
                 unit: reqps
               overrides: []

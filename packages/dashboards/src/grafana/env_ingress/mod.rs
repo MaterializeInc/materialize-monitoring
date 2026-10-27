@@ -114,6 +114,13 @@ pub(crate) fn no_environmentd() -> NoValue {
     )
 }
 
+/// The y axis base for a panel that splits one quantity into series of very
+/// different sizes, each of whose movements matters on its own: health checks
+/// beside API calls, `success` beside `error`, p50 beside p99. A linear axis
+/// flattens the small series into the baseline. The multi-series panels that
+/// stay linear, and why, are listed in the tests.
+pub(crate) const LOG_BASE: f64 = 10.0;
+
 /// The tabs, in order.
 ///
 /// Overview answers "can users get in". The rest follow a connection from the
@@ -250,6 +257,66 @@ mod tests {
     #[test]
     fn multi_series_panels_are_not_shaded() {
         test_support::assert_multi_series_panels_unshaded(&built());
+    }
+
+    /// Multi-series panels drawn on a linear axis, and why each is not on
+    /// [`LOG_BASE`].
+    const LINEAR: &[(&str, &str)] = &[
+        (
+            "balancer-open-by-pod",
+            "the pods share one load, so they are alike in size and the gap between them is the \
+             signal",
+        ),
+        (
+            "balancer-accepting",
+            "each pod is 0 or 1, and 0 is the signal, which a log axis cannot draw",
+        ),
+        (
+            "balancer-capacity",
+            "the distance to the limit is the signal, and a log axis squeezes it near the top",
+        ),
+        ("lb-aws-healthy", "target counts, where 0 is the signal"),
+        ("lb-aws-unhealthy", "target counts, where 0 is the signal"),
+        ("lb-azure-backends", "node counts, where 0 is the signal"),
+        ("lb-aws-open", "an environment has one load balancer"),
+        ("lb-aws-new", "an environment has one load balancer"),
+        ("lb-aws-throughput", "an environment has one load balancer"),
+    ];
+
+    #[test]
+    fn partitioned_panels_use_a_log_axis() {
+        let multi = test_support::multi_series_timeseries(&built());
+        for (name, panel) in &multi {
+            let scale = panel
+                .pointer("/vizConfig/spec/fieldConfig/defaults/custom/scaleDistribution/type")
+                .and_then(serde_json::Value::as_str);
+            let linear = LINEAR.iter().any(|(linear, _)| linear == name);
+            assert_eq!(
+                scale == Some("log"),
+                !linear,
+                "{name}: log axis {}, but {}",
+                scale == Some("log"),
+                if linear {
+                    "it is listed as linear"
+                } else {
+                    "it splits into series"
+                }
+            );
+            if !linear {
+                assert!(
+                    panel
+                        .pointer("/vizConfig/spec/fieldConfig/defaults/min")
+                        .is_none(),
+                    "{name}: a log axis has no zero to start from"
+                );
+            }
+        }
+        for (name, _) in LINEAR {
+            assert!(
+                multi.iter().any(|(m, _)| m == name),
+                "{name} is listed as linear but is not a multi-series panel"
+            );
+        }
     }
 
     #[test]

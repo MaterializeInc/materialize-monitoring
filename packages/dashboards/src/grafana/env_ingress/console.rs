@@ -26,7 +26,7 @@ use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
-use super::no_console;
+use super::{LOG_BASE, no_console};
 use crate::grafana::queries::Queries;
 
 pub fn rows(q: &Queries) -> Vec<Row> {
@@ -76,13 +76,13 @@ fn by_status_class(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{class}}"),
         )
         .unit("reqps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_console())
         .build(0)
 }
 
 fn websockets(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("WebSocket Sessions Opened")
+    Panel::timeseries("WebSocket Sessions Closed")
         .query(
             q.get("materialize.ingress.console.websockets")
                 .legend("sessions/s"),
@@ -90,7 +90,7 @@ fn websockets(q: &Queries) -> dashboardv2::PanelKind {
         .unit("ops")
         .min(0.0)
         .no_value(NoValue::Custom(
-            "No WebSocket sessions were opened through the console in this time range.".to_string(),
+            "No WebSocket session through the console ended in this time range.".to_string(),
         ))
         .build(0)
 }
@@ -103,7 +103,7 @@ fn connections(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("short")
         .decimals(0.0)
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_console())
         .build(0)
 }
@@ -115,7 +115,7 @@ fn server_errors(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{location}} {{status}}"),
         )
         .unit("reqps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(NoValue::Custom(
             "No console request ended in a server error in this time range.".to_string(),
         ))
@@ -129,7 +129,7 @@ fn client_errors(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{location}} {{status}}"),
         )
         .unit("reqps")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(NoValue::Custom(
             "No console request was rejected in this time range.".to_string(),
         ))
@@ -143,7 +143,7 @@ fn response_p50(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{location}}"),
         )
         .unit("s")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_console())
         .build(0)
 }
@@ -155,7 +155,7 @@ fn response_p99(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{location}}"),
         )
         .unit("s")
-        .min(0.0)
+        .log_scale(LOG_BASE)
         .no_value(no_console())
         .build(0)
 }

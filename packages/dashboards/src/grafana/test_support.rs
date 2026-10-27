@@ -108,12 +108,13 @@ pub(crate) fn assert_every_panel_has_no_value(resource: &Resource) {
     }
 }
 
-/// Assert that no timeseries drawing several lines pins them to one shade.
+/// Every timeseries that can draw several lines, by element name, as JSON.
 ///
-/// `shade` derives every series from one hue, which makes the lines of a
-/// multi-series graph indistinguishable.
-pub(crate) fn assert_multi_series_panels_unshaded(resource: &Resource) {
+/// Several queries, or one whose legend names a label, which splits it into a
+/// series per value.
+pub(crate) fn multi_series_timeseries(resource: &Resource) -> Vec<(String, Value)> {
     let json = serde_json::to_value(&resource.spec.elements).expect("serialize");
+    let mut out = Vec::new();
     for (name, element) in json.as_object().expect("elements") {
         let Some(panel) = element.get("spec") else {
             continue;
@@ -135,6 +136,17 @@ pub(crate) fn assert_multi_series_panels_unshaded(resource: &Resource) {
         if queries.len() <= 1 && !templated {
             continue;
         }
+        out.push((name.clone(), panel.clone()));
+    }
+    out
+}
+
+/// Assert that no timeseries drawing several lines pins them to one shade.
+///
+/// `shade` derives every series from one hue, which makes the lines of a
+/// multi-series graph indistinguishable.
+pub(crate) fn assert_multi_series_panels_unshaded(resource: &Resource) {
+    for (name, panel) in multi_series_timeseries(resource) {
         let mode = panel.pointer("/vizConfig/spec/fieldConfig/defaults/color/mode");
         assert_ne!(
             mode.and_then(Value::as_str),
