@@ -355,35 +355,7 @@ mod tests {
 
     #[test]
     fn log_axes_label_their_ticks_below_one() {
-        // Units that rescale below 1 label their own small ticks. Any other
-        // log axis needs its decimals set, or Grafana rounds 0.01 to 0.
-        const RESCALES_BELOW_ONE: &[&str] = &["s", "Bps", "bytes"];
-        let json = serde_json::to_value(&built().spec.elements).expect("serialize");
-        let mut checked = 0;
-        for (name, element) in json.as_object().expect("elements") {
-            let Some(defaults) = element.pointer("/spec/vizConfig/spec/fieldConfig/defaults")
-            else {
-                continue;
-            };
-            let scale = defaults
-                .pointer("/custom/scaleDistribution/type")
-                .and_then(serde_json::Value::as_str);
-            if scale != Some("log") {
-                continue;
-            }
-            let unit = defaults
-                .get("unit")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("");
-            if RESCALES_BELOW_ONE.contains(&unit) {
-                continue;
-            }
-            checked += 1;
-            assert!(
-                defaults.get("decimals").is_some(),
-                "{name}: `{unit}` on a log axis needs its decimals set"
-            );
-        }
+        let checked = test_support::assert_log_axes_label_ticks_below_one(&built());
         assert!(checked > 0, "no count-rate log axes found");
     }
 

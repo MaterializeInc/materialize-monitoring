@@ -141,6 +141,40 @@ pub(crate) fn multi_series_timeseries(resource: &Resource) -> Vec<(String, Value
     out
 }
 
+/// Assert that every log axis whose unit does not rescale below 1 sets its
+/// decimals, and return how many such axes there were.
+///
+/// Grafana labels every tick on an axis with one decimal count, guessed from
+/// the tick spacing of the axis's linear range. When that guess is above zero,
+/// the decades below it read `0`. A unit that rescales below 1, such as `s` to
+/// `ms`, labels its own small ticks; any other needs the count set.
+pub(crate) fn assert_log_axes_label_ticks_below_one(resource: &Resource) -> usize {
+    const RESCALES_BELOW_ONE: &[&str] = &["s", "Bps", "bytes"];
+    let json = serde_json::to_value(&resource.spec.elements).expect("serialize");
+    let mut checked = 0;
+    for (name, element) in json.as_object().expect("elements") {
+        let Some(defaults) = element.pointer("/spec/vizConfig/spec/fieldConfig/defaults") else {
+            continue;
+        };
+        let scale = defaults
+            .pointer("/custom/scaleDistribution/type")
+            .and_then(Value::as_str);
+        if scale != Some("log") {
+            continue;
+        }
+        let unit = defaults.get("unit").and_then(Value::as_str).unwrap_or("");
+        if RESCALES_BELOW_ONE.contains(&unit) {
+            continue;
+        }
+        checked += 1;
+        assert!(
+            defaults.get("decimals").is_some(),
+            "{name}: `{unit}` on a log axis needs its decimals set"
+        );
+    }
+    checked
+}
+
 /// Assert that no timeseries drawing several lines pins them to one shade.
 ///
 /// `shade` derives every series from one hue, which makes the lines of a
