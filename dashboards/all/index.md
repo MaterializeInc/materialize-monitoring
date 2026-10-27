@@ -19,10 +19,13 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 ## Formats
 
-Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility](/materialize-monitoring/reference/compatibility/#grafana).
-Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
+Every dashboard has a **Grafana dashboard schema v2** render, which needs **Grafana 12 or later**.
+For more information, see [Grafana compatibility](/materialize-monitoring/reference/compatibility/#grafana).
+`env-top` also has a **Datadog** preview, which [Datadog](/materialize-monitoring/dashboards/datadog/) describes.
+Each table below lists every format, so you can see which ones a dashboard has no render for.
 Grafana 10 and 11 (schema v1) renders are not planned.
-The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/reference/development/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/reference/common-queries/) is the query material to build one yourself.
+The rest of the Datadog set, and the Google Cloud Monitoring and Honeycomb sets, are tracked on the [roadmap](/materialize-monitoring/reference/development/roadmap/#dashboards).
+[Common Queries](/materialize-monitoring/reference/common-queries/) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -69,7 +72,13 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td>
+        <a href="/materialize-monitoring/dashboards/datadog/env-top.json?xxhash=d747a74c1174136b" download="env-top.json"><code>env-top.json</code></a>
+        <br /><small>UID <code>env-top</code></small>
+      </td>
+      <td>
+          <em>No annotations</em>
+      </td>
     </tr>
   </tbody>
 </table>
