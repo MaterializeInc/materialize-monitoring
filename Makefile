@@ -85,11 +85,16 @@ docs: docs/public
 grafana-dashboards: $(DASHBOARDS_CHARTS:%=charts/%/pre-rendered/dashboards/grafana) docs/assets/dashboards/grafana
 .PHONY: grafana-dashboards
 
+# Generate datadog dashboards. Docsite only: they reach Datadog through an
+# operator's import, so no chart carries them.
+datadog-dashboards: docs/assets/dashboards/datadog
+.PHONY: datadog-dashboards
+
 alloy-pipelines: charts/materialize-monitoring/pre-rendered/pipelines
 .PHONY: alloy-pipelines
 
 # Make all dashboards
-dashboards: grafana-dashboards
+dashboards: grafana-dashboards datadog-dashboards
 .PHONY: dashboards
 
 pipelines: alloy-pipelines
@@ -149,7 +154,7 @@ $(DASHBOARDS_CHARTS:%=charts/%/pre-rendered/dashboards/grafana): charts/%/pre-re
 		target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.yaml
-	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format yaml \
+	target/debug/mz-monitoring-build gen-dashboards --flavor grafana --output-dir "$@" --format yaml \
 		--folder $(DASHBOARDS_FOLDER_$*)
 	touch "$@"
 
@@ -818,7 +823,15 @@ docs/assets/dashboards/grafana: \
 		target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.json
-	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format json
+	target/debug/mz-monitoring-build gen-dashboards --flavor grafana --output-dir "$@" --format json
+	touch "$@"
+
+docs/assets/dashboards/datadog: \
+		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) $(wildcard packages/queries/*.yaml) \
+		target/debug/mz-monitoring-build
+	mkdir -p "$@"
+	rm -f "$@/"*.json
+	target/debug/mz-monitoring-build gen-dashboards --flavor datadog --output-dir "$@"
 	touch "$@"
 
 # Generate docs

@@ -155,6 +155,35 @@ in `env_upgrade/mod.rs` is `v26.41.0` and must stay in step with the Materialize
 The live UID diverged from the codified one before `mz-mon-env-top` became authoritative — see
 [UID selection and behavior](../../../docs/content/reference/development/dashboard/generating.md#uid-selection-and-behavior).
 
+## The Datadog backend
+
+`packages/dashboards/src/datadog/` renders the Datadog set from the same registry, on the models in
+`datadog-api-client` (models only, with `rustls-tls`).
+The design is [Datadog dashboards from the query registry](../../../docs/content/reference/development/design-docs/20261020-datadog-dashboards.md).
+
+| Artifact stem | Module | Title |
+|---|---|---|
+| `env-top` | `datadog/env_top.rs` | Materialize Environment Overview (Preview) |
+
+These things about it are not re-derivable by reading the modules:
+
+- **It renders only to `docs/assets/dashboards/datadog/<stem>.json`**, through `gen-dashboards --flavor datadog`.
+  No chart carries it, so that file is the only copy and is not marked `linguist-generated`.
+- **A Datadog dashboard shares its stem with its Grafana counterpart**, because the docsite's download table keys on
+  the stem. A test holds that.
+- **Registry parameters are mapped one at a time** in `datadog/queries.rs`: `mzSqlPrefix`, `mzEnvironmentFilter`
+  (`$environment`), and `mzClusterList` / `mzReplicaList` (`*` until env-top's pickers are ported). A template that
+  uses any other parameter fails the render, so porting a panel is when its parameters get a Datadog meaning.
+- **A Grafana stat with several values becomes one query value per template**, through `Queries::labeled` and
+  `widget::query_values`, because a Datadog query value draws one number.
+- **Environment scoping is open.** Grafana's environment picker selects exactly one environment, and a Datadog
+  template variable always offers `*`. Environments reuse cluster and replica ids, so a count grouped by id merges
+  them. The preview's note tells readers to pick one environment.
+- **The preview reads `compute_cluster_status`.** `mz_views_count` and `mz_mzd_views_count`, which the Compute Objects
+  counts read, are not published on the GCP test install, in Thanos or in Datadog (checked 2026-10-21).
+- **The tests hold the render to the crate's typed models**: it round-trips with no `UnparsedObject` widget or query,
+  and every `$variable` a query names is declared.
+
 ## `env-top` tabs
 
 Six tabs, in declared order. Per-tab shades live in `env_top/theme.rs` — the source of truth, and deliberately the
