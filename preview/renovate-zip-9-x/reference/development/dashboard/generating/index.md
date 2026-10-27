@@ -88,17 +88,22 @@ reading dashboards back.
 
 ## Generating dashboards
 
-`mz-monitoring-build gen-dashboards` renders every dashboard in the registry:
+`mz-monitoring-build gen-dashboards` renders every dashboard of one backend.
+`--flavor` picks the backend, and defaults to `grafana`:
 
 ```bash
-mz-monitoring-build gen-dashboards --output-dir <dir> --format yaml
+mz-monitoring-build gen-dashboards --flavor grafana --output-dir <dir> --format yaml
+mz-monitoring-build gen-dashboards --flavor datadog --output-dir <dir>
 ```
 
-`--list` enumerates what is available, `--dashboard <stem>` renders one, `--folder <name>` renders only the dashboards
-filed in that Grafana folder, `--format json` emits the docsite shape, and
+`--list` enumerates what a backend has, `--dashboard <stem>` renders one, and `--folder <name>` renders only the
+Grafana dashboards filed in that folder.
+For Grafana, `--format yaml` emits a chart's shape and `--format json` the docsite's.
+Datadog renders only JSON, and refuses `--format yaml` and `--folder`, because no chart carries its dashboards.
+
 ### Two copies, one review
 
-Every dashboard is written twice: `charts/<chart>/pre-rendered/dashboards/grafana/<stem>.yaml` for the dashboards chart that
+Every Grafana dashboard is written twice: `charts/<chart>/pre-rendered/dashboards/grafana/<stem>.yaml` for the dashboards chart that
 carries its folder, and `docs/assets/dashboards/grafana/<stem>.json` for the docsite's download.
 Same content, two serializations — so a one-line panel change shows up as two diffs and only one of them is worth
 reading.
@@ -115,9 +120,11 @@ over both trees — collapsing a diff cannot hide a stale file.
 
 `docs/assets/metrics/metrics.yaml` is deliberately left out: it is generated too, but it is the only copy of the
 metric-to-usage index rather than a second one, so its diff is the only place a tier change is visible.
+The Datadog renders under `docs/assets/dashboards/datadog/` are left out for the same reason.
+No chart carries a Datadog dashboard, so its docsite file is the only copy, and its diff is the one to review.
 
 `--check` compares against what is on disk without writing (exiting non-zero if they differ).
-`make dashboards` wires the shipped output trees, one per dashboards chart plus the docsite's; see
+`make dashboards` wires the shipped output trees, one per dashboards chart plus the docsite's Grafana and Datadog trees; see
 [SDKs and Schemas](/materialize-monitoring/preview/renovate-zip-9-x/reference/development/dashboard/sdks/#rendering) for the determinism guarantees.
 
 ### Which chart a dashboard ships in
