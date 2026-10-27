@@ -26,7 +26,7 @@ use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
-use super::{LOG_BASE, no_console};
+use super::{LOG_BASE, RATE_DECIMALS, no_console};
 use crate::grafana::queries::Queries;
 
 pub fn rows(q: &Queries) -> Vec<Row> {
@@ -77,6 +77,7 @@ fn by_status_class(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("reqps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(no_console())
         .build(0)
 }
@@ -116,6 +117,7 @@ fn server_errors(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("reqps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(NoValue::Custom(
             "No console request ended in a server error in this time range.".to_string(),
         ))
@@ -130,6 +132,7 @@ fn client_errors(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("reqps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(NoValue::Custom(
             "No console request was rejected in this time range.".to_string(),
         ))

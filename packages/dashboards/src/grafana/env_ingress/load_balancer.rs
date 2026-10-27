@@ -32,7 +32,7 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 use mzmon_lib::grafana::variable::extra;
 
-use super::LOG_BASE;
+use super::{LOG_BASE, RATE_DECIMALS};
 use crate::grafana::infra_networking::cloud::{AWS_LB, AZURE_LB, GCP_LB};
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
@@ -210,6 +210,7 @@ fn gcp_packets(q: &Queries) -> dashboardv2::PanelKind {
         ))
         .unit("pps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(not_pulled())
         .build(0)
 }
@@ -261,6 +262,7 @@ fn azure_new(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("cps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(not_pulled())
         .build(0)
 }

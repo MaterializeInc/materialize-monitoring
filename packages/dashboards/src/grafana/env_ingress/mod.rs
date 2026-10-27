@@ -121,6 +121,17 @@ pub(crate) fn no_environmentd() -> NoValue {
 /// stay linear, and why, are listed in the tests.
 pub(crate) const LOG_BASE: f64 = 10.0;
 
+/// Decimals for a per-second count on a [`LOG_BASE`] axis.
+///
+/// Grafana labels every tick on an axis with one decimal count, which it
+/// guesses from the tick spacing of the axis's *linear* range. On a log axis
+/// that runs up to about 1/s it picks one decimal, so 0.01 and 0.001 both read
+/// `0`. Setting the count stops the guess. Three covers the smallest rate
+/// `$__rate_interval` yields over a week's range, at the cost of trailing
+/// zeros on whole numbers. Units that rescale below 1, such as `s` and `Bps`,
+/// label their small ticks themselves.
+pub(crate) const RATE_DECIMALS: f64 = 3.0;
+
 /// The tabs, in order.
 ///
 /// Overview answers "can users get in". The rest follow a connection from the
@@ -340,6 +351,40 @@ mod tests {
                 "{name} is listed as linear but is not a multi-series panel"
             );
         }
+    }
+
+    #[test]
+    fn log_axes_label_their_ticks_below_one() {
+        // Units that rescale below 1 label their own small ticks. Any other
+        // log axis needs its decimals set, or Grafana rounds 0.01 to 0.
+        const RESCALES_BELOW_ONE: &[&str] = &["s", "Bps", "bytes"];
+        let json = serde_json::to_value(&built().spec.elements).expect("serialize");
+        let mut checked = 0;
+        for (name, element) in json.as_object().expect("elements") {
+            let Some(defaults) = element.pointer("/spec/vizConfig/spec/fieldConfig/defaults")
+            else {
+                continue;
+            };
+            let scale = defaults
+                .pointer("/custom/scaleDistribution/type")
+                .and_then(serde_json::Value::as_str);
+            if scale != Some("log") {
+                continue;
+            }
+            let unit = defaults
+                .get("unit")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            if RESCALES_BELOW_ONE.contains(&unit) {
+                continue;
+            }
+            checked += 1;
+            assert!(
+                defaults.get("decimals").is_some(),
+                "{name}: `{unit}` on a log axis needs its decimals set"
+            );
+        }
+        assert!(checked > 0, "no count-rate log axes found");
     }
 
     #[test]

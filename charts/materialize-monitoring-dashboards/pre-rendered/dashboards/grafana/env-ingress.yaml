@@ -80,6 +80,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: The console ran no SQL in this environment in this time range.
                 unit: ops
               overrides: []
@@ -210,6 +211,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: environmentd answered no HTTP request with a server error in this time range.
                 unit: reqps
               overrides: []
@@ -271,6 +273,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No metrics from environmentd in this environment. Check the environment picker, and that Materialize is running.
                 unit: reqps
               overrides: []
@@ -401,6 +404,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No metrics from environmentd in this environment. Check the environment picker, and that Materialize is running.
                 unit: cps
               overrides: []
@@ -1498,6 +1502,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: cps
               overrides: []
@@ -1576,6 +1581,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: cps
               overrides: []
@@ -2446,6 +2452,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No console request was rejected in this time range.
                 unit: reqps
               overrides: []
@@ -2772,6 +2779,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No console request ended in a server error in this time range.
                 unit: reqps
               overrides: []
@@ -2843,6 +2851,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No metrics from the console. Older Materialize versions don't publish them, and the console PodMonitor must be installed.
                 unit: reqps
               overrides: []
@@ -3669,6 +3678,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
                 unit: cps
               overrides: []
@@ -3897,6 +3907,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No data for this environment's load balancer. Check that the pull names it, and on Infrastructure Networking -> Cloud Networking that the pull is reporting at all.
                 unit: pps
               overrides: []
@@ -4282,6 +4293,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: cps
               overrides: []
@@ -4514,6 +4526,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: cps
               overrides: []
@@ -4662,6 +4675,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No console request ended in a server error in this time range.
                 unit: reqps
               overrides: []
@@ -4926,6 +4940,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 3
                 noValue: No metrics from the console. Older Materialize versions don't publish them, and the console PodMonitor must be installed.
                 unit: reqps
               overrides: []

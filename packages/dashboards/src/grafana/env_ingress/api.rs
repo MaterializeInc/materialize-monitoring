@@ -25,7 +25,7 @@ use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
-use super::{LOG_BASE, no_environmentd};
+use super::{LOG_BASE, RATE_DECIMALS, no_environmentd};
 use crate::grafana::queries::Queries;
 
 pub fn rows(q: &Queries) -> Vec<Row> {
@@ -68,6 +68,7 @@ fn http_requests(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("reqps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(no_environmentd())
         .build(0)
 }
@@ -80,6 +81,7 @@ fn http_errors(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("reqps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(NoValue::Custom(
             "environmentd answered no HTTP request with a server error in this time range."
                 .to_string(),
@@ -120,6 +122,7 @@ fn pgwire_connections(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("cps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(no_environmentd())
         .build(0)
 }
@@ -132,6 +135,7 @@ fn console_commands(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("ops")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(NoValue::Custom(
             "The console ran no SQL in this environment in this time range.".to_string(),
         ))

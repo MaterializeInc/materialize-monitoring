@@ -37,7 +37,7 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 use mzmon_lib::grafana::variable::extra;
 
-use super::{LOG_BASE, no_balancer, no_timings, theme};
+use super::{LOG_BASE, RATE_DECIMALS, no_balancer, no_timings, theme};
 use crate::grafana::dependency::zero_is_healthy;
 use crate::grafana::queries::Queries;
 
@@ -236,6 +236,7 @@ fn outcomes(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("cps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(no_balancer())
         .build(0)
 }
@@ -305,6 +306,7 @@ fn refused(q: &Queries) -> dashboardv2::PanelKind {
         ))
         .unit("cps")
         .log_scale(LOG_BASE)
+        .decimals(RATE_DECIMALS)
         .no_value(no_balancer())
         .build(0)
 }
