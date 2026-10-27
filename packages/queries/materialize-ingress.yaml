@@ -30,6 +30,13 @@ description: |
     the one balancerd forwards to, `internal` serves the operator, and
     `metrics` serves the scrapes.
 
+  ## Resources and autoscaling
+
+  The Balancer tab's resource and autoscaler panels read the kubelet's
+  container metrics and kube-state-metrics, scoped to the environment's
+  namespace. They find balancerd by its container's name, `balancerd`, and
+  by its Deployment's, `<resource id>-balancerd`.
+
   ## Easy to get wrong
 
   * balancerd counts a connection when it **closes**, so a SQL session that
@@ -476,6 +483,277 @@ queries:
             rate(mz_balancer_connection_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
           )
         ) >= 0
+
+  # --- Balancer: summary ------------------------------------------------------
+  - id: materialize.ingress.balancer.ready_pods
+    stability: experimental
+    description:
+      summary: |
+        balancerd pods passing their readiness check.
+      nominal: |
+        The replica count the Materialize resource, or an autoscaler, asks
+        for.
+      degraded: |
+        Fewer means pods are starting, crashing, or waiting for a node.
+        _Unavailable Pods_ counts the shortfall.
+      notes: |
+        kube-state-metrics reports each Deployment once per replica of its
+        own, so the query keeps one copy.
+    promQL: |
+      sum(
+        max by (namespace, deployment) (
+          kube_deployment_status_replicas_ready{%%{mzEnvironmentNamespaceFilter}, deployment=~".+-balancerd"}
+        )
+      )
+
+  - id: materialize.ingress.balancer.unavailable_pods
+    stability: experimental
+    description:
+      summary: |
+        balancerd pods the Deployment wants that are not available.
+      nominal: |
+        Zero.
+      degraded: |
+        A pod counted here is crashing, failing its readiness check, or
+        waiting for a node. A rollout counts each new pod here until it is
+        ready.
+    promQL: |
+      sum(
+        max by (namespace, deployment) (
+          kube_deployment_status_replicas_unavailable{%%{mzEnvironmentNamespaceFilter}, deployment=~".+-balancerd"}
+        )
+      )
+
+  - id: materialize.ingress.balancer.cpu_of_request
+    stability: experimental
+    description:
+      summary: |
+        CPU balancerd's pods use, as a share of the CPU they request.
+      nominal: |
+        Well under 100%.
+      degraded: |
+        Above 100%, the pods use more than the scheduler set aside for
+        them, so a busy node can starve them. Raise the request in the
+        Materialize resource's `balancerdResourceRequirements`.
+      notes: |
+        A HorizontalPodAutoscaler's CPU utilization target is a share of
+        this same request.
+    promQL: |
+      sum(rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}, container="balancerd"}%%{interval}))
+      /
+      sum(
+        max by (namespace, pod) (
+          kube_pod_container_resource_requests{%%{mzEnvironmentNamespaceFilter}, container="balancerd", resource="cpu"}
+        )
+      )
+
+  - id: materialize.ingress.balancer.memory_of_limit
+    stability: experimental
+    description:
+      summary: |
+        Memory the busiest balancerd pod uses, as a share of its limit.
+      nominal: |
+        Well under 100%.
+      unhealthy: |
+        A pod that reaches its limit is OOM-killed, and every connection it
+        holds drops. Raise the limit in the Materialize resource's
+        `balancerdResourceRequirements`.
+      notes: |
+        Working set. Empty when balancerd has no memory limit.
+    promQL: |
+      max(
+        max by (namespace, pod) (container_memory_working_set_bytes{%%{cAdvisorFilter}, container="balancerd"})
+        /
+        max by (namespace, pod) (container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container="balancerd"} > 0)
+      )
+
+  - id: materialize.ingress.balancer.since_restart
+    stability: experimental
+    description:
+      summary: |
+        Time since the newest balancerd container started.
+      nominal: |
+        Hours to days, or as long as it has been since the last rollout.
+      degraded: |
+        Minutes means a pod just restarted or was replaced, and the
+        connections it held dropped. _Balancer -> Balancer Logs_ and the
+        environment's events say why.
+    promQL: |
+      time() - max(container_start_time_seconds{%%{cAdvisorFilter}, container="balancerd"})
+
+  # --- Balancer: resources ----------------------------------------------------
+  - id: materialize.ingress.balancer.cpu_by_pod
+    stability: experimental
+    description:
+      summary: |
+        CPU each balancerd pod uses, in cores, against the CPU each one
+        requests.
+      nominal: |
+        Below the request, and roughly even across pods.
+      degraded: |
+        One pod well above the others is carrying more connections. Compare
+        _Open Connections by Pod_.
+    promQL:
+      - |
+        sum by (pod) (rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}, container="balancerd"}%%{interval}))
+      - |
+        max(
+          max by (namespace, pod) (
+            kube_pod_container_resource_requests{%%{mzEnvironmentNamespaceFilter}, container="balancerd", resource="cpu"}
+          )
+        )
+
+  - id: materialize.ingress.balancer.memory_by_pod
+    stability: experimental
+    description:
+      summary: |
+        Memory each balancerd pod uses, against its limit.
+      nominal: |
+        Flat, and well below the limit.
+      unhealthy: |
+        Steady growth toward the limit ends in an OOM kill, which drops the
+        pod's connections.
+      notes: |
+        Working set.
+    promQL:
+      - |
+        max by (pod) (container_memory_working_set_bytes{%%{cAdvisorFilter}, container="balancerd"})
+      - |
+        max(container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container="balancerd"} > 0)
+
+  - id: materialize.ingress.balancer.cpu_throttling
+    stability: experimental
+    description:
+      summary: |
+        Share of each balancerd pod's CPU periods in which the kernel held
+        it back at its CPU limit.
+      nominal: |
+        Zero.
+      degraded: |
+        A throttled pod delays every connection it carries. Compare
+        _Connection Setup Quantiles_, and raise or remove the CPU limit in
+        the Materialize resource's `balancerdResourceRequirements`.
+      notes: |
+        Empty when balancerd has no CPU limit, because nothing throttles it.
+    promQL: |
+      sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{%%{cAdvisorFilter}, container="balancerd"}%%{interval}))
+      /
+      sum by (pod) (rate(container_cpu_cfs_periods_total{%%{cAdvisorFilter}, container="balancerd"}%%{interval}))
+
+  # --- Balancer: autoscaling --------------------------------------------------
+  # Every query keeps only the autoscaler whose target is balancerd's
+  # Deployment, which the operator names `<resource id>-balancerd`.
+  - id: materialize.ingress.balancer.autoscaler.replicas
+    stability: experimental
+    description:
+      summary: |
+        The replicas balancerd's HorizontalPodAutoscaler runs and wants,
+        between the bounds it scales within.
+      nominal: |
+        Current follows desired, between the minimum and the maximum.
+      degraded: |
+        Desired above current is a scale-up under way, or one whose new
+        pods cannot be scheduled. Current at the maximum cannot grow any
+        further: raise the maximum, or each pod's capacity.
+    promQL:
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas{%%{mzEnvironmentNamespaceFilter}})
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_desired_replicas{%%{mzEnvironmentNamespaceFilter}})
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_min_replicas{%%{mzEnvironmentNamespaceFilter}})
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas{%%{mzEnvironmentNamespaceFilter}})
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+
+  - id: materialize.ingress.balancer.autoscaler.metrics
+    stability: experimental
+    description:
+      summary: |
+        Each metric balancerd's autoscaler scales on, as a share of its
+        target.
+      nominal: |
+        Below 100% while load is steady.
+      degraded: |
+        Well above 100%, the autoscaler adds pods until it reaches its
+        maximum. A metric that stays above 100% at the maximum is load the
+        pods cannot absorb.
+      notes: |
+        A utilization target is a share of each pod's request, so the CPU
+        line is _CPU vs Request_ measured against the target.
+    promQL: |
+      (
+        max by (namespace, horizontalpodautoscaler, metric_name, metric_target_type) (
+          kube_horizontalpodautoscaler_status_target_metric{%%{mzEnvironmentNamespaceFilter}}
+        )
+        / on (namespace, horizontalpodautoscaler, metric_name, metric_target_type)
+        max by (namespace, horizontalpodautoscaler, metric_name, metric_target_type) (
+          kube_horizontalpodautoscaler_spec_target_metric{%%{mzEnvironmentNamespaceFilter}} > 0
+        )
+      )
+      and on (namespace, horizontalpodautoscaler)
+      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+
+  - id: materialize.ingress.balancer.autoscaler.conditions
+    stability: experimental
+    description:
+      summary: |
+        Whether balancerd's autoscaler is at its maximum, cannot read its
+        metrics, or cannot scale. Each line is 1 while it holds.
+      nominal: |
+        All three at 0.
+      unhealthy: |
+        `cannot read its metrics` holds the pods at their current count. The
+        autoscaler cannot see the metric it scales on, usually because
+        metrics-server or a custom metrics adapter is down, or because the
+        pods set no CPU request. `cannot scale` means it cannot change the
+        Deployment at all.
+    promQL:
+      - |
+        (
+          max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas{%%{mzEnvironmentNamespaceFilter}})
+          >= bool
+          max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas{%%{mzEnvironmentNamespaceFilter}})
+        )
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (
+          kube_horizontalpodautoscaler_status_condition{%%{mzEnvironmentNamespaceFilter}, condition="ScalingActive", status="false"}
+        )
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (
+          kube_horizontalpodautoscaler_status_condition{%%{mzEnvironmentNamespaceFilter}, condition="AbleToScale", status="false"}
+        )
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+
+  - id: materialize.ingress.balancer.autoscaler.events
+    stability: experimental
+    description:
+      summary: |
+        What the environment's HorizontalPodAutoscalers did and why, newest
+        first.
+      nominal: |
+        `SuccessfulRescale` lines naming the metric that moved the replica
+        count.
+      degraded: |
+        `FailedGetResourceMetric` or `FailedComputeMetricsReplicas` is an
+        autoscaler that could not read its metric. A few while a pod starts
+        are normal; a steady stream is not.
+    logQL: |
+      {job="loki.source.kubernetes_events", %%{mzEnvironmentNamespaceFilter}}
+        | reportingcontroller="horizontal-pod-autoscaler"
+        | line_format "{{.reason}} {{.name}} — {{.msg}}"
 
   # --- Balancer: logs ---------------------------------------------------------
   - id: materialize.ingress.balancer.logs.warnings

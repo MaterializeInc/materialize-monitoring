@@ -121,6 +121,8 @@ pub mod extra {
     pub const CLOUD_PROVIDER_LIST: &str = "cloudProviderList";
     /// Which load balancer and NAT pulls the gateway was found to be running.
     pub const CLOUD_NETWORK_PULL_LIST: &str = "cloudNetworkPullList";
+    /// The autoscaler found scaling the selected environments' balancerd.
+    pub const BALANCERD_AUTOSCALER: &str = "balancerdAutoscaler";
     /// Whether Karpenter's controller is being scraped.
     pub const KARPENTER_DETECTED: &str = "karpenterDetected";
     /// Whether any CloudNativePG instance is being scraped.
@@ -892,6 +894,37 @@ pub fn cloud_network_pulls() -> dashboardv2::VariableKind {
         label: "Network Pulls",
         description: "Load balancer and NAT gateway pulls the gateway was found to be running",
         expr: r#"label_values(up{provider_pull=~".+"}, provider_pull)"#.to_string(),
+        multi: true,
+        include_all: true,
+        all_value: None,
+        hide: dashboardv2::VariableHide::HideVariable,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: true,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// The HorizontalPodAutoscaler scaling balancerd in the selected environments,
+/// if one does.
+///
+/// `env-ingress`'s Autoscaling row renders on this. kube-state-metrics names an
+/// autoscaler's target in `scaletargetref_name`, and the Materialize operator
+/// names balancerd's Deployment `<resource id>-balancerd`, so the value is that
+/// Deployment's name. A row matching `balancerd` renders only when one is
+/// found, which an unset variable's `undefined` never matches.
+///
+/// Hidden, since it is detection rather than a choice, and multi-valued with
+/// "All" and no custom value, for the reason [`network_components`] gives.
+pub fn balancerd_autoscaler() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::BALANCERD_AUTOSCALER,
+        label: "balancerd Autoscaler",
+        description: "The HorizontalPodAutoscaler found scaling the environment's balancerd",
+        expr: format!(
+            r#"label_values(kube_horizontalpodautoscaler_info{{namespace=~"${}", scaletargetref_name=~".+-balancerd"}}, scaletargetref_name)"#,
+            variables::MZ_NAMESPACE_LIST
+        ),
         multi: true,
         include_all: true,
         all_value: None,

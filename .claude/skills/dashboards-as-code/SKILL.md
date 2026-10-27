@@ -655,9 +655,18 @@ These things about it are not re-derivable by reading the modules:
 - **Panels that split into series of different sizes use a log axis** (`LOG_BASE` in `mod.rs`): health checks
   beside API calls, `success` beside `error`, p50 beside p99. The multi-series panels that stay linear are listed,
   with reasons, in `partitioned_panels_use_a_log_axis`.
-- **The console's counters appear on first use.** `metrics.js` creates each `location` and `status` pair on its
-  first request, so `rate()` never sees that first count; the first `5xx` of a kind on a pod is invisible to the
-  error panels.
+- **The Balancer tab's Autoscaling row renders on detection.** `variable::balancerd_autoscaler` reads
+  `kube_horizontalpodautoscaler_info{scaletargetref_name=~".+-balancerd"}` in the environment's namespace, and the row
+  matches the literal `balancerd`, which an unset variable never contains; a fallback row explains replicas without
+  one. No test install runs an HPA on balancerd, so the queries were checked against Materialize Cloud staging's
+  per-zone balancerd HPAs with the namespace and target name substituted. Resource panels find balancerd by its
+  container name and its CPU request, since balancerd usually has no CPU limit, which is also what an HPA's CPU
+  utilization target is a share of.
+- **The console seeds its rare series at 0.** `metrics.js` creates a `location` and `status` pair on its first
+  request, and a counter that first appears at 1 never counts that 1 in `rate()`. So each scrape adds `500`, `502`,
+  `503`, and `504` for every location, every histogram, and `api` `101` at 0 (MaterializeInc/materialize#40193,
+  `6d755f5795`). Other statuses still lose their first count on each pod, as does any request before a pod's first
+  scrape.
 - **Every `mz_http_*` query reads `source="external"`**, the listener balancerd forwards to; a test holds it. The
   operator's calls and the metric scrapes would swamp the client traffic otherwise.
 - **The console's error feed drops health checks first.** On the AWS reference install the load balancer's checks

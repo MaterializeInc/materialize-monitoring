@@ -67,7 +67,7 @@ spec:
           **Nominal:** `web_console` is the console's own queries, which it runs to draw every page. `web_console_shell` is what users type into the SQL shell.
 
           **Degraded:** `error` from `web_console` is the console failing to load data, which users see as empty or broken pages. `error` from the shell is usually users' own SQL errors.
-        id: 1049
+        id: 1063
         links: []
         title: Console SQL Commands
         vizConfig:
@@ -136,7 +136,7 @@ spec:
           **Nominal:** Steady for `web_console`, whose queries read Materialize's catalog. The shell follows whatever users run.
 
           **Degraded:** Slow `web_console` queries make every console page slow. They run on the `mz_catalog_server` cluster, so check its CPU first.
-        id: 1050
+        id: 1064
         links: []
         title: Console Query Time to First Row (p99)
         vizConfig:
@@ -197,7 +197,7 @@ spec:
           **Nominal:** Zero.
 
           **Degraded:** environmentd itself failed the request. A query error is not a server error: `/api/sql` reports those inside a `200` response.
-        id: 1045
+        id: 1059
         links: []
         title: HTTP Server Errors by Path
         vizConfig:
@@ -258,7 +258,7 @@ spec:
           **Nominal:** `/api/sql` is SQL over HTTP, from the console and from HTTP clients. `/api/experimental/sql` is a WebSocket upgrade, one per streaming session.
 
           Only requests that arrived through balancerd. The operator's own calls and the metric scrapes are left out.
-        id: 1044
+        id: 1058
         links: []
         title: HTTP Requests by Path
         vizConfig:
@@ -327,7 +327,7 @@ spec:
           **Nominal:** For `/api/sql`, the slowest queries clients run over HTTP.
 
           WebSocket upgrades are left out: their time is the handshake, not the session.
-        id: 1046
+        id: 1060
         links: []
         title: HTTP Response Time (p99)
         vizConfig:
@@ -388,7 +388,7 @@ spec:
           **Nominal:** Close to balancerd's `pgwire` rate on _Balancer -> Connection Outcomes_. Each SQL connection is one connection at each hop.
 
           environmentd's `error` is any connection that ended in an error, whichever side caused it, so it does not match balancerd's.
-        id: 1048
+        id: 1062
         links: []
         title: SQL Connections Completed
         vizConfig:
@@ -449,7 +449,7 @@ spec:
           **Degraded:** A `user` count that climbs and never settles usually means a client is opening connections and never closing them; cross-check whether query activity rose to match, or whether connections are just accumulating idle.
 
           Environment-scoped — the cluster/replica selectors don't narrow it.
-        id: 1047
+        id: 1061
         links: []
         title: Open Sessions
         vizConfig:
@@ -511,7 +511,7 @@ spec:
           **Nominal:** 1 everywhere, all the time.
 
           **Degraded:** A pod at 0 passed its high watermark. It keeps its connections and rejoins at its low watermark.
-        id: 1030
+        id: 1036
         links: []
         title: Taking New Connections by Pod
         vizConfig:
@@ -524,6 +524,396 @@ spec:
                 max: 1
                 min: 0
                 noValue: balancerd does not report its capacity state. Older Materialize versions don't publish it.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    balancer-autoscaler-conditions:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      (
+                        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas{namespace=~"$mzNamespaceList"})
+                        >= bool
+                        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas{namespace=~"$mzNamespaceList"})
+                      )
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                    legendFormat: at its maximum
+                    qryType: 1
+                    query: |
+                      (
+                        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas{namespace=~"$mzNamespaceList"})
+                        >= bool
+                        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas{namespace=~"$mzNamespaceList"})
+                      )
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, horizontalpodautoscaler) (
+                        kube_horizontalpodautoscaler_status_condition{namespace=~"$mzNamespaceList", condition="ScalingActive", status="false"}
+                      )
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                    legendFormat: cannot read its metrics
+                    qryType: 1
+                    query: |
+                      max by (namespace, horizontalpodautoscaler) (
+                        kube_horizontalpodautoscaler_status_condition{namespace=~"$mzNamespaceList", condition="ScalingActive", status="false"}
+                      )
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, horizontalpodautoscaler) (
+                        kube_horizontalpodautoscaler_status_condition{namespace=~"$mzNamespaceList", condition="AbleToScale", status="false"}
+                      )
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                    legendFormat: cannot scale
+                    qryType: 1
+                    query: |
+                      max by (namespace, horizontalpodautoscaler) (
+                        kube_horizontalpodautoscaler_status_condition{namespace=~"$mzNamespaceList", condition="AbleToScale", status="false"}
+                      )
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Whether balancerd's autoscaler is at its maximum, cannot read its metrics, or cannot scale. Each line is 1 while it holds.**
+
+          **Nominal:** All three at 0.
+
+          **Unhealthy:** `cannot read its metrics` holds the pods at their current count. The autoscaler cannot see the metric it scales on, usually because metrics-server or a custom metrics adapter is down, or because the pods set no CPU request. `cannot scale` means it cannot change the Deployment at all.
+        id: 1046
+        links: []
+        title: Autoscaler Conditions
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                max: 1
+                min: 0
+                noValue: "No metrics: kube-state-metrics is required"
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    balancer-autoscaler-events:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {job="loki.source.kubernetes_events", namespace=~"$mzNamespaceList"}
+                        | reportingcontroller="horizontal-pod-autoscaler"
+                        | line_format "{{.reason}} {{.name}} — {{.msg}}"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **What the environment's HorizontalPodAutoscalers did and why, newest first.**
+
+          **Nominal:** `SuccessfulRescale` lines naming the metric that moved the replica count.
+
+          **Degraded:** `FailedGetResourceMetric` or `FailedComputeMetricsReplicas` is an autoscaler that could not read its metric. A few while a pod starts are normal; a steady stream is not.
+        id: 1047
+        links: []
+        title: Autoscaler Events
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No autoscaler in this environment recorded an event in this time range.
+              overrides: []
+            options:
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
+              enableLogDetails: true
+              fontSize: small
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
+              showLabels: false
+              showLevel: true
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
+              wrapLogMessage: true
+          version: ""
+    balancer-autoscaler-metrics:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      (
+                        max by (namespace, horizontalpodautoscaler, metric_name, metric_target_type) (
+                          kube_horizontalpodautoscaler_status_target_metric{namespace=~"$mzNamespaceList"}
+                        )
+                        / on (namespace, horizontalpodautoscaler, metric_name, metric_target_type)
+                        max by (namespace, horizontalpodautoscaler, metric_name, metric_target_type) (
+                          kube_horizontalpodautoscaler_spec_target_metric{namespace=~"$mzNamespaceList"} > 0
+                        )
+                      )
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                    legendFormat: "{{metric_name}}"
+                    qryType: 1
+                    query: |
+                      (
+                        max by (namespace, horizontalpodautoscaler, metric_name, metric_target_type) (
+                          kube_horizontalpodautoscaler_status_target_metric{namespace=~"$mzNamespaceList"}
+                        )
+                        / on (namespace, horizontalpodautoscaler, metric_name, metric_target_type)
+                        max by (namespace, horizontalpodautoscaler, metric_name, metric_target_type) (
+                          kube_horizontalpodautoscaler_spec_target_metric{namespace=~"$mzNamespaceList"} > 0
+                        )
+                      )
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Each metric balancerd's autoscaler scales on, as a share of its target.**
+
+          **Nominal:** Below 100% while load is steady.
+
+          **Degraded:** Well above 100%, the autoscaler adds pods until it reaches its maximum. A metric that stays above 100% at the maximum is load the pods cannot absorb.
+
+          A utilization target is a share of each pod's request, so the CPU line is _CPU vs Request_ measured against the target.
+        id: 1045
+        links: []
+        title: Scaling Metrics Against Their Targets
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: "No metrics: kube-state-metrics is required"
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    balancer-autoscaler-replicas:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas{namespace=~"$mzNamespaceList"})
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                    legendFormat: "{{horizontalpodautoscaler}} current"
+                    qryType: 1
+                    query: |
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas{namespace=~"$mzNamespaceList"})
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_desired_replicas{namespace=~"$mzNamespaceList"})
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                    legendFormat: "{{horizontalpodautoscaler}} desired"
+                    qryType: 1
+                    query: |
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_desired_replicas{namespace=~"$mzNamespaceList"})
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_min_replicas{namespace=~"$mzNamespaceList"})
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                    legendFormat: "{{horizontalpodautoscaler}} minimum"
+                    qryType: 1
+                    query: |
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_min_replicas{namespace=~"$mzNamespaceList"})
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                  version: v0
+                refId: query-2
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas{namespace=~"$mzNamespaceList"})
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                    legendFormat: "{{horizontalpodautoscaler}} maximum"
+                    qryType: 1
+                    query: |
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas{namespace=~"$mzNamespaceList"})
+                      and on (namespace, horizontalpodautoscaler)
+                      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"})
+                  version: v0
+                refId: query-3
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The replicas balancerd's HorizontalPodAutoscaler runs and wants, between the bounds it scales within.**
+
+          **Nominal:** Current follows desired, between the minimum and the maximum.
+
+          **Degraded:** Desired above current is a scale-up under way, or one whose new pods cannot be scheduled. Current at the maximum cannot grow any further: raise the maximum, or each pod's capacity.
+        id: 1044
+        links: []
+        title: Autoscaler Replicas
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: short
               overrides: []
             options:
@@ -624,7 +1014,7 @@ spec:
           **Degraded:** A pod at its **high watermark** leaves the load balancer's rotation and takes no new connections until it falls to its **low watermark**. A pod at its **limit** refuses connections outright.
 
           The limit and the watermarks are the same on every pod.
-        id: 1029
+        id: 1035
         links: []
         title: Open Connections Against the Limit
         vizConfig:
@@ -637,6 +1027,89 @@ spec:
                 min: 0
                 noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
                 unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    balancer-cpu:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"}[$__rate_interval]))
+                    legendFormat: "{{pod}}"
+                    qryType: 1
+                    query: |
+                      sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"}[$__rate_interval]))
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max(
+                        max by (namespace, pod) (
+                          kube_pod_container_resource_requests{namespace=~"$mzNamespaceList", container="balancerd", resource="cpu"}
+                        )
+                      )
+                    legendFormat: request
+                    qryType: 1
+                    query: |
+                      max(
+                        max by (namespace, pod) (
+                          kube_pod_container_resource_requests{namespace=~"$mzNamespaceList", container="balancerd", resource="cpu"}
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **CPU each balancerd pod uses, in cores, against the CPU each one requests.**
+
+          **Nominal:** Below the request, and roughly even across pods.
+
+          **Degraded:** One pod well above the others is carrying more connections. Compare _Open Connections by Pod_.
+        id: 1041
+        links: []
+        title: CPU by Pod
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
+                unit: cores
               overrides: []
             options:
               legend:
@@ -718,7 +1191,7 @@ spec:
           **Degraded:** A sudden drop for `pgwire` while clients did not change means something is cutting sessions short: an environmentd restart, or a load balancer idle timeout shorter than the clients expect.
 
           Measured from one second up, so connections shorter than that all read as one second.
-        id: 1034
+        id: 1040
         links: []
         title: Connection Lifetime
         vizConfig:
@@ -779,7 +1252,7 @@ spec:
           **Nominal:** A shutdown notice each time a pod is replaced.
 
           **Degraded:** `failed to connect to upstream server` is environmentd refusing or not answering. Lines about the connection limit or the watermarks mark a pod running out of room.
-        id: 1035
+        id: 1049
         links: []
         title: Warnings and Errors
         vizConfig:
@@ -810,6 +1283,116 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
+          version: ""
+    balancer-memory:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (pod) (container_memory_working_set_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"})
+                    legendFormat: "{{pod}}"
+                    qryType: 1
+                    query: |
+                      max by (pod) (container_memory_working_set_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"})
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max(container_spec_memory_limit_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"} > 0)
+                    legendFormat: limit
+                    qryType: 1
+                    query: |
+                      max(container_spec_memory_limit_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"} > 0)
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Memory each balancerd pod uses, against its limit.**
+
+          **Nominal:** Flat, and well below the limit.
+
+          **Unhealthy:** Steady growth toward the limit ends in an OOM kill, which drops the pod's connections.
+
+          Working set.
+        id: 1042
+        links: []
+        title: Memory by Pod
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
+                unit: bytes
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    balancer-no-autoscaler:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: Why this tab has no autoscaler row, and how to add one.
+        id: 1048
+        links: []
+        title: No Autoscaler
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **No HorizontalPodAutoscaler scales balancerd in this environment.**
+
+                The Materialize operator sets balancerd's replica count from the Materialize resource's `balancerdReplicas`. To scale it with load instead, set `balancerdExternallyScaled: true` on the Materialize resource, so that the operator stops resetting the count, and point a HorizontalPodAutoscaler at the environment's `…-balancerd` Deployment. Materialize versions without that field reset any count an autoscaler sets.
+
+                The Resources row shows the CPU an autoscaler would scale on, against each pod's request.
+              mode: markdown
           version: ""
     balancer-open-by-pod:
       kind: Panel
@@ -843,7 +1426,7 @@ spec:
           **Nominal:** Roughly even. The load balancer in front spreads new connections across the pods.
 
           **Degraded:** One pod holding most of them is normal for a while after a pod restarts, because existing connections stay where they are. A lasting imbalance usually means the load balancer is not routing to every pod.
-        id: 1027
+        id: 1033
         links: []
         title: Open Connections by Pod
         vizConfig:
@@ -902,7 +1485,7 @@ spec:
           **Nominal:** All `success`.
 
           **Degraded:** `error` is a connection balancerd or environmentd could not serve. The client's own failures, such as a wrong password or a dropped network, are `success` here.
-        id: 1026
+        id: 1032
         links: []
         title: Connection Outcomes
         vizConfig:
@@ -980,7 +1563,7 @@ spec:
           **Nominal:** Zero for both.
 
           **Degraded:** **Connection limit:** a pod was full and refused the connection. More balancerd replicas, or a higher limit, are the fixes. **Timed out before routing:** a connection did not finish its setup in time. Usually clients that open a connection and send nothing, such as a port scanner or a misconfigured health check.
-        id: 1031
+        id: 1037
         links: []
         title: Refused Connections
         vizConfig:
@@ -1099,7 +1682,7 @@ spec:
           **Nominal:** Steady, with p99 a small multiple of p50.
 
           **Degraded:** A p99 far above p50 is a few slow connections rather than a slow balancerd, often clients on a slow network finishing TLS. Compare with _Time to Reach environmentd_.
-        id: 1032
+        id: 1038
         links: []
         title: Connection Setup Quantiles
         vizConfig:
@@ -1114,6 +1697,539 @@ spec:
                     type: log
                 noValue: No connection timings from balancerd. Older Materialize versions don't publish them.
                 unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    balancer-summary-cpu:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(rate(container_cpu_usage_seconds_total{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"}[$__rate_interval]))
+                      /
+                      sum(
+                        max by (namespace, pod) (
+                          kube_pod_container_resource_requests{namespace=~"$mzNamespaceList", container="balancerd", resource="cpu"}
+                        )
+                      )
+                    legendFormat: cpu
+                    qryType: 1
+                    query: |
+                      sum(rate(container_cpu_usage_seconds_total{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"}[$__rate_interval]))
+                      /
+                      sum(
+                        max by (namespace, pod) (
+                          kube_pod_container_resource_requests{namespace=~"$mzNamespaceList", container="balancerd", resource="cpu"}
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **CPU balancerd's pods use, as a share of the CPU they request.**
+
+          **Nominal:** Well under 100%.
+
+          **Degraded:** Above 100%, the pods use more than the scheduler set aside for them, so a busy node can starve them. Raise the request in the Materialize resource's `balancerdResourceRequirements`.
+
+          A HorizontalPodAutoscaler's CPU utilization target is a share of this same request.
+        id: 1029
+        links: []
+        title: CPU vs Request
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: "No metrics: cadvisor and kube-state-metrics are required"
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#CEFFFF"
+                    value: null
+                  - color: "#F94902"
+                    value: 0.8
+                  - color: "#E40515"
+                    value: 0.9
+                  - color: "#AB0003"
+                    value: 1
+                unit: percentunit
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    balancer-summary-memory:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max(
+                        max by (namespace, pod) (container_memory_working_set_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"})
+                        /
+                        max by (namespace, pod) (container_spec_memory_limit_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"} > 0)
+                      )
+                    legendFormat: busiest pod
+                    qryType: 1
+                    query: |
+                      max(
+                        max by (namespace, pod) (container_memory_working_set_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"})
+                        /
+                        max by (namespace, pod) (container_spec_memory_limit_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"} > 0)
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Memory the busiest balancerd pod uses, as a share of its limit.**
+
+          **Nominal:** Well under 100%.
+
+          **Unhealthy:** A pod that reaches its limit is OOM-killed, and every connection it holds drops. Raise the limit in the Materialize resource's `balancerdResourceRequirements`.
+
+          Working set. Empty when balancerd has no memory limit.
+        id: 1030
+        links: []
+        title: Memory vs Limit
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: balancerd has no memory limit, or the kubelet's container metrics are not scraped.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#CEFFFF"
+                    value: null
+                  - color: "#F94902"
+                    value: 0.8
+                  - color: "#E40515"
+                    value: 0.9
+                  - color: "#AB0003"
+                    value: 1
+                unit: percentunit
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    balancer-summary-open:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(mz_balancer_connection_active{materialize_cloud_organization_name=~"$environmentNameList"})
+                    legendFormat: connections
+                    qryType: 1
+                    query: |
+                      sum(mz_balancer_connection_active{materialize_cloud_organization_name=~"$environmentNameList"})
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections balancerd is passing to environmentd right now, SQL and HTTPS together.**
+
+          **Nominal:** Whatever the environment's clients keep open. Connection poolers and BI tools hold steady numbers.
+
+          Every open connection is also a session on environmentd. See _SQL and HTTP API -> Open Sessions_.
+        id: 1026
+        links: []
+        title: Open Connections
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: "#33BBEE"
+                  mode: shades
+                decimals: 0
+                min: 0
+                noValue: No metrics from balancerd in this environment. Check the environment picker, and that the balancerd PodMonitor is installed.
+                unit: short
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    balancer-summary-ready:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        max by (namespace, deployment) (
+                          kube_deployment_status_replicas_ready{namespace=~"$mzNamespaceList", deployment=~".+-balancerd"}
+                        )
+                      )
+                    legendFormat: ready
+                    qryType: 1
+                    query: |
+                      sum(
+                        max by (namespace, deployment) (
+                          kube_deployment_status_replicas_ready{namespace=~"$mzNamespaceList", deployment=~".+-balancerd"}
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **balancerd pods passing their readiness check.**
+
+          **Nominal:** The replica count the Materialize resource, or an autoscaler, asks for.
+
+          **Degraded:** Fewer means pods are starting, crashing, or waiting for a node. _Unavailable Pods_ counts the shortfall.
+
+          kube-state-metrics reports each Deployment once per replica of its own, so the query keeps one copy.
+        id: 1027
+        links: []
+        title: Ready Pods
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: "No metrics: kube-state-metrics is required"
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#AB0003"
+                    value: null
+                  - color: "#F19903"
+                    value: 1
+                  - color: "#A2F49B"
+                    value: 1
+                unit: short
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    balancer-summary-restart:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      time() - max(container_start_time_seconds{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"})
+                    legendFormat: newest pod
+                    qryType: 1
+                    query: |
+                      time() - max(container_start_time_seconds{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"})
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Time since the newest balancerd container started.**
+
+          **Nominal:** Hours to days, or as long as it has been since the last rollout.
+
+          **Degraded:** Minutes means a pod just restarted or was replaced, and the connections it held dropped. _Balancer -> Balancer Logs_ and the environment's events say why.
+        id: 1031
+        links: []
+        title: Since Last Restart
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#AB0003"
+                    value: null
+                  - color: "#AB0003"
+                    value: 2
+                  - color: "#E40515"
+                    value: 8
+                  - color: "#F94902"
+                    value: 26
+                  - color: "#F6790B"
+                    value: 80
+                  - color: "#F19903"
+                    value: 240
+                  - color: "#E7B503"
+                    value: 719
+                  - color: "#D5CE04"
+                    value: 2152
+                  - color: "#BBE453"
+                    value: 6443
+                  - color: "#A2F49B"
+                    value: 19286
+                  - color: "#C6F7D6"
+                    value: 57730
+                  - color: "#CEFFFF"
+                    value: 172800
+                unit: s
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    balancer-summary-unavailable:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        max by (namespace, deployment) (
+                          kube_deployment_status_replicas_unavailable{namespace=~"$mzNamespaceList", deployment=~".+-balancerd"}
+                        )
+                      )
+                    legendFormat: unavailable
+                    qryType: 1
+                    query: |
+                      sum(
+                        max by (namespace, deployment) (
+                          kube_deployment_status_replicas_unavailable{namespace=~"$mzNamespaceList", deployment=~".+-balancerd"}
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **balancerd pods the Deployment wants that are not available.**
+
+          **Nominal:** Zero.
+
+          **Degraded:** A pod counted here is crashing, failing its readiness check, or waiting for a node. A rollout counts each new pod here until it is ready.
+        id: 1028
+        links: []
+        title: Unavailable Pods
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: "No metrics: kube-state-metrics is required"
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#A2F49B"
+                    value: null
+                  - color: "#FEDA8B"
+                    value: 1
+                  - color: "#FDB366"
+                    value: 1.5
+                  - color: "#F67E4B"
+                    value: 2
+                  - color: "#DD3D2D"
+                    value: 2.5
+                  - color: "#A50026"
+                    value: 3
+                unit: short
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    balancer-throttling:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"}[$__rate_interval]))
+                      /
+                      sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"}[$__rate_interval]))
+                    legendFormat: "{{pod}}"
+                    qryType: 1
+                    query: |
+                      sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"}[$__rate_interval]))
+                      /
+                      sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=~"$mzNamespaceList",container!="",container!="POD", container="balancerd"}[$__rate_interval]))
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Share of each balancerd pod's CPU periods in which the kernel held it back at its CPU limit.**
+
+          **Nominal:** Zero.
+
+          **Degraded:** A throttled pod delays every connection it carries. Compare _Connection Setup Quantiles_, and raise or remove the CPU limit in the Materialize resource's `balancerdResourceRequirements`.
+
+          Empty when balancerd has no CPU limit, because nothing throttles it.
+        id: 1043
+        links: []
+        title: CPU Throttling
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: balancerd has no CPU limit, so the kernel never throttles it.
+                unit: percentunit
               overrides: []
             options:
               legend:
@@ -1193,7 +2309,7 @@ spec:
           **Nominal:** A small part of the setup time, because both run in the same cluster.
 
           **Degraded:** environmentd is slow to accept connections: busy, starting up, or on an overloaded node. Failed attempts are not timed; they are on _Overview -> Connection Error Ratio_.
-        id: 1033
+        id: 1039
         links: []
         title: Time to Reach environmentd
         vizConfig:
@@ -1254,7 +2370,7 @@ spec:
           **Nominal:** Zero or close to it. Each connection spends a few milliseconds here.
 
           **Degraded:** Connections are stuck during setup: waiting on a slow client's startup message, or on a lookup. Connections that stay too long are closed and counted on _Refused Connections_.
-        id: 1028
+        id: 1034
         links: []
         title: Connections Not Yet Routed
         vizConfig:
@@ -1316,7 +2432,7 @@ spec:
           **Nominal:** Low and bursty. `401` from `api` is an expired sign-in, and `404` is a stale link or a bookmark.
 
           **Degraded:** A steady `401` stream means something keeps calling the API with credentials it does not have, such as a script or a forgotten browser tab.
-        id: 1040
+        id: 1054
         links: []
         title: Client Errors by Location
         vizConfig:
@@ -1377,7 +2493,7 @@ spec:
           **Nominal:** `waiting` (idle keep-alive connections) is most of them. `reading` and `writing` are requests in flight.
 
           `active` is the total of the other three.
-        id: 1038
+        id: 1052
         links: []
         title: Client Connections by State
         vizConfig:
@@ -1440,7 +2556,7 @@ spec:
           **Degraded:** Access lines show the request and its status. nginx's own `[error]` lines follow with the reason, such as `connect() failed` or `upstream timed out` for the hop to balancerd.
 
           Load balancer and Kubernetes health checks are left out.
-        id: 1043
+        id: 1057
         links: []
         title: Server Errors
         vizConfig:
@@ -1510,7 +2626,7 @@ spec:
           **The median time to serve a console request, by location.**
 
           **Nominal:** Milliseconds for `app` and `static`. `api` is the median query.
-        id: 1041
+        id: 1055
         links: []
         title: Response Time (p50)
         vizConfig:
@@ -1581,7 +2697,7 @@ spec:
           **Degraded:** `app` and `static` slow together is the console pod: check its CPU on the Materialize Environment Overview dashboard, under _Kubernetes Workloads_.
 
           Measured in buckets up to 10 seconds, so anything slower reads as 10.
-        id: 1042
+        id: 1056
         links: []
         title: Response Time (p99)
         vizConfig:
@@ -1642,7 +2758,7 @@ spec:
           **Nominal:** Zero.
 
           **Degraded:** `502` and `504` from `api`: nginx could not reach balancerd, or it timed out. Check _Overview -> Connection Error Ratio_ next. `5xx` from `app` or `static` is the console pod itself.
-        id: 1039
+        id: 1053
         links: []
         title: Server Errors by Location
         vizConfig:
@@ -1713,7 +2829,7 @@ spec:
           **Nominal:** Mostly `2xx` and `3xx`. Some `4xx` is normal: a session that expired gets `401` until the user signs in again.
 
           **Degraded:** Any `5xx`. See _Server Errors by Location_.
-        id: 1036
+        id: 1050
         links: []
         title: Requests by Status Class
         vizConfig:
@@ -1776,7 +2892,7 @@ spec:
           nginx counts a WebSocket when its session ends, so a shell left open for an hour reaches this panel an hour late. environmentd counts one when it opens, as `/api/experimental/sql` on _SQL and HTTP API -> HTTP Requests by Path_.
 
           Each one is also an `https` connection on balancerd, open for as long as the session.
-        id: 1037
+        id: 1051
         links: []
         title: WebSocket Sessions Closed
         vizConfig:
@@ -4205,6 +5321,49 @@ spec:
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: narrow
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-summary-open
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-summary-ready
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-summary-unavailable
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-summary-cpu
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-summary-memory
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-summary-restart
+                      maxColumnCount: 6
+                      rowHeightMode: short
+                  title: Balancer Summary
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
                   hideHeader: false
                   layout:
                     kind: AutoGridLayout
@@ -4286,6 +5445,107 @@ spec:
                       maxColumnCount: 3
                       rowHeightMode: standard
                   title: Connection Timing
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-cpu
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-memory
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-throttling
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: Resources
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: balancerd
+                          variable: balancerdAutoscaler
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-autoscaler-replicas
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-autoscaler-metrics
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-autoscaler-conditions
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-autoscaler-events
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Autoscaling
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: notMatches
+                          value: balancerd
+                          variable: balancerdAutoscaler
+                      visibility: show
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: balancer-no-autoscaler
+                      maxColumnCount: 1
+                      rowHeightMode: standard
+                  title: No Autoscaler
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -4647,6 +5907,35 @@ spec:
           expr: label_values(up{provider_pull=~".+"}, provider_pull)
           qryType: 1
           query: label_values(up{provider_pull=~".+"}, provider_pull)
+        version: v0
+      refresh: never
+      regex: ""
+      regexApplyTo: value
+      skipUrlSync: true
+      sort: alphabeticalAsc
+  - kind: QueryVariable
+    spec:
+      allowCustomValue: true
+      current:
+        text: ""
+        value: ""
+      definition: label_values(kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"}, scaletargetref_name)
+      description: The HorizontalPodAutoscaler found scaling the environment's balancerd
+      hide: hideVariable
+      includeAll: true
+      label: balancerd Autoscaler
+      multi: true
+      name: balancerdAutoscaler
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"}, scaletargetref_name)
+          qryType: 1
+          query: label_values(kube_horizontalpodautoscaler_info{namespace=~"$mzNamespaceList", scaletargetref_name=~".+-balancerd"}, scaletargetref_name)
         version: v0
       refresh: never
       regex: ""

@@ -137,11 +137,13 @@ fn tabs(q: &Queries) -> Vec<Tab> {
     ]
 }
 
-/// [`variable::dependency_scoped`], plus `infra-net`'s hidden detection of the
-/// gateway's load balancer pulls, which the Load Balancer tab's rows render on.
+/// [`variable::dependency_scoped`], plus two hidden detections that rows render
+/// on: `infra-net`'s of the gateway's load balancer pulls, for the Load Balancer
+/// tab, and of an autoscaler on balancerd, for the Balancer tab.
 fn variables() -> Vec<dashboardv2::VariableKind> {
     let mut variables = variable::dependency_scoped();
     variables.push(variable::cloud_network_pulls());
+    variables.push(variable::balancerd_autoscaler());
     variables
 }
 
@@ -281,6 +283,27 @@ mod tests {
         ("lb-aws-open", "an environment has one load balancer"),
         ("lb-aws-new", "an environment has one load balancer"),
         ("lb-aws-throughput", "an environment has one load balancer"),
+        (
+            "balancer-cpu",
+            "the pods are peers, and the request is a reference line",
+        ),
+        (
+            "balancer-memory",
+            "the pods are peers, and the limit is a reference line",
+        ),
+        ("balancer-throttling", "the pods are peers"),
+        (
+            "balancer-autoscaler-replicas",
+            "replica counts between the autoscaler's bounds",
+        ),
+        (
+            "balancer-autoscaler-metrics",
+            "each series is already a share of its own target",
+        ),
+        (
+            "balancer-autoscaler-conditions",
+            "each line is 0 or 1, and 0 is the healthy state",
+        ),
     ];
 
     #[test]
@@ -335,6 +358,18 @@ mod tests {
                 );
             }
         }
+        // The kubelet's and kube-state-metrics' series reach the environment
+        // through its namespace.
+        for prefix in ["container_", "kube_"] {
+            let selectors = test_support::selectors_of(&json, prefix);
+            assert!(!selectors.is_empty(), "no {prefix} queries found");
+            for selector in selectors {
+                assert!(
+                    selector.contains("$mzNamespaceList"),
+                    "unscoped: {selector}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -383,10 +418,19 @@ mod tests {
         out
     }
 
+    /// The rows rendered on the gateway's load balancer pulls, leaving out the
+    /// Balancer tab's autoscaler pair.
+    fn pull_conditioned_rows() -> Vec<(String, String, String)> {
+        test_support::variable_conditioned_rows(&built())
+            .into_iter()
+            .filter(|(_, _, value)| value != balancer::AUTOSCALER_DETECTED)
+            .collect()
+    }
+
     #[test]
     fn each_provider_row_renders_on_its_own_pull() {
         use crate::grafana::infra_networking::cloud::{AWS_LB, AZURE_LB, GCP_LB};
-        let conditions = test_support::variable_conditioned_rows(&built());
+        let conditions = pull_conditioned_rows();
         let mut when: Vec<_> = conditions
             .iter()
             .filter(|(_, op, _)| op == "matches")
@@ -402,13 +446,45 @@ mod tests {
     fn exactly_one_fallback_covers_every_load_balancer_pull() {
         // A fallback that missed a pull would render its note beside that
         // pull's rows.
-        let conditions = test_support::variable_conditioned_rows(&built());
+        let conditions = pull_conditioned_rows();
         let fallbacks: Vec<_> = conditions
             .iter()
             .filter(|(_, op, _)| op == "notMatches")
             .collect();
         assert_eq!(fallbacks.len(), 1, "{fallbacks:?}");
         assert_eq!(fallbacks[0].2, load_balancer::load_balancer_pulls());
+    }
+
+    #[test]
+    fn the_autoscaler_row_pairs_with_its_fallback() {
+        // Exactly one of the two renders for any value the detection takes,
+        // and an unset variable stringifies to something neither matches.
+        let pair: Vec<_> = test_support::variable_conditioned_rows(&built())
+            .into_iter()
+            .filter(|(_, _, value)| value == balancer::AUTOSCALER_DETECTED)
+            .map(|(title, op, _)| (title, op))
+            .collect();
+        assert_eq!(
+            pair,
+            vec![
+                ("Autoscaling".to_string(), "matches".to_string()),
+                ("No Autoscaler".to_string(), "notMatches".to_string()),
+            ]
+        );
+        for unset in ["", "undefined", "[object Object]"] {
+            assert!(!unset.contains(balancer::AUTOSCALER_DETECTED));
+        }
+    }
+
+    #[test]
+    fn the_autoscaler_fallback_says_how_to_add_one() {
+        for key in [
+            "balancerdReplicas",
+            "balancerdExternallyScaled",
+            "-balancerd",
+        ] {
+            assert!(balancer::NO_AUTOSCALER.contains(key), "{key}");
+        }
     }
 
     #[test]

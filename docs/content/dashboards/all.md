@@ -113,6 +113,9 @@ target health and connection resets on AWS, health probes on Azure, and traffic 
 Its provider rows appear when the gateway pulls that load balancer's metrics, and otherwise the tab says how to turn the pull on;
 see [Cloud Provider Metrics](../../metrics/collecting/cloud-provider-metrics/).
 The Balancer tab adds each pod's connections against its limit and watermarks, the time spent reaching environmentd, and balancerd's warnings.
+It opens with sparkline stats for open connections, ready and unavailable pods, CPU against the pods' request, memory against their limit, and the time since the last restart, and drills into each pod's CPU, memory, and throttling further down.
+Where a HorizontalPodAutoscaler scales balancerd, an Autoscaling row shows its replicas, the metrics it scales on against their targets, the conditions that stop it, and its events.
+Without one, the tab says how balancerd's replica count is set and how to hand it to an autoscaler.
 The Console tab splits every request by what it asked for, the page itself or an API call, and carries nginx's server-error lines.
 The SQL and HTTP API tab is environmentd's side of the same traffic, including the SQL the console runs.
 

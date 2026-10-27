@@ -74,6 +74,7 @@
   usage:
   - infra.alloy.resources.throttling
   - materialize.environmentd.cpu_throttled
+  - materialize.ingress.balancer.cpu_throttling
 - importance: essential
   labels:
   - container
@@ -82,6 +83,7 @@
   usage:
   - infra.alloy.resources.throttling
   - materialize.environmentd.cpu_throttled
+  - materialize.ingress.balancer.cpu_throttling
 - importance: essential
   labels:
   - container
@@ -97,6 +99,8 @@
   - materialize.clusters.cpu_high
   - materialize.environmentd.high_cpu
   - materialize.generations.cpu
+  - materialize.ingress.balancer.cpu_by_pod
+  - materialize.ingress.balancer.cpu_of_request
   - materialize.kubernetes.cpu.usage.absolute
   - materialize.kubernetes.cpu.usage.percent
   - materialize.kubernetes.pods.cpu_usage
@@ -145,6 +149,8 @@
   - materialize.environmentd.memory_elevated
   - materialize.generations.memory
   - materialize.generations.pods
+  - materialize.ingress.balancer.memory_by_pod
+  - materialize.ingress.balancer.memory_of_limit
   - materialize.kubernetes.memory.usage.absolute
   - materialize.kubernetes.memory.usage.percent
   - materialize.kubernetes.pods.memory_usage
@@ -244,6 +250,8 @@
   - infra.kubernetes.memory_high
   - materialize.environmentd.high_memory
   - materialize.environmentd.memory_elevated
+  - materialize.ingress.balancer.memory_by_pod
+  - materialize.ingress.balancer.memory_of_limit
   - materialize.kubernetes.memory.capacity
   - materialize.kubernetes.memory.capacity.all_containers
   - materialize.kubernetes.memory.usage.percent
@@ -259,6 +267,7 @@
   - namespace
   name: container_start_time_seconds
   usage:
+  - materialize.ingress.balancer.since_restart
   - materialize.kubernetes.last_restart
 - importance: essential
   labels:
@@ -354,18 +363,23 @@
   - infra.kubernetes.deployment_unavailable_warning
 - importance: essential
   labels:
+  - deployment
   - namespace
   name: kube_deployment_status_replicas_ready
   usage:
+  - materialize.ingress.balancer.ready_pods
+  - materialize.kubernetes.deployments.readiness
+- importance: essential
+  labels:
+  - deployment
+  - namespace
+  name: kube_deployment_status_replicas_unavailable
+  usage:
+  - materialize.ingress.balancer.unavailable_pods
   - materialize.kubernetes.deployments.readiness
 - importance: essential
   labels:
   - namespace
-  name: kube_deployment_status_replicas_unavailable
-  usage:
-  - materialize.kubernetes.deployments.readiness
-- importance: essential
-  labels: []
   name: kube_horizontalpodautoscaler_spec_max_replicas
   usage:
   - infra.autoscaling.hpa.at_max
@@ -373,8 +387,11 @@
   - infra.autoscaling.hpa.share_of_max
   - infra.kubernetes.hpa_replicas_critical
   - infra.kubernetes.hpa_replicas_high
+  - materialize.ingress.balancer.autoscaler.conditions
+  - materialize.ingress.balancer.autoscaler.replicas
 - importance: essential
-  labels: []
+  labels:
+  - namespace
   name: kube_horizontalpodautoscaler_status_current_replicas
   usage:
   - infra.autoscaling.hpa.at_max
@@ -382,6 +399,8 @@
   - infra.autoscaling.hpa.share_of_max
   - infra.kubernetes.hpa_replicas_critical
   - infra.kubernetes.hpa_replicas_high
+  - materialize.ingress.balancer.autoscaler.conditions
+  - materialize.ingress.balancer.autoscaler.replicas
 - importance: essential
   labels:
   - node
@@ -487,6 +506,8 @@
   - infra.nodes.allocation.cpu
   - infra.nodes.allocation.memory
   - infra.nodes.pods.budgets
+  - materialize.ingress.balancer.cpu_by_pod
+  - materialize.ingress.balancer.cpu_of_request
 - importance: essential
   labels:
   - container
@@ -1455,22 +1476,49 @@
   usage:
   - infra.net.k8s.endpoints.by_namespace
 - importance: recommended
-  labels: []
+  labels:
+  - namespace
+  - scaletargetref_name
+  name: kube_horizontalpodautoscaler_info
+  usage:
+  - materialize.ingress.balancer.autoscaler.conditions
+  - materialize.ingress.balancer.autoscaler.metrics
+  - materialize.ingress.balancer.autoscaler.replicas
+- importance: recommended
+  labels:
+  - namespace
   name: kube_horizontalpodautoscaler_spec_min_replicas
   usage:
   - infra.autoscaling.hpa.replicas
+  - materialize.ingress.balancer.autoscaler.replicas
+- importance: recommended
+  labels:
+  - namespace
+  name: kube_horizontalpodautoscaler_spec_target_metric
+  usage:
+  - materialize.ingress.balancer.autoscaler.metrics
 - importance: recommended
   labels:
   - condition
+  - namespace
   - status
   name: kube_horizontalpodautoscaler_status_condition
   usage:
   - infra.autoscaling.hpa.unable_to_scale
+  - materialize.ingress.balancer.autoscaler.conditions
 - importance: recommended
-  labels: []
+  labels:
+  - namespace
   name: kube_horizontalpodautoscaler_status_desired_replicas
   usage:
   - infra.autoscaling.hpa.replicas
+  - materialize.ingress.balancer.autoscaler.replicas
+- importance: recommended
+  labels:
+  - namespace
+  name: kube_horizontalpodautoscaler_status_target_metric
+  usage:
+  - materialize.ingress.balancer.autoscaler.metrics
 - importance: recommended
   labels:
   - namespace
