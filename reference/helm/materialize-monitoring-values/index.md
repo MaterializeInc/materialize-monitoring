@@ -8714,7 +8714,7 @@ and turning `alerting.server.tls` on changes no volume.
   ],
   "image": {
     "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
-    "tag": "v0.94.1"
+    "tag": "v0.94.2"
   },
   "resources": {
     "limits": {
