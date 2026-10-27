@@ -309,7 +309,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-materialize-ingress-dashboard/dashboards/grafana/env-ingress.json?xxhash=b385848415b52f68" download="mz-mon-env-ingress.json"><code>env-ingress.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-materialize-ingress-dashboard/dashboards/grafana/env-ingress.json?xxhash=37bd27dfb4cef627" download="mz-mon-env-ingress.json"><code>env-ingress.json</code></a>
         <br /><small>UID <code>mz-mon-env-ingress</code></small>
       </td>
       <td>

@@ -187,6 +187,16 @@ Panel::stat(title)
 
 For single-series sparklines, leave the default `VALUE` text mode — the panel title is the label.
 
+### Log axes below 1
+
+Grafana labels every tick on a time series axis with one decimal count, which it guesses from the tick spacing of the
+axis's *linear* range.
+On a log axis that runs up to about 1, it picks one decimal, so the 0.01 and 0.001 ticks both read `0`.
+Units that rescale below 1, such as `s` (to `ms` and `µs`) and the byte units, label their small ticks correctly.
+For any other unit on a log axis, such as `cps`, `reqps`, or `ops`, set `.decimals(...)`, which stops the guess.
+`env-ingress` sets three for its per-second rates, and a test there holds the rule.
+Verified on Grafana 13.2.4.
+
 ### Timeseries legend
 
 Apply the shared timeseries legend builder to every multi-series timeseries panel:
