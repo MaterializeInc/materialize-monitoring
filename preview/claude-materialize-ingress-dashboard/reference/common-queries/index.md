@@ -16826,14 +16826,15 @@ request rejected before reaching one.</li>
 the one balancerd forwards to, <code>internal</code> serves the operator, and
 <code>metrics</code> serves the scrapes.</li>
 </ul>
-<h2 id="two-things-that-are-easy-to-get-wrong">Two things that are easy to get wrong<a class="anchor" href="#two-things-that-are-easy-to-get-wrong">#</a></h2>
+<h2 id="easy-to-get-wrong">Easy to get wrong<a class="anchor" href="#easy-to-get-wrong">#</a></h2>
 <ul>
 <li>balancerd counts a connection when it <strong>closes</strong>, so a SQL session that
 stays open for an hour reaches the rates an hour late. Open connections
 are the live view.</li>
-<li>nginx does not time WebSocket upgrades (status <code>101</code>), because their
-duration is the length of the session. The console&rsquo;s SQL shell is one,
-so its latency is on the SQL and HTTP API tab instead.</li>
+<li>nginx likewise counts a WebSocket (status <code>101</code>) when its session
+<strong>ends</strong>, and does not time it, because its duration is the length of
+the session. The console&rsquo;s SQL shell is one, so its latency is
+on the SQL and HTTP API tab instead.</li>
 </ul>
 
 <h4 id="materialize.ingress.overview.balancer_error_ratio">materialize.ingress.overview.balancer_error_ratio
@@ -17253,8 +17254,8 @@ Console requests per second, by status class.
 <h4 id="materialize.ingress.console.websockets">materialize.ingress.console.websockets
   <a class="anchor" href="#materialize.ingress.console.websockets">#</a>
 </h4>
-WebSocket sessions opened through the console per second, such as the
-SQL shell.
+WebSocket sessions through the console that ended, per second, such as
+the SQL shell.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.ingress.console.websockets-tabs" id="materialize.ingress.console.websockets-tab-0" checked>
   <label for="materialize.ingress.console.websockets-tab-0">PromQL</label>
