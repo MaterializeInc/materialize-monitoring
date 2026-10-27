@@ -140,6 +140,7 @@ like our bundled Thanos provider.
             <ul>
                 <li><a href="../common-queries#infra.alloy.resources.throttling">infra.alloy.resources.throttling</a></li>
                 <li><a href="../common-queries#materialize.environmentd.cpu_throttled">materialize.environmentd.cpu_throttled</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.cpu_throttling">materialize.ingress.balancer.cpu_throttling</a></li>
             </ul>
         </details>
     </li>
@@ -151,6 +152,7 @@ like our bundled Thanos provider.
             <ul>
                 <li><a href="../common-queries#infra.alloy.resources.throttling">infra.alloy.resources.throttling</a></li>
                 <li><a href="../common-queries#materialize.environmentd.cpu_throttled">materialize.environmentd.cpu_throttled</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.cpu_throttling">materialize.ingress.balancer.cpu_throttling</a></li>
             </ul>
         </details>
     </li>
@@ -168,6 +170,8 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#materialize.clusters.cpu_high">materialize.clusters.cpu_high</a></li>
                 <li><a href="../common-queries#materialize.environmentd.high_cpu">materialize.environmentd.high_cpu</a></li>
                 <li><a href="../common-queries#materialize.generations.cpu">materialize.generations.cpu</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.cpu_by_pod">materialize.ingress.balancer.cpu_by_pod</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.cpu_of_request">materialize.ingress.balancer.cpu_of_request</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.cpu.usage.absolute">materialize.kubernetes.cpu.usage.absolute</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.cpu.usage.percent">materialize.kubernetes.cpu.usage.percent</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.cpu_usage">materialize.kubernetes.pods.cpu_usage</a></li>
@@ -238,6 +242,8 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#materialize.environmentd.memory_elevated">materialize.environmentd.memory_elevated</a></li>
                 <li><a href="../common-queries#materialize.generations.memory">materialize.generations.memory</a></li>
                 <li><a href="../common-queries#materialize.generations.pods">materialize.generations.pods</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.memory_by_pod">materialize.ingress.balancer.memory_by_pod</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.memory_of_limit">materialize.ingress.balancer.memory_of_limit</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.memory.usage.absolute">materialize.kubernetes.memory.usage.absolute</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.memory.usage.percent">materialize.kubernetes.memory.usage.percent</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.memory_usage">materialize.kubernetes.pods.memory_usage</a></li>
@@ -358,6 +364,8 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.kubernetes.memory_high">infra.kubernetes.memory_high</a></li>
                 <li><a href="../common-queries#materialize.environmentd.high_memory">materialize.environmentd.high_memory</a></li>
                 <li><a href="../common-queries#materialize.environmentd.memory_elevated">materialize.environmentd.memory_elevated</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.memory_by_pod">materialize.ingress.balancer.memory_by_pod</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.memory_of_limit">materialize.ingress.balancer.memory_of_limit</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.memory.capacity">materialize.kubernetes.memory.capacity</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.memory.capacity.all_containers">materialize.kubernetes.memory.capacity.all_containers</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.memory.usage.percent">materialize.kubernetes.memory.usage.percent</a></li>
@@ -380,6 +388,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#materialize.ingress.balancer.since_restart">materialize.ingress.balancer.since_restart</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.last_restart">materialize.kubernetes.last_restart</a></li>
             </ul>
         </details>
@@ -536,26 +545,29 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_deployment_status_replicas_ready">kube_deployment_status_replicas_ready
         <details>
-            Used labels: namespace
+            Used labels: deployment, namespace
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#materialize.ingress.balancer.ready_pods">materialize.ingress.balancer.ready_pods</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.deployments.readiness">materialize.kubernetes.deployments.readiness</a></li>
             </ul>
         </details>
     </li>
     <li id="kube_deployment_status_replicas_unavailable">kube_deployment_status_replicas_unavailable
         <details>
-            Used labels: namespace
+            Used labels: deployment, namespace
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#materialize.ingress.balancer.unavailable_pods">materialize.ingress.balancer.unavailable_pods</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.deployments.readiness">materialize.kubernetes.deployments.readiness</a></li>
             </ul>
         </details>
     </li>
     <li id="kube_horizontalpodautoscaler_spec_max_replicas">kube_horizontalpodautoscaler_spec_max_replicas
         <details>
+            Used labels: namespace
             <br />
             Example queries:
             <ul>
@@ -564,11 +576,14 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.autoscaling.hpa.share_of_max">infra.autoscaling.hpa.share_of_max</a></li>
                 <li><a href="../common-queries#infra.kubernetes.hpa_replicas_critical">infra.kubernetes.hpa_replicas_critical</a></li>
                 <li><a href="../common-queries#infra.kubernetes.hpa_replicas_high">infra.kubernetes.hpa_replicas_high</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.conditions">materialize.ingress.balancer.autoscaler.conditions</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.replicas">materialize.ingress.balancer.autoscaler.replicas</a></li>
             </ul>
         </details>
     </li>
     <li id="kube_horizontalpodautoscaler_status_current_replicas">kube_horizontalpodautoscaler_status_current_replicas
         <details>
+            Used labels: namespace
             <br />
             Example queries:
             <ul>
@@ -577,6 +592,8 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.autoscaling.hpa.share_of_max">infra.autoscaling.hpa.share_of_max</a></li>
                 <li><a href="../common-queries#infra.kubernetes.hpa_replicas_critical">infra.kubernetes.hpa_replicas_critical</a></li>
                 <li><a href="../common-queries#infra.kubernetes.hpa_replicas_high">infra.kubernetes.hpa_replicas_high</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.conditions">materialize.ingress.balancer.autoscaler.conditions</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.replicas">materialize.ingress.balancer.autoscaler.replicas</a></li>
             </ul>
         </details>
     </li>
@@ -704,6 +721,8 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.nodes.allocation.cpu">infra.nodes.allocation.cpu</a></li>
                 <li><a href="../common-queries#infra.nodes.allocation.memory">infra.nodes.allocation.memory</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.budgets">infra.nodes.pods.budgets</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.cpu_by_pod">materialize.ingress.balancer.cpu_by_pod</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.cpu_of_request">materialize.ingress.balancer.cpu_of_request</a></li>
             </ul>
         </details>
     </li>
@@ -2065,31 +2084,68 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="kube_horizontalpodautoscaler_info">kube_horizontalpodautoscaler_info
+        <details>
+            Used labels: namespace, scaletargetref_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.conditions">materialize.ingress.balancer.autoscaler.conditions</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.metrics">materialize.ingress.balancer.autoscaler.metrics</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.replicas">materialize.ingress.balancer.autoscaler.replicas</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="kube_horizontalpodautoscaler_spec_min_replicas">kube_horizontalpodautoscaler_spec_min_replicas
         <details>
+            Used labels: namespace
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.autoscaling.hpa.replicas">infra.autoscaling.hpa.replicas</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.replicas">materialize.ingress.balancer.autoscaler.replicas</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_horizontalpodautoscaler_spec_target_metric">kube_horizontalpodautoscaler_spec_target_metric
+        <details>
+            Used labels: namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.metrics">materialize.ingress.balancer.autoscaler.metrics</a></li>
             </ul>
         </details>
     </li>
     <li id="kube_horizontalpodautoscaler_status_condition">kube_horizontalpodautoscaler_status_condition
         <details>
-            Used labels: condition, status
+            Used labels: condition, namespace, status
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.autoscaling.hpa.unable_to_scale">infra.autoscaling.hpa.unable_to_scale</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.conditions">materialize.ingress.balancer.autoscaler.conditions</a></li>
             </ul>
         </details>
     </li>
     <li id="kube_horizontalpodautoscaler_status_desired_replicas">kube_horizontalpodautoscaler_status_desired_replicas
         <details>
+            Used labels: namespace
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.autoscaling.hpa.replicas">infra.autoscaling.hpa.replicas</a></li>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.replicas">materialize.ingress.balancer.autoscaler.replicas</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_horizontalpodautoscaler_status_target_metric">kube_horizontalpodautoscaler_status_target_metric
+        <details>
+            Used labels: namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.ingress.balancer.autoscaler.metrics">materialize.ingress.balancer.autoscaler.metrics</a></li>
             </ul>
         </details>
     </li>

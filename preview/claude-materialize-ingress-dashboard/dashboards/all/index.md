@@ -19,10 +19,13 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 ## Formats
 
-Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/reference/compatibility/#grafana).
-Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
+Every dashboard has a **Grafana dashboard schema v2** render, which needs **Grafana 12 or later**.
+For more information, see [Grafana compatibility](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/reference/compatibility/#grafana).
+`env-top` also has a **Datadog** preview, which [Datadog](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/dashboards/datadog/) describes.
+Each table below lists every format, so you can see which ones a dashboard has no render for.
 Grafana 10 and 11 (schema v1) renders are not planned.
-The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/reference/development/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/reference/common-queries/) is the query material to build one yourself.
+The rest of the Datadog set, and the Google Cloud Monitoring and Honeycomb sets, are tracked on the [roadmap](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/reference/development/roadmap/#dashboards).
+[Common Queries](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/reference/common-queries/) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -69,7 +72,13 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td>
+        <a href="/materialize-monitoring/preview/claude-materialize-ingress-dashboard/dashboards/datadog/env-top.json?xxhash=d747a74c1174136b" download="env-top.json"><code>env-top.json</code></a>
+        <br /><small>UID <code>env-top</code></small>
+      </td>
+      <td>
+          <em>No annotations</em>
+      </td>
     </tr>
   </tbody>
 </table>
@@ -278,6 +287,9 @@ target health and connection resets on AWS, health probes on Azure, and traffic 
 Its provider rows appear when the gateway pulls that load balancer's metrics, and otherwise the tab says how to turn the pull on;
 see [Cloud Provider Metrics](../../metrics/collecting/cloud-provider-metrics/).
 The Balancer tab adds each pod's connections against its limit and watermarks, the time spent reaching environmentd, and balancerd's warnings.
+It opens with sparkline stats for open connections, ready and unavailable pods, CPU against the pods' request, memory against their limit, and the time since the last restart, and drills into each pod's CPU, memory, and throttling further down.
+Where a HorizontalPodAutoscaler scales balancerd, an Autoscaling row shows its replicas, the metrics it scales on against their targets, the conditions that stop it, and its events.
+Without one, the tab says how balancerd's replica count is set and how to hand it to an autoscaler.
 The Console tab splits every request by what it asked for, the page itself or an API call, and carries nginx's server-error lines.
 The SQL and HTTP API tab is environmentd's side of the same traffic, including the SQL the console runs.
 
@@ -297,7 +309,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-materialize-ingress-dashboard/dashboards/grafana/env-ingress.json?xxhash=fcdb8d3d11253112" download="mz-mon-env-ingress.json"><code>env-ingress.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-materialize-ingress-dashboard/dashboards/grafana/env-ingress.json?xxhash=9183917d931ecae8" download="mz-mon-env-ingress.json"><code>env-ingress.json</code></a>
         <br /><small>UID <code>mz-mon-env-ingress</code></small>
       </td>
       <td>

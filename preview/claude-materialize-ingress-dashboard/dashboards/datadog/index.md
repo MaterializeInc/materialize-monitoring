@@ -5,12 +5,29 @@
 
 # Datadog
 
-> [!NOTE]
->   **There is no Materialize dashboard set for Datadog yet.**
->   It is tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115) and sits in the backlog with no committed date, alongside the Google Cloud Monitoring and Honeycomb sets.
->   See the [Dashboards workstream](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/reference/development/roadmap/#dashboards) for where it sits against the rest of the work.
+The Materialize Environment Overview, `env-top`, has a Datadog preview.
+It holds the cluster and replica counts from the Grafana dashboard's Cluster Objects / Replicas tab.
+The rest of the Grafana dashboards are tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115), on the [Dashboards roadmap](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/reference/development/roadmap/#dashboards).
 
-What exists today is the query material to build one yourself.
+## Import the preview
+
+1. Download the Datadog file from the `env-top` row of [Available Dashboards](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/dashboards/all/#materialize-environment-overview-env-top).
+2. Create the dashboard through Datadog's API, with an API key and an application key that has the `dashboards_write` permission:
+
+   ```bash
+   curl -X POST "https://api.DATADOG_SITE/api/v1/dashboard" \
+     -H "DD-API-KEY: ${DD_API_KEY}" \
+     -H "DD-APPLICATION-KEY: ${DD_APP_KEY}" \
+     -H "Content-Type: application/json" \
+     --data @env-top.json
+   ```
+
+   Replace `DATADOG_SITE` with your Datadog site, such as `datadoghq.com`.
+   If you manage Datadog with Terraform, pass the same file to the Datadog provider's `datadog_dashboard_json` resource instead.
+3. Pick one environment in the dashboard's **environment** variable.
+   Environments reuse cluster and replica ids, so the counts merge them when several are selected.
+
+## Build the rest yourself
 
 [Common Queries](/materialize-monitoring/preview/claude-materialize-ingress-dashboard/reference/common-queries/) renders the registry's queries with a **Datadog** tab beside the PromQL wherever a query has a Datadog form, in the metric query syntax you paste into a dashboard widget or a monitor.
 The translations are validated against a live Datadog organization that receives a self-managed install's metrics through the gateway.

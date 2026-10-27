@@ -16826,6 +16826,11 @@ request rejected before reaching one.</li>
 the one balancerd forwards to, <code>internal</code> serves the operator, and
 <code>metrics</code> serves the scrapes.</li>
 </ul>
+<h2 id="resources-and-autoscaling">Resources and autoscaling<a class="anchor" href="#resources-and-autoscaling">#</a></h2>
+<p>The Balancer tab&rsquo;s resource and autoscaler panels read the kubelet&rsquo;s
+container metrics and kube-state-metrics, scoped to the environment&rsquo;s
+namespace. They find balancerd by its container&rsquo;s name, <code>balancerd</code>, and
+by its Deployment&rsquo;s, <code>&lt;resource id&gt;-balancerd</code>.</p>
 <h2 id="easy-to-get-wrong">Easy to get wrong<a class="anchor" href="#easy-to-get-wrong">#</a></h2>
 <ul>
 <li>balancerd counts a connection when it <strong>closes</strong>, so a SQL session that
@@ -17219,6 +17224,244 @@ How long connections stay open, from accept to close, by protocol.
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.ready_pods">materialize.ingress.balancer.ready_pods
+  <a class="anchor" href="#materialize.ingress.balancer.ready_pods">#</a>
+</h4>
+balancerd pods passing their readiness check.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.ready_pods-tabs" id="materialize.ingress.balancer.ready_pods-tab-0" checked>
+  <label for="materialize.ingress.balancer.ready_pods-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, deployment<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_deployment_status_replicas_ready{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, deployment<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.unavailable_pods">materialize.ingress.balancer.unavailable_pods
+  <a class="anchor" href="#materialize.ingress.balancer.unavailable_pods">#</a>
+</h4>
+balancerd pods the Deployment wants that are not available.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.unavailable_pods-tabs" id="materialize.ingress.balancer.unavailable_pods-tab-0" checked>
+  <label for="materialize.ingress.balancer.unavailable_pods-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, deployment<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_deployment_status_replicas_unavailable{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, deployment<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.cpu_of_request">materialize.ingress.balancer.cpu_of_request
+  <a class="anchor" href="#materialize.ingress.balancer.cpu_of_request">#</a>
+</h4>
+CPU balancerd&rsquo;s pods use, as a share of the CPU they request.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.cpu_of_request-tabs" id="materialize.ingress.balancer.cpu_of_request-tab-0" checked>
+  <label for="materialize.ingress.balancer.cpu_of_request-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_usage_seconds_total{<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!="POD", container!=""</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_pod_container_resource_requests{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;, resource<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.memory_of_limit">materialize.ingress.balancer.memory_of_limit
+  <a class="anchor" href="#materialize.ingress.balancer.memory_of_limit">#</a>
+</h4>
+Memory the busiest balancerd pod uses, as a share of its limit.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.memory_of_limit-tabs" id="materialize.ingress.balancer.memory_of_limit-tab-0" checked>
+  <label for="materialize.ingress.balancer.memory_of_limit-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_memory_working_set_bytes{<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!="POD", container!=""</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_spec_memory_limit_bytes{<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!="POD", container!=""</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.since_restart">materialize.ingress.balancer.since_restart
+  <a class="anchor" href="#materialize.ingress.balancer.since_restart">#</a>
+</h4>
+Time since the newest balancerd container started.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.since_restart-tabs" id="materialize.ingress.balancer.since_restart-tab-0" checked>
+  <label for="materialize.ingress.balancer.since_restart-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>container_start_time_seconds{<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!="POD", container!=""</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.cpu_by_pod">materialize.ingress.balancer.cpu_by_pod
+  <a class="anchor" href="#materialize.ingress.balancer.cpu_by_pod">#</a>
+</h4>
+CPU each balancerd pod uses, in cores, against the CPU each one
+requests.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.cpu_by_pod-tabs" id="materialize.ingress.balancer.cpu_by_pod-tab-0" checked>
+  <label for="materialize.ingress.balancer.cpu_by_pod-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_usage_seconds_total{<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!="POD", container!=""</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_pod_container_resource_requests{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;, resource<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.memory_by_pod">materialize.ingress.balancer.memory_by_pod
+  <a class="anchor" href="#materialize.ingress.balancer.memory_by_pod">#</a>
+</h4>
+Memory each balancerd pod uses, against its limit.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.memory_by_pod-tabs" id="materialize.ingress.balancer.memory_by_pod-tab-0" checked>
+  <label for="materialize.ingress.balancer.memory_by_pod-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_memory_working_set_bytes{<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!="POD", container!=""</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>container_spec_memory_limit_bytes{<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!="POD", container!=""</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.cpu_throttling">materialize.ingress.balancer.cpu_throttling
+  <a class="anchor" href="#materialize.ingress.balancer.cpu_throttling">#</a>
+</h4>
+Share of each balancerd pod&rsquo;s CPU periods in which the kernel held
+it back at its CPU limit.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.cpu_throttling-tabs" id="materialize.ingress.balancer.cpu_throttling-tab-0" checked>
+  <label for="materialize.ingress.balancer.cpu_throttling-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_cfs_throttled_periods_total{<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!="POD", container!=""</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_cfs_periods_total{<span contenteditable='true' class='replaceable' data-replace='cAdvisorFilter' title='cAdvisorFilter'>container!="POD", container!=""</span>, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.autoscaler.replicas">materialize.ingress.balancer.autoscaler.replicas
+  <a class="anchor" href="#materialize.ingress.balancer.autoscaler.replicas">#</a>
+</h4>
+The replicas balancerd&rsquo;s HorizontalPodAutoscaler runs and wants,
+between the bounds it scales within.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.autoscaler.replicas-tabs" id="materialize.ingress.balancer.autoscaler.replicas-tab-0" checked>
+  <label for="materialize.ingress.balancer.autoscaler.replicas-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_status_current_replicas{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, scaletargetref_name<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_status_desired_replicas{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, scaletargetref_name<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_spec_min_replicas{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, scaletargetref_name<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_spec_max_replicas{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, scaletargetref_name<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.autoscaler.metrics">materialize.ingress.balancer.autoscaler.metrics
+  <a class="anchor" href="#materialize.ingress.balancer.autoscaler.metrics">#</a>
+</h4>
+Each metric balancerd&rsquo;s autoscaler scales on, as a share of its
+target.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.autoscaler.metrics-tabs" id="materialize.ingress.balancer.autoscaler.metrics-tab-0" checked>
+  <label for="materialize.ingress.balancer.autoscaler.metrics-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler, metric_name, metric_target_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_horizontalpodautoscaler_status_target_metric{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler, metric_name, metric_target_type<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler, metric_name, metric_target_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_horizontalpodautoscaler_spec_target_metric{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, scaletargetref_name<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.autoscaler.conditions">materialize.ingress.balancer.autoscaler.conditions
+  <a class="anchor" href="#materialize.ingress.balancer.autoscaler.conditions">#</a>
+</h4>
+Whether balancerd&rsquo;s autoscaler is at its maximum, cannot read its
+metrics, or cannot scale. Each line is 1 while it holds.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.autoscaler.conditions-tabs" id="materialize.ingress.balancer.autoscaler.conditions-tab-0" checked>
+  <label for="materialize.ingress.balancer.autoscaler.conditions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_status_current_replicas{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&gt;=</span> <span style="color:#66d9ef">bool</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_spec_max_replicas{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, scaletargetref_name<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  kube_horizontalpodautoscaler_status_condition{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, condition<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">ScalingActive</span>&#34;, status<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">false</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, scaletargetref_name<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  kube_horizontalpodautoscaler_status_condition{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, condition<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">AbleToScale</span>&#34;, status<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">false</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, scaletargetref_name<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.+-balancerd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.ingress.balancer.autoscaler.events">materialize.ingress.balancer.autoscaler.events
+  <a class="anchor" href="#materialize.ingress.balancer.autoscaler.events">#</a>
+</h4>
+What the environment&rsquo;s HorizontalPodAutoscalers did and why, newest
+first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.ingress.balancer.autoscaler.events-tabs" id="materialize.ingress.balancer.autoscaler.events-tab-0" checked>
+  <label for="materialize.ingress.balancer.autoscaler.events-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
   </div>
 </div>
 <h4 id="materialize.ingress.balancer.logs.warnings">materialize.ingress.balancer.logs.warnings
