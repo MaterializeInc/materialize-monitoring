@@ -196,19 +196,20 @@ and that the prefix lands on the cluster query alone.
 
 ### Rendering
 
-`mz-monitoring-build gen-dashboards` is the entrypoint.
-`packages/dashboards/src/grafana/render.rs` does the work; `packages/dashboards/src/grafana/mod.rs` holds the registry
-of what can be rendered.
+`mz-monitoring-build gen-dashboards` is the entrypoint, and `--flavor` picks the backend.
+Each backend's `render.rs` under `packages/dashboards/src/` does the work, and its `mod.rs` holds the registry of what
+can be rendered.
 
-Two consumers, one command:
+Each output has one consumer:
 
 | Output | Consumer | Make target |
 | --- | --- | --- |
-| `--format yaml` into `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/` | the dashboards Helm chart, which globs by filename stem | `charts/…/dashboards/grafana` |
+| `--format yaml --folder <name>` into each `charts/materialize-monitoring-dashboards*/pre-rendered/dashboards/grafana/` | the dashboards Helm chart for that folder, which globs by filename stem | `charts/…/dashboards/grafana` |
 | `--format json` into `docs/assets/dashboards/grafana/` | the docsite, which offers the file for download | `docs/assets/dashboards/grafana` |
+| `--flavor datadog` into `docs/assets/dashboards/datadog/` | the docsite, which offers the file beside the Grafana one of the same stem | `docs/assets/dashboards/datadog` |
 
-Both trees are checked in, which makes byte-stability the property that matters most.
-Every render therefore goes through `render::canonical` first, which does two things:
+Every tree is checked in, which makes byte-stability the property that matters most.
+Every render therefore goes through `mz_dashboards::canonical` first, which both backends share and which does two things:
 
 - **Sorts every object's keys.** This reaches further than choosing an ordered map for the generated structs: the
   free-form `options` and `spec` blocks are `serde_json::Map`, whose order under this crate's `preserve_order` is

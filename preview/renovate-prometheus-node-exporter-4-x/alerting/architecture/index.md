@@ -17,7 +17,7 @@ The other pages in this section cover each part in depth:
 | [Alert Channels](../channels/) | Receivers, receiver classes, severity presets, credentials, and extra routes |
 | [Maintenance Windows](../maintenance/) | Silences, recurring mute windows, and inhibition |
 
-The production checklist for this component is [Production Best Practices > Alertmanager](../../operating/production-best-practices/#alertmanager).
+The production checklist for this component is [Production Best Practices > Alertmanager](../../operating/production-best-practices/alertmanager/).
 
 <!--
 Agent note: the claims on this page were verified against a live two-replica install (gossip convergence,

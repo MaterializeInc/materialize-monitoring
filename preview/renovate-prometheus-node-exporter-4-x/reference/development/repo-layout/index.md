@@ -36,14 +36,15 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `mz-monitoring-build` / `mz-monitoring-check`: thin wrappers over the Rust binaries
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
-    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
+    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, `grafana/` and `datadog/`, with `canonical.rs` serializing both deterministically; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
     * `queries/`: query-registry YAML inputs — the metric, log, and alert query definitions and recording rules,
       validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
       * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
         persist's own view of object storage and the metadata database
       * `infra-*.yaml`: the platform, including `infra-loki.yaml`, `infra-alloy.yaml` and `infra-thanos.yaml` (the log store, the collectors and the metrics store watching themselves),
         `infra-cloud.yaml` (the cloud provider pull), `infra-autoscaling.yaml` and `infra-karpenter.yaml` (node supply and Karpenter),
-        and `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves)
+        `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves),
+        and `infra-postgres.yaml` (any PostgreSQL, through the postgres-exporter)
       * `node-*.yaml`: node-exporter
       * `ext-*.yaml`: the normalized `ext:*` recording rules, one adapter per rule group
       * `tests/`: the `promtool test rules` cases for the rendered rules
@@ -62,21 +63,35 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `materialize-monitoring/`: umbrella chart
       * `Chart.yaml` / `Chart.lock`: chart metadata; lock pins subchart versions
       * `values.yaml` / `README.md` / `README.md.gotmpl`: profile-driven defaults; README generated from the template via `helm-docs`
-      * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `prometheus-node-exporter`, `metrics-server`
+      * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `prometheus-node-exporter`, `metrics-server`, `prometheus-postgres-exporter`
       * `files/`: hand-authored files loaded via `{{ .Files.Get }}` and never rendered by Helm — `alertmanager/mzmon.gotmpl` and `alertmanager/defaults.gotmpl`, the notification templates the chart ships in `alertmanager-config`
       * `pre-rendered/`: generated artifacts loaded via `{{ .Files.Get }}`; never hand-edited
         * `pipelines/`: rendered Alloy (`agent.alloy`, `gateway.alloy`, `gateway-metrics.alloy`, `gateway-dest-stub.alloy`)
         * `scrapers/`: `classic/` (raw scrape config), `prometheus-operator/` (PodMonitors + ScrapeConfig), `gmp/` (GCP `PodMonitoring`)
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
         * `metrics/`: `metric-tiers.yaml`
-      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`)
-      * `profiles/`: composable values overlays — sizing (`loki-small`, `loki-large`, `loki-test`), cloud examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`), and shape overlays (`existing-grafana`, `grafana-postgres`, `grafana-pvc`, `grafana-ingress`, `split-namespace`, `otel-metrics-fanout`, `otlp-metrics-honeycomb`). The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
+      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`, `_postgres_exporter_helpers.tpl`, and others)
+      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), and `adhoc`, the whole stack in one file. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
       * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect, each checked with `amtool check-config` and rendered with `amtool template render`
-    * `materialize-monitoring-dashboards/`: the Grafana dashboards, as a chart and release of their own — though not a *component* of their own: it belongs to the existing `dashboards` component, whose version stream it shares with `packages/dashboards/` and `packages/queries/`. Split out because Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew — the umbrella chart's `helm upgrade` began failing outright. It creates `GrafanaManifest` resources and nothing else; the `Grafana` instance, the datasources and the folders stay in the umbrella chart, and this one references them through values it cannot discover (`grafana.instanceSelector`, `grafana.folderUids`)
-      * `pre-rendered/dashboards/`: `grafana/` and `datadog/`, written by `mz-monitoring-build gen-dashboards`
-      * `templates/`: `dashboards.yaml` (the manifests) and `validate.yaml`
-      * `values.yaml` / `README.md` / `README.md.gotmpl` / `tests/`
+    * `materialize-monitoring-dashboards/`: the Materialize environment dashboards, as a chart and release of their own.
+      It isn't a *component* of their own: it belongs to the existing `dashboards` component,
+      whose version stream it shares with its siblings below, `packages/dashboards/` and `packages/queries/`.
+      Split out because Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew:
+      the umbrella chart's `helm upgrade` began failing outright, and one dashboards chart later came close.
+      It creates `GrafanaManifest` resources and nothing else; the `Grafana` instance, the datasources and the folders stay in the umbrella chart,
+      and this one references them through values it cannot discover (`grafana.instanceSelector`, `grafana.folderUids`)
+      * `pre-rendered/dashboards/grafana/`: the dashboards filed in the `materialize` folder,
+        written by `mz-monitoring-build gen-dashboards --folder materialize`
+      * `templates/`: `dashboards.yaml` (the manifests), `validate.yaml`, and `NOTES.txt`, each one line that includes
+        a template from the library chart
+      * `charts/dashboards-common`: a symlink to `../../_dashboards-common`, the library chart; `helm package` follows it
+      * `values.yaml` / `README.md` / `.helmignore` / `tests/`
+    * `materialize-monitoring-dashboards-infra/`: the same chart for the dashboards in the `infra` folder, the platform underneath Materialize
+    * `materialize-monitoring-dashboards-meta/`: the same chart for the dashboards in the `meta-o11y` folder, which watch the monitoring stack itself
+    * `_dashboards-common/`: the `dashboards-common` library chart the three dashboards charts share.
+      Their templates (`templates/_*.tpl`) and the `README.md.gotmpl` helm-docs renders each chart's README from.
+      Never published on its own; the leading `_` marks that, and must stay off the symlinks, which Helm would skip
     * `materialize-monitoring-crds/`: CRDs chart (`Chart.yaml`, `Chart.lock`, `values.yaml`, `README.md`, `README.md.gotmpl`, `tests/`)
       * `charts/`: the vendored `prometheus-operator-crds` tarball, plus `grafana-operator-crds/` deflated from the upstream operator chart, which publishes no CRDs chart of its own — generated by `bin/extract-grafana-operator-crds.sh` (`make grafana-operator-crds`)
   * `terraform/` (see [Terraform Modules](../design-docs/20260803-terraform-modules/)): the cloud-agnostic module that installs the released charts. Versioned as part of the `materialize-monitoring` component rather than on a stream of its own; per-cloud wrappers live in `materialize-terraform-self-managed`

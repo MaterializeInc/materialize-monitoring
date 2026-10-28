@@ -69,8 +69,10 @@ Every bundled rule carries an `audience` label saying who acts on it.
 |---|---|
 | `platform` | The Materialize deployment, its system clusters, and the Kubernetes platform under it |
 | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
+| `development` | Conditions the stack has already contained, for the people who write the software behind them, such as log lines too long to store. Bundled as `severity: notice` |
 
 An [extra route](../channels/#extra-routes) on `audience="workload"` sends the second group to the people who own the clusters.
+One on `audience="development"` sends the third to a development channel.
 
 `rules.overrides` changes an installed rule's `for` and labels, and never its expression.
 A deployment whose clusters normally take hours to hydrate is the usual reason for one, since `cluster-hydration-stuck` fires after an hour by default.
@@ -91,6 +93,7 @@ It is not in the default set and is never selected, so `rules.selected`, `rules.
 
 Materialize's own view of its metadata database needs nothing configured.
 The cloud provider's view needs two things: the provider pull, `pipeline.metrics.provider.*`, watching the database, and `externalDependencies.consensus` naming it as a metadata database.
+The database's own view, from the [PostgreSQL exporter](../../metrics/collecting/postgresql-exporter/), needs the same two: a `postgres-exporter.targets` entry, and the target's name in `externalDependencies.consensus`.
 
 ```yaml
 externalDependencies:
@@ -99,15 +102,18 @@ externalDependencies:
       resourceId: mzmon-prod-db
 ```
 
-The second is needed because a pull also watches databases that are not a metadata database, Grafana's among them, and the provider cannot tell them apart.
-A database the pull watches and `externalDependencies.consensus` does not name is never recorded as a metadata database.
-The render warns when a pull watches databases and none of them is named, and when a named database is not watched.
+The second is needed because a pull or the exporter also watches databases that are not a metadata database, Grafana's among them, and neither can tell them apart.
+A database that `externalDependencies.consensus` does not name is never recorded as a metadata database.
+The render warns when a pull or the exporter watches databases and none of them is named, and when a named database is not watched.
+
+The following table gives the `resourceId` each flavor takes:
 
 | `flavor` | `resourceId` |
 |---|---|
 | `rds` | The DB instance identifier, as listed in `pipeline.metrics.provider.cloudwatch.rds.instances` |
 | `cloudsql` | The instance name, as listed in `pipeline.metrics.provider.gcp.cloudSql.instances` |
 | `azure-postgres` | The flexible server name, as listed in `pipeline.metrics.provider.azure.postgres.servers` |
+| `postgres` | The target's `name`, as listed in `postgres-exporter.targets` |
 
 An alert can read a recorded series: `consensus-unreachable` reads `ext:consensus_up`, so it installs wherever any adapter recording that series does.
 

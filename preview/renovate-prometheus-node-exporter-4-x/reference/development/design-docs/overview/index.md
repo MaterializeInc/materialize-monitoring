@@ -82,7 +82,7 @@ A new doc starts at Draft.
     <li>
       <a href="/materialize-monitoring/preview/renovate-prometheus-node-exporter-4-x/reference/development/design-docs/20260920-external-dependency-monitoring/">Monitoring Materialize&#39;s External Dependencies</a>
       <ul>
-            <li><strong>lastmod:</strong> 2026-10-09 00:00:00 &#43;0000 UTC</li>
+            <li><strong>lastmod:</strong> 2026-10-14 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Ready</li>
       </ul>
     </li>
@@ -91,6 +91,20 @@ A new doc starts at Draft.
       <ul>
             <li><strong>lastmod:</strong> 2026-09-24 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Ready</li>
+      </ul>
+    </li>
+    <li>
+      <a href="/materialize-monitoring/preview/renovate-prometheus-node-exporter-4-x/reference/development/design-docs/20261002-metric-label-vocabulary/">A Label Vocabulary for Materialize Metrics</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-10-21 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Ready</li>
+      </ul>
+    </li>
+    <li>
+      <a href="/materialize-monitoring/preview/renovate-prometheus-node-exporter-4-x/reference/development/design-docs/20261020-datadog-dashboards/">Datadog dashboards from the query registry</a>
+      <ul>
+            <li><strong>lastmod:</strong> 2026-10-21 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Draft</li>
       </ul>
     </li>
 </ul>

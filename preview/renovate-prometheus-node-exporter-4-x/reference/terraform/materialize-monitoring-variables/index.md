@@ -120,7 +120,8 @@ Channels in the docs for worked examples.
   `route` options. Empty means no alert reaches anybody.
 - `routes` — `root` for the top-level route's grouping and timing, and `extra` for routes ahead
   of the preset's severity routes, in Alertmanager's own format. Every bundled alert carries an
-  `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
+  `audience` label, `platform`, `workload` or `development`, which is the usual thing an extra
+  route matches.
 - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
 - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
 - `default_templates` — make the chart's notification templates every receiver's default (the
@@ -279,7 +280,7 @@ Note that the CRDs forbid turning this back off in place; the resource has to be
     <tr>
       <td class="tf-var-name"><a name="dashboards_chart_version" href="#dashboards_chart_version">dashboards_<wbr>chart_<wbr>version</a></td>
         <td class="tf-var-type"><code>string</code></td>
-      <td class="tf-var-desc">Version of the materialize-monitoring-dashboards chart. Read from its `Chart.yaml` when null, like `chart_version`. Tracked separately because the dashboards ship on a version stream of their own.</td>
+      <td class="tf-var-desc">Version of the three dashboards charts, which share one version stream. Read from each chart's `Chart.yaml` when null, like `chart_version`. Tracked separately because the dashboards ship on a version stream of their own.</td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
@@ -289,17 +290,19 @@ Note that the CRDs forbid turning this back off in place; the resource has to be
 
 Null derives the label the main chart puts on its own `Grafana` resource, which is correct
 unless that release narrowed the selector through `connections.grafana.labels` in
-`additional_values` — the dashboards chart cannot read that, so set the same map here.
+`additional_values` — the dashboards charts cannot read that, so set the same map here.
 </td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="dashboards_selected" href="#dashboards_selected">dashboards_<wbr>selected</a></td>
         <td class="tf-var-type"><code>list(string)</code></td>
-      <td class="tf-var-desc">Dashboard filename-stem patterns to install, matched against the set the chart carries.
+      <td class="tf-var-desc">Dashboard filename-stem patterns to install, matched against every dashboard in the three
+dashboards charts.
 
-Null leaves the chart's own default, which is every dashboard. Narrow it to hold one back —
-`env-upgrade` depends on operator instrumentation that not every Materialize version has.
+Null leaves the charts' own default, which is every dashboard. Narrow it to hold one back —
+`env-upgrade` depends on operator instrumentation that not every Materialize version has. A
+dashboards chart the patterns match nothing in is not installed.
 </td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
@@ -344,12 +347,14 @@ that disagrees with `site` fails at the intake rather than at plan time.
     <tr>
       <td class="tf-var-name"><a name="enable_dashboards" href="#enable_dashboards">enable_<wbr>dashboards</a></td>
         <td class="tf-var-type"><code>bool</code></td>
-      <td class="tf-var-desc">Install the materialize-monitoring-dashboards chart.
+      <td class="tf-var-desc">Install the dashboards charts: materialize-monitoring-dashboards for the Materialize
+environment, materialize-monitoring-dashboards-infra for the platform underneath it, and
+materialize-monitoring-dashboards-meta for the monitoring stack itself.
 
-The dashboards are a Helm release of their own because Helm stores a release in a Kubernetes
-Secret and a Secret may not exceed 1 MiB, which the rendered set had grown past. The module
-installs it against the folders and Grafana instance the main release creates, so the two stay
-in step without either having to discover the other.
+The dashboards are Helm releases of their own, one per Grafana folder, because Helm stores a
+release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set had
+grown past. The module installs them against the folders and Grafana instance the main release
+creates, so they stay in step without either side having to discover the other.
 
 Set false when dashboards are managed elsewhere — a platform team's own Grafana provisioning,
 or a GitOps pipeline that owns them.
@@ -370,6 +375,24 @@ this off later, leaves the CRDs and every custom resource in the cluster in plac
 the CRDs is a deliberate step of its own; see the "Uninstalling" page in the docs.
 </td>
         <td class="tf-var-default"><code>true</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="enable_postgres_exporter" href="#enable_postgres_exporter">enable_<wbr>postgres_<wbr>exporter</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Run the chart's postgres-exporter, which reads each PostgreSQL database it watches from the
+inside: connections against the ceiling, transaction-ID age, vacuum, and the size of every
+database on the instance.
+
+It watches every `postgres_exporter_targets` entry, and Grafana's own database whenever this
+module configures one with a password, as a target named `grafana`. Grafana's connects to the
+`postgres` database rather than `grafana_database_name`, because Grafana's own tables would add
+thousands of per-table series that no panel reads.
+
+Each target's credentials go into a Secret this module creates, `postgres-exporter`, never into
+the Helm values. The role each target connects as needs `pg_monitor` to see other roles'
+sessions; see the PostgreSQL exporter page.
+</td>
+        <td class="tf-var-default"><code>false</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="enable_sql_scraper" href="#enable_sql_scraper">enable_<wbr>sql_<wbr>scraper</a></td>
@@ -679,6 +702,22 @@ Name each label. `*` copies every label on every pod, and is refused.
         <td class="tf-var-default"><code>materialize</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="metadata_databases" href="#metadata_databases">metadata_<wbr>databases</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">The metadata databases a cloud provider pull watches, by flavor and the provider's name for
+them. Each becomes an `externalDependencies.consensus` entry, so the `ext:consensus_*`
+recording rules read that database and no other the pull also watches, such as Grafana's.
+
+`flavor` is `rds` (the DB instance identifier), `cloudsql` (the instance name, without the
+project) or `azure-postgres` (the flexible server name). A postgres-exporter target is declared
+with its own `metadata_database` flag instead.
+</td>
+        <td class="tf-var-schema"><pre><code>list(object({
+    flavor      = string
+    resource_id = string
+  }))</code></pre></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="min_zones" href="#min_zones">min_<wbr>zones</a></td>
         <td class="tf-var-type"><code>number</code></td>
       <td class="tf-var-desc">Number of availability zones the node pool can actually launch in, used to adjust the hard zone
@@ -835,6 +874,41 @@ a Secret.
     min_importance = optional(string, "recommended")
     auth_headers   = optional(map(string), {})
   })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="postgres_exporter_passwords" href="#postgres_exporter_passwords">postgres_<wbr>exporter_<wbr>passwords</a></td>
+        <td class="tf-var-type"><code>map(string)</code></td>
+      <td class="tf-var-desc">The password for each `postgres_exporter_targets` entry, keyed by its `name`. Written into the
+exporter's Secret and nowhere else. Every target needs a non-empty one: the exporter refuses a
+target whose credentials have no password. Grafana's always comes from
+`grafana_database_password`, and a `grafana` entry here is ignored.
+</td>
+        <td class="tf-var-default"><code>map[]</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="postgres_exporter_targets" href="#postgres_exporter_targets">postgres_<wbr>exporter_<wbr>targets</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Databases for the postgres-exporter to watch, beside Grafana's. Ignored unless
+`enable_postgres_exporter` is true.
+
+`name` becomes the target's `target` label and keys its password in
+`postgres_exporter_passwords`. `database` is the one the connection opens, and per-table
+statistics come from it alone; everything instance-wide covers every database on the
+instance. Point it at the metadata database's own database (`materialize` in the shipped
+examples), and leave it at `postgres` for anything whose tables you do not need.
+
+`metadata_database = true` declares the target a metadata database, which is what the
+`postgres` recording-rule adapter reads.
+</td>
+        <td class="tf-var-schema"><pre><code>list(object({
+    name              = string
+    host              = string
+    port              = optional(number, 5432)
+    database          = optional(string, "postgres")
+    user              = string
+    ssl_mode          = optional(string, "require")
+    metadata_database = optional(bool, false)
+  }))</code></pre></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="prometheus_remote_write" href="#prometheus_remote_write">prometheus_<wbr>remote_<wbr>write</a></td>
