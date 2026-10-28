@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Container Images v0.9.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.7.0 (Unreleased)
 
 _Changes Pending_
@@ -174,9 +178,21 @@ _Changes Pending_
 
   </details>
 
-## Container Images v0.8.0 (Unreleased)
+## Container Images v0.8.0
 
-_Changes Pending_
+* Update dependency grafana/alloy to v1.21.2
+    * [materialize-monitoring#614](https://github.com/MaterializeInc/materialize-monitoring/pull/614)
+    * [`v1.21.2`](https://redirect.github.com/grafana/alloy/releases/tag/v1.21.2)
+    * [`v1.21.1`](https://redirect.github.com/grafana/alloy/releases/tag/v1.21.1)
+* Update debian:13 Docker digest to 4c25275
+    * [materialize-monitoring#600](https://github.com/MaterializeInc/materialize-monitoring/pull/600)
+* Update gcr.io/distroless/base-debian13 Docker digest to f5e9519
+    * [materialize-monitoring#599](https://github.com/MaterializeInc/materialize-monitoring/pull/599)
+* Update dependency grafana/alloy to v1.21.0
+    * [materialize-monitoring#591](https://github.com/MaterializeInc/materialize-monitoring/pull/591)
+    * [`v1.21.0`](https://redirect.github.com/grafana/alloy/releases/tag/v1.21.0)
+* Update gcr.io/distroless/base-debian13 Docker digest to 44a80dc
+    * [materialize-monitoring#575](https://github.com/MaterializeInc/materialize-monitoring/pull/575)
 
 ## Dashboards (Helm chart) v0.20.0
 
