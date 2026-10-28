@@ -6389,7 +6389,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "prom/memcached-exporter",
-  "tag": "v0.17.0"
+  "tag": "v0.18.0"
 }</pre>
 </td>
       <td class="helm-value-desc">Memcached exporter image for both caches, pinned here rather than left at the subchart's default.
