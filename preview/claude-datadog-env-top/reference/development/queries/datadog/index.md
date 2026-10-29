@@ -51,6 +51,10 @@ Under a group-by function such as `count(query1, {size})`, Datadog refuses an ag
 so the formula reduces itself, as `reduce(count(query1, {size}), 'last')`, and its queries carry none.
 A timeseries widget takes neither.
 
+A scalar widget's `last` keeps the final value of a series that stopped reporting anywhere in its window,
+where an instant PromQL query drops a series after five minutes without a sample.
+So a widget for a registry query marked `instant` sets its own timeframe to the last five minutes, and doesn't follow the dashboard's time picker.
+
 ## Layout
 
 A `datadogQuery` is laid out like the `promQL` beside it, so the two read side by side.
@@ -189,7 +193,8 @@ The following table maps each PromQL construct to its Datadog form:
 | `a * on (k) group_left (name) info` | `a * (info * 0 + 1)`, with both grouped by `k` |
 | `a and on (k) b` | `a * (b * 0 + 1)`, with `b` grouped by `k` |
 | `a and on (k) (b > c)` | `a * (cutoff_min(b, c) * 0 + 1)`, with `b` grouped by `k` |
-| `topk(15, q)` | `top(q, 15, 'max', 'desc')` |
+| `topk(15, q)` over a range | `top(q, 15, 'max', 'desc')` |
+| `topk(15, q)` in an instant query | `top(q, 15, 'last', 'desc')`, so the ranking is by the latest value |
 | `(q) or vector(0)` | `default_zero(q)`, which yields a zero series even when `q` has no data at all. Grouped, it can't add a missing group |
 | `count(x == 0) or 0 * count(x)`, zero only while `x` exists | `count_not_null(cutoff_max(min:x{…} by {…}, 0))` |
 | `clamp_min(q, 0)` | `clamp_min(q, 0)` |
@@ -276,8 +281,10 @@ The `datadogQuery` carries a threshold that is never crossed, and a comment says
 
 **`or` chains across different metrics.** `materialize.persist.failures` folds sixteen counters into one alert with `label_replace` and `or`, so Datadog needs one monitor per counter, and three representative ones are given.
 
-**Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`, so a range query that drops sentinel samples before taking `max_over_time` can't drop them first.
-`materialize.info.max_lag` includes the sentinel.
+**Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`.
+Where the PromQL drops a sentinel sample before `max_over_time`, the Datadog form drops the whole rollup bucket that holds it,
+so a bucket in which an object finished hydrating loses its finite reading too.
+Filter each series before any group-by aggregation, as `materialize.info.max_lag` does, or the sentinel survives into the maximum.
 
 ## Template parameters
 

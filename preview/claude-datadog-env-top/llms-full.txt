@@ -6999,6 +6999,9 @@ Pick one value or `*` in each of the following variables:
 **replica**
 : Narrows the panels to one replica, by id.
 
+**Least Fresh Objects** and **Slowest Hydrating Objects** always show the last five minutes, as their Grafana panels do when the time range ends now.
+They don't follow the time picker into the past.
+
 ## Enable percentiles
 
 The **Peek Latency** and **Iceberg Commit Latency** panels read percentiles of a histogram.
@@ -13697,7 +13700,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.7.1 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.8.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
@@ -22184,7 +22187,7 @@ the StatefulSet, whose volumes do not follow; see
       <td class="helm-value-default"><pre>
 {
   "repository": "quay.io/prometheus/alertmanager",
-  "tag": "v0.34.1"
+  "tag": "v0.34.2"
 }</pre>
 </td>
       <td class="helm-value-desc">Alertmanager image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -25753,6 +25756,10 @@ Under a group-by function such as `count(query1, {size})`, Datadog refuses an ag
 so the formula reduces itself, as `reduce(count(query1, {size}), 'last')`, and its queries carry none.
 A timeseries widget takes neither.
 
+A scalar widget's `last` keeps the final value of a series that stopped reporting anywhere in its window,
+where an instant PromQL query drops a series after five minutes without a sample.
+So a widget for a registry query marked `instant` sets its own timeframe to the last five minutes, and doesn't follow the dashboard's time picker.
+
 ## Layout
 
 A `datadogQuery` is laid out like the `promQL` beside it, so the two read side by side.
@@ -25891,7 +25898,8 @@ The following table maps each PromQL construct to its Datadog form:
 | `a * on (k) group_left (name) info` | `a * (info * 0 + 1)`, with both grouped by `k` |
 | `a and on (k) b` | `a * (b * 0 + 1)`, with `b` grouped by `k` |
 | `a and on (k) (b > c)` | `a * (cutoff_min(b, c) * 0 + 1)`, with `b` grouped by `k` |
-| `topk(15, q)` | `top(q, 15, 'max', 'desc')` |
+| `topk(15, q)` over a range | `top(q, 15, 'max', 'desc')` |
+| `topk(15, q)` in an instant query | `top(q, 15, 'last', 'desc')`, so the ranking is by the latest value |
 | `(q) or vector(0)` | `default_zero(q)`, which yields a zero series even when `q` has no data at all. Grouped, it can't add a missing group |
 | `count(x == 0) or 0 * count(x)`, zero only while `x` exists | `count_not_null(cutoff_max(min:x{…} by {…}, 0))` |
 | `clamp_min(q, 0)` | `clamp_min(q, 0)` |
@@ -25978,8 +25986,10 @@ The `datadogQuery` carries a threshold that is never crossed, and a comment says
 
 **`or` chains across different metrics.** `materialize.persist.failures` folds sixteen counters into one alert with `label_replace` and `or`, so Datadog needs one monitor per counter, and three representative ones are given.
 
-**Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`, so a range query that drops sentinel samples before taking `max_over_time` can't drop them first.
-`materialize.info.max_lag` includes the sentinel.
+**Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`.
+Where the PromQL drops a sentinel sample before `max_over_time`, the Datadog form drops the whole rollup bucket that holds it,
+so a bucket in which an object finished hydrating loses its finite reading too.
+Filter each series before any group-by aggregation, as `materialize.info.max_lag` does, or the sentinel survives into the maximum.
 
 ## Template parameters
 
@@ -28877,7 +28887,8 @@ The designs with work left are under [Designs in flight](#designs-in-flight).
 
 Tracked in [Adopt materialize-monitoring in Cloud][adopt] (**ADOPT**).
 Materialize Cloud moves its own monitoring onto this chart, on the same `values.yaml` surface self-managed customers consume.
-Cloud deploys through Pulumi, so a Pulumi component wraps the chart the way the Terraform module does ([CLO-182]).
+Cloud deploys through Pulumi, so a Pulumi component wraps the chart the way the Terraform module does.
+It starts from the chart's `noop` profile, and each service moves over by turning on its own tag.
 Cloud-only rules and configuration layer through values, with no privileged path ([DEP-125]).
 Cloud running the chart customers run is the strongest available test of the customer contract.
 
@@ -28887,7 +28898,7 @@ Each stateful component then gets a cutover of its own.
 
 | Milestone | What moves | Items |
 |---|---|---|
-| **Stateless services** | Alloy (agent and gateway), kube-state-metrics and node-exporter replace Cloud's own. Cloud parity needs generic scrape discovery and the OTLP agent→gateway transport with a node-local WAL | 🔨 [CLO-182] · ⬜ [DEP-193] · ⬜ [DEP-189] · ⬜ [DEP-223] |
+| **Stateless services** | Alloy (agent and gateway), kube-state-metrics and node-exporter replace Cloud's own. Cloud parity needs generic scrape discovery and the OTLP agent→gateway transport with a node-local WAL | ⬜ [DEP-193] · ⬜ [DEP-189] · ⬜ [DEP-223] |
 | **Thanos beside AMP** | Thanos stands up beside AMP, and the gateway fans out to both as components move. Both take canonical `mz_*` once AMP's readers stop depending on `v2_mz_*`. AMP scales down as its consumers move | ⬜ [DEP-383] |
 | **Loki cutover** | Cloud's Loki moves onto the chart's Loki on its existing storage backend, so no log data is copied. Log tenancy moves to `tenantMap: byEnvironment`, which the read path needs | ⬜ [CLO-296] |
 | **Alerting** | Cloud's rules run on the chart's rulers and route through its Alertmanager to Cloud's receivers. The Loki rules Cloud clicked into Grafana are already ported by shape in `materialize-log-alerts.yaml` | ⬜ [DEP-125] |
@@ -29193,7 +29204,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 
 [CLO-55]: https://linear.app/materializeinc/issue/CLO-55
 [CLO-76]: https://linear.app/materializeinc/issue/CLO-76
-[CLO-182]: https://linear.app/materializeinc/issue/CLO-182
 [CLO-255]: https://linear.app/materializeinc/issue/CLO-255
 [CLO-256]: https://linear.app/materializeinc/issue/CLO-256
 [CLO-266]: https://linear.app/materializeinc/issue/CLO-266
