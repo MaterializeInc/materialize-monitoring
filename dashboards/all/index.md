@@ -73,7 +73,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
       <td>
-        <a href="/materialize-monitoring/dashboards/datadog/env-top.json?xxhash=d747a74c1174136b" download="env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/dashboards/datadog/env-top.json?xxhash=5f158d9fd234d0f1" download="env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>env-top</code></small>
       </td>
       <td>
