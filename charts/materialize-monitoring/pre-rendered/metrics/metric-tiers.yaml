@@ -563,8 +563,6 @@ extended:
 - mz_persist_shard_seqnos_held
 - mz_persist_shard_usage_current_state_batches_bytes
 - mz_persist_shard_usage_current_state_rollups_bytes
-- mz_persist_shard_usage_leaked_bytes
-- mz_persist_shard_usage_not_leaked_not_referenced_bytes
 - mz_persist_shard_usage_referenced_not_current_state_bytes
 - operator_nodeclaim_status_condition_transition_seconds_bucket
 - operator_nodeclaim_termination_duration_seconds_bucket

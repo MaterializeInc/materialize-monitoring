@@ -10,22 +10,22 @@
 //! The Storage tab: what this environment's data in object storage is for.
 //!
 //! This is Materialize's own accounting, and it answers a question the bucket
-//! cannot: of the bytes stored, which are current data, which are kept only for
-//! a reader still looking at an older version, and which nothing refers to at
-//! all. The bucket's own size is the provider's number, on `infra-cloud`, and
-//! for GCS on Object Store Internals too. The gap between the two is
-//! soft-deleted objects, noncurrent versions and aborted multipart uploads,
-//! which this tab cannot see.
+//! cannot: of the bytes stored, which are current data and which are kept only
+//! for a reader still looking at an older version. The bucket's own size is the
+//! provider's number, on `infra-cloud`, and for GCS on Object Store Internals
+//! too. The gap between the two is soft-deleted objects, noncurrent versions,
+//! uploads not yet committed and orphaned data, which this tab cannot see.
 //!
 //! Every `mz_persist_shard_usage_*` total takes `max by (shard)` first, because
-//! each process reports every shard it has open.
+//! each process reports every shard it has open. The tab reads three of the
+//! five families: environmentd never sets `not_leaked_not_referenced_bytes` or
+//! `leaked_bytes`, which only `persistcli inspect` computes.
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::Panel;
-use mzmon_lib::grafana::threshold;
 
-use super::{not_collected, theme, zero_is_healthy};
+use super::{not_collected, theme};
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 
@@ -35,14 +35,12 @@ pub fn rows(q: &Queries) -> Vec<Row> {
     vec![summary(q), stored(q), collections(q)]
 }
 
-/// The two numbers: what the environment needs, and what nobody does.
+/// The one number: what the environment needs.
 fn summary(q: &Queries) -> Row {
     Row::new("Storage Summary").hide_header().grid(
-        AutoGrid::new(2)
-            .column_width(ColumnWidth::Narrow)
+        AutoGrid::new(1)
             .row_height(RowHeight::Short)
-            .panel("storage-current", current(q))
-            .panel("storage-leaked", leaked(q)),
+            .panel("storage-current", current(q)),
     )
 }
 
@@ -68,13 +66,7 @@ fn by_state(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Stored Data by State")
         .query(q.legended(
             "materialize.persist.usage.by_state",
-            &[
-                "current data",
-                "current rollups",
-                "held for readers",
-                "uploads in flight",
-                "orphaned",
-            ],
+            &["current data", "current rollups", "held for readers"],
         ))
         .unit("bytes")
         .min(0.0)
@@ -88,15 +80,6 @@ fn current(q: &Queries) -> dashboardv2::PanelKind {
         .shade(SHADE)
         .unit("bytes")
         .min(0.0)
-        .no_value(not_collected())
-        .build(0)
-}
-
-fn leaked(q: &Queries) -> dashboardv2::PanelKind {
-    zero_is_healthy("Orphaned Data")
-        .query(q.get("materialize.persist.usage.leaked").legend("orphaned"))
-        .thresholds(threshold::errors(1_000_000.0, 1_000_000_000.0).build())
-        .unit("bytes")
         .no_value(not_collected())
         .build(0)
 }

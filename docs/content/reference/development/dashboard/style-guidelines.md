@@ -264,7 +264,7 @@ Product review set these three:
 |---|---|---|
 | object | collection | an index, materialized view, source, or table — what `collection_id` identifies |
 | freshness | lag | how far an object's results trail real time, from `mz_dataflow_wallclock_lag_seconds` |
-| orphaned | leaked | persist data nothing refers to that cleanup missed, from `mz_persist_shard_usage_leaked_bytes` |
+| orphaned | leaked | persist data nothing refers to that cleanup missed |
 
 Freshness is a duration, so a larger value is worse.
 Titles qualify it — _Worst Freshness_, _Total Freshness_, _Least Fresh Objects_ — rather than saying _Max Freshness_, which reads as the freshest.
@@ -725,6 +725,10 @@ Things that have surprised us during development; worth knowing before touching 
   maximum size is not published. The timestamp oracle has its own pool under `mz_ts_oracle_postgres_connpool_*`.
 - **`mz_persist_shard_*` is reported by every process that has the shard open**, so a total takes `max by (shard)`
   first. environmentd has every shard open; on the reference installs a plain sum counted 100 shards as 180.
+- **Two of the five `mz_persist_shard_usage_*` gauges always read zero.** environmentd's periodic usage pass sets
+  `current_state_batches_bytes`, `current_state_rollups_bytes` and `referenced_not_current_state_bytes`.
+  `not_leaked_not_referenced_bytes` and `leaked_bytes` are set only by the audit that lists the bucket, which only
+  `persistcli inspect` runs, so every scraped series of them is zero. `env-persist` reads the first three.
 - **`mz_persist_s3_*` exists on Azure Blob and reads zero.** Materialize registers the S3 client's counters on every
   install, but reaches Azure Blob with Azure's own client. A panel on them keeps its series only while
   `mz_persist_s3_operations` is non-zero, so Azure shows the empty state instead of a flat "no timeouts".

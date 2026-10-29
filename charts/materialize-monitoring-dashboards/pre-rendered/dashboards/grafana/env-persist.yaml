@@ -73,7 +73,7 @@ spec:
           **Degraded:** Little headroom left. Persist's stored data only shrinks when compaction catches up, so this is the number to plan disks against.
 
           Ceph's own estimate, from the fullest OSD the pool can write to and the pool's replication. It moves when any other pool on the same disks grows.
-        id: 1033
+        id: 1032
         links: []
         title: Bucket Space Available
         vizConfig:
@@ -142,7 +142,7 @@ spec:
           **Nominal:** The bucket data pool (`<store>.rgw.buckets.data`) holding nearly all of it, close to persist's own total on the Storage tab.
 
           **Degraded:** The bucket pool well above what persist says it stores is data persist no longer refers to — objects it has not deleted yet, or uploads that never finished. Another pool growing is another user of the same disks.
-        id: 1043
+        id: 1042
         links: []
         title: Stored Data by Pool
         vizConfig:
@@ -217,7 +217,7 @@ spec:
           **Nominal:** Used well below the total, growing slowly.
 
           **Degraded:** Used approaching the total. Raw capacity counts every copy, so with three-way replication each byte persist stores uses three here.
-        id: 1042
+        id: 1041
         links: []
         title: Raw Capacity
         vizConfig:
@@ -277,7 +277,7 @@ spec:
           **Degraded:** HEALTH_WARN covers everything from a misconfiguration notice to a disk that is nearly full. _Active Health Checks_ on this tab lists which checks are raised.
 
           **Unhealthy:** HEALTH_ERR means data is unavailable or at risk: writes may be blocked, which persist reports as failed uploads.
-        id: 1030
+        id: 1029
         links: []
         title: Ceph Health
         vizConfig:
@@ -383,7 +383,7 @@ spec:
           **Nominal:** Empty.
 
           **Degraded:** Each row is one reason the cluster is not `HEALTH_OK`. Names are Ceph's own — `OSD_NEARFULL`, `PG_DEGRADED`, `RECENT_CRASH` — and `ceph health detail` in the Rook toolbox explains each.
-        id: 1037
+        id: 1036
         links: []
         title: Active Health Checks
         vizConfig:
@@ -442,7 +442,7 @@ spec:
           **Degraded:** Non-zero after a disk or node failure while Ceph recovers. Reads and writes continue, with fewer copies behind them.
 
           **Unhealthy:** A count that stops falling is recovery that cannot proceed — usually too few disks left to place another copy on.
-        id: 1034
+        id: 1033
         links: []
         title: Degraded Objects
         vizConfig:
@@ -518,7 +518,7 @@ spec:
           **Degraded:** One OSD much slower than the rest is a failing or overloaded disk, and every write with a copy on it waits for it.
 
           Ceph's own recent average, published by the manager.
-        id: 1045
+        id: 1044
         links: []
         title: OSD Commit Latency
         vizConfig:
@@ -584,7 +584,7 @@ spec:
           **Degraded:** One OSD well above the rest fills first. The balancer, or reweighting that OSD, evens them out.
 
           **Unhealthy:** Past Ceph's `nearfull` ratio (85% by default), Ceph warns, and the OSD has little room left before `full` (95%), where Ceph stops writes to its pools however empty the others are.
-        id: 1044
+        id: 1043
         links: []
         title: OSD Utilization
         vizConfig:
@@ -654,7 +654,7 @@ spec:
           **Degraded:** Ceph keeps serving from the remaining copies, with less redundancy. If an OSD stays down, Ceph marks it out and copies its data elsewhere, which costs the remaining disks I/O.
 
           **Unhealthy:** Enough OSDs down that a placement group loses all its copies makes objects unavailable, and persist's reads and writes against them fail.
-        id: 1031
+        id: 1030
         links: []
         title: Disks (OSDs) Down
         vizConfig:
@@ -781,7 +781,7 @@ spec:
           **Degraded:** `degraded` and `undersized` after a disk failure, falling as Ceph recovers. Lines that stay up mean recovery cannot complete.
 
           **Unhealthy:** Any that are not `active` cannot serve reads or writes, and persist's calls against the objects in them fail.
-        id: 1046
+        id: 1045
         links: []
         title: Placement Groups Not Healthy
         vizConfig:
@@ -846,7 +846,7 @@ spec:
           **Unhealthy:** Past `nearfull`, Ceph raises a health warning, and one disk's recovery can carry the rest to the `full` ratio (95% by default). At `full` on any OSD, Ceph stops accepting writes to the pools on it, and persist cannot upload.
 
           A cluster-wide average. Ceph enforces `full` per OSD, so one uneven disk can stop writes first; _OSD Utilization_ shows each.
-        id: 1032
+        id: 1031
         links: []
         title: Raw Capacity Used
         vizConfig:
@@ -920,7 +920,7 @@ spec:
           **Nominal:** A small, steady fraction. RGW counts every request that does not succeed, so a lookup of an object that does not exist counts too.
 
           **Degraded:** A rise that coincides with failures on persist's own panels is the gateway refusing work: overloaded, out of space, or unable to reach the disks behind it.
-        id: 1035
+        id: 1034
         links: []
         title: Gateway Failed Requests
         vizConfig:
@@ -1030,7 +1030,7 @@ spec:
           **Degraded:** Rising together with _OSD Latency_ is the disks. Rising alone is the gateway itself — CPU, or a queue of requests.
 
           A mean from the gateway's own counters, so it cannot show the tail. Persist's latency on the Operations tab includes the network as well, and the difference between the two is the path in between.
-        id: 1039
+        id: 1038
         links: []
         title: Gateway Latency by Operation (Mean)
         vizConfig:
@@ -1114,7 +1114,7 @@ spec:
           **Nominal:** A handful active and none queued.
 
           **Degraded:** A standing queue is a gateway at its concurrency limit: every request, persist's included, waits for a slot. Add gateway instances to the object store, or find what is holding requests open.
-        id: 1041
+        id: 1040
         links: []
         title: Gateway Requests in Progress
         vizConfig:
@@ -1226,7 +1226,7 @@ spec:
           **Degraded:** Failures rising with no change in persist's traffic are the gateway's own trouble. Requests well above persist's are another client sharing the gateway.
 
           Every client of every gateway in the selected Ceph cluster, not only Materialize. RGW counts a `HEAD` as a GET, and persist checks each object with a `HEAD` before deleting it, so GETs here run well above persist's own reads — about the sum of its reads and deletes.
-        id: 1038
+        id: 1037
         links: []
         title: Gateway Requests by Operation
         vizConfig:
@@ -1299,7 +1299,7 @@ spec:
           **Bytes written to and read from the object gateway per second.**
 
           **Nominal:** Writes tracking persist's uploads and compaction, reads tracking hydration and queries that miss persist's cache.
-        id: 1040
+        id: 1039
         links: []
         title: Gateway Throughput
         vizConfig:
@@ -1374,7 +1374,7 @@ spec:
           More than one version means an upgrade is rolling through. An out-of-date dependency has been the cause of an incident before, and this is the one place it is visible without a Ceph login.
 
           Shortened from Ceph's own string, `ceph version 20.2.4 (<commit>) tentacle (stable)`, to the release and its code name.
-        id: 1036
+        id: 1035
         links: []
         title: Ceph Version
         vizConfig:
@@ -1768,16 +1768,12 @@ spec:
                       sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                       + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                       + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                     legendFormat: referenced by this environment
                     qryType: 1
                     query: |
                       sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                       + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                       + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -1787,10 +1783,10 @@ spec:
 
           **Nominal:** The bucket holding this environment's data close to the environment's line, and moving with it. The monitoring stack's buckets grow with retention and then level off. On a bucket with soft delete turned on, the environment's line matches its live bytes on _Bytes by Object State_ instead.
 
-          **Degraded:** The environment's bucket far above its line is storage nothing is using: soft-deleted objects or noncurrent versions the bucket's policy keeps, or data Materialize orphaned. _Bytes by Object State_ separates the first two, and the Storage tab shows the third. A bucket that only ever grows is a missing lifecycle rule or a compactor that has stopped.
+          **Degraded:** The environment's bucket far above its line is storage nothing is using: soft-deleted objects or noncurrent versions the bucket's policy keeps, or data Materialize orphaned. _Bytes by Object State_ separates the first two from live data. A bucket that only ever grows is a missing lifecycle rule or a compactor that has stopped.
 
           Google measures bucket size once a day, so the bucket moves in daily steps and can sit below the environment's line by up to a day's growth. Compare over days, not hours. A bucket that several environments share holds all of their data.
-        id: 1047
+        id: 1046
         links: []
         title: Bucket Size
         vizConfig:
@@ -1857,7 +1853,7 @@ spec:
           **Degraded:** Objects growing much faster than bytes is small files accumulating: compaction falling behind, which the Compaction tab shows.
 
           Measured once a day.
-        id: 1048
+        id: 1047
         links: []
         title: Object Count
         vizConfig:
@@ -1927,16 +1923,12 @@ spec:
                       sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                       + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                       + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                     legendFormat: referenced by this environment
                     qryType: 1
                     query: |
                       sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                       + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                       + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                   version: v0
                 refId: query-1
             queryOptions: {}
@@ -1946,8 +1938,8 @@ spec:
 
           **Nominal:** The environment's bucket almost all live, with its live line on the environment's own. That match is how to tell its bucket from the others.
 
-          **Degraded:** Soft-deleted and noncurrent bytes are billed like live ones and read by nothing. Persist deletes constantly, so a bucket with soft delete or object versioning turned on can hold many times its live size. A persist bucket holding over a hundred times its live data in soft-deleted objects has been seen on a default GCS bucket. Turn off soft delete, or shorten its retention, on buckets Materialize owns. Live bytes well above the environment's line is data Materialize orphaned, which the Storage tab shows.
-        id: 1049
+          **Degraded:** Soft-deleted and noncurrent bytes are billed like live ones and read by nothing. Persist deletes constantly, so a bucket with soft delete or object versioning turned on can hold many times its live size. A persist bucket holding over a hundred times its live data in soft-deleted objects has been seen on a default GCS bucket. Turn off soft delete, or shorten its retention, on buckets Materialize owns. Live bytes well above the environment's line is data Materialize orphaned, which no Materialize metric measures.
+        id: 1048
         links: []
         title: Bytes by Object State
         vizConfig:
@@ -2012,7 +2004,7 @@ spec:
           **Nominal:** Almost all live.
 
           **Degraded:** Many more soft-deleted objects than live ones is the retention policy keeping everything compaction deleted.
-        id: 1050
+        id: 1049
         links: []
         title: Objects by Object State
         vizConfig:
@@ -2051,7 +2043,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: Why this tab has no object store rows on it.
-        id: 1051
+        id: 1050
         links: []
         title: No Object Store Metrics
         vizConfig:
@@ -3378,7 +3370,7 @@ spec:
 
           **Nominal:** Grows with the data you keep, and falls when you drop objects or compaction consolidates updates.
 
-          This is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, orphaned data, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size. For a GCS bucket, so does _Object Store Internals_.
+          This is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, which _Storage_ shows. It also holds uploads not yet committed, orphaned data, and whatever the provider retains for versioning or soft delete, which Materialize doesn't measure. The Infrastructure Cloud Provider dashboard has the bucket's own size, and for a GCS bucket, so does _Object Store Internals_.
         id: 1005
         links: []
         title: Data Stored
@@ -3737,40 +3729,6 @@ spec:
                       sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                   version: v0
                 refId: query-2
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                    legendFormat: uploads in flight
-                    qryType: 1
-                    query: |
-                      sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                  version: v0
-                refId: query-3
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                    legendFormat: orphaned
-                    qryType: 1
-                    query: |
-                      sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                  version: v0
-                refId: query-4
             queryOptions: {}
             transformations: []
         description: |-
@@ -3778,10 +3736,10 @@ spec:
 
           **Nominal:** Almost all of it is current data: files the latest state of each object refers to, and the rollups that summarize that state.
 
-          **Degraded:** _Held for readers_ is data a reader still needs from an older state; growth there points at a stuck reader, named on _Data Held for Readers by Object_. _Uploads in flight_ is written but not yet committed. _Orphaned_ is data nothing refers to that cleanup missed, which is billed and does nothing.
+          **Degraded:** _Held for readers_ is data a reader still needs from an older state; growth there points at a stuck reader, named on _Data Held for Readers by Object_.
 
-          Materialize's own accounting, recomputed periodically rather than on every write.
-        id: 1027
+          Materialize's own accounting, recomputed periodically rather than on every write. It covers only data some version of an object's state refers to. Uploads not yet committed and orphaned data that cleanup missed are in the bucket but not here.
+        id: 1026
         links: []
         title: Stored Data by State
         vizConfig:
@@ -3840,7 +3798,7 @@ spec:
 
           **Nominal:** Grows with the data you keep, and falls when you drop objects or compaction consolidates updates.
 
-          This is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, orphaned data, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size. For a GCS bucket, so does _Object Store Internals_.
+          This is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, which _Storage_ shows. It also holds uploads not yet committed, orphaned data, and whatever the provider retains for versioning or soft delete, which Materialize doesn't measure. The Infrastructure Cloud Provider dashboard has the bucket's own size, and for a GCS bucket, so does _Object Store Internals_.
         id: 1025
         links: []
         title: Data Stored
@@ -3904,7 +3862,7 @@ spec:
           **Degraded:** An object whose held data only grows has a reader stuck in the past, and its storage will keep growing until that reader moves or its lease expires. The same reader holds old state in the metadata database, on Materialize Consensus under _State and Cleanup -> Versions Held by Object_.
 
           Translate a shard id to an object with `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`.
-        id: 1029
+        id: 1028
         links: []
         title: Data Held for Readers by Object
         vizConfig:
@@ -3980,7 +3938,7 @@ spec:
           **Nominal:** Your largest sources and materialized views.
 
           Translate a shard id to an object with `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`, or list sizes by object with `SELECT * FROM mz_catalog.mz_recent_storage_usage ORDER BY size_bytes DESC`.
-        id: 1028
+        id: 1027
         links: []
         title: Largest Objects
         vizConfig:
@@ -4005,79 +3963,6 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ""
-    storage-leaked:
-      kind: Panel
-      spec:
-        data:
-          kind: QueryGroup
-          spec:
-            queries:
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                    legendFormat: orphaned
-                    qryType: 1
-                    query: |
-                      sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                  version: v0
-                refId: query-0
-            queryOptions: {}
-            transformations: []
-        description: |-
-          **Data in object storage that nothing refers to and that cleanup did not remove.**
-
-          **Nominal:** Zero, or close to it.
-
-          **Degraded:** Orphaned data is billed and never read. A little accumulates when a process is killed mid-write; a steadily growing amount is worth raising with Materialize support.
-        id: 1026
-        links: []
-        title: Orphaned Data
-        vizConfig:
-          group: stat
-          kind: VizConfig
-          spec:
-            fieldConfig:
-              defaults:
-                min: 0
-                noValue: No metrics from this environment. Check the environment picker, and that Materialize is running.
-                thresholds:
-                  mode: absolute
-                  steps:
-                  - color: "#A2F49B"
-                    value: null
-                  - color: "#FEDA8B"
-                    value: 1000000
-                  - color: "#FDB366"
-                    value: 250750000
-                  - color: "#F67E4B"
-                    value: 500500000
-                  - color: "#DD3D2D"
-                    value: 750250000
-                  - color: "#A50026"
-                    value: 1000000000
-                unit: bytes
-              overrides: []
-            options:
-              colorMode: background
-              graphMode: area
-              justifyMode: auto
-              orientation: auto
-              percentChangeColorMode: standard
-              reduceOptions:
-                calcs: []
-                values: false
-              showPercentChange: false
-              textMode: value
-              wideLayout: true
           version: ""
     writes-amplification:
       kind: Panel
@@ -4548,7 +4433,7 @@ spec:
                   layout:
                     kind: AutoGridLayout
                     spec:
-                      columnWidthMode: narrow
+                      columnWidthMode: standard
                       fillScreen: false
                       items:
                       - kind: AutoGridLayoutItem
@@ -4556,12 +4441,7 @@ spec:
                           element:
                             kind: ElementReference
                             name: storage-current
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: storage-leaked
-                      maxColumnCount: 2
+                      maxColumnCount: 1
                       rowHeightMode: short
                   title: Storage Summary
               - kind: RowsLayoutRow

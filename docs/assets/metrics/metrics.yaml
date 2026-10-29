@@ -4146,25 +4146,6 @@
 - importance: extended
   labels:
   - materialize_cloud_organization_name
-  name: mz_persist_shard_usage_leaked_bytes
-  usage:
-  - infra.cloud.bucket.bytes
-  - infra.cloud.gcs.env.bytes
-  - infra.cloud.gcs.env.bytes_by_type
-  - materialize.persist.usage.by_state
-  - materialize.persist.usage.leaked
-- importance: extended
-  labels:
-  - materialize_cloud_organization_name
-  name: mz_persist_shard_usage_not_leaked_not_referenced_bytes
-  usage:
-  - infra.cloud.bucket.bytes
-  - infra.cloud.gcs.env.bytes
-  - infra.cloud.gcs.env.bytes_by_type
-  - materialize.persist.usage.by_state
-- importance: extended
-  labels:
-  - materialize_cloud_organization_name
   name: mz_persist_shard_usage_referenced_not_current_state_bytes
   usage:
   - infra.cloud.bucket.bytes
