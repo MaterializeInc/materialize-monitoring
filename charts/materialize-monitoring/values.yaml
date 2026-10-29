@@ -6793,7 +6793,7 @@ metrics-server:
   # subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
   image:
     repository: registry.k8s.io/metrics-server/metrics-server
-    tag: v0.9.0
+    tag: v0.9.1
 
   # -- Pod security context.
   # The subchart ships an empty one beside an already locked-down container

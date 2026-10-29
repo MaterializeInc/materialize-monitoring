@@ -9678,7 +9678,7 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 {
   "repository": "registry.k8s.io/metrics-server/metrics-server",
-  "tag": "v0.9.0"
+  "tag": "v0.9.1"
 }</pre>
 </td>
       <td class="helm-value-desc">metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
