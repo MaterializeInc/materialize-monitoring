@@ -5539,9 +5539,12 @@ Ceph run by Rook
   The section appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`.
 
 GCS
-: Each bucket's billed size and object count, split into live objects, noncurrent versions, and soft-deleted objects, beside the data this environment accounts for.
+: Each bucket's live data, object count, and average object size, and how much its data and object count change each day.
+  Two donuts split the selected buckets' billed bytes and objects into live objects, noncurrent versions, and soft-deleted objects.
   The section appears when the gateway pulls the bucket from Cloud Monitoring, under `pipeline.metrics.provider.gcp.gcs.buckets`.
-  The **GCS Bucket** picker opens on every pulled bucket, and the environment's bucket is the one whose live bytes match the environment's line.
+  The **GCS Bucket** picker opens on every pulled bucket.
+  The environment's bucket is the one whose **Live Data** tile reads the same as the environment's.
+  Google measures a bucket once a day, so the section's charts show the last 14 days whatever time range you pick.
 
 On S3, Azure Blob, or any other store, the tab says what it would show.
 The dashboard needs both a metrics and a logs data source.
@@ -25695,6 +25698,14 @@ avg(last_5m):(
 
 Queries that back a **panel** are bare metric queries, with no window and no comparison.
 
+A dashboard widget's JSON holds a panel query in two parts:
+the metric queries, each named, and a formula over those names that carries every function and operator.
+`count_not_null(avg:m{…} by {…})` becomes the query `avg:m{…} by {…}` and the formula `count_not_null(query1)`.
+A query object that still carries a function renders as "Invalid Formula in Query Object", although the query API evaluates the whole expression.
+The widget editor makes this split for you when you paste a whole expression into its query box, so only JSON you import needs the two parts.
+The Datadog dashboards split each template this way in `packages/dashboards/src/datadog/formula.rs`,
+so the registry keeps one expression per template.
+
 ## Layout
 
 A `datadogQuery` is laid out like the `promQL` beside it, so the two read side by side.
@@ -26487,6 +26498,9 @@ Panel::stat(title)
 
 For single-series sparklines, leave the default `VALUE` text mode — the panel title is the label.
 
+When the tiles differ by orders of magnitude, add `.min_max_per_field()`.
+Grafana scales every tile's sparkline against the largest series by default, which draws the small tiles flat at zero.
+
 ### Timeseries legend
 
 Apply the shared timeseries legend builder to every multi-series timeseries panel:
@@ -27259,6 +27273,7 @@ the conventions below are the ones a query against those families has to follow.
 | Never `rate()` a provider counter over `$__rate_interval` | That interval is sized from the datasource's scrape interval, which is far shorter than a pull, so the window holds one sample and draws nothing. Use a fixed `[30m]` |
 | One expression per provider in a cross-provider query, each with its own legend | Two of the three are empty on any install, which costs nothing. The alternative, a `label_replace` onto a common resource label, hides which provider a number came from |
 | Convert to 0–1 in the query | CloudWatch and Azure publish percent as 0–100; Cloud Monitoring publishes 0–1 with a unit label of `10^2.%`. Transaction-ID consumption is a fraction of 2^31 |
+| Draw a once-a-day family over a fixed range: `PanelQuery::time_from("14d")`, and `min_interval("1d")` for day-over-day bars | Over a dashboard's hours a daily measurement is a flat line, and a bar at the default step is one scrape wide. GCS storage is the case on `env-persist` |
 | Tier the families at `diagnostic` in the registry | A registry tier admits a metric at that tier and above; `diagnostic` is the one level no `metricImportance` value can undercut, so the per-provider value stays in charge |
 
 Whether a pull *failed* is published differently by each provider, and by one of them not at all.
@@ -35576,7 +35591,10 @@ The departures, each with its reason.
   The fallback names both routes.
 - **GCS has a section on Object Store Internals too**, although its series are the provider pull's.
   A reader on a GCS environment opened the tab expecting the bucket and found only the fallback, or another environment's Ceph.
-  The section draws the bucket's billed size and its live, noncurrent, and soft-deleted split beside the environment's own accounting.
+  The section draws each bucket's live data beside the environment's own accounting.
+  It adds each bucket's day-over-day change, and its live, noncurrent, and soft-deleted split.
+  Google measures a bucket once a day, so a line chart reads flat over a dashboard's hours.
+  The section uses stat tiles, daily bars, and donuts over a fixed 14 days instead.
   That comparison is the one `infra-cloud` can only make against every environment on the cluster.
   It renders on the GCS pull's own `up`, and the reader picks buckets on `$gcsBucket`, a multi-select that opens on every bucket.
   S3 and Azure Blob stay on `infra-cloud`.

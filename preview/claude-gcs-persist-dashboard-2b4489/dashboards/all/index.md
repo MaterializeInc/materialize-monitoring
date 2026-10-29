@@ -73,7 +73,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-gcs-persist-dashboard-2b4489/dashboards/datadog/env-top.json?xxhash=d747a74c1174136b" download="env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-gcs-persist-dashboard-2b4489/dashboards/datadog/env-top.json?xxhash=5f158d9fd234d0f1" download="env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>env-top</code></small>
       </td>
       <td>
@@ -186,9 +186,12 @@ Ceph run by Rook
   The section appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`.
 
 GCS
-: Each bucket's billed size and object count, split into live objects, noncurrent versions, and soft-deleted objects, beside the data this environment accounts for.
+: Each bucket's live data, object count, and average object size, and how much its data and object count change each day.
+  Two donuts split the selected buckets' billed bytes and objects into live objects, noncurrent versions, and soft-deleted objects.
   The section appears when the gateway pulls the bucket from Cloud Monitoring, under `pipeline.metrics.provider.gcp.gcs.buckets`.
-  The **GCS Bucket** picker opens on every pulled bucket, and the environment's bucket is the one whose live bytes match the environment's line.
+  The **GCS Bucket** picker opens on every pulled bucket.
+  The environment's bucket is the one whose **Live Data** tile reads the same as the environment's.
+  Google measures a bucket once a day, so the section's charts show the last 14 days whatever time range you pick.
 
 On S3, Azure Blob, or any other store, the tab says what it would show.
 The dashboard needs both a metrics and a logs data source.
@@ -205,7 +208,7 @@ The dashboard needs both a metrics and a logs data source.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-gcs-persist-dashboard-2b4489/dashboards/grafana/env-persist.json?xxhash=dd5235448d9b8df5" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-gcs-persist-dashboard-2b4489/dashboards/grafana/env-persist.json?xxhash=c0fab4e6eba7f16e" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
         <br /><small>UID <code>mz-mon-env-persist</code></small>
       </td>
       <td>

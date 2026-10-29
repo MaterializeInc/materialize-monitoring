@@ -5577,18 +5577,18 @@ soft-deleted.
 </span></span></code></pre></div>
   </div>
 </div>
-<h4 id="infra.cloud.gcs.env.bytes">infra.cloud.gcs.env.bytes
-  <a class="anchor" href="#infra.cloud.gcs.env.bytes">#</a>
+<h4 id="infra.cloud.gcs.env.live_bytes">infra.cloud.gcs.env.live_bytes
+  <a class="anchor" href="#infra.cloud.gcs.env.live_bytes">#</a>
 </h4>
-Bytes stored in each selected GCS bucket, as Google bills them, beside
-the data this environment accounts for.
+Live bytes in each selected GCS bucket, beside the data this
+environment accounts for.
 <div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.cloud.gcs.env.bytes-tabs" id="infra.cloud.gcs.env.bytes-tab-0" checked>
-  <label for="infra.cloud.gcs.env.bytes-tab-0">PromQL</label>
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.live_bytes-tabs" id="infra.cloud.gcs.env.live_bytes-tab-0" checked>
+  <label for="infra.cloud.gcs.env.live_bytes-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;, type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">live-object</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
           
@@ -5597,11 +5597,11 @@ the data this environment accounts for.
 </span></span><span style="display:flex;"><span><span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>shard<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_persist_shard_usage_referenced_not_current_state_bytes{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentFilter' title='mzEnvironmentFilter'>materialize_cloud_organization_name=~".*"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">))</span>
 </span></span></code></pre></div>
   </div>
-  <input type="radio" class="toggle" name="infra.cloud.gcs.env.bytes-tabs" id="infra.cloud.gcs.env.bytes-tab-1">
-  <label for="infra.cloud.gcs.env.bytes-tab-1">Datadog</label>
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.live_bytes-tabs" id="infra.cloud.gcs.env.live_bytes-tab-1">
+  <label for="infra.cloud.gcs.env.live_bytes-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>,<span style="color:#960050;background-color:#1e0010">type:live-object</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}
 </span></span></code></pre></div>
             
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>mz_persist_shard_usage_current_state_batches_bytes{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">shard</span>}, {<span style="color:#960050;background-color:#1e0010">*</span>}<span style="color:#f92672">)</span>
@@ -5610,73 +5610,142 @@ the data this environment accounts for.
 </span></span></code></pre></div>
   </div>
 </div>
-<h4 id="infra.cloud.gcs.env.objects">infra.cloud.gcs.env.objects
-  <a class="anchor" href="#infra.cloud.gcs.env.objects">#</a>
+<h4 id="infra.cloud.gcs.env.live_objects">infra.cloud.gcs.env.live_objects
+  <a class="anchor" href="#infra.cloud.gcs.env.live_objects">#</a>
 </h4>
-Objects stored in each selected GCS bucket.
+Live objects in each selected GCS bucket.
 <div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.cloud.gcs.env.objects-tabs" id="infra.cloud.gcs.env.objects-tab-0" checked>
-  <label for="infra.cloud.gcs.env.objects-tab-0">PromQL</label>
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.live_objects-tabs" id="infra.cloud.gcs.env.live_objects-tab-0" checked>
+  <label for="infra.cloud.gcs.env.live_objects-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;, type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">live-object</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
-  <input type="radio" class="toggle" name="infra.cloud.gcs.env.objects-tabs" id="infra.cloud.gcs.env.objects-tab-1">
-  <label for="infra.cloud.gcs.env.objects-tab-1">Datadog</label>
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.live_objects-tabs" id="infra.cloud.gcs.env.live_objects-tab-1">
+  <label for="infra.cloud.gcs.env.live_objects-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>,<span style="color:#960050;background-color:#1e0010">type:live-object</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cloud.gcs.env.live_bytes_change">infra.cloud.gcs.env.live_bytes_change
+  <a class="anchor" href="#infra.cloud.gcs.env.live_bytes_change">#</a>
+</h4>
+How much each selected GCS bucket&rsquo;s live data grew or shrank over the
+previous day.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.live_bytes_change-tabs" id="infra.cloud.gcs.env.live_bytes_change-tab-0" checked>
+  <label for="infra.cloud.gcs.env.live_bytes_change-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;, type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">live-object</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;, type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">live-object</span>&#34;}[<span style="color:#e6db74">30m</span>] <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">1d</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.live_bytes_change-tabs" id="infra.cloud.gcs.env.live_bytes_change-tab-1">
+  <label for="infra.cloud.gcs.env.live_bytes_change-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>,<span style="color:#960050;background-color:#1e0010">type:live-object</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> day_before<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>,<span style="color:#960050;background-color:#1e0010">type:live-object</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cloud.gcs.env.live_objects_change">infra.cloud.gcs.env.live_objects_change
+  <a class="anchor" href="#infra.cloud.gcs.env.live_objects_change">#</a>
+</h4>
+How many live objects each selected GCS bucket gained or lost over
+the previous day.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.live_objects_change-tabs" id="infra.cloud.gcs.env.live_objects_change-tab-0" checked>
+  <label for="infra.cloud.gcs.env.live_objects_change-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;, type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">live-object</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;, type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">live-object</span>&#34;}[<span style="color:#e6db74">30m</span>] <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">1d</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.live_objects_change-tabs" id="infra.cloud.gcs.env.live_objects_change-tab-1">
+  <label for="infra.cloud.gcs.env.live_objects_change-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>,<span style="color:#960050;background-color:#1e0010">type:live-object</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> day_before<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>,<span style="color:#960050;background-color:#1e0010">type:live-object</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cloud.gcs.env.object_size">infra.cloud.gcs.env.object_size
+  <a class="anchor" href="#infra.cloud.gcs.env.object_size">#</a>
+</h4>
+The average size of a live object in each selected GCS bucket.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.object_size-tabs" id="infra.cloud.gcs.env.object_size-tab-0" checked>
+  <label for="infra.cloud.gcs.env.object_size-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;, type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">live-object</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;, type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">live-object</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.cloud.gcs.env.object_size-tabs" id="infra.cloud.gcs.env.object_size-tab-1">
+  <label for="infra.cloud.gcs.env.object_size-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>,<span style="color:#960050;background-color:#1e0010">type:live-object</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>,<span style="color:#960050;background-color:#1e0010">type:live-object</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>}
 </span></span></code></pre></div>
   </div>
 </div>
 <h4 id="infra.cloud.gcs.env.bytes_by_type">infra.cloud.gcs.env.bytes_by_type
   <a class="anchor" href="#infra.cloud.gcs.env.bytes_by_type">#</a>
 </h4>
-Bytes in each selected GCS bucket, split into live objects,
-noncurrent versions and soft-deleted objects, beside the data this
-environment accounts for.
+Bytes in the selected GCS buckets, split into live objects,
+noncurrent versions and soft-deleted objects.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.cloud.gcs.env.bytes_by_type-tabs" id="infra.cloud.gcs.env.bytes_by_type-tab-0" checked>
   <label for="infra.cloud.gcs.env.bytes_by_type-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name, type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>shard<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_persist_shard_usage_current_state_batches_bytes{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentFilter' title='mzEnvironmentFilter'>materialize_cloud_organization_name=~".*"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">))</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>shard<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_persist_shard_usage_current_state_rollups_bytes{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentFilter' title='mzEnvironmentFilter'>materialize_cloud_organization_name=~".*"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">))</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>shard<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_persist_shard_usage_referenced_not_current_state_bytes{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentFilter' title='mzEnvironmentFilter'>materialize_cloud_organization_name=~".*"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">))</span>
 </span></span></code></pre></div>
   </div>
   <input type="radio" class="toggle" name="infra.cloud.gcs.env.bytes_by_type-tabs" id="infra.cloud.gcs.env.bytes_by_type-tab-1">
   <label for="infra.cloud.gcs.env.bytes_by_type-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>,<span style="color:#960050;background-color:#1e0010">type</span>}
-</span></span></code></pre></div>
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>mz_persist_shard_usage_current_state_batches_bytes{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">shard</span>}, {<span style="color:#960050;background-color:#1e0010">*</span>}<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>mz_persist_shard_usage_current_state_rollups_bytes{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">shard</span>}, {<span style="color:#960050;background-color:#1e0010">*</span>}<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>mz_persist_shard_usage_referenced_not_current_state_bytes{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">shard</span>}, {<span style="color:#960050;background-color:#1e0010">*</span>}<span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">type</span>}
 </span></span></code></pre></div>
   </div>
 </div>
 <h4 id="infra.cloud.gcs.env.objects_by_type">infra.cloud.gcs.env.objects_by_type
   <a class="anchor" href="#infra.cloud.gcs.env.objects_by_type">#</a>
 </h4>
-Objects in each selected GCS bucket, split into live, noncurrent and
+Objects in the selected GCS buckets, split into live, noncurrent and
 soft-deleted.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.cloud.gcs.env.objects_by_type-tabs" id="infra.cloud.gcs.env.objects_by_type-tab-0" checked>
   <label for="infra.cloud.gcs.env.objects_by_type-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>bucket_name, type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$gcsBucket</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
@@ -5685,7 +5754,7 @@ soft-deleted.
   <label for="infra.cloud.gcs.env.objects_by_type-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">bucket_name</span>,<span style="color:#960050;background-color:#1e0010">type</span>}
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{<span style="color:#960050;background-color:#1e0010">$gcsBucket</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">type</span>}
 </span></span></code></pre></div>
   </div>
 </div>

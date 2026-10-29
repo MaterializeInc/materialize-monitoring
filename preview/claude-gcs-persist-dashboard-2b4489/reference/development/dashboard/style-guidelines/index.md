@@ -187,6 +187,9 @@ Panel::stat(title)
 
 For single-series sparklines, leave the default `VALUE` text mode — the panel title is the label.
 
+When the tiles differ by orders of magnitude, add `.min_max_per_field()`.
+Grafana scales every tile's sparkline against the largest series by default, which draws the small tiles flat at zero.
+
 ### Timeseries legend
 
 Apply the shared timeseries legend builder to every multi-series timeseries panel:
@@ -959,6 +962,7 @@ the conventions below are the ones a query against those families has to follow.
 | Never `rate()` a provider counter over `$__rate_interval` | That interval is sized from the datasource's scrape interval, which is far shorter than a pull, so the window holds one sample and draws nothing. Use a fixed `[30m]` |
 | One expression per provider in a cross-provider query, each with its own legend | Two of the three are empty on any install, which costs nothing. The alternative, a `label_replace` onto a common resource label, hides which provider a number came from |
 | Convert to 0–1 in the query | CloudWatch and Azure publish percent as 0–100; Cloud Monitoring publishes 0–1 with a unit label of `10^2.%`. Transaction-ID consumption is a fraction of 2^31 |
+| Draw a once-a-day family over a fixed range: `PanelQuery::time_from("14d")`, and `min_interval("1d")` for day-over-day bars | Over a dashboard's hours a daily measurement is a flat line, and a bar at the default step is one scrape wide. GCS storage is the case on `env-persist` |
 | Tier the families at `diagnostic` in the registry | A registry tier admits a metric at that tier and above; `diagnostic` is the one level no `metricImportance` value can undercut, so the per-provider value stays in charge |
 
 Whether a pull *failed* is published differently by each provider, and by one of them not at all.
