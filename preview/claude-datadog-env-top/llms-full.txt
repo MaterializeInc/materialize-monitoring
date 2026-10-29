@@ -23839,7 +23839,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `mz-monitoring-build` / `mz-monitoring-check`: thin wrappers over the Rust binaries
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
-    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, `grafana/` and `datadog/`, with `canonical.rs` serializing both deterministically; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
+    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, `grafana/` and `datadog/`, with `canonical.rs` serializing both deterministically; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; `datadog/panel.rs` pairs each Datadog widget with its parity-manifest entry, `manifest.rs` holds the manifest both backends describe, and `tests/datadog_parity.rs` compares them; all driven by `mz-monitoring-build gen-dashboards`
     * `queries/`: query-registry YAML inputs — the metric, log, and alert query definitions and recording rules,
       validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
       * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
@@ -23854,7 +23854,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
-    * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; vendored upstream Grafana JSON Schema documents plus the `packages.json` plugin-id manifest under `schemas/grafana/`, and the Rust models generated from them under `src/grafana/generated/`; `tests/fixtures/env-top.python-baseline.yaml` is the frozen final Python render, shared by the model round-trip and dashboard parity suites; not consumed by customers
+    * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; vendored upstream Grafana JSON Schema documents plus the `packages.json` plugin-id manifest under `schemas/grafana/`, and the Rust models generated from them under `src/grafana/generated/`; `src/datadog/`, behind the `datadog` feature, holds the Datadog dashboard building blocks (registry context, formula splitter, widget builders, template variables); `tests/fixtures/env-top.python-baseline.yaml` is the frozen final Python render, shared by the model round-trip and dashboard parity suites; not consumed by customers
     * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`) and for the release machinery (`versioning.rs`, `propose.rs`, `publish.rs`, `release_notes.rs`, `github.rs`)
     * `mz-monitoring-check/`: Rust schema and consistency checks, one subcommand each.
       `check-queries` validates the query registry against its schema.
@@ -25745,7 +25745,7 @@ the metric queries, each named, and a formula over those names that carries ever
 `count_not_null(avg:m{…} by {…})` becomes the query `avg:m{…} by {…}` and the formula `count_not_null(query1)`.
 A query object that still carries a function renders as "Invalid Formula in Query Object", although the query API evaluates the whole expression.
 The widget editor makes this split for you when you paste a whole expression into its query box, so only JSON you import needs the two parts.
-The Datadog dashboards split each template this way in `packages/dashboards/src/datadog/formula.rs`,
+The Datadog dashboards split each template this way in `packages/mzmon-lib/src/datadog/formula.rs`,
 so the registry keeps one expression per template.
 
 A query value, toplist, sunburst, or table widget reduces each query over the time window with the query's `aggregator`.
@@ -37816,6 +37816,9 @@ Names never go onto the data series, so a rename changes no series' identity.
 ### Models from `datadog-api-client`
 
 The Datadog backend lives in `packages/dashboards/src/datadog/`, beside `grafana/`, where `packages/dashboards/src/lib.rs` already expects a second backend.
+The building blocks any Datadog dashboard needs, such as the widget builders and the formula splitter, live in `mzmon-lib` as `mzmon_lib::datadog`,
+as the Grafana ones live in `mzmon_lib::grafana`.
+They sit behind a `datadog` feature, so the tools with no Datadog output don't compile the models.
 It builds dashboards from the models in [`datadog-api-client`](https://crates.io/crates/datadog-api-client), Datadog's official Rust client.
 The crate is generated from Datadog's OpenAPI spec and licensed Apache-2.0, and its 0.38.0 release is from 2026-10-13.
 Its `datadogV1::model` module types the dashboard, its tabs and template variables, and each widget definition.
