@@ -149,7 +149,7 @@ dependencies:
       - bundled-backends
       - alertmanager
   - name: kube-state-metrics
-    version: "8.7.1"
+    version: "8.8.0"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: kube-state-metrics.enabled
     tags:
