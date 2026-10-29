@@ -14670,7 +14670,7 @@ views and indexes naturally top the list.
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>top<span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}compute_hydration_time_seconds{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>} AND instance_id<span style="color:#960050;background-color:#1e0010">:$</span>{<span style="color:#960050;background-color:#1e0010">mzClusterList</span>} AND replica_id<span style="color:#960050;background-color:#1e0010">:$</span>{<span style="color:#960050;background-color:#1e0010">mzReplicaList</span>} AND hydrated<span style="color:#960050;background-color:#1e0010">:</span><span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">instance_id</span>,<span style="color:#960050;background-color:#1e0010">collection_id</span>},
-</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">15</span>, &#39;<span style="color:#e6db74">max</span>&#39;, &#39;<span style="color:#e6db74">desc</span>&#39;
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">15</span>, &#39;<span style="color:#e6db74">last</span>&#39;, &#39;<span style="color:#e6db74">desc</span>&#39;
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -14772,7 +14772,7 @@ labeled by object name.
 </span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
 </span></span><span style="display:flex;"><span>    {<span style="color:#960050;background-color:#1e0010">instance_id</span>,<span style="color:#960050;background-color:#1e0010">collection_id</span>}
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>,
-</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">15</span>, &#39;<span style="color:#e6db74">max</span>&#39;, &#39;<span style="color:#e6db74">desc</span>&#39;
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">15</span>, &#39;<span style="color:#e6db74">last</span>&#39;, &#39;<span style="color:#e6db74">desc</span>&#39;
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -16918,7 +16918,7 @@ something restarted or went down while you weren&rsquo;t watching.
   <div class="book-tabs-content markdown-inner">
             
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span><span style="color:#960050;background-color:#1e0010">:$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}compute_cluster_status{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">materialize_cloud_organization_namespace</span>}<span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">avg</span>, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">range</span>}<span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">materialize_cloud_organization_namespace</span>} <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span>
 </span></span></code></pre></div>
   </div>
 </div>
@@ -16970,7 +16970,14 @@ real time. A top-level freshness pointer.
   <label for="materialize.info.max_lag-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>mz_dataflow_wallclock_lag_seconds{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>} AND <span style="color:#66d9ef">quantile</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">}.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">max</span>, <span style="color:#ae81ff">3600</span><span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  cutoff_max<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>mz_dataflow_wallclock_lag_seconds{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>} AND instance_id<span style="color:#960050;background-color:#1e0010">:</span><span style="color:#f92672">*</span> AND <span style="color:#66d9ef">quantile</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">namespace</span>,<span style="color:#960050;background-color:#1e0010">pod</span>,<span style="color:#960050;background-color:#1e0010">instance_id</span>,<span style="color:#960050;background-color:#1e0010">replica_id</span>,<span style="color:#960050;background-color:#1e0010">collection_id</span>}<span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">max</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    <span style="color:#ae81ff">1</span>e9
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>  {<span style="color:#960050;background-color:#1e0010">*</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>

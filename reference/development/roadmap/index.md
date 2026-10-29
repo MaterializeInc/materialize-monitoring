@@ -303,7 +303,7 @@ Its adapters are therefore the ones this repository can test end to end.
 | [DEP-225] Sizing (Day 1) | ⬜ |
 | [DEP-378] `infra-pods`: one workload's health, logs and metrics | ⬜ |
 | [DEP-379] Meta-monitoring for Grafana, Thanos and Alertmanager | ⬜ |
-| [DEP-115] A Datadog dashboard set, starting with `env-top`, downloaded from the docs site as JSON. Names join from the `_info` series by formula arithmetic, on the canonical labels the monitors carry. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | ⬜ |
+| [DEP-115] A Datadog dashboard set, downloaded from the docs site as JSON. `env-top` ships, held to its Grafana counterpart by a parity ledger; Field Engineering sets the order of the rest. Names join from the `_info` series by formula arithmetic, on the canonical labels the monitors carry. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | 🔨 |
 | [DEP-217] A Google Cloud Monitoring dashboard set | ⬜ |
 | [DEP-218] A Honeycomb dashboard set | ⬜ |
 | [DEP-325] `infra-*` variables that reference variables those dashboards never define | ⬜ |
@@ -377,7 +377,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 | [Secret Filtering](../design-docs/20260924-log-secret-filtering/) | Ready | [Secret filtering](#secret-filtering) |
 | [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/) | Ready | [Metric label standardization](#metric-label-standardization) |
 | Cost visibility with OpenCost | Draft, in review as [#365] | [Collection](#collection) |
-| [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | Draft | [Dashboards](#dashboards) |
+| [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | Ready | [Dashboards](#dashboards) |
 
 [adopt]: https://linear.app/materializeinc/project/adopt-materialize-monitoring-in-cloud-cce4b8af4db8/overview
 [clom]: https://linear.app/materializeinc/project/metrics-for-cloud-070c13ddba6a/overview
