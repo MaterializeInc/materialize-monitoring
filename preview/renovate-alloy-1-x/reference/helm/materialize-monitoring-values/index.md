@@ -44,8 +44,8 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.8.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
 
@@ -6512,7 +6512,7 @@ Upstream reference:
 {
   "registry": "quay.io",
   "repository": "thanos/thanos",
-  "tag": "v0.42.4"
+  "tag": "v0.42.5"
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
@@ -8531,7 +8531,7 @@ the StatefulSet, whose volumes do not follow; see
       <td class="helm-value-default"><pre>
 {
   "repository": "quay.io/prometheus/alertmanager",
-  "tag": "v0.34.1"
+  "tag": "v0.34.2"
 }</pre>
 </td>
       <td class="helm-value-desc">Alertmanager image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -9676,7 +9676,7 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 {
   "repository": "registry.k8s.io/metrics-server/metrics-server",
-  "tag": "v0.9.0"
+  "tag": "v0.9.1"
 }</pre>
 </td>
       <td class="helm-value-desc">metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.

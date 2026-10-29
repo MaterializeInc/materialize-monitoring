@@ -73,7 +73,8 @@ The designs with work left are under [Designs in flight](#designs-in-flight).
 
 Tracked in [Adopt materialize-monitoring in Cloud][adopt] (**ADOPT**).
 Materialize Cloud moves its own monitoring onto this chart, on the same `values.yaml` surface self-managed customers consume.
-Cloud deploys through Pulumi, so a Pulumi component wraps the chart the way the Terraform module does ([CLO-182]).
+Cloud deploys through Pulumi, so a Pulumi component wraps the chart the way the Terraform module does.
+It starts from the chart's `noop` profile, and each service moves over by turning on its own tag.
 Cloud-only rules and configuration layer through values, with no privileged path ([DEP-125]).
 Cloud running the chart customers run is the strongest available test of the customer contract.
 
@@ -83,7 +84,7 @@ Each stateful component then gets a cutover of its own.
 
 | Milestone | What moves | Items |
 |---|---|---|
-| **Stateless services** | Alloy (agent and gateway), kube-state-metrics and node-exporter replace Cloud's own. Cloud parity needs generic scrape discovery and the OTLP agent→gateway transport with a node-local WAL | 🔨 [CLO-182] · ⬜ [DEP-193] · ⬜ [DEP-189] · ⬜ [DEP-223] |
+| **Stateless services** | Alloy (agent and gateway), kube-state-metrics and node-exporter replace Cloud's own. Cloud parity needs generic scrape discovery and the OTLP agent→gateway transport with a node-local WAL | ⬜ [DEP-193] · ⬜ [DEP-189] · ⬜ [DEP-223] |
 | **Thanos beside AMP** | Thanos stands up beside AMP, and the gateway fans out to both as components move. Both take canonical `mz_*` once AMP's readers stop depending on `v2_mz_*`. AMP scales down as its consumers move | ⬜ [DEP-383] |
 | **Loki cutover** | Cloud's Loki moves onto the chart's Loki on its existing storage backend, so no log data is copied. Log tenancy moves to `tenantMap: byEnvironment`, which the read path needs | ⬜ [CLO-296] |
 | **Alerting** | Cloud's rules run on the chart's rulers and route through its Alertmanager to Cloud's receivers. The Loki rules Cloud clicked into Grafana are already ported by shape in `materialize-log-alerts.yaml` | ⬜ [DEP-125] |
@@ -358,7 +359,6 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 | [DEP-249] Trivy suppressions are per check, so they also mask our own templates | ⬜ |
 | [DEP-251] SARIF findings point at temporary render paths | ⬜ |
 | [DEP-381] `tflint` in Terraform CI | ⬜ |
-| [DEP-369] The per-cloud wrappers pass the Kubernetes cluster name as `cluster_name` | ⬜ |
 | [DEP-370] Renovate bumps the `mzmon-alloy` tag and leaves its digest | ⬜ |
 | [DEP-371] Release PRs leave `Cargo.lock` stale | ⬜ |
 | [DEP-111] and [DEP-118] An ArgoCD and FluxCD CI matrix | ⬜ |
@@ -390,7 +390,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 
 [CLO-55]: https://linear.app/materializeinc/issue/CLO-55
 [CLO-76]: https://linear.app/materializeinc/issue/CLO-76
-[CLO-182]: https://linear.app/materializeinc/issue/CLO-182
 [CLO-255]: https://linear.app/materializeinc/issue/CLO-255
 [CLO-256]: https://linear.app/materializeinc/issue/CLO-256
 [CLO-266]: https://linear.app/materializeinc/issue/CLO-266
@@ -500,7 +499,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-366]: https://linear.app/materializeinc/issue/DEP-366
 [DEP-406]: https://linear.app/materializeinc/issue/DEP-406
 [DEP-368]: https://linear.app/materializeinc/issue/DEP-368
-[DEP-369]: https://linear.app/materializeinc/issue/DEP-369
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
 [DEP-371]: https://linear.app/materializeinc/issue/DEP-371
 [DEP-372]: https://linear.app/materializeinc/issue/DEP-372

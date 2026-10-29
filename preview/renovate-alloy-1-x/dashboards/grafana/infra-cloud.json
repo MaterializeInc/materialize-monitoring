@@ -279,10 +279,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_leaked_bytes))\n",
+                        "expr": "sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))\n",
                         "legendFormat": "referenced by Materialize",
                         "qryType": 1,
-                        "query": "sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_leaked_bytes))\n"
+                        "query": "sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes))\n+ sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))\n"
                       },
                       "version": "v0"
                     },
