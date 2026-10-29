@@ -8,9 +8,19 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## Dashboards (Helm chart) v0.21.1 (Unreleased)
+## Dashboards (Helm chart) v0.22.0 (Unreleased)
 
 _Changes Pending_
+
+## Dashboards (Helm chart) v0.21.1
+
+* Name the Datadog dashboard files datadog-<stem>.json, unblocking the dashboards release
+    * [materialize-monitoring#633](https://github.com/MaterializeInc/materialize-monitoring/pull/633)
+    * The Datadog dashboard downloads are named `datadog-<stem>.json`, such as `datadog-env-top.json`, so they no longer share a file name with the Grafana render of the same dashboard.
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.13.0..v0.14.0
 
 ## Container Images v0.9.0 (Unreleased)
 
