@@ -1731,6 +1731,7 @@ dependencies = [
  "regex",
  "serde_json",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]

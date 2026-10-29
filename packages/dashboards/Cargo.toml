@@ -15,3 +15,5 @@ mzmon-lib = { path = "../mzmon-lib" }
 regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
+# The type of a Datadog dashboard tab's id, already built by datadog-api-client.
+uuid = "1"

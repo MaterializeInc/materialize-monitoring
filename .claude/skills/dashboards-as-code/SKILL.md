@@ -183,10 +183,14 @@ These things about it are not re-derivable by reading the modules:
 - **The cluster picker lists `cluster_id`, the replica picker `replica_id`**: the canonical labels every Materialize
   family carries beside its own spelling. The namespace picker is separate because cAdvisor and kube-state-metrics
   series carry no environment tag.
-- **A scalar widget can't aggregate in two layers.** A query value, toplist, sunburst, or table reads through
-  Datadog's scalar query API, which refuses a group-by function such as `max(query1, {tag})` with "it is unsupported
-  to use multi-layer aggregation function … with an aggregator" (found 2026-10-29). A template that needs one is drawn
-  as a timeseries, listed in `DIFFERENCES`, and a render test refuses it in a scalar widget.
+- **A scalar widget reduces a two-layer formula in the formula.** A query value, toplist, sunburst, or table
+  reduces each query with its `aggregator`, but Datadog refuses one under a group-by function such as
+  `max(query1, {tag})` ("unsupported to use multi-layer aggregation function … with an aggregator"). `scalar_parts`
+  wraps such a formula as `reduce(…, 'last')` and drops its queries' aggregators, the form the Datadog UI writes, and
+  a render test holds every scalar query to exactly one of the two.
+- **Tabs name groups by widget id.** Each Grafana tab is a Datadog tab, listing its top-level groups by an `id` the
+  render assigns: the tab's position times 100, plus the group's. A group for a row whose header Grafana hides has its
+  title hidden.
 - **A widget's query objects are bare metric queries**, and every function and operator goes in its formula.
   `datadog/formula.rs` splits each rendered template that way, and a render test holds it. A query object carrying a
   function renders in Datadog as "Invalid Formula in Query Object", yet the query API evaluates the same expression,

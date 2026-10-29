@@ -129,6 +129,19 @@ pub fn combine<K: Clone + PartialEq>(
     (queries, formulas)
 }
 
+/// A group-by function's tag set, as in `max(query1, {pod})`.
+static GROUP_BY_TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r",\s*\{").unwrap());
+
+/// Whether `formula` aggregates in two layers, through a group-by function such
+/// as `max(query1, {pod})` or `count(query1, {size})`.
+///
+/// A scalar widget can't reduce such a formula with its queries' aggregators.
+/// Datadog refuses an aggregator under a group-by function, so the formula
+/// reduces over the window itself, with `reduce(…, 'last')`.
+pub fn aggregates_in_layers(formula: &str) -> bool {
+    GROUP_BY_TAGS.is_match(formula)
+}
+
 /// Whether `query` is exactly one bare metric query, with nothing around it.
 pub fn is_bare_metric_query(query: &str) -> bool {
     METRIC_QUERY
@@ -225,6 +238,18 @@ mod tests {
         let (queries, formulas) = combine(&[(&records, "min"), (&records, "max")]);
         assert_eq!(queries.len(), 2);
         assert_eq!(formulas, vec!["query1", "query2"]);
+    }
+
+    #[test]
+    fn a_tag_set_argument_is_a_second_layer() {
+        assert!(aggregates_in_layers("count(query1, {size})"));
+        assert!(aggregates_in_layers(
+            "top(max(cutoff_max(query1, 1e9), {a,b}), 15, 'max', 'desc')"
+        ));
+        assert!(!aggregates_in_layers(
+            "default_zero(count_not_null(query1))"
+        ));
+        assert!(!aggregates_in_layers("top(query1, 15, 'max', 'desc')"));
     }
 
     #[test]

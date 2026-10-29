@@ -251,50 +251,93 @@ mod tests {
     }
 
     #[test]
-    fn scalar_widgets_aggregate_in_one_layer() {
-        // Datadog's scalar query API refuses a group-by function such as
-        // `max(query1, {tag})`, so a query value, toplist, sunburst, or table
-        // built on one shows an error rather than a number.
-        fn scalar(widgets: &[Widget], name: &str) {
+    fn a_scalar_widget_reduces_each_query_exactly_once() {
+        // A scalar widget reduces over the window either in each query's
+        // aggregator or, under a group-by function, in the formula's `reduce()`.
+        // Datadog refuses an aggregator under a group-by function, and a query
+        // with neither is "Missing aggregator".
+        fn walk(widgets: &[Widget], name: &str) {
             for widget in widgets {
-                let formulas: Vec<String> = match &widget.definition {
+                let (requests, scalar) = match &widget.definition {
                     WidgetDefinition::GroupWidgetDefinition(group) => {
-                        scalar(&group.widgets, name);
+                        walk(&group.widgets, name);
                         continue;
                     }
-                    WidgetDefinition::QueryValueWidgetDefinition(w) => w
-                        .requests
-                        .iter()
-                        .flat_map(|r| r.formulas.iter().flatten().map(|f| f.formula.clone()))
-                        .collect(),
-                    WidgetDefinition::ToplistWidgetDefinition(w) => w
-                        .requests
-                        .iter()
-                        .flat_map(|r| r.formulas.iter().flatten().map(|f| f.formula.clone()))
-                        .collect(),
-                    WidgetDefinition::SunburstWidgetDefinition(w) => w
-                        .requests
-                        .iter()
-                        .flat_map(|r| r.formulas.iter().flatten().map(|f| f.formula.clone()))
-                        .collect(),
-                    WidgetDefinition::TableWidgetDefinition(w) => w
-                        .requests
-                        .iter()
-                        .flat_map(|r| r.formulas.iter().flatten().map(|f| f.formula.clone()))
-                        .collect(),
-                    _ => continue,
+                    WidgetDefinition::TimeseriesWidgetDefinition(_) => {
+                        let mut all = Vec::new();
+                        requests(std::slice::from_ref(widget), name, &mut all);
+                        (all, false)
+                    }
+                    _ => {
+                        let mut all = Vec::new();
+                        requests(std::slice::from_ref(widget), name, &mut all);
+                        (all, true)
+                    }
                 };
-                for formula in formulas {
-                    assert!(
-                        !formula.contains(", {"),
-                        "{name}: `{formula}` aggregates in two layers in a scalar widget"
-                    );
+                for (queries, formulas) in requests {
+                    for formula in &formulas {
+                        let layered =
+                            crate::datadog::formula::aggregates_in_layers(&formula.formula);
+                        let reduced = formula.formula.contains("reduce(");
+                        assert_eq!(
+                            scalar && layered,
+                            reduced,
+                            "{name}: `{}` in a {} widget",
+                            formula.formula,
+                            if scalar { "scalar" } else { "timeseries" }
+                        );
+                    }
+                    for query in &queries {
+                        let FormulaAndFunctionQueryDefinition::FormulaAndFunctionMetricQueryDefinition(m) = query else {
+                            continue;
+                        };
+                        let named_by_a_layered_formula = formulas.iter().any(|f| {
+                            crate::datadog::formula::aggregates_in_layers(&f.formula)
+                                && f.formula
+                                    .split(|c: char| !c.is_ascii_alphanumeric())
+                                    .any(|word| word == m.name)
+                        });
+                        assert_eq!(
+                            m.aggregator.is_some(),
+                            scalar && !named_by_a_layered_formula,
+                            "{name}: {} `{}` has the wrong aggregator",
+                            m.name,
+                            m.query
+                        );
+                    }
                 }
             }
         }
         for (name, json) in rendered() {
             let parsed: Dashboard = serde_json::from_str(&json).expect("parse");
-            scalar(&parsed.widgets, name);
+            walk(&parsed.widgets, name);
+        }
+    }
+
+    #[test]
+    fn every_top_level_widget_sits_in_exactly_one_tab() {
+        for (name, json) in rendered() {
+            let parsed: Dashboard = serde_json::from_str(&json).expect("parse");
+            let Some(Some(tabs)) = &parsed.tabs else {
+                continue;
+            };
+            let mut placed: Vec<i64> = tabs.iter().flat_map(|t| t.widget_ids.clone()).collect();
+            let count = placed.len();
+            placed.sort_unstable();
+            placed.dedup();
+            assert_eq!(placed.len(), count, "{name}: a widget sits in two tabs");
+            let mut ids: Vec<i64> = parsed
+                .widgets
+                .iter()
+                .map(|w| {
+                    w.id.unwrap_or_else(|| panic!("{name}: a top-level widget with no id"))
+                })
+                .collect();
+            ids.sort_unstable();
+            assert_eq!(
+                ids, placed,
+                "{name}: the tabs and the top-level widgets disagree"
+            );
         }
     }
 

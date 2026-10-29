@@ -16,17 +16,18 @@
 //! Each builder returns a [`Panel`]: the widgets it drew and the manifest entry
 //! the parity ledger compares with the Grafana panel of the same slug.
 //!
-//! Widgets carry no `id` and no `layout`. Datadog assigns ids on import, and the
-//! dashboards use the ordered layout with automatic reflow, which places widgets
-//! in the order they are listed.
+//! Widgets carry no `layout`: the dashboards use the ordered layout with
+//! automatic reflow, which places widgets in the order they are listed. Only a
+//! dashboard's top-level groups carry an `id`, because its tabs name them by id.
 //!
 //! # Scalar widgets
 //!
 //! A query value, toplist, sunburst, or table reads each metric query reduced
-//! over the dashboard's time window, through Datadog's scalar query API. That API
-//! refuses a group-by function such as `max(query1, {tag})`, which aggregates in
-//! two layers, so a template that needs one can only be drawn as a
-//! [`timeseries`].
+//! over the dashboard's time window, through Datadog's scalar query API. Each
+//! query's `aggregator` does that reduction, except under a group-by function
+//! such as `max(query1, {tag})`, which aggregates in two layers. Datadog refuses
+//! an aggregator there, so the formula reduces itself, as
+//! `reduce(max(query1, {tag}), 'last')`, and its queries carry none.
 
 use datadog_api_client::datadogV1::model::{
     FormulaAndFunctionMetricAggregation, FormulaAndFunctionMetricDataSource,
@@ -35,7 +36,8 @@ use datadog_api_client::datadogV1::model::{
     NoteWidgetDefinition, NoteWidgetDefinitionType, NumberFormatUnit, NumberFormatUnitCanonical,
     NumberFormatUnitScaleType, QuerySortOrder, QueryValueWidgetDefinition,
     QueryValueWidgetDefinitionType, QueryValueWidgetRequest, SunburstWidgetDefinition,
-    SunburstWidgetDefinitionType, SunburstWidgetRequest, TableWidgetDefinition,
+    SunburstWidgetDefinitionType, SunburstWidgetLegend, SunburstWidgetLegendTable,
+    SunburstWidgetLegendTableType, SunburstWidgetRequest, TableWidgetDefinition,
     TableWidgetDefinitionType, TableWidgetRequest, TimeseriesWidgetDefinition,
     TimeseriesWidgetDefinitionType, TimeseriesWidgetLegendLayout, TimeseriesWidgetRequest,
     ToplistWidgetDefinition, ToplistWidgetDefinitionType, ToplistWidgetRequest, Widget, WidgetAxis,
@@ -43,7 +45,7 @@ use datadog_api_client::datadogV1::model::{
     WidgetFormulaLimit, WidgetLayoutType, WidgetNumberFormat, WidgetPalette,
 };
 
-use super::formula::{Expression, combine, query_name};
+use super::formula::{Expression, aggregates_in_layers, combine, query_name};
 use super::queries::PanelQuery;
 use crate::manifest::{self, Kind};
 
@@ -66,6 +68,17 @@ impl Reduce {
             Reduce::Max => FormulaAndFunctionMetricAggregation::MAX,
             Reduce::Min => FormulaAndFunctionMetricAggregation::MIN,
             Reduce::Sum => FormulaAndFunctionMetricAggregation::SUM,
+        }
+    }
+
+    /// The reducer's name in a formula's `reduce(…, 'last')`.
+    fn name(self) -> &'static str {
+        match self {
+            Reduce::Last => "last",
+            Reduce::Avg => "avg",
+            Reduce::Max => "max",
+            Reduce::Min => "min",
+            Reduce::Sum => "sum",
         }
     }
 }
@@ -380,7 +393,11 @@ fn toplist(title: &str, query: &PanelQuery, look: &Look, count: i64) -> Widget {
     )))
 }
 
-/// Parts of a whole, for a Grafana pie chart: one slice per group.
+/// Parts of a whole, for a Grafana pie chart: one slice per group, with a table
+/// of the groups and their values beside it.
+///
+/// The automatic legend shows nothing on most pies at a dashboard's widget size,
+/// so a reader couldn't tell the slices apart.
 pub fn pie(slug: &str, title: &str, query: &PanelQuery, look: &Look) -> Panel {
     let (queries, formulas) = scalar_parts(
         query.expressions.first().map(|e| (e, look.reduce, None)),
@@ -392,7 +409,10 @@ pub fn pie(slug: &str, title: &str, query: &PanelQuery, look: &Look) -> Panel {
         .response_format(FormulaAndFunctionResponseFormat::SCALAR);
     let mut definition =
         SunburstWidgetDefinition::new(vec![request], SunburstWidgetDefinitionType::SUNBURST)
-            .title(title.to_string());
+            .title(title.to_string())
+            .legend(SunburstWidgetLegend::SunburstWidgetLegendTable(Box::new(
+                SunburstWidgetLegendTable::new(SunburstWidgetLegendTableType::TABLE),
+            )));
     if !query.description.is_empty() {
         definition = definition.description(query.description.clone());
     }
@@ -528,23 +548,34 @@ pub fn table(
 
 /// The metric queries and formulas of a scalar request, each expression reduced
 /// as given and aliased when it has a label.
+///
+/// An expression that aggregates in two layers reduces in its formula rather
+/// than in its queries' aggregators; see the module docs.
 fn scalar_parts<'a>(
     parts: impl IntoIterator<Item = (&'a Expression, Reduce, Option<&'a str>)>,
     look: &Look,
 ) -> (Vec<FormulaAndFunctionQueryDefinition>, Vec<WidgetFormula>) {
     let parts: Vec<_> = parts.into_iter().collect();
-    let keyed: Vec<(&Expression, Reduce)> = parts.iter().map(|(e, r, _)| (*e, *r)).collect();
+    // The key is the queries' aggregator, which a layered formula's queries lack.
+    let keyed: Vec<(&Expression, Option<Reduce>)> = parts
+        .iter()
+        .map(|(e, r, _)| (*e, (!aggregates_in_layers(&e.formula)).then_some(*r)))
+        .collect();
     let (queries, formulas) = combine(&keyed);
     let queries = queries
         .iter()
         .enumerate()
-        .map(|(index, (q, reduce))| metric_query(index, q, Some(reduce.aggregation())))
+        .map(|(index, (q, reduce))| metric_query(index, q, reduce.map(Reduce::aggregation)))
         .collect();
     let formulas = formulas
         .iter()
         .zip(&parts)
-        .map(|(f, (_, _, label))| {
-            let mut formula = look.formula(f, *label);
+        .map(|(f, (expr, reduce, label))| {
+            let f = match aggregates_in_layers(&expr.formula) {
+                true => format!("reduce({f}, '{}')", reduce.name()),
+                false => f.clone(),
+            };
+            let mut formula = look.formula(&f, *label);
             if !look.colors.is_empty() {
                 formula = formula.conditional_formats(
                     look.colors
@@ -565,9 +596,12 @@ fn scalar_parts<'a>(
     (queries, formulas)
 }
 
-/// A titled group, the Datadog counterpart of a Grafana row, in one of Datadog's
-/// group colors, such as `vivid_blue`.
-pub fn group(title: &str, color: &str, panels: &[Panel]) -> Widget {
+/// A group, the Datadog counterpart of a Grafana row, in one of Datadog's group
+/// colors, such as `vivid_blue`.
+///
+/// `show_title` is false for a row whose header Grafana hides, such as a tab's
+/// leading summary.
+pub fn group(title: &str, color: &str, show_title: bool, panels: &[Panel]) -> Widget {
     let widgets = panels
         .iter()
         .flat_map(|p| p.widgets.iter().cloned())
@@ -578,6 +612,7 @@ pub fn group(title: &str, color: &str, panels: &[Panel]) -> Widget {
         widgets,
     )
     .title(title.to_string())
+    .show_title(show_title)
     .background_color(color.to_string());
     Widget::new(WidgetDefinition::GroupWidgetDefinition(Box::new(
         definition,

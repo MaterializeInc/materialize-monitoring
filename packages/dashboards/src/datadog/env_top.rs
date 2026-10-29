@@ -11,10 +11,11 @@
 //!
 //! # Layout
 //!
-//! Datadog's ordered layout has groups but no tabs, so each Grafana row becomes
-//! a group, in tab order. A tab's leading summary rows, whose headers Grafana
-//! hides, share one group named for the tab. Each tab's groups take one of
-//! Datadog's group colors.
+//! Each Grafana tab is a Datadog tab, and each Grafana row a group in it, in one
+//! of Datadog's group colors per tab. A row whose header Grafana hides, such as a
+//! tab's leading summary, is a group with its title hidden. A Datadog tab names
+//! its groups by widget id, so each group carries one: the tab's position times
+//! 100, plus the group's position in the tab.
 //!
 //! # Parity
 //!
@@ -23,23 +24,21 @@
 //! each Grafana panel this one draws differently or leaves out, with the reason.
 
 use datadog_api_client::datadogV1::model::{
-    Dashboard, DashboardLayoutType, DashboardReflowType, Widget,
+    Dashboard, DashboardLayoutType, DashboardReflowType, DashboardTab, Widget,
 };
 use mzmon_lib::query::QueryRegistry;
+use uuid::Uuid;
 
 use super::queries::Queries;
 use super::render::{Error, Result};
 use super::widget::{self, Column, Format, Look, Panel, Reduce};
 use super::{Options, variable};
 use crate::grafana::env_top as grafana;
+use crate::grafana::env_top::theme;
 use crate::manifest::{self, Difference, Gap};
 
 /// Artifact stem, shared with the Grafana dashboard.
 pub const NAME_STEM: &str = grafana::NAME_STEM;
-
-/// Why a template renders only as a timeseries. See [`super::widget`].
-const TWO_LAYERS: &str = "its Datadog template aggregates in two layers, which Datadog's scalar \
-                          widgets can't draw, so it's a timeseries";
 
 /// Grafana panels this dashboard draws differently, or not at all.
 pub const DIFFERENCES: &[Difference] = &[
@@ -71,44 +70,14 @@ pub const DIFFERENCES: &[Difference] = &[
                  shows the percentage, colored the same way",
     },
     Difference {
-        slug: "summary-cpu-total",
-        gap: Gap::Kind,
-        reason: TWO_LAYERS,
-    },
-    Difference {
-        slug: "k8s-res-cpu-total",
-        gap: Gap::Kind,
-        reason: TWO_LAYERS,
-    },
-    Difference {
-        slug: "resource-pod-status",
-        gap: Gap::Kind,
-        reason: TWO_LAYERS,
-    },
-    Difference {
         slug: "resource-deployment-status",
         gap: Gap::Kind,
         reason: "ready and unavailable replicas are two templates, which a table shows side by \
                  side, one row per namespace",
     },
-    Difference {
-        slug: "replica-sizes",
-        gap: Gap::Kind,
-        reason: TWO_LAYERS,
-    },
-    Difference {
-        slug: "freshness-top-collections",
-        gap: Gap::Kind,
-        reason: TWO_LAYERS,
-    },
-    Difference {
-        slug: "sources-types",
-        gap: Gap::Kind,
-        reason: TWO_LAYERS,
-    },
 ];
 
-/// The note above the panels.
+/// The note atop the Summary tab.
 ///
 /// The Grafana environment picker selects exactly one environment, and a Datadog
 /// template variable always offers `*`. Environments reuse cluster and replica
@@ -121,31 +90,40 @@ panels read the namespace picker, because pod metrics carry no environment tag. 
 or `*` in each picker. The peek and Iceberg commit latency panels need percentiles enabled for \
 their metrics in Datadog.";
 
-/// A group: a Grafana row, or a tab's summary rows.
+/// A Grafana tab: its name, its groups' color, and its groups.
+struct Tab {
+    name: &'static str,
+    /// Fixed, so a re-render doesn't churn the artifact.
+    id: Uuid,
+    color: &'static str,
+    sections: Vec<Section>,
+}
+
+/// A group: one Grafana row.
 struct Section {
     title: &'static str,
-    color: &'static str,
+    show_title: bool,
     panels: Vec<Panel>,
 }
 
 impl Section {
-    fn new(title: &'static str, color: &'static str, panels: Vec<Panel>) -> Self {
+    /// A row whose header Grafana shows.
+    fn titled(title: &'static str, panels: Vec<Panel>) -> Self {
         Section {
             title,
-            color,
+            show_title: true,
             panels,
         }
     }
-}
 
-/// Datadog group colors, one per Grafana tab.
-mod color {
-    pub const SUMMARY: &str = "gray";
-    pub const KUBERNETES: &str = "blue";
-    pub const CONNECTIONS: &str = "purple";
-    pub const CLUSTERS: &str = "green";
-    pub const COMPUTE: &str = "orange";
-    pub const SOURCES_SINKS: &str = "yellow";
+    /// A row whose header Grafana hides.
+    fn untitled(title: &'static str, panels: Vec<Panel>) -> Self {
+        Section {
+            title,
+            show_title: false,
+            panels,
+        }
+    }
 }
 
 /// Build the dashboard.
@@ -160,7 +138,7 @@ pub fn manifest(options: &Options, registry: &QueryRegistry) -> Result<Vec<manif
 
 fn build(options: &Options, registry: &QueryRegistry) -> Result<(Dashboard, Vec<manifest::Panel>)> {
     let q = Queries::new(registry, options);
-    let sections = sections(&q);
+    let tabs = tabs(&q);
 
     let failures = q.failures();
     if !failures.is_empty() {
@@ -170,16 +148,35 @@ fn build(options: &Options, registry: &QueryRegistry) -> Result<(Dashboard, Vec<
         });
     }
 
-    let manifest = sections
+    let manifest = tabs
         .iter()
+        .flat_map(|t| &t.sections)
         .flat_map(|s| s.panels.iter().map(|p| p.manifest.clone()))
         .collect();
-    let mut widgets: Vec<Widget> = vec![widget::note(NOTE)];
-    widgets.extend(
-        sections
-            .iter()
-            .map(|s| widget::group(s.title, s.color, &s.panels)),
-    );
+
+    let mut widgets: Vec<Widget> = Vec::new();
+    let mut dashboard_tabs = Vec::new();
+    for (t, tab) in (1i64..).zip(&tabs) {
+        let mut ids = Vec::new();
+        if t == 1 {
+            ids.push(t * 100);
+            widgets.push(widget::note(NOTE).id(t * 100));
+        }
+        for (g, section) in (1i64..).zip(&tab.sections) {
+            let id = t * 100 + g;
+            ids.push(id);
+            widgets.push(
+                widget::group(
+                    section.title,
+                    tab.color,
+                    section.show_title,
+                    &section.panels,
+                )
+                .id(id),
+            );
+        }
+        dashboard_tabs.push(DashboardTab::new(tab.id, tab.name.to_string(), ids));
+    }
 
     let dashboard = Dashboard::new(
         DashboardLayoutType::ORDERED,
@@ -192,6 +189,7 @@ fn build(options: &Options, registry: &QueryRegistry) -> Result<(Dashboard, Vec<
             .to_string(),
     ))
     .reflow_type(DashboardReflowType::AUTO)
+    .tabs(Some(dashboard_tabs))
     .template_variables(Some(vec![
         variable::environment(),
         variable::namespace(),
@@ -201,14 +199,45 @@ fn build(options: &Options, registry: &QueryRegistry) -> Result<(Dashboard, Vec<
     Ok((dashboard, manifest))
 }
 
-fn sections(q: &Queries) -> Vec<Section> {
-    let mut sections = summary(q);
-    sections.extend(kubernetes(q));
-    sections.extend(connections(q));
-    sections.extend(clusters(q));
-    sections.extend(compute(q));
-    sections.extend(sources_sinks(q));
-    sections
+fn tabs(q: &Queries) -> Vec<Tab> {
+    vec![
+        Tab {
+            name: theme::SUMMARY_TITLE,
+            id: Uuid::from_u128(0x7ec89514_ad10_431b_9b76_f9010ec73e4c),
+            color: "gray",
+            sections: summary(q),
+        },
+        Tab {
+            name: theme::KUBERNETES.title,
+            id: Uuid::from_u128(0x25683934_ccbb_4720_8229_323cadb3b117),
+            color: "blue",
+            sections: kubernetes(q),
+        },
+        Tab {
+            name: theme::CONNECTIONS.title,
+            id: Uuid::from_u128(0x5dcbe88a_d3f2_4540_abc8_d9e0a9eee795),
+            color: "purple",
+            sections: connections(q),
+        },
+        Tab {
+            name: theme::CLUSTERS.title,
+            id: Uuid::from_u128(0x863c1f92_b7b6_4a16_b3c1_4f54ac3465b3),
+            color: "green",
+            sections: clusters(q),
+        },
+        Tab {
+            name: theme::COMPUTE.title,
+            id: Uuid::from_u128(0x86fdb3c2_1576_4559_b05b_dca90a44cd40),
+            color: "orange",
+            sections: compute(q),
+        },
+        Tab {
+            name: theme::SOURCES_SINKS.title,
+            id: Uuid::from_u128(0x2f6125dd_a5b2_4540_bf86_f9615f8dd4a9),
+            color: "yellow",
+            sections: sources_sinks(q),
+        },
+    ]
 }
 
 /// The Summary tab: health at a glance, and what is running.
@@ -265,12 +294,11 @@ fn summary(q: &Queries) -> Vec<Section> {
             &q.single("materialize.info.version"),
             &Look::new(),
         ),
-        widget::timeseries(
+        widget::grouped_values(
             "summary-cpu-total",
             "Total CPU Capacity",
             &q.single("materialize.kubernetes.cpu.capacity"),
-            &[],
-            &Look::new().format(Format::Cores).min_zero(),
+            &Look::new().format(Format::Cores),
         ),
         widget::grouped_values(
             "summary-memory-total",
@@ -280,8 +308,8 @@ fn summary(q: &Queries) -> Vec<Section> {
         ),
     ];
     vec![
-        Section::new("Environment Health", color::SUMMARY, health),
-        Section::new("Environment Info", color::SUMMARY, info),
+        Section::titled("Environment Health", health),
+        Section::titled("Environment Info", info),
     ]
 }
 
@@ -306,12 +334,11 @@ fn kubernetes(q: &Queries) -> Vec<Section> {
         "Other pods tx",
     ];
     let summary = vec![
-        widget::timeseries(
+        widget::grouped_values(
             "k8s-res-cpu-total",
             "Total CPU Capacity",
             &q.single("materialize.kubernetes.cpu.capacity.all_containers"),
-            &[],
-            &Look::new().format(Format::Cores).min_zero(),
+            &Look::new().format(Format::Cores),
         ),
         widget::grouped_values(
             "k8s-res-memory-total",
@@ -319,12 +346,13 @@ fn kubernetes(q: &Queries) -> Vec<Section> {
             &q.single("materialize.kubernetes.memory.capacity.all_containers"),
             &Look::new().format(Format::Bytes),
         ),
-        widget::timeseries(
+    ];
+    let readiness = vec![
+        widget::pie(
             "resource-pod-status",
             "Pod Readiness",
             &q.single("materialize.kubernetes.pods.readiness"),
-            &[],
-            &Look::new().min_zero(),
+            &Look::new(),
         ),
         widget::pie(
             "resource-statefulset-status",
@@ -396,9 +424,10 @@ fn kubernetes(q: &Queries) -> Vec<Section> {
         ),
     ];
     vec![
-        Section::new("Kubernetes Workloads", color::KUBERNETES, summary),
-        Section::new("Pod Metrics", color::KUBERNETES, pods),
-        Section::new("Pod Networking", color::KUBERNETES, networking),
+        Section::untitled("Resources Summary", summary),
+        Section::untitled("Workload Readiness", readiness),
+        Section::titled("Pod Metrics", pods),
+        Section::titled("Pod Networking", networking),
     ]
 }
 
@@ -474,9 +503,9 @@ fn connections(q: &Queries) -> Vec<Section> {
         &Look::new(),
     )];
     vec![
-        Section::new("Connections / Activity", color::CONNECTIONS, summary),
-        Section::new("Queries", color::CONNECTIONS, queries),
-        Section::new("SQL Control Plane Commands", color::CONNECTIONS, commands),
+        Section::untitled("Connection Summary", summary),
+        Section::titled("Queries", queries),
+        Section::titled("SQL Control Plane Commands", commands),
     ]
 }
 
@@ -500,12 +529,11 @@ fn clusters(q: &Queries) -> Vec<Section> {
             &Look::new(),
         ),
     ];
-    let replication = vec![widget::timeseries(
+    let replication = vec![widget::pie(
         "replica-sizes",
         "Replica Sizes",
         &q.single("materialize.clusters.replicas.sizes"),
-        &[],
-        &Look::new().min_zero(),
+        &Look::new(),
     )];
     // The status value says nothing here; the group tags are the content.
     let information = vec![widget::table(
@@ -516,9 +544,9 @@ fn clusters(q: &Queries) -> Vec<Section> {
         &Look::new(),
     )];
     vec![
-        Section::new("Cluster Objects / Replicas", color::CLUSTERS, summary),
-        Section::new("Replication / Availability", color::CLUSTERS, replication),
-        Section::new("Cluster Information", color::CLUSTERS, information),
+        Section::untitled("Cluster Summary", summary),
+        Section::titled("Replication / Availability", replication),
+        Section::titled("Cluster Information", information),
     ]
 }
 
@@ -571,12 +599,12 @@ fn compute(q: &Queries) -> Vec<Section> {
             &[],
             &Look::new().format(Format::Seconds).min_zero(),
         ),
-        widget::timeseries(
+        widget::ranking(
             "freshness-top-collections",
             "Least Fresh Objects",
             &q.single("materialize.compute.freshness.top_collections"),
-            &[],
-            &Look::new().format(Format::Seconds).log_scale(),
+            &Look::new().reduce(Reduce::Max).format(Format::Seconds),
+            15,
         ),
     ];
     let hydration = vec![
@@ -664,11 +692,11 @@ fn compute(q: &Queries) -> Vec<Section> {
         ),
     ];
     vec![
-        Section::new("Compute Objects", color::COMPUTE, summary),
-        Section::new("Freshness", color::COMPUTE, freshness),
-        Section::new("Hydration", color::COMPUTE, hydration),
-        Section::new("Dataflows", color::COMPUTE, dataflows),
-        Section::new("Arrangements", color::COMPUTE, arrangements),
+        Section::untitled("Compute Objects Summary", summary),
+        Section::titled("Freshness", freshness),
+        Section::titled("Hydration", hydration),
+        Section::titled("Dataflows", dataflows),
+        Section::titled("Arrangements", arrangements),
     ]
 }
 
@@ -698,11 +726,11 @@ fn sources_sinks(q: &Queries) -> Vec<Section> {
         ),
     ];
     let sources = vec![
-        line(
+        widget::pie(
             "sources-types",
             "Source Types",
-            "materialize.storage.sources.by_type",
-            Look::new().min_zero(),
+            &q.single("materialize.storage.sources.by_type"),
+            &Look::new(),
         ),
         widget::table(
             "sources-status-table",
@@ -798,11 +826,11 @@ fn sources_sinks(q: &Queries) -> Vec<Section> {
         ),
     ];
     vec![
-        Section::new("Sources and Sinks", color::SOURCES_SINKS, summary),
-        Section::new("Sources", color::SOURCES_SINKS, sources),
-        Section::new("Sinks", color::SOURCES_SINKS, sinks),
-        Section::new("Iceberg Sinks", color::SOURCES_SINKS, iceberg),
-        Section::new("Kafka Sinks", color::SOURCES_SINKS, kafka),
+        Section::untitled("Storage Objects Summary", summary),
+        Section::titled("Sources", sources),
+        Section::titled("Sinks", sinks),
+        Section::titled("Iceberg Sinks", iceberg),
+        Section::titled("Kafka Sinks", kafka),
     ]
 }
 
