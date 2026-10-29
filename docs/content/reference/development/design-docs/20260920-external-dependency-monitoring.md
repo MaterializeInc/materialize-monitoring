@@ -973,7 +973,10 @@ The departures, each with its reason.
   The fallback names both routes.
 - **GCS has a section on Object Store Internals too**, although its series are the provider pull's.
   A reader on a GCS environment opened the tab expecting the bucket and found only the fallback, or another environment's Ceph.
-  The section draws the bucket's billed size and its live, noncurrent, and soft-deleted split beside the environment's own accounting.
+  The section draws each bucket's live data beside the environment's own accounting.
+  It adds each bucket's day-over-day change, and its live, noncurrent, and soft-deleted split.
+  Google measures a bucket once a day, so a line chart reads flat over a dashboard's hours.
+  The section uses stat tiles, daily bars, and donuts over a fixed 14 days instead.
   That comparison is the one `infra-cloud` can only make against every environment on the cluster.
   It renders on the GCS pull's own `up`, and the reader picks buckets on `$gcsBucket`, a multi-select that opens on every bucket.
   S3 and Azure Blob stay on `infra-cloud`.

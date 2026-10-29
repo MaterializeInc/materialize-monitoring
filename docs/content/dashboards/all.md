@@ -81,9 +81,12 @@ Ceph run by Rook
   The section appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`.
 
 GCS
-: Each bucket's billed size and object count, split into live objects, noncurrent versions, and soft-deleted objects, beside the data this environment accounts for.
+: Each bucket's live data, object count, and average object size, and how much its data and object count change each day.
+  Two donuts split the selected buckets' billed bytes and objects into live objects, noncurrent versions, and soft-deleted objects.
   The section appears when the gateway pulls the bucket from Cloud Monitoring, under `pipeline.metrics.provider.gcp.gcs.buckets`.
-  The **GCS Bucket** picker opens on every pulled bucket, and the environment's bucket is the one whose live bytes match the environment's line.
+  The **GCS Bucket** picker opens on every pulled bucket.
+  The environment's bucket is the one whose **Live Data** tile reads the same as the environment's.
+  Google measures a bucket once a day, so the section's charts show the last 14 days whatever time range you pick.
 
 On S3, Azure Blob, or any other store, the tab says what it would show.
 The dashboard needs both a metrics and a logs data source.

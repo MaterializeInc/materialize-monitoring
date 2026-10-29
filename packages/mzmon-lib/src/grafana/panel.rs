@@ -247,12 +247,15 @@ impl PanelOptions for Stat {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PieChart {
     pub pie_type: piechart::PieChartType,
+    /// Add each slice's share of the whole to the legend, beside its value.
+    pub legend_percent: bool,
 }
 
 impl Default for PieChart {
     fn default() -> Self {
         PieChart {
             pie_type: piechart::PieChartType::Donut,
+            legend_percent: false,
         }
     }
 }
@@ -269,7 +272,7 @@ impl PanelOptions for PieChart {
                 piechart::PieChartLabels::Name,
                 piechart::PieChartLabels::Value,
             ]),
-            legend: piechart_legend(),
+            legend: piechart_legend(self.legend_percent),
             orientation: piechart::VizOrientation::Auto,
             reduce_options: piechart_reduce_options(),
             tooltip: piechart::VizTooltipOptions {
@@ -284,8 +287,13 @@ impl PanelOptions for PieChart {
     }
 }
 
-/// The legend block all 9 baseline pie charts shared.
-fn piechart_legend() -> piechart::PieChartLegendOptions {
+/// The legend block all 9 baseline pie charts shared, with an optional
+/// percent column.
+fn piechart_legend(percent: bool) -> piechart::PieChartLegendOptions {
+    let mut values = vec![piechart::PieChartLegendValues::Value];
+    if percent {
+        values.push(piechart::PieChartLegendValues::Percent);
+    }
     piechart::PieChartLegendOptions {
         as_table: Some(true),
         calcs: Vec::new(),
@@ -293,7 +301,7 @@ fn piechart_legend() -> piechart::PieChartLegendOptions {
         is_visible: Some(true),
         placement: piechart::LegendPlacement::Right,
         show_legend: true,
-        values: vec![piechart::PieChartLegendValues::Value],
+        values,
         sort_by: None,
         sort_desc: None,
         width: None,
@@ -689,6 +697,12 @@ impl Panel<PieChart> {
         self.options.pie_type = piechart::PieChartType::Pie;
         self
     }
+
+    /// Show each slice's percent of the whole in the legend.
+    pub fn legend_percent(mut self) -> Self {
+        self.options.legend_percent = true;
+        self
+    }
 }
 
 impl Panel<Table> {
@@ -810,6 +824,14 @@ impl<O: PanelOptions> Panel<O> {
 
     pub fn max(mut self, max: f64) -> Self {
         self.field_config.max = Some(max);
+        self
+    }
+
+    /// Scale each series against its own range rather than all of them
+    /// together. On a stat with a tile per series, it keeps one large series
+    /// from flattening every other tile's sparkline.
+    pub fn min_max_per_field(mut self) -> Self {
+        self.field_config.field_min_max = Some(true);
         self
     }
 

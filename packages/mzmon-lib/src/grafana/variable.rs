@@ -1168,7 +1168,7 @@ pub fn gcs_buckets() -> dashboardv2::VariableKind {
     QueryVariable {
         name: variables::GCS_BUCKET,
         label: "GCS Bucket",
-        description: "The GCS buckets to draw; the one holding this environment's data has live bytes on the environment's line",
+        description: "The GCS buckets to draw; the one holding this environment's data reads the same live data as the environment's tile",
         expr: "label_values(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes, bucket_name)"
             .to_string(),
         multi: true,

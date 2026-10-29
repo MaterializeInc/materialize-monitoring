@@ -1727,161 +1727,6 @@ spec:
                 mode: single
                 sort: asc
           version: ""
-    gcs-bucket-bytes:
-      kind: Panel
-      spec:
-        data:
-          kind: QueryGroup
-          spec:
-            queries:
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum by (bucket_name) (
-                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket"}[30m])
-                      )
-                    legendFormat: "{{bucket_name}}"
-                    qryType: 1
-                    query: |
-                      sum by (bucket_name) (
-                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket"}[30m])
-                      )
-                  version: v0
-                refId: query-0
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                    legendFormat: referenced by this environment
-                    qryType: 1
-                    query: |
-                      sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                      + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                  version: v0
-                refId: query-1
-            queryOptions: {}
-            transformations: []
-        description: |-
-          **Bytes stored in each selected GCS bucket, as Google bills them, beside the data this environment accounts for.**
-
-          **Nominal:** The bucket holding this environment's data close to the environment's line, and moving with it. The monitoring stack's buckets grow with retention and then level off. On a bucket with soft delete turned on, the environment's line matches its live bytes on _Bytes by Object State_ instead.
-
-          **Degraded:** The environment's bucket far above its line is storage nothing is using: soft-deleted objects or noncurrent versions the bucket's policy keeps, or data Materialize orphaned. _Bytes by Object State_ separates the first two from live data. A bucket that only ever grows is a missing lifecycle rule or a compactor that has stopped.
-
-          Google measures bucket size once a day, so the bucket moves in daily steps and can sit below the environment's line by up to a day's growth. Compare over days, not hours. A bucket that several environments share holds all of their data.
-        id: 1046
-        links: []
-        title: Bucket Size
-        vizConfig:
-          group: timeseries
-          kind: VizConfig
-          spec:
-            fieldConfig:
-              defaults:
-                custom:
-                  scaleDistribution:
-                    log: 10
-                    type: log
-                noValue: Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.
-                unit: bytes
-              overrides: []
-            options:
-              legend:
-                calcs:
-                - max
-                - mean
-                - lastNotNull
-                displayMode: table
-                placement: bottom
-                showLegend: true
-              tooltip:
-                mode: single
-                sort: asc
-          version: ""
-    gcs-bucket-objects:
-      kind: Panel
-      spec:
-        data:
-          kind: QueryGroup
-          spec:
-            queries:
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum by (bucket_name) (
-                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket"}[30m])
-                      )
-                    legendFormat: "{{bucket_name}}"
-                    qryType: 1
-                    query: |
-                      sum by (bucket_name) (
-                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket"}[30m])
-                      )
-                  version: v0
-                refId: query-0
-            queryOptions: {}
-            transformations: []
-        description: |-
-          **Objects stored in each selected GCS bucket.**
-
-          **Nominal:** Tracks bucket size. Persist writes many small objects, and compaction replaces them with fewer large ones.
-
-          **Degraded:** Objects growing much faster than bytes is small files accumulating: compaction falling behind, which the Compaction tab shows.
-
-          Measured once a day.
-        id: 1047
-        links: []
-        title: Object Count
-        vizConfig:
-          group: timeseries
-          kind: VizConfig
-          spec:
-            fieldConfig:
-              defaults:
-                custom:
-                  scaleDistribution:
-                    log: 10
-                    type: log
-                noValue: Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.
-                unit: short
-              overrides: []
-            options:
-              legend:
-                calcs:
-                - max
-                - mean
-                - lastNotNull
-                displayMode: table
-                placement: bottom
-                showLegend: true
-              tooltip:
-                mode: single
-                sort: asc
-          version: ""
     gcs-bytes-by-type:
       kind: Panel
       spec:
@@ -1899,14 +1744,118 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (bucket_name, type) (
+                      sum by (type) (
                         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket"}[30m])
                       )
-                    legendFormat: "{{bucket_name}} {{type}}"
+                    instant: true
+                    legendFormat: "{{type}}"
                     qryType: 1
                     query: |
-                      sum by (bucket_name, type) (
+                      sum by (type) (
                         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket"}[30m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations:
+            - group: renameByRegex
+              kind: Transformation
+              spec:
+                options:
+                  regex: (.*)-object
+                  renamePattern: $1
+        description: |-
+          **Bytes in the selected GCS buckets, split into live objects, noncurrent versions and soft-deleted objects.**
+
+          **Nominal:** Almost all live.
+
+          **Degraded:** Soft-deleted and noncurrent bytes are billed like live ones and read by nothing. Persist deletes constantly, so a bucket with soft delete or object versioning turned on can hold many times its live size. A persist bucket holding over a hundred times its live data in soft-deleted objects has been seen on a default GCS bucket. Turn off soft delete, or shorten its retention, on buckets Materialize owns.
+
+          Summed across the selected buckets. Pick one bucket on _GCS Bucket_ to see its split alone.
+        id: 1051
+        links: []
+        title: Billed Data by Object State
+        vizConfig:
+          group: piechart
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.
+                unit: bytes
+              overrides:
+              - matcher:
+                  id: byName
+                  options: live
+                properties:
+                - id: color
+                  value:
+                    fixedColor: "#A2F49B"
+                    mode: fixed
+              - matcher:
+                  id: byName
+                  options: noncurrent
+                properties:
+                - id: color
+                  value:
+                    fixedColor: "#F19903"
+                    mode: fixed
+              - matcher:
+                  id: byName
+                  options: soft-deleted
+                properties:
+                - id: color
+                  value:
+                    fixedColor: "#AB0003"
+                    mode: fixed
+            options:
+              displayLabels:
+              - name
+              - value
+              legend:
+                asTable: true
+                calcs: []
+                displayMode: table
+                isVisible: true
+                placement: right
+                showLegend: true
+                values:
+                - value
+                - percent
+              orientation: auto
+              pieType: donut
+              reduceOptions:
+                calcs: []
+                values: false
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    gcs-live-bytes:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                    legendFormat: "{{bucket_name}}"
+                    qryType: 1
+                    query: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket", type="live-object"}[30m])
                       )
                   version: v0
                 refId: query-0
@@ -1931,17 +1880,96 @@ spec:
                       + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
                   version: v0
                 refId: query-1
-            queryOptions: {}
+            queryOptions:
+              timeFrom: 14d
             transformations: []
         description: |-
-          **Bytes in each selected GCS bucket, split into live objects, noncurrent versions and soft-deleted objects, beside the data this environment accounts for.**
+          **Live bytes in each selected GCS bucket, beside the data this environment accounts for.**
 
-          **Nominal:** The environment's bucket almost all live, with its live line on the environment's own. That match is how to tell its bucket from the others.
+          **Nominal:** The bucket holding this environment's data reads close to the environment's own figure. That match is how to tell its bucket from the monitoring stack's.
 
-          **Degraded:** Soft-deleted and noncurrent bytes are billed like live ones and read by nothing. Persist deletes constantly, so a bucket with soft delete or object versioning turned on can hold many times its live size. A persist bucket holding over a hundred times its live data in soft-deleted objects has been seen on a default GCS bucket. Turn off soft delete, or shorten its retention, on buckets Materialize owns. Live bytes well above the environment's line is data Materialize orphaned, which no Materialize metric measures.
-        id: 1048
+          **Degraded:** The environment's bucket well above its figure is data Materialize orphaned, which no Materialize metric measures.
+
+          Live objects only: soft-deleted objects and noncurrent versions are under _Reclaimable Data_. Google measures bucket size once a day, so a bucket can read below the environment by up to a day's growth. A bucket that several environments share holds all of their data.
+        id: 1046
         links: []
-        title: Bytes by Object State
+        title: Live Data
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: "#EE3377"
+                  mode: shades
+                fieldMinMax: true
+                min: 0
+                noValue: Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.
+                unit: bytes
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value_and_name
+              wideLayout: true
+          version: ""
+    gcs-live-bytes-change:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                      - sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket", type="live-object"}[30m] offset 1d)
+                      )
+                    legendFormat: "{{bucket_name}}"
+                    qryType: 1
+                    query: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                      - sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket", type="live-object"}[30m] offset 1d)
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions:
+              interval: 1d
+              timeFrom: 14d
+            transformations: []
+        description: |-
+          **How much each selected GCS bucket's live data grew or shrank over the previous day.**
+
+          **Nominal:** Close to zero for the monitoring stack's buckets once their retention fills. The environment's bucket moves with the environment's data.
+
+          **Degraded:** A bucket that grows every day, with no day below zero, is retention that is not deleting: a compactor that has stopped, or no retention set.
+
+          Google measures bucket size once a day, so each bar is one day.
+        id: 1049
+        links: []
+        title: Live Data Change per Day
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -1949,9 +1977,12 @@ spec:
             fieldConfig:
               defaults:
                 custom:
-                  scaleDistribution:
-                    log: 10
-                    type: log
+                  drawStyle: bars
+                  fillOpacity: 80
+                  lineWidth: 1
+                  stacking:
+                    group: A
+                    mode: normal
                 noValue: Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.
                 unit: bytes
               overrides: []
@@ -1967,6 +1998,226 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
+          version: ""
+    gcs-live-objects:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                    legendFormat: "{{bucket_name}}"
+                    qryType: 1
+                    query: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions:
+              timeFrom: 14d
+            transformations: []
+        description: |-
+          **Live objects in each selected GCS bucket.**
+
+          **Nominal:** Steady. Persist writes many small objects and compaction replaces them with fewer large ones, so the count follows compaction more than data size.
+
+          Live objects only: soft-deleted objects and noncurrent versions are under _Reclaimable Data_. Measured once a day.
+        id: 1047
+        links: []
+        title: Live Objects
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: "#EE3377"
+                  mode: shades
+                fieldMinMax: true
+                min: 0
+                noValue: Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.
+                unit: short
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value_and_name
+              wideLayout: true
+          version: ""
+    gcs-live-objects-change:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                      - sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket", type="live-object"}[30m] offset 1d)
+                      )
+                    legendFormat: "{{bucket_name}}"
+                    qryType: 1
+                    query: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                      - sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket", type="live-object"}[30m] offset 1d)
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions:
+              interval: 1d
+              timeFrom: 14d
+            transformations: []
+        description: |-
+          **How many live objects each selected GCS bucket gained or lost over the previous day.**
+
+          **Nominal:** Close to zero, swinging both ways as compaction merges small objects into fewer large ones.
+
+          **Degraded:** Objects growing every day faster than bytes are small files accumulating. For the environment's bucket, that is compaction falling behind, which the Compaction tab shows.
+
+          Google counts objects once a day, so each bar is one day.
+        id: 1050
+        links: []
+        title: Live Objects Change per Day
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  drawStyle: bars
+                  fillOpacity: 80
+                  lineWidth: 1
+                  stacking:
+                    group: A
+                    mode: normal
+                noValue: Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    gcs-object-size:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                      / sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                    legendFormat: "{{bucket_name}}"
+                    qryType: 1
+                    query: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                      / sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket", type="live-object"}[30m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions:
+              timeFrom: 14d
+            transformations: []
+        description: |-
+          **The average size of a live object in each selected GCS bucket.**
+
+          **Nominal:** Steady, at a size set by what writes the bucket: persist's compacted parts, Loki's chunks, or Thanos's blocks.
+
+          **Degraded:** A falling average is small objects arriving faster than they are merged. For the environment's bucket, that is compaction falling behind, which the Compaction tab shows.
+
+          Live bytes divided by live objects, both measured once a day.
+        id: 1048
+        links: []
+        title: Average Object Size
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: "#EE3377"
+                  mode: shades
+                fieldMinMax: true
+                min: 0
+                noValue: Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.
+                unit: bytes
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value_and_name
+              wideLayout: true
           version: ""
     gcs-objects-by-type:
       kind: Panel
@@ -1985,50 +2236,89 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (bucket_name, type) (
+                      sum by (type) (
                         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket"}[30m])
                       )
-                    legendFormat: "{{bucket_name}} {{type}}"
+                    instant: true
+                    legendFormat: "{{type}}"
                     qryType: 1
                     query: |
-                      sum by (bucket_name, type) (
+                      sum by (type) (
                         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket"}[30m])
                       )
                   version: v0
                 refId: query-0
             queryOptions: {}
-            transformations: []
+            transformations:
+            - group: renameByRegex
+              kind: Transformation
+              spec:
+                options:
+                  regex: (.*)-object
+                  renamePattern: $1
         description: |-
-          **Objects in each selected GCS bucket, split into live, noncurrent and soft-deleted.**
+          **Objects in the selected GCS buckets, split into live, noncurrent and soft-deleted.**
 
           **Nominal:** Almost all live.
 
           **Degraded:** Many more soft-deleted objects than live ones is the retention policy keeping everything compaction deleted.
-        id: 1049
+
+          Summed across the selected buckets. Pick one bucket on _GCS Bucket_ to see its split alone.
+        id: 1052
         links: []
         title: Objects by Object State
         vizConfig:
-          group: timeseries
+          group: piechart
           kind: VizConfig
           spec:
             fieldConfig:
               defaults:
-                custom:
-                  scaleDistribution:
-                    log: 10
-                    type: log
                 noValue: Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.
                 unit: short
-              overrides: []
+              overrides:
+              - matcher:
+                  id: byName
+                  options: live
+                properties:
+                - id: color
+                  value:
+                    fixedColor: "#A2F49B"
+                    mode: fixed
+              - matcher:
+                  id: byName
+                  options: noncurrent
+                properties:
+                - id: color
+                  value:
+                    fixedColor: "#F19903"
+                    mode: fixed
+              - matcher:
+                  id: byName
+                  options: soft-deleted
+                properties:
+                - id: color
+                  value:
+                    fixedColor: "#AB0003"
+                    mode: fixed
             options:
+              displayLabels:
+              - name
+              - value
               legend:
-                calcs:
-                - max
-                - mean
-                - lastNotNull
+                asTable: true
+                calcs: []
                 displayMode: table
-                placement: bottom
+                isVisible: true
+                placement: right
                 showLegend: true
+                values:
+                - value
+                - percent
+              orientation: auto
+              pieType: donut
+              reduceOptions:
+                calcs: []
+                values: false
               tooltip:
                 mode: single
                 sort: asc
@@ -2043,7 +2333,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: Why this tab has no object store rows on it.
-        id: 1050
+        id: 1053
         links: []
         title: No Object Store Metrics
         vizConfig:
@@ -4718,6 +5008,34 @@ spec:
                           layout:
                             kind: AutoGridLayout
                             spec:
+                              columnWidthMode: standard
+                              fillScreen: false
+                              items:
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: gcs-live-bytes
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: gcs-live-objects
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: gcs-object-size
+                              maxColumnCount: 1
+                              rowHeightMode: short
+                          title: Stored Data
+                      - kind: RowsLayoutRow
+                        spec:
+                          collapse: false
+                          hideHeader: false
+                          layout:
+                            kind: AutoGridLayout
+                            spec:
                               columnWidthMode: wide
                               fillScreen: false
                               items:
@@ -4725,15 +5043,15 @@ spec:
                                 spec:
                                   element:
                                     kind: ElementReference
-                                    name: gcs-bucket-bytes
+                                    name: gcs-live-bytes-change
                               - kind: AutoGridLayoutItem
                                 spec:
                                   element:
                                     kind: ElementReference
-                                    name: gcs-bucket-objects
+                                    name: gcs-live-objects-change
                               maxColumnCount: 2
-                              rowHeightMode: tall
-                          title: Stored Data
+                              rowHeightMode: standard
+                          title: Growth
                       - kind: RowsLayoutRow
                         spec:
                           collapse: false
@@ -4755,7 +5073,7 @@ spec:
                                     kind: ElementReference
                                     name: gcs-objects-by-type
                               maxColumnCount: 2
-                              rowHeightMode: tall
+                              rowHeightMode: standard
                           title: Reclaimable Data
                   title: GCS
                   variables:
@@ -4766,7 +5084,7 @@ spec:
                         text: ""
                         value: ""
                       definition: label_values(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes, bucket_name)
-                      description: The GCS buckets to draw; the one holding this environment's data has live bytes on the environment's line
+                      description: The GCS buckets to draw; the one holding this environment's data reads the same live data as the environment's tile
                       hide: dontHide
                       includeAll: true
                       label: GCS Bucket

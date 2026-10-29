@@ -94,6 +94,19 @@ impl PanelQuery {
         self
     }
 
+    /// Draw the panel over this relative range, whatever the dashboard's, as in
+    /// `7d`. Grafana says so in the panel header.
+    pub fn time_from(mut self, range: &str) -> Self {
+        self.query_group.spec.query_options.time_from = Some(range.to_string());
+        self
+    }
+
+    /// Step no finer than this, as in `1d`, so a bar is one interval wide.
+    pub fn min_interval(mut self, interval: &str) -> Self {
+        self.query_group.spec.query_options.interval = Some(interval.to_string());
+        self
+    }
+
     /// Label every series with one legend template.
     ///
     /// A legend is presentation, not query semantics, so the registry has no field
