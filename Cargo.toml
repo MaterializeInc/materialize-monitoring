@@ -16,3 +16,8 @@ rust-version = "1.96"
 license = "BSL-1.1"
 authors = ["Materialize, Inc."]
 repository = "https://github.com/MaterializeInc/materialize-monitoring"
+
+# Dependencies build without debug info, to keep dev target/ directories smaller.
+# Workspace crates keep it, so backtraces and debuggers have file and line numbers for workspace code.
+[profile.dev.package."*"]
+debug = false
