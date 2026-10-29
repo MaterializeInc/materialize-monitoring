@@ -89,6 +89,59 @@ impl Expression {
     }
 }
 
+/// A formula's reference to one of its request's queries.
+static QUERY_REFERENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bquery(\d+)\b").unwrap());
+
+/// Several expressions as one widget request: their metric queries, named across
+/// all of them, and one formula per expression, in order.
+///
+/// Each expression names its queries from `query1`, so the second one's names are
+/// renumbered past the first's. Each expression comes with a key that its queries
+/// carry, such as how a scalar widget reduces them, and a metric query two
+/// expressions share under the same key gets one name.
+pub fn combine<K: Clone + PartialEq>(
+    parts: &[(&Expression, K)],
+) -> (Vec<(String, K)>, Vec<String>) {
+    let mut queries: Vec<(String, K)> = Vec::new();
+    let mut formulas = Vec::with_capacity(parts.len());
+    for (expr, key) in parts {
+        let names: Vec<String> = expr
+            .queries
+            .iter()
+            .map(|query| {
+                let known = queries.iter().position(|(q, k)| q == query && k == key);
+                let index = match known {
+                    Some(index) => index,
+                    None => {
+                        queries.push((query.clone(), key.clone()));
+                        queries.len() - 1
+                    }
+                };
+                query_name(index)
+            })
+            .collect();
+        let formula = QUERY_REFERENCE.replace_all(&expr.formula, |found: &regex::Captures| {
+            let own: usize = found[1].parse().expect("the pattern matched digits");
+            names[own - 1].clone()
+        });
+        formulas.push(formula.into_owned());
+    }
+    (queries, formulas)
+}
+
+/// A group-by function's tag set, as in `max(query1, {pod})`.
+static GROUP_BY_TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r",\s*\{").unwrap());
+
+/// Whether `formula` aggregates in two layers, through a group-by function such
+/// as `max(query1, {pod})` or `count(query1, {size})`.
+///
+/// A scalar widget can't reduce such a formula with its queries' aggregators.
+/// Datadog refuses an aggregator under a group-by function, so the formula
+/// reduces over the window itself, with `reduce(…, 'last')`.
+pub fn aggregates_in_layers(formula: &str) -> bool {
+    GROUP_BY_TAGS.is_match(formula)
+}
+
 /// Whether `query` is exactly one bare metric query, with nothing around it.
 pub fn is_bare_metric_query(query: &str) -> bool {
     METRIC_QUERY
@@ -164,6 +217,39 @@ mod tests {
     #[test]
     fn an_expression_without_a_metric_query_is_an_error() {
         assert!(Expression::parse("count_not_null(1)").is_err());
+    }
+
+    #[test]
+    fn combined_expressions_are_named_across_the_request() {
+        let rx = Expression::parse("sum:rx{a:b} by {pod}").unwrap();
+        let ratio = Expression::parse("sum:tx{a:b} by {pod} / sum:rx{a:b} by {pod}").unwrap();
+        let (queries, formulas) = combine(&[(&rx, ()), (&ratio, ())]);
+        let queries: Vec<&str> = queries.iter().map(|(q, ())| q.as_str()).collect();
+        assert_eq!(
+            queries,
+            vec!["sum:rx{a:b} by {pod}", "sum:tx{a:b} by {pod}"]
+        );
+        assert_eq!(formulas, vec!["query1", "query2 / query1"]);
+    }
+
+    #[test]
+    fn one_query_under_two_keys_gets_two_names() {
+        let records = Expression::parse("max:records{a:b} by {id}").unwrap();
+        let (queries, formulas) = combine(&[(&records, "min"), (&records, "max")]);
+        assert_eq!(queries.len(), 2);
+        assert_eq!(formulas, vec!["query1", "query2"]);
+    }
+
+    #[test]
+    fn a_tag_set_argument_is_a_second_layer() {
+        assert!(aggregates_in_layers("count(query1, {size})"));
+        assert!(aggregates_in_layers(
+            "top(max(cutoff_max(query1, 1e9), {a,b}), 15, 'max', 'desc')"
+        ));
+        assert!(!aggregates_in_layers(
+            "default_zero(count_not_null(query1))"
+        ));
+        assert!(!aggregates_in_layers("top(query1, 15, 'max', 'desc')"));
     }
 
     #[test]

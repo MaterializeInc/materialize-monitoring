@@ -9,6 +9,11 @@ publish = false
 indexmap = { version = "2.14.0", features = ["serde"] }
 itertools = "0.15.0"
 jsonschema = { version = "0.60.0", default-features = false }
+# Datadog's official client, for its dashboard models only, behind the `datadog`
+# feature: the models are a long compile, and only the dashboards crate draws
+# Datadog widgets. The client half is never called; rustls keeps it off
+# native-tls.
+datadog-api-client = { version = "0.38", default-features = false, features = ["rustls-tls"], optional = true }
 # PromQL AST parser, used by the query registry's metric extraction to walk
 # rendered PromQL and collect the metric names + label matchers each query
 # touches. Mirrors the `promql_parser` Python binding the registry was ported
@@ -25,6 +30,10 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.150", features = ["preserve_order"] }
 serde-saphyr = "2.0.0"
 thiserror = "2.0.18"
+
+[features]
+# `mzmon_lib::datadog`: the building blocks for Datadog dashboards.
+datadog = ["dep:datadog-api-client"]
 
 [dev-dependencies]
 # Used by the `alloy fmt` oracle test helper to stage rendered output to disk.

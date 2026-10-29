@@ -49,8 +49,17 @@ the metric queries, each named, and a formula over those names that carries ever
 `count_not_null(avg:m{…} by {…})` becomes the query `avg:m{…} by {…}` and the formula `count_not_null(query1)`.
 A query object that still carries a function renders as "Invalid Formula in Query Object", although the query API evaluates the whole expression.
 The widget editor makes this split for you when you paste a whole expression into its query box, so only JSON you import needs the two parts.
-The Datadog dashboards split each template this way in `packages/dashboards/src/datadog/formula.rs`,
+The Datadog dashboards split each template this way in `packages/mzmon-lib/src/datadog/formula.rs`,
 so the registry keeps one expression per template.
+
+A query value, toplist, sunburst, or table widget reduces each query over the time window with the query's `aggregator`.
+Under a group-by function such as `count(query1, {size})`, Datadog refuses an aggregator,
+so the formula reduces itself, as `reduce(count(query1, {size}), 'last')`, and its queries carry none.
+A timeseries widget takes neither.
+
+A scalar widget's `last` keeps the final value of a series that stopped reporting anywhere in its window,
+where an instant PromQL query drops a series after five minutes without a sample.
+So a widget for a registry query marked `instant` sets its own timeframe to the last five minutes, and doesn't follow the dashboard's time picker.
 
 ## Layout
 
@@ -190,7 +199,8 @@ The following table maps each PromQL construct to its Datadog form:
 | `a * on (k) group_left (name) info` | `a * (info * 0 + 1)`, with both grouped by `k` |
 | `a and on (k) b` | `a * (b * 0 + 1)`, with `b` grouped by `k` |
 | `a and on (k) (b > c)` | `a * (cutoff_min(b, c) * 0 + 1)`, with `b` grouped by `k` |
-| `topk(15, q)` | `top(q, 15, 'max', 'desc')` |
+| `topk(15, q)` over a range | `top(q, 15, 'max', 'desc')` |
+| `topk(15, q)` in an instant query | `top(q, 15, 'last', 'desc')`, so the ranking is by the latest value |
 | `(q) or vector(0)` | `default_zero(q)`, which yields a zero series even when `q` has no data at all. Grouped, it can't add a missing group |
 | `count(x == 0) or 0 * count(x)`, zero only while `x` exists | `count_not_null(cutoff_max(min:x{…} by {…}, 0))` |
 | `clamp_min(q, 0)` | `clamp_min(q, 0)` |
@@ -277,8 +287,10 @@ The `datadogQuery` carries a threshold that is never crossed, and a comment says
 
 **`or` chains across different metrics.** `materialize.persist.failures` folds sixteen counters into one alert with `label_replace` and `or`, so Datadog needs one monitor per counter, and three representative ones are given.
 
-**Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`, so a range query that drops sentinel samples before taking `max_over_time` can't drop them first.
-`materialize.info.max_lag` includes the sentinel.
+**Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`.
+Where the PromQL drops a sentinel sample before `max_over_time`, the Datadog form drops the whole rollup bucket that holds it,
+so a bucket in which an object finished hydrating loses its finite reading too.
+Filter each series before any group-by aggregation, as `materialize.info.max_lag` does, or the sentinel survives into the maximum.
 
 ## Template parameters
 
@@ -303,6 +315,11 @@ A value containing `OR` is parenthesized, so it can't change the precedence of t
 Dashboard variables that the registry's Grafana queries use appear in the Datadog form as a standalone filter term, such as `{$nodeList AND mode:idle}`.
 A Datadog template variable carries its own tag prefix, so the dashboard that defines `$nodeList` decides which tag it filters.
 Where the Grafana variable holds part of a value, the Datadog variable holds the whole term: `$cnpgClusterList` names a CNPG cluster in Grafana, so a Datadog dashboard defines it as a pod pattern, such as `pod:CLUSTER-*`.
+
+A dashboard whose templates write the tag themselves fills a parameter with a template variable's value alone.
+`env-top` sets `mzClusterList`, `mzReplicaList`, and `mzNamespaceList` to `$cluster.value`, `$replica.value`, and `$namespace.value`,
+so `instance_id:%%{mzClusterList}` filters `instance_id` by the picked cluster id.
+The query API doesn't expand template variables, so to check a dashboard's queries, substitute the picked values first.
 
 To render a query's Datadog template, build a context on the `Datadog` engine:
 

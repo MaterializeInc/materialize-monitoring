@@ -5,12 +5,12 @@ weight: 20261020
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-10-20
-lastmod: 2026-10-21
+lastmod: 2026-10-29
 # custom parameters
 params:
   author: Heather Lapointe
   agent: Claude Opus 5.5
-  status: "Draft"
+  status: "Ready"
 ---
 
 # Datadog dashboards from the query registry
@@ -161,6 +161,9 @@ Names never go onto the data series, so a rename changes no series' identity.
 ### Models from `datadog-api-client`
 
 The Datadog backend lives in `packages/dashboards/src/datadog/`, beside `grafana/`, where `packages/dashboards/src/lib.rs` already expects a second backend.
+The building blocks any Datadog dashboard needs, such as the widget builders and the formula splitter, live in `mzmon-lib` as `mzmon_lib::datadog`,
+as the Grafana ones live in `mzmon_lib::grafana`.
+They sit behind a `datadog` feature, so the tools with no Datadog output don't compile the models.
 It builds dashboards from the models in [`datadog-api-client`](https://crates.io/crates/datadog-api-client), Datadog's official Rust client.
 The crate is generated from Datadog's OpenAPI spec and licensed Apache-2.0, and its 0.38.0 release is from 2026-10-13.
 Its `datadogV1::model` module types the dashboard, its tabs and template variables, and each widget definition.
@@ -182,6 +185,15 @@ A field or query type that the spec lacks therefore round-trips without a type.
 A dashboard exported from the Datadog UI can carry shapes the spec doesn't describe.
 A table widget built in the UI's table editor, for example, exports `request_type: "table"` with `rows` and `columns`, and metric queries with `metric_name` and `filter`.
 The backend emits the spec's form of the same table instead: a metric query grouped with `by {…}`, its formulas, and `response_format: "scalar"`.
+
+### Reducing a two-layer formula to one number
+
+A query value, toplist, sunburst, or table widget reads each query reduced over the time window, through Datadog's scalar query API.
+Each query's `aggregator` does that reduction, except under a group-by function such as `max(query1, {tag})`, which aggregates in two layers.
+There, the API answers "it is unsupported to use multi-layer aggregation function max with an aggregator".
+The formula reduces itself instead, as `reduce(max(query1, {tag}), 'last')`, and its queries carry no aggregator.
+That's the form the Datadog UI writes.
+So every registry template draws as the widget its Grafana panel is.
 
 ### Generated models, considered
 
@@ -205,8 +217,9 @@ Helm stores each release, its chart files included, in a Kubernetes Secret, and 
 A Datadog set in a chart would spend that ceiling on files nothing in the cluster reads.
 The empty placeholder at `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/datadog/` is removed in this change for the same reason.
 
-The dashboards carry template variables for the environment and the Kubernetes cluster, defaulting to every value.
-Each panel groups by those tags as well as its own, so an organization with several environments sees one line per environment rather than a merged one.
+`env-top` carries template variables for the environment, the Kubernetes namespace, the cluster, and the replica, each defaulting to every value.
+The namespace is a picker of its own, because the cAdvisor and kube-state-metrics series carry no environment tag.
+How a panel stays scoped to one environment is an [open question](#open-questions).
 
 ## Names come from formula arithmetic
 
@@ -373,19 +386,23 @@ Unit
 Names
 : Whether the panel joins names, and through which enrichment function.
 
-The builders record the manifest as they build each dashboard.
-Every Grafana query lookup already passes through `Queries::bridge` in `packages/dashboards/src/grafana/queries.rs`, which records the lookups that fail.
-Recording the lookups that succeed, against the panel being built, uses the same mechanism.
+The Datadog builders record the manifest as they build each widget.
+A Grafana panel's builder never sees the slug it's placed under, so the Grafana manifest is read back from the render instead.
+The slugs come from the layout's element references.
+The registry ids come from rendering every registry query in the dashboard's context and matching each panel's expressions.
+The names field joins the manifest with the first panel that joins names.
 
 A test compares each Datadog dashboard's manifest with its Grafana counterpart's.
 It fails when a panel is in one and not the other, or when the two disagree on a field, unless the difference is listed with its reason.
-The listed differences live in one place, as `ALLOWED` and `ADDED_PANELS` do in `packages/dashboards/tests/env_top_parity.rs`, which compared the Rust `env-top` with its earlier render the same way.
+The listed differences live in one place, each Datadog dashboard's `DIFFERENCES`, which `packages/dashboards/tests/datadog_parity.rs` reads.
+A listing that matches no difference fails too, as `ALLOWED` and `ADDED_PANELS` do in `packages/dashboards/tests/env_top_parity.rs`.
 Typical reasons are a log panel, a query with no `datadogQuery` yet, and a panel kind that Datadog has no counterpart for.
 A long list means the ledger has stopped describing the two sets, and the comparison stops being worth running.
 
 The ledger has the following further uses:
 
-- The Datadog dashboards page renders the listed differences as a table of Grafana panels without a Datadog counterpart, each with its reason.
+- The Datadog dashboards page lists the differences as a table of Grafana panels that the Datadog dashboard draws differently or leaves out,
+  each with its reason.
 - A query that a Datadog panel needs and that has no `datadogQuery` fails the test until someone writes the template or lists the gap.
 
 The ledger doesn't compare layout, sizes, colors, thresholds, legends, links, or transformations.
@@ -426,8 +443,8 @@ None of it is ticketed yet.
 
 | Item | Why it's needed | Blocking? |
 |---|---|---|
-| **The Datadog backend** under `packages/dashboards/src/datadog/`, with `make datadog-dashboards` rendering into `docs/assets/dashboards/datadog/` and the freshness check in the dashboards workflow | The feature | ✅ Done, with an `env-top` preview |
-| **Panel manifests and the parity ledger**: both backends record a manifest as they build, and a test compares them against a list of reasoned differences | Keeps the two sets in step | **Blocking** for the first Datadog dashboard |
+| **The Datadog backend** under `packages/dashboards/src/datadog/`, with `make datadog-dashboards` rendering into `docs/assets/dashboards/datadog/` and the freshness check in the dashboards workflow | The feature | ✅ Done |
+| **Panel manifests and the parity ledger**: the Datadog builders record a manifest, the Grafana one is read from its render, and a test compares them against a list of reasoned differences | Keeps the two sets in step | ✅ Done |
 | **The Datadog dashboards page**, rewritten from its placeholder into import steps | Download is the primary way to install the set | ✅ Done |
 | **`cluster` on the Datadog chain**, filled from `CLUSTER_NAME` where it's absent | Environment scoping across Kubernetes clusters, and the Kubernetes-cluster identity every other destination already has | **Blocking** for organizations with several Kubernetes clusters |
 | **`functions` on `datadogQuery` templates**, and a Datadog rendering context that turns the enrichment functions into a hidden `_info` query and a formula factor | How a panel asks for names | Blocking for names |
@@ -467,7 +484,7 @@ The following tests cover the design:
 - [ ] **Is the custom-metric cost of the `_info` series acceptable at the default tier**, or do they belong in a tier an operator opts into?
 - [x] ~~**Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?~~ **Neither.** [DEP-421](https://linear.app/materializeinc/issue/DEP-421) ships the canonical labels on every destination, Datadog included.
 - [ ] **When are reference tables worth adding?** [Other ways to get names](#reference-tables) lists the conditions.
-- [ ] **How does a Datadog panel stay scoped to one environment?** Grafana's environment picker selects exactly one, and a Datadog template variable always offers `*`. Environments reuse cluster and replica ids, so a count grouped by id merges them: the `env-top` preview showed 2 clusters for two environments with 2 each. Grouping by the environment's tags as well works for a timeseries, and needs the registry's Datadog templates to group through a fragment. A query value can't group at all.
+- [ ] **How does a Datadog panel stay scoped to one environment?** Grafana's environment picker selects exactly one, and a Datadog template variable always offers `*`. Environments reuse cluster and replica ids, so a count grouped by id merges them: `env-top` showed 2 clusters for two environments with 2 each. Grouping by the environment's tags as well works for a timeseries, and needs the registry's Datadog templates to group through a fragment. A query value can't group at all.
 - [ ] **What duplication moves the panel list into a shared layer?** Two or more dashboards whose manifests match panel for panel would be a clear signal, and the threshold is a judgment call.
 - [ ] **Does CI get a Datadog test organization** for the acceptance job and the live-data checks?
 - [ ] **Which dashboards follow `env-top`?** Field Engineering's input, as DEP-115 asks.
