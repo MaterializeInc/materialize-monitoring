@@ -78,7 +78,7 @@ Ordered so the cheapest question that could explain everything comes first.
    a database at `max_connections`.
    Each dashboard's last tab is the dependency's own account of why: Database Internals and Object Store Internals.
    Database Internals reads the PostgreSQL exporter on any PostgreSQL, or CloudNativePG's own metrics.
-   Object Store Internals reads Ceph.
+   Object Store Internals reads Ceph's own metrics, or Cloud Monitoring's account of a GCS bucket.
 5. **Is it lagging, or is it stuck?**
    *Environment Overview* → Compute Objects.
    Currently Hydrating counts collections that have produced no results yet; the freshness panels cover the ones that

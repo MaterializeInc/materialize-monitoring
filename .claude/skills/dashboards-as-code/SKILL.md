@@ -578,6 +578,15 @@ These things about them are not re-derivable by reading the modules:
   `$cephNamespace`; a test holds every selector to its picker. **The pickers are section variables**, declared with `Row::variables` on the one `Row::section` that
   holds a flavor's rows, so they render under its header and hide with it instead of sitting in every environment's
   controls. `variable::consensus_scoped` and `persist_scoped` add only the hidden detection to `dependency_scoped`.
+- **Object Store Internals also has a GCS section**, the one provider view on a client dashboard.
+  It renders on `$gcsDetected` (`up{job="integrations/gcp", instance="gcs"}`, the GCS pull's own scrape), and
+  the fallback waits on both detections. Its queries are `infra.cloud.gcs.env.*` in `infra-cloud.yaml`, not in a
+  persist file, so the provider's `metricImportance` keeps deciding where the families go.
+  **`$gcsBucket` is multi-select and opens on "All"**, unlike the other pickers: bucket names are unique, so nothing
+  merges, and the monitoring stack's own buckets sort before the persist bucket. The environment's tile beside each
+  bucket's **Live Data** tile is how a reader tells its bucket apart. Panels with history draw a fixed 14 days
+  (`GCS_HISTORY`, through `PanelQuery::time_from`), because Google measures once a day; the daily-change bars also
+  step by `min_interval("1d")`. S3 and Azure Blob have no section and stay on `infra-cloud`.
 
 ### `infra-cloud` tabs
 

@@ -129,6 +129,8 @@ pub mod extra {
     pub const POSTGRES_DETECTED: &str = "postgresDetected";
     /// Whether a Rook-managed Ceph cluster's manager is being scraped.
     pub const CEPH_DETECTED: &str = "cephDetected";
+    /// Whether the gateway is pulling GCS buckets from Cloud Monitoring.
+    pub const GCS_DETECTED: &str = "gcsDetected";
 }
 
 /// An empty current selection.
@@ -1121,6 +1123,65 @@ pub fn ceph_namespaces() -> dashboardv2::VariableKind {
     .build()
 }
 
+/// Whether the gateway is pulling GCS buckets from Cloud Monitoring, which the
+/// object store's GCS rows render on.
+///
+/// Discovered from `up`, per the discovered-row rules. Every Cloud Monitoring
+/// pull shares `job="integrations/gcp"`, and the GCS one is told apart by the
+/// `instance="gcs"` its scrape sets, so a project pulling only Cloud SQL renders
+/// no bucket rows. Hidden, single valued and without "All", for the reasons
+/// [`karpenter_detected`] gives.
+pub fn gcs_detected() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::GCS_DETECTED,
+        label: "GCS",
+        description: "Whether GCS buckets are being pulled from Cloud Monitoring; empty when none are",
+        expr: r#"label_values(up{job="integrations/gcp", instance="gcs"}, instance)"#.to_string(),
+        multi: false,
+        include_all: false,
+        all_value: None,
+        hide: dashboardv2::VariableHide::HideVariable,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: true,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// The GCS buckets an object-store panel reads.
+///
+/// Like [`ceph_namespaces`], a mapping the reader supplies: a bucket series
+/// carries its name and project and nothing about Materialize, so which bucket
+/// holds this environment's data is the reader's to say.
+///
+/// Multi-select and opening on "All", unlike the other dependency pickers.
+/// Their single selection exists because two databases or two Ceph clusters
+/// would merge on shared labels, and bucket names are globally unique, so
+/// several selected buckets stay several lines. And the usual install pulls
+/// the monitoring stack's own buckets beside the persist bucket, whose names
+/// sort first, so a single selection would open on the wrong one. With every
+/// bucket drawn, the persist bucket is the one whose live bytes sit on the
+/// environment's own line, and the reader narrows from there. No custom "All" value, since
+/// Grafana's alternation of the discovered names is already a valid matcher.
+/// A section variable, like [`ceph_namespaces`].
+pub fn gcs_buckets() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::GCS_BUCKET,
+        label: "GCS Bucket",
+        description: "The GCS buckets to draw; the one holding this environment's data reads the same live data as the environment's tile",
+        expr: "label_values(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes, bucket_name)"
+            .to_string(),
+        multi: true,
+        include_all: true,
+        all_value: None,
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
 /// Namespaces the log store runs in.
 ///
 /// Discovered from `up{app_instance="loki"}` rather than from a `loki_*` metric,
@@ -1800,12 +1861,14 @@ pub fn consensus_scoped() -> Vec<dashboardv2::VariableKind> {
 }
 
 /// Controls for the object storage dashboard: [`dependency_scoped`], plus the
-/// hidden discovery of a Ceph cluster.
+/// hidden discovery of a Ceph cluster and of a GCS pull.
 ///
-/// Not [`ceph_namespaces`], for the reason [`consensus_scoped`] gives.
+/// Not [`ceph_namespaces`] or [`gcs_buckets`], for the reason
+/// [`consensus_scoped`] gives.
 pub fn persist_scoped() -> Vec<dashboardv2::VariableKind> {
     let mut variables = dependency_scoped();
     variables.push(ceph_detected());
+    variables.push(gcs_detected());
     variables
 }
 

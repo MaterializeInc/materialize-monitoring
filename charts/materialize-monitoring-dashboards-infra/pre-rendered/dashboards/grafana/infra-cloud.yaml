@@ -259,16 +259,12 @@ spec:
                       sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes))
                       + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes))
                       + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))
-                      + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes))
-                      + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes))
                     legendFormat: referenced by Materialize
                     qryType: 1
                     query: |
                       sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes))
                       + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes))
                       + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))
-                      + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes))
-                      + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes))
                   version: v0
                 refId: query-3
             queryOptions: {}

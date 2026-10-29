@@ -179,6 +179,12 @@ pub mod variables {
     /// Written literally by `infra-ceph.yaml`, on the same precedent as
     /// [`LOKI_NAMESPACE`].
     pub const CEPH_NAMESPACE: &str = "cephNamespace";
+    /// Which GCS buckets an object-store panel reads, by name.
+    ///
+    /// Written literally by `infra-cloud.yaml`'s Materialize Persist queries,
+    /// on the same precedent as [`LOKI_NAMESPACE`], and matched against the
+    /// `bucket_name` label Cloud Monitoring puts on every bucket series.
+    pub const GCS_BUCKET: &str = "gcsBucket";
 }
 
 /// Drops pods sharing the node's network namespace from a cAdvisor rollup.
@@ -275,17 +281,19 @@ pub const THANOS_VARIABLES: &[&str] = &[variables::THANOS_NAMESPACE, variables::
 /// gives.
 pub const KARPENTER_VARIABLES: &[&str] = &[variables::KARPENTER_NODE_POOL];
 
-/// Variables required only by the self-hosted dependency rows of the
+/// Variables required only by the dependency's-own-account rows of the
 /// client-side dependency dashboards.
 ///
-/// Written literally by `infra-cnpg.yaml`, `infra-postgres.yaml` and
-/// `infra-ceph.yaml`, for the reason [`LOKI_VARIABLES`] gives: which database
-/// or Ceph cluster serves an environment is not something the render context
-/// can know, so the reader picks it and the queries name the picker directly.
-pub const SELF_HOSTED_DEPENDENCY_VARIABLES: &[&str] = &[
+/// Written literally by `infra-cnpg.yaml`, `infra-postgres.yaml`,
+/// `infra-ceph.yaml` and the GCS bucket queries in `infra-cloud.yaml`, for the
+/// reason [`LOKI_VARIABLES`] gives: which database, Ceph cluster or bucket
+/// serves an environment is not something the render context can know, so the
+/// reader picks it and the queries name the picker directly.
+pub const DEPENDENCY_PICKER_VARIABLES: &[&str] = &[
     variables::CNPG_CLUSTER_LIST,
     variables::POSTGRES_TARGET,
     variables::CEPH_NAMESPACE,
+    variables::GCS_BUCKET,
 ];
 
 /// Variables required only by a dashboard that scopes itself to the operator with
