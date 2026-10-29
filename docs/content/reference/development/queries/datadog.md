@@ -277,6 +277,12 @@ The `datadogQuery` carries a threshold that is never crossed, and a comment says
 
 **`or` chains across different metrics.** `materialize.persist.failures` folds sixteen counters into one alert with `label_replace` and `or`, so Datadog needs one monitor per counter, and three representative ones are given.
 
+**Two layers of aggregation in a single number.**
+A query value, toplist, sunburst, or table widget reads through Datadog's scalar query API.
+That API refuses a group-by function such as `max(query1, {tag})`,
+with "it is unsupported to use multi-layer aggregation function max with an aggregator".
+A template that aggregates in two layers draws only as a timeseries, so the `env-top` panels built on one are timeseries in Datadog.
+
 **Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`, so a range query that drops sentinel samples before taking `max_over_time` can't drop them first.
 `materialize.info.max_lag` includes the sentinel.
 
@@ -303,6 +309,11 @@ A value containing `OR` is parenthesized, so it can't change the precedence of t
 Dashboard variables that the registry's Grafana queries use appear in the Datadog form as a standalone filter term, such as `{$nodeList AND mode:idle}`.
 A Datadog template variable carries its own tag prefix, so the dashboard that defines `$nodeList` decides which tag it filters.
 Where the Grafana variable holds part of a value, the Datadog variable holds the whole term: `$cnpgClusterList` names a CNPG cluster in Grafana, so a Datadog dashboard defines it as a pod pattern, such as `pod:CLUSTER-*`.
+
+A dashboard whose templates write the tag themselves fills a parameter with a template variable's value alone.
+`env-top` sets `mzClusterList`, `mzReplicaList`, and `mzNamespaceList` to `$cluster.value`, `$replica.value`, and `$namespace.value`,
+so `instance_id:%%{mzClusterList}` filters `instance_id` by the picked cluster id.
+The query API doesn't expand template variables, so to check a dashboard's queries, substitute the picked values first.
 
 To render a query's Datadog template, build a context on the `Datadog` engine:
 

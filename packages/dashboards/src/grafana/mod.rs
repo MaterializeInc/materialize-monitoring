@@ -32,6 +32,7 @@ pub mod infra_loki;
 pub mod infra_networking;
 pub mod infra_nodes;
 pub mod infra_thanos;
+pub mod manifest;
 pub mod queries;
 pub mod render;
 #[cfg(test)]

@@ -163,7 +163,7 @@ The design is [Datadog dashboards from the query registry](../../../docs/content
 
 | Artifact stem | Module | Title |
 |---|---|---|
-| `env-top` | `datadog/env_top.rs` | Materialize Environment Overview (Preview) |
+| `env-top` | `datadog/env_top.rs` | Materialize Environment Overview |
 
 These things about it are not re-derivable by reading the modules:
 
@@ -171,21 +171,37 @@ These things about it are not re-derivable by reading the modules:
   No chart carries it, so that file is the only copy and is not marked `linguist-generated`.
 - **A Datadog dashboard shares its stem with its Grafana counterpart**, because the docsite's download table keys on
   the stem. A test holds that.
-- **Registry parameters are mapped one at a time** in `datadog/queries.rs`: `mzSqlPrefix`, `mzEnvironmentFilter`
-  (`$environment`), and `mzClusterList` / `mzReplicaList` (`*` until env-top's pickers are ported). A template that
-  uses any other parameter fails the render, so porting a panel is when its parameters get a Datadog meaning.
+- **The parity ledger compares the two by slug.** Every Datadog widget is placed under its Grafana panel's slug, and
+  `tests/datadog_parity.rs` compares title, registry ids, kind, and unit. The Datadog builders record their manifest
+  as they build; the Grafana one is read back from the render by `grafana/manifest.rs`, which matches each panel's
+  expressions to the registry. A difference fails unless the dashboard's `DIFFERENCES` lists it with a reason, and a
+  listing that matches no difference fails too. `docs/content/dashboards/datadog.md` repeats the list for readers.
+- **Registry parameters are mapped one at a time** in `datadog/queries.rs`. The templates write the tag themselves,
+  as in `instance_id:%%{mzClusterList}`, so the pickers fill values alone: `$cluster.value`, `$replica.value`, and
+  `$namespace.value`. `mzEnvironmentFilter` is the whole term, `$environment`. A template that uses any other
+  parameter fails the render, so porting a panel is when its parameters get a Datadog meaning.
+- **The cluster picker lists `cluster_id`, the replica picker `replica_id`**: the canonical labels every Materialize
+  family carries beside its own spelling. The namespace picker is separate because cAdvisor and kube-state-metrics
+  series carry no environment tag.
+- **A scalar widget can't aggregate in two layers.** A query value, toplist, sunburst, or table reads through
+  Datadog's scalar query API, which refuses a group-by function such as `max(query1, {tag})` with "it is unsupported
+  to use multi-layer aggregation function … with an aggregator" (found 2026-10-29). A template that needs one is drawn
+  as a timeseries, listed in `DIFFERENCES`, and a render test refuses it in a scalar widget.
 - **A widget's query objects are bare metric queries**, and every function and operator goes in its formula.
   `datadog/formula.rs` splits each rendered template that way, and a render test holds it. A query object carrying a
   function renders in Datadog as "Invalid Formula in Query Object", yet the query API evaluates the same expression,
   so validating through the API alone does not catch it. Nor does pasting into the widget editor, which splits a whole
   expression itself; only imported JSON fails.
-- **A Grafana stat with several values becomes one query value per template**, through `Queries::labeled` and
-  `widget::query_values`, because a Datadog query value draws one number.
+- **Grafana kinds map onto `widget.rs` builders**: a single-value stat is `query_value`, a stat with several
+  templates is `query_values` (a query value draws one number), a stat or gauge with a value per series is
+  `grouped_values` (a toplist), a pie is `pie` (a sunburst), a bar chart is `ranking`, and a table is `table`, one
+  column per template and reducer. `Format::Fraction` scales a 0–1 formula by 100 for Datadog's `percent` unit.
 - **Environment scoping is open.** Grafana's environment picker selects exactly one environment, and a Datadog
-  template variable always offers `*`. Environments reuse cluster and replica ids, so a count grouped by id merges
-  them. The preview's note tells readers to pick one environment.
-- **The preview reads `compute_cluster_status`.** `mz_views_count` and `mz_mzd_views_count`, which the Compute Objects
-  counts read, are not published on the GCP test install, in Thanos or in Datadog (checked 2026-10-21).
+  template variable always offers `*`. Environments reuse cluster and replica ids, so a value grouped by id merges
+  them. The dashboard's note tells readers to pick one environment.
+- **Validate widgets with their queries and formulas apart**, and substitute the pickers by hand, because the query
+  API doesn't expand template variables. `mz_views_count` and `mz_mzd_views_count` are not published on the GCP test
+  install, so those query values read no data there (checked 2026-10-29).
 - **The tests hold the render to the crate's typed models**: it round-trips with no `UnparsedObject` widget or query,
   and every `$variable` a query names is declared.
 

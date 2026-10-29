@@ -51,13 +51,19 @@ pub struct Renderable {
     /// One-line summary, for `--list`.
     pub summary: &'static str,
     pub render: fn(&Options, &QueryRegistry) -> render::Result<Dashboard>,
+    /// The panels, for the parity ledger in `tests/datadog_parity.rs`.
+    pub manifest: fn(&Options, &QueryRegistry) -> render::Result<Vec<crate::manifest::Panel>>,
+    /// Grafana panels this dashboard draws differently, or not at all.
+    pub differences: &'static [crate::manifest::Difference],
 }
 
 /// Every dashboard, in artifact order.
 pub const ALL: &[Renderable] = &[Renderable {
     name: env_top::NAME_STEM,
-    summary: "Preview of the environment overview, with the Compute Objects summary",
+    summary: "Environment overview: health, workloads, connections, clusters, compute, storage",
     render: env_top::render,
+    manifest: env_top::manifest,
+    differences: env_top::DIFFERENCES,
 }];
 
 /// Look one up by artifact stem.

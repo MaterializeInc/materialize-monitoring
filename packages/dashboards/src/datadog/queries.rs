@@ -139,16 +139,23 @@ fn one_line(expr: &str) -> String {
 /// The parameters a Datadog dashboard gives the registry's templates.
 fn dashboard_context<'a>(registry: &'a QueryRegistry, options: &Options) -> TemplateContext<'a> {
     let mut context = TemplateContext::new(QueryEngine::Datadog).with_registry(registry);
+    let namespace = variable::value(variable::NAMESPACE);
     for (name, value) in [
         ("mzSqlPrefix", options.sql_metric_prefix.clone()),
         // `$environment` expands to the environment tag and the picked value, or
         // to nothing when the picker is `*`.
         ("mzEnvironmentFilter", format!("${}", variable::ENVIRONMENT)),
-        // Every cluster and replica: the templates write `compute_cluster_id:%%{…}`,
-        // and `*` matches any value.
-        // TODO: map to cluster and replica pickers when env-top's are ported (DEP-115).
-        ("mzClusterList", "*".to_string()),
-        ("mzReplicaList", "*".to_string()),
+        // The templates write the tag, as in `compute_cluster_id:%%{mzClusterList}`
+        // or `pod:*-cluster-%%{mzClusterList}-…`, so these are values alone.
+        ("mzClusterList", variable::value(variable::CLUSTER)),
+        ("mzReplicaList", variable::value(variable::REPLICA)),
+        ("mzNamespaceList", namespace.clone()),
+        // `container!=""` and `container!="POD"`: the pod-level cgroup roll-up and
+        // the pause container aren't containers.
+        (
+            "cAdvisorFilter",
+            format!("namespace:{namespace} AND container:* AND NOT container:POD"),
+        ),
     ] {
         context.parameters.insert(name.to_string(), value);
     }
@@ -189,14 +196,29 @@ mod tests {
 
     #[test]
     fn an_unmapped_parameter_is_a_failure_not_a_literal() {
-        // `cpu.capacity` reads `%%{cAdvisorFilter}`, which this context does not
-        // map yet.
+        // `generations.version` reads `%%{range}`, which has no meaning on a
+        // Datadog dashboard: a widget reduces over its own window.
         let queries = Queries::new(test_registry(), &Options::default());
-        let query = queries.get("materialize.kubernetes.cpu.capacity");
+        let query = queries.get("materialize.generations.version");
         assert!(query.expressions.is_empty());
         let failures = queries.failures();
         assert_eq!(failures.len(), 1, "{failures:?}");
-        assert!(failures[0].contains("materialize.kubernetes.cpu.capacity"));
+        assert!(failures[0].contains("materialize.generations.version"));
+    }
+
+    #[test]
+    fn the_pickers_fill_tag_values() {
+        let queries = Queries::new(test_registry(), &Options::default());
+        let query = queries.get("materialize.kubernetes.pods.network_rx");
+        assert_eq!(queries.failures(), Vec::<String>::new());
+        assert_eq!(
+            query.expressions[0].queries,
+            vec![
+                "sum:container_network_receive_bytes_total{namespace:$namespace.value AND \
+                 pod:*-cluster-$cluster.value-replica-$replica.value-*} by {namespace,pod}\
+                 .as_rate().rollup(sum, 60)"
+            ]
+        );
     }
 
     #[test]

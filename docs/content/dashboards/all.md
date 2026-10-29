@@ -21,7 +21,7 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 Every dashboard has a **Grafana dashboard schema v2** render, which needs **Grafana 12 or later**.
 For more information, see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
-`env-top` also has a **Datadog** preview, which [Datadog]({{< relref "datadog.md" >}}) describes.
+`env-top` also has a **Datadog** render, which [Datadog]({{< relref "datadog.md" >}}) describes.
 Each table below lists every format, so you can see which ones a dashboard has no render for.
 Grafana 10 and 11 (schema v1) renders are not planned.
 The rest of the Datadog set, and the Google Cloud Monitoring and Honeycomb sets, are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).

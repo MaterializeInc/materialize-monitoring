@@ -19,8 +19,10 @@
 //! defined once renders to PromQL, LogQL, or a Datadog metric query through
 //! [`mzmon_lib::query`]. Shared structure grows out of the backends existing
 //! rather than being designed ahead of them; [`canonical`], which both use to
-//! write their artifacts, is the first piece.
+//! write their artifacts, is the first piece, and [`manifest`], which the parity
+//! ledger compares them through, is the second.
 
 pub mod canonical;
 pub mod datadog;
 pub mod grafana;
+pub mod manifest;

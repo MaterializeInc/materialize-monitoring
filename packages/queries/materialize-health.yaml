@@ -286,9 +286,11 @@ queries:
           }%%{range}
         ) * 100
       )
+    # No rollup over the window: a query value's `avg` aggregator or a monitor's
+    # `avg(last_…)` averages over the selected range, as `avg_over_time` does.
     datadogQuery: |
       avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}}
-        by {materialize_cloud_organization_namespace}.rollup(avg, %%{range}) * 100
+        by {materialize_cloud_organization_namespace} * 100
   - id: materialize.info.version
     stability: best-effort
     description:

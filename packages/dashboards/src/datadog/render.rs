@@ -67,7 +67,7 @@ pub fn serialize(name: &'static str, dashboard: &Dashboard) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use datadog_api_client::datadogV1::model::{
-        FormulaAndFunctionQueryDefinition, Widget, WidgetDefinition,
+        FormulaAndFunctionQueryDefinition, Widget, WidgetDefinition, WidgetFormula,
     };
 
     use super::*;
@@ -85,31 +85,63 @@ mod tests {
             .collect()
     }
 
-    /// Every metric query string in a widget tree, failing on any widget or query
-    /// that deserialized as `UnparsedObject` rather than a typed variant.
-    fn metric_queries(widgets: &[Widget], name: &str, out: &mut Vec<String>) {
+    /// One widget request's queries and formulas.
+    type Request = (Vec<FormulaAndFunctionQueryDefinition>, Vec<WidgetFormula>);
+
+    /// Every widget request in a widget tree, failing on any widget that
+    /// deserialized as `UnparsedObject` rather than a typed variant.
+    fn requests(widgets: &[Widget], name: &str, out: &mut Vec<Request>) {
+        fn parts(
+            queries: &Option<Vec<FormulaAndFunctionQueryDefinition>>,
+            formulas: &Option<Vec<WidgetFormula>>,
+        ) -> Request {
+            (
+                queries.clone().unwrap_or_default(),
+                formulas.clone().unwrap_or_default(),
+            )
+        }
         for widget in widgets {
             match &widget.definition {
                 WidgetDefinition::GroupWidgetDefinition(group) => {
-                    metric_queries(&group.widgets, name, out)
+                    requests(&group.widgets, name, out)
                 }
-                WidgetDefinition::QueryValueWidgetDefinition(value) => {
-                    for request in &value.requests {
-                        for query in request.queries.iter().flatten() {
-                            match query {
-                                FormulaAndFunctionQueryDefinition::FormulaAndFunctionMetricQueryDefinition(m) => {
-                                    out.push(m.query.clone())
-                                }
-                                other => panic!("{name}: an untyped or unexpected query: {other:?}"),
-                            }
-                        }
-                    }
+                WidgetDefinition::QueryValueWidgetDefinition(w) => {
+                    out.extend(w.requests.iter().map(|r| parts(&r.queries, &r.formulas)))
+                }
+                WidgetDefinition::TimeseriesWidgetDefinition(w) => {
+                    out.extend(w.requests.iter().map(|r| parts(&r.queries, &r.formulas)))
+                }
+                WidgetDefinition::ToplistWidgetDefinition(w) => {
+                    out.extend(w.requests.iter().map(|r| parts(&r.queries, &r.formulas)))
+                }
+                WidgetDefinition::SunburstWidgetDefinition(w) => {
+                    out.extend(w.requests.iter().map(|r| parts(&r.queries, &r.formulas)))
+                }
+                WidgetDefinition::TableWidgetDefinition(w) => {
+                    out.extend(w.requests.iter().map(|r| parts(&r.queries, &r.formulas)))
                 }
                 WidgetDefinition::NoteWidgetDefinition(_) => {}
                 WidgetDefinition::UnparsedObject(raw) => {
                     panic!("{name}: a widget the models do not type: {raw:?}")
                 }
                 other => panic!("{name}: a widget kind these tests do not walk yet: {other:?}"),
+            }
+        }
+    }
+
+    /// Every metric query string in a widget tree, failing on any query that
+    /// deserialized as anything but a typed metric query.
+    fn metric_queries(widgets: &[Widget], name: &str, out: &mut Vec<String>) {
+        let mut all = Vec::new();
+        requests(widgets, name, &mut all);
+        for (queries, _) in all {
+            for query in queries {
+                match query {
+                    FormulaAndFunctionQueryDefinition::FormulaAndFunctionMetricQueryDefinition(
+                        m,
+                    ) => out.push(m.query.clone()),
+                    other => panic!("{name}: an untyped or unexpected query: {other:?}"),
+                }
             }
         }
     }
@@ -183,52 +215,86 @@ mod tests {
         // Datadog draws a widget whose query object carries a function as
         // "Invalid Formula in Query Object", although its query API evaluates
         // the same expression. Functions and operators belong in the formula.
-        fn walk(widgets: &[Widget], name: &str, checked: &mut usize) {
+        for (name, json) in rendered() {
+            let parsed: Dashboard = serde_json::from_str(&json).expect("parse");
+            let mut all = Vec::new();
+            requests(&parsed.widgets, name, &mut all);
+            assert!(!all.is_empty(), "{name} has no widget requests to check");
+            for (queries, formulas) in all {
+                let mut names = Vec::new();
+                for query in &queries {
+                    if let FormulaAndFunctionQueryDefinition::FormulaAndFunctionMetricQueryDefinition(m) = query {
+                        assert!(
+                            crate::datadog::formula::is_bare_metric_query(&m.query),
+                            "{name}: `{}` is not a bare metric query",
+                            m.query
+                        );
+                        names.push(m.name.clone());
+                    }
+                }
+                assert!(!formulas.is_empty(), "{name}: a request with no formula");
+                for formula in formulas {
+                    for used in formula
+                        .formula
+                        .split(|c: char| !c.is_ascii_alphanumeric())
+                        .filter(|word| word.starts_with("query"))
+                    {
+                        assert!(
+                            names.iter().any(|n| n == used),
+                            "{name}: `{}` names {used}, which its request does not define",
+                            formula.formula
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scalar_widgets_aggregate_in_one_layer() {
+        // Datadog's scalar query API refuses a group-by function such as
+        // `max(query1, {tag})`, so a query value, toplist, sunburst, or table
+        // built on one shows an error rather than a number.
+        fn scalar(widgets: &[Widget], name: &str) {
             for widget in widgets {
-                match &widget.definition {
+                let formulas: Vec<String> = match &widget.definition {
                     WidgetDefinition::GroupWidgetDefinition(group) => {
-                        walk(&group.widgets, name, checked)
+                        scalar(&group.widgets, name);
+                        continue;
                     }
-                    WidgetDefinition::QueryValueWidgetDefinition(value) => {
-                        for request in &value.requests {
-                            let mut names = Vec::new();
-                            for query in request.queries.iter().flatten() {
-                                if let FormulaAndFunctionQueryDefinition::FormulaAndFunctionMetricQueryDefinition(m) = query {
-                                    assert!(
-                                        crate::datadog::formula::is_bare_metric_query(&m.query),
-                                        "{name}: `{}` is not a bare metric query",
-                                        m.query
-                                    );
-                                    names.push(m.name.clone());
-                                }
-                            }
-                            let formulas = request.formulas.clone().unwrap_or_default();
-                            assert!(!formulas.is_empty(), "{name}: a request with no formula");
-                            for formula in formulas {
-                                for used in formula
-                                    .formula
-                                    .split(|c: char| !c.is_ascii_alphanumeric())
-                                    .filter(|word| word.starts_with("query"))
-                                {
-                                    assert!(
-                                        names.iter().any(|n| n == used),
-                                        "{name}: `{}` names {used}, which its request does not define",
-                                        formula.formula
-                                    );
-                                }
-                            }
-                            *checked += 1;
-                        }
-                    }
-                    _ => {}
+                    WidgetDefinition::QueryValueWidgetDefinition(w) => w
+                        .requests
+                        .iter()
+                        .flat_map(|r| r.formulas.iter().flatten().map(|f| f.formula.clone()))
+                        .collect(),
+                    WidgetDefinition::ToplistWidgetDefinition(w) => w
+                        .requests
+                        .iter()
+                        .flat_map(|r| r.formulas.iter().flatten().map(|f| f.formula.clone()))
+                        .collect(),
+                    WidgetDefinition::SunburstWidgetDefinition(w) => w
+                        .requests
+                        .iter()
+                        .flat_map(|r| r.formulas.iter().flatten().map(|f| f.formula.clone()))
+                        .collect(),
+                    WidgetDefinition::TableWidgetDefinition(w) => w
+                        .requests
+                        .iter()
+                        .flat_map(|r| r.formulas.iter().flatten().map(|f| f.formula.clone()))
+                        .collect(),
+                    _ => continue,
+                };
+                for formula in formulas {
+                    assert!(
+                        !formula.contains(", {"),
+                        "{name}: `{formula}` aggregates in two layers in a scalar widget"
+                    );
                 }
             }
         }
         for (name, json) in rendered() {
             let parsed: Dashboard = serde_json::from_str(&json).expect("parse");
-            let mut checked = 0;
-            walk(&parsed.widgets, name, &mut checked);
-            assert!(checked > 0, "{name} has no widget requests to check");
+            scalar(&parsed.widgets, name);
         }
     }
 
