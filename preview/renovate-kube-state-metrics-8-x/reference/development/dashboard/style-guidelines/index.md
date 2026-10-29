@@ -187,6 +187,9 @@ Panel::stat(title)
 
 For single-series sparklines, leave the default `VALUE` text mode — the panel title is the label.
 
+When the tiles differ by orders of magnitude, add `.min_max_per_field()`.
+Grafana scales every tile's sparkline against the largest series by default, which draws the small tiles flat at zero.
+
 ### Timeseries legend
 
 Apply the shared timeseries legend builder to every multi-series timeseries panel:
@@ -262,7 +265,7 @@ Product review set these three:
 |---|---|---|
 | object | collection | an index, materialized view, source, or table — what `collection_id` identifies |
 | freshness | lag | how far an object's results trail real time, from `mz_dataflow_wallclock_lag_seconds` |
-| orphaned | leaked | persist data nothing refers to that cleanup missed, from `mz_persist_shard_usage_leaked_bytes` |
+| orphaned | leaked | persist data nothing refers to that cleanup missed |
 
 Freshness is a duration, so a larger value is worse.
 Titles qualify it — _Worst Freshness_, _Total Freshness_, _Least Fresh Objects_ — rather than saying _Max Freshness_, which reads as the freshest.
@@ -723,6 +726,10 @@ Things that have surprised us during development; worth knowing before touching 
   maximum size is not published. The timestamp oracle has its own pool under `mz_ts_oracle_postgres_connpool_*`.
 - **`mz_persist_shard_*` is reported by every process that has the shard open**, so a total takes `max by (shard)`
   first. environmentd has every shard open; on the reference installs a plain sum counted 100 shards as 180.
+- **Two of the five `mz_persist_shard_usage_*` gauges always read zero.** environmentd's periodic usage pass sets
+  `current_state_batches_bytes`, `current_state_rollups_bytes` and `referenced_not_current_state_bytes`.
+  `not_leaked_not_referenced_bytes` and `leaked_bytes` are set only by the audit that lists the bucket, which only
+  `persistcli inspect` runs, so every scraped series of them is zero. `env-persist` reads the first three.
 - **`mz_persist_s3_*` exists on Azure Blob and reads zero.** Materialize registers the S3 client's counters on every
   install, but reaches Azure Blob with Azure's own client. A panel on them keeps its series only while
   `mz_persist_s3_operations` is non-zero, so Azure shows the empty state instead of a flat "no timeouts".
@@ -927,7 +934,7 @@ and asks a question there that has no answer.
 `Row::section(title, rows)` groups a flavor's rows under one header, and `Row::variables` declares the picker on that section.
 Put the discovery condition on the section, and leave the rows inside it unconditioned.
 Grafana renders a section variable under the section's header, resolves it for every panel inside the section, and hides it with the section.
-`env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users.
+`env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users, and `env-persist`'s GCS section uses it too.
 
 What to know about section variables:
 
@@ -955,6 +962,7 @@ the conventions below are the ones a query against those families has to follow.
 | Never `rate()` a provider counter over `$__rate_interval` | That interval is sized from the datasource's scrape interval, which is far shorter than a pull, so the window holds one sample and draws nothing. Use a fixed `[30m]` |
 | One expression per provider in a cross-provider query, each with its own legend | Two of the three are empty on any install, which costs nothing. The alternative, a `label_replace` onto a common resource label, hides which provider a number came from |
 | Convert to 0–1 in the query | CloudWatch and Azure publish percent as 0–100; Cloud Monitoring publishes 0–1 with a unit label of `10^2.%`. Transaction-ID consumption is a fraction of 2^31 |
+| Draw a once-a-day family over a fixed range: `PanelQuery::time_from("14d")`, and `min_interval("1d")` for day-over-day bars | Over a dashboard's hours a daily measurement is a flat line, and a bar at the default step is one scrape wide. GCS storage is the case on `env-persist` |
 | Tier the families at `diagnostic` in the registry | A registry tier admits a metric at that tier and above; `diagnostic` is the one level no `metricImportance` value can undercut, so the per-provider value stays in charge |
 
 Whether a pull *failed* is published differently by each provider, and by one of them not at all.
