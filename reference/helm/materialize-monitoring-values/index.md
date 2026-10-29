@@ -6512,7 +6512,7 @@ Upstream reference:
 {
   "registry": "quay.io",
   "repository": "thanos/thanos",
-  "tag": "v0.42.4"
+  "tag": "v0.42.5"
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
