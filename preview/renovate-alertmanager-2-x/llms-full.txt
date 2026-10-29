@@ -5477,10 +5477,13 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 ## Formats
 
-Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
-Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
+Every dashboard has a **Grafana dashboard schema v2** render, which needs **Grafana 12 or later**.
+For more information, see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
+`env-top` also has a **Datadog** preview, which [Datadog]({{< relref "datadog.md" >}}) describes.
+Each table below lists every format, so you can see which ones a dashboard has no render for.
 Grafana 10 and 11 (schema v1) renders are not planned.
-The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
+The rest of the Datadog set, and the Google Cloud Monitoring and Honeycomb sets, are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).
+[Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -6942,12 +6945,29 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-al
 
 # Datadog
 
-> [!NOTE]
->   **There is no Materialize dashboard set for Datadog yet.**
->   It is tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115) and sits in the backlog with no committed date, alongside the Google Cloud Monitoring and Honeycomb sets.
->   See the [Dashboards workstream]({{< relref "../reference/development/roadmap.md" >}}#dashboards) for where it sits against the rest of the work.
+The Materialize Environment Overview, `env-top`, has a Datadog preview.
+It holds the cluster and replica counts from the Grafana dashboard's Cluster Objects / Replicas tab.
+The rest of the Grafana dashboards are tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115), on the [Dashboards roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).
 
-What exists today is the query material to build one yourself.
+## Import the preview
+
+1. Download the Datadog file from the `env-top` row of [Available Dashboards]({{< relref "all.md" >}}#materialize-environment-overview-env-top).
+2. Create the dashboard through Datadog's API, with an API key and an application key that has the `dashboards_write` permission:
+
+   ```bash
+   curl -X POST "https://api.DATADOG_SITE/api/v1/dashboard" \
+     -H "DD-API-KEY: ${DD_API_KEY}" \
+     -H "DD-APPLICATION-KEY: ${DD_APP_KEY}" \
+     -H "Content-Type: application/json" \
+     --data @env-top.json
+   ```
+
+   Replace `DATADOG_SITE` with your Datadog site, such as `datadoghq.com`.
+   If you manage Datadog with Terraform, pass the same file to the Datadog provider's `datadog_dashboard_json` resource instead.
+3. Pick one environment in the dashboard's **environment** variable.
+   Environments reuse cluster and replica ids, so the counts merge them when several are selected.
+
+## Build the rest yourself
 
 [Common Queries]({{< relref "../reference/common-queries.md" >}}) renders the registry's queries with a **Datadog** tab beside the PromQL wherever a query has a Datadog form, in the metric query syntax you paste into a dashboard widget or a monitor.
 The translations are validated against a live Datadog organization that receives a self-managed install's metrics through the gateway.
@@ -12436,7 +12456,7 @@ Everything is wired through [the top-level `Makefile`](https://github.com/Materi
 ```sh
 make all              # build everything (charts + dashboards)
 make charts           # package the Helm charts
-make dashboards       # regenerate Grafana dashboards from Python sources
+make dashboards       # regenerate the Grafana and Datadog dashboards
 make helm-docs        # regenerate chart README + docsite values reference
 make serve-docs       # serve this Hugo docsite locally
 make terraform-check  # fmt + validate + the tier-0 render check (no cluster)
@@ -13622,11 +13642,11 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.1 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.1.2 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.1.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
-| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.47.3 |
+| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
 
 ## Values {#values}
 
@@ -22293,7 +22313,7 @@ and turning `alerting.server.tls` on changes no volume.
   ],
   "image": {
     "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
-    "tag": "v0.94.1"
+    "tag": "v0.94.2"
   },
   "resources": {
     "limits": {
@@ -23765,7 +23785,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `mz-monitoring-build` / `mz-monitoring-check`: thin wrappers over the Rust binaries
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
-    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
+    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, `grafana/` and `datadog/`, with `canonical.rs` serializing both deterministically; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
     * `queries/`: query-registry YAML inputs — the metric, log, and alert query definitions and recording rules,
       validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
       * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
@@ -24044,19 +24064,20 @@ and that the prefix lands on the cluster query alone.
 
 ### Rendering
 
-`mz-monitoring-build gen-dashboards` is the entrypoint.
-`packages/dashboards/src/grafana/render.rs` does the work; `packages/dashboards/src/grafana/mod.rs` holds the registry
-of what can be rendered.
+`mz-monitoring-build gen-dashboards` is the entrypoint, and `--flavor` picks the backend.
+Each backend's `render.rs` under `packages/dashboards/src/` does the work, and its `mod.rs` holds the registry of what
+can be rendered.
 
-Two consumers, one command:
+Each output has one consumer:
 
 | Output | Consumer | Make target |
 | --- | --- | --- |
 | `--format yaml --folder <name>` into each `charts/materialize-monitoring-dashboards*/pre-rendered/dashboards/grafana/` | the dashboards Helm chart for that folder, which globs by filename stem | `charts/…/dashboards/grafana` |
 | `--format json` into `docs/assets/dashboards/grafana/` | the docsite, which offers the file for download | `docs/assets/dashboards/grafana` |
+| `--flavor datadog` into `docs/assets/dashboards/datadog/` | the docsite, which offers the file beside the Grafana one of the same stem | `docs/assets/dashboards/datadog` |
 
-Both trees are checked in, which makes byte-stability the property that matters most.
-Every render therefore goes through `render::canonical` first, which does two things:
+Every tree is checked in, which makes byte-stability the property that matters most.
+Every render therefore goes through `mz_dashboards::canonical` first, which both backends share and which does two things:
 
 - **Sorts every object's keys.** This reaches further than choosing an ordered map for the generated structs: the
   free-form `options` and `spec` blocks are `serde_json::Map`, whose order under this crate's `preserve_order` is
@@ -25664,6 +25685,14 @@ avg(last_5m):(
 ```
 
 Queries that back a **panel** are bare metric queries, with no window and no comparison.
+
+A dashboard widget's JSON holds a panel query in two parts:
+the metric queries, each named, and a formula over those names that carries every function and operator.
+`count_not_null(avg:m{…} by {…})` becomes the query `avg:m{…} by {…}` and the formula `count_not_null(query1)`.
+A query object that still carries a function renders as "Invalid Formula in Query Object", although the query API evaluates the whole expression.
+The widget editor makes this split for you when you paste a whole expression into its query box, so only JSON you import needs the two parts.
+The Datadog dashboards split each template this way in `packages/dashboards/src/datadog/formula.rs`,
+so the registry keeps one expression per template.
 
 ## Layout
 
@@ -28053,17 +28082,22 @@ reading dashboards back.
 
 ## Generating dashboards
 
-`mz-monitoring-build gen-dashboards` renders every dashboard in the registry:
+`mz-monitoring-build gen-dashboards` renders every dashboard of one backend.
+`--flavor` picks the backend, and defaults to `grafana`:
 
 ```bash
-mz-monitoring-build gen-dashboards --output-dir <dir> --format yaml
+mz-monitoring-build gen-dashboards --flavor grafana --output-dir <dir> --format yaml
+mz-monitoring-build gen-dashboards --flavor datadog --output-dir <dir>
 ```
 
-`--list` enumerates what is available, `--dashboard <stem>` renders one, `--folder <name>` renders only the dashboards
-filed in that Grafana folder, `--format json` emits the docsite shape, and
+`--list` enumerates what a backend has, `--dashboard <stem>` renders one, and `--folder <name>` renders only the
+Grafana dashboards filed in that folder.
+For Grafana, `--format yaml` emits a chart's shape and `--format json` the docsite's.
+Datadog renders only JSON, and refuses `--format yaml` and `--folder`, because no chart carries its dashboards.
+
 ### Two copies, one review
 
-Every dashboard is written twice: `charts/<chart>/pre-rendered/dashboards/grafana/<stem>.yaml` for the dashboards chart that
+Every Grafana dashboard is written twice: `charts/<chart>/pre-rendered/dashboards/grafana/<stem>.yaml` for the dashboards chart that
 carries its folder, and `docs/assets/dashboards/grafana/<stem>.json` for the docsite's download.
 Same content, two serializations — so a one-line panel change shows up as two diffs and only one of them is worth
 reading.
@@ -28080,9 +28114,11 @@ over both trees — collapsing a diff cannot hide a stale file.
 
 `docs/assets/metrics/metrics.yaml` is deliberately left out: it is generated too, but it is the only copy of the
 metric-to-usage index rather than a second one, so its diff is the only place a tier change is visible.
+The Datadog renders under `docs/assets/dashboards/datadog/` are left out for the same reason.
+No chart carries a Datadog dashboard, so its docsite file is the only copy, and its diff is the one to review.
 
 `--check` compares against what is on disk without writing (exiting non-zero if they differ).
-`make dashboards` wires the shipped output trees, one per dashboards chart plus the docsite's; see
+`make dashboards` wires the shipped output trees, one per dashboards chart plus the docsite's Grafana and Datadog trees; see
 [SDKs and Schemas]({{< relref "sdks.md" >}}#rendering) for the determinism guarantees.
 
 ### Which chart a dashboard ships in
@@ -37966,9 +38002,9 @@ None of it is ticketed yet.
 
 | Item | Why it's needed | Blocking? |
 |---|---|---|
-| **The Datadog backend** under `packages/dashboards/src/datadog/`, with `make datadog-dashboards` rendering into `docs/assets/dashboards/datadog/` and the freshness check in the dashboards workflow | The feature | **Blocking** |
+| **The Datadog backend** under `packages/dashboards/src/datadog/`, with `make datadog-dashboards` rendering into `docs/assets/dashboards/datadog/` and the freshness check in the dashboards workflow | The feature | ✅ Done, with an `env-top` preview |
 | **Panel manifests and the parity ledger**: both backends record a manifest as they build, and a test compares them against a list of reasoned differences | Keeps the two sets in step | **Blocking** for the first Datadog dashboard |
-| **The Datadog dashboards page**, rewritten from its placeholder into import steps | Download is the primary way to install the set | **Blocking** |
+| **The Datadog dashboards page**, rewritten from its placeholder into import steps | Download is the primary way to install the set | ✅ Done |
 | **`cluster` on the Datadog chain**, filled from `CLUSTER_NAME` where it's absent | Environment scoping across Kubernetes clusters, and the Kubernetes-cluster identity every other destination already has | **Blocking** for organizations with several Kubernetes clusters |
 | **`functions` on `datadogQuery` templates**, and a Datadog rendering context that turns the enrichment functions into a hidden `_info` query and a formula factor | How a panel asks for names | Blocking for names |
 | **Tier extraction that counts the `_info` family an enrichment function reads** | Puts `mz_object_info` and `mz_replica_info` in the tier list | Blocking for names |
@@ -38007,6 +38043,7 @@ The following tests cover the design:
 - [ ] **Is the custom-metric cost of the `_info` series acceptable at the default tier**, or do they belong in a tier an operator opts into?
 - [x] ~~**Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?~~ **Neither.** [DEP-421](https://linear.app/materializeinc/issue/DEP-421) ships the canonical labels on every destination, Datadog included.
 - [ ] **When are reference tables worth adding?** [Other ways to get names](#reference-tables) lists the conditions.
+- [ ] **How does a Datadog panel stay scoped to one environment?** Grafana's environment picker selects exactly one, and a Datadog template variable always offers `*`. Environments reuse cluster and replica ids, so a count grouped by id merges them: the `env-top` preview showed 2 clusters for two environments with 2 each. Grouping by the environment's tags as well works for a timeseries, and needs the registry's Datadog templates to group through a fragment. A query value can't group at all.
 - [ ] **What duplication moves the panel list into a shared layer?** Two or more dashboards whose manifests match panel for panel would be a clear signal, and the threshold is a judgment call.
 - [ ] **Does CI get a Datadog test organization** for the acceptance job and the live-data checks?
 - [ ] **Which dashboards follow `env-top`?** Field Engineering's input, as DEP-115 asks.
