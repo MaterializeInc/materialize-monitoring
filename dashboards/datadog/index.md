@@ -20,7 +20,7 @@ On this page, "you" are an operator who sends Materialize metrics to Datadog.
      -H "DD-API-KEY: ${DD_API_KEY}" \
      -H "DD-APPLICATION-KEY: ${DD_APP_KEY}" \
      -H "Content-Type: application/json" \
-     --data @env-top.json
+     --data @datadog-env-top.json
    ```
 
    Replace `DATADOG_SITE` with your Datadog site, such as `datadoghq.com`.
