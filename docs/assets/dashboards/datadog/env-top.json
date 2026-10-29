@@ -264,7 +264,7 @@
                           "value": 60
                         }
                       ],
-                      "formula": "query1",
+                      "formula": "reduce(max(cutoff_max(query1, 1e9), {*}), 'max')",
                       "number_format": {
                         "unit": {
                           "type": "canonical_unit",
@@ -275,10 +275,9 @@
                   ],
                   "queries": [
                     {
-                      "aggregator": "max",
                       "data_source": "metrics",
                       "name": "query1",
-                      "query": "max:mz_dataflow_wallclock_lag_seconds{$environment AND quantile:1}.rollup(max, 3600)"
+                      "query": "max:mz_dataflow_wallclock_lag_seconds{$environment AND instance_id:* AND quantile:1} by {namespace,pod,instance_id,replica_id,collection_id}.rollup(max)"
                     }
                   ],
                   "response_format": "scalar"
@@ -1867,7 +1866,7 @@
                 {
                   "formulas": [
                     {
-                      "formula": "reduce(top(max(cutoff_max(query1, 1e9), {instance_id,collection_id}), 15, 'max', 'desc'), 'max')",
+                      "formula": "reduce(top(max(cutoff_max(query1, 1e9), {instance_id,collection_id}), 15, 'last', 'desc'), 'last')",
                       "limit": {
                         "count": 15,
                         "order": "desc"
@@ -1890,6 +1889,9 @@
                   "response_format": "scalar"
                 }
               ],
+              "time": {
+                "live_span": "5m"
+              },
               "title": "Least Fresh Objects",
               "type": "toplist"
             }
@@ -1970,7 +1972,7 @@
                 {
                   "formulas": [
                     {
-                      "formula": "top(query1, 15, 'max', 'desc')",
+                      "formula": "top(query1, 15, 'last', 'desc')",
                       "limit": {
                         "count": 15,
                         "order": "desc"
@@ -1985,7 +1987,7 @@
                   ],
                   "queries": [
                     {
-                      "aggregator": "max",
+                      "aggregator": "last",
                       "data_source": "metrics",
                       "name": "query1",
                       "query": "max:mz_compute_hydration_time_seconds{$environment AND instance_id:$cluster.value AND replica_id:$replica.value AND hydrated:1} by {instance_id,collection_id}"
@@ -1994,6 +1996,9 @@
                   "response_format": "scalar"
                 }
               ],
+              "time": {
+                "live_span": "5m"
+              },
               "title": "Slowest Hydrating Objects",
               "type": "toplist"
             }

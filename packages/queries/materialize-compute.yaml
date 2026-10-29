@@ -174,11 +174,12 @@ queries:
           args: ["collection_id"]
         - name: mzClusterName
           args: ["instance_id"]
+    # The top 15 rank by the latest value, as the instant topk does.
     datadogQuery: |
       top(
         max:%%{mzSqlPrefix}compute_hydration_time_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList} AND replica_id:%%{mzReplicaList} AND hydrated:1}
           by {instance_id,collection_id},
-        15, 'max', 'desc'
+        15, 'last', 'desc'
       )
     instant: true
 
@@ -306,7 +307,8 @@ queries:
         - name: mzClusterName
           args: ["instance_id"]
     # As above, cutoff_max drops each reading's sentinel, and the group-by max
-    # takes each collection's worst surviving replica before the top 15.
+    # takes each collection's worst surviving replica before the top 15. The
+    # top 15 rank by the latest value, as the instant topk does.
     datadogQuery: |
       top(
         max(
@@ -317,7 +319,7 @@ queries:
           ),
           {instance_id,collection_id}
         ),
-        15, 'max', 'desc'
+        15, 'last', 'desc'
       )
     instant: true
 

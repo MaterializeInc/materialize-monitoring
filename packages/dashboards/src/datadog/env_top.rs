@@ -605,7 +605,11 @@ fn compute(q: &Queries) -> Vec<Section> {
             "freshness-top-collections",
             "Least Fresh Objects",
             &q.single("materialize.compute.freshness.top_collections"),
-            &Look::new().reduce(Reduce::Max).format(Format::Seconds),
+            // The latest value, as Grafana's instant query reads.
+            &Look::new()
+                .reduce(Reduce::Last)
+                .format(Format::Seconds)
+                .instant(),
             15,
         ),
     ];
@@ -622,7 +626,11 @@ fn compute(q: &Queries) -> Vec<Section> {
             "hydration-slowest-collections",
             "Slowest Hydrating Objects",
             &q.single("materialize.compute.hydration.slowest_collections"),
-            &Look::new().reduce(Reduce::Max).format(Format::Seconds),
+            // The latest value, as Grafana's instant query reads.
+            &Look::new()
+                .reduce(Reduce::Last)
+                .format(Format::Seconds)
+                .instant(),
             15,
         ),
     ];

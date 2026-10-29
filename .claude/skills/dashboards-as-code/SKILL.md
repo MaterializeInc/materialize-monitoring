@@ -204,6 +204,10 @@ These things about it are not re-derivable by reading the modules:
   templates is `query_values` (a query value draws one number), a stat or gauge with a value per series is
   `grouped_values` (a toplist), a pie is `pie` (a sunburst), a bar chart is `ranking`, and a table is `table`, one
   column per template and reducer. `Format::Fraction` scales a 0–1 formula by 100 for Datadog's `percent` unit.
+- **A ranking over an `instant: true` query reads the latest value**: its template ranks with `top(…, 'last', …)`,
+  and its widget takes `Reduce::Last` and `Look::instant()`, a five-minute timeframe of its own. Over the dashboard's
+  window, `last` keeps a stopped series' final value, so a deleted environment's objects topped Least Fresh Objects
+  over seven days (found 2026-10-29).
 - **Environment scoping is open.** Grafana's environment picker selects exactly one environment, and a Datadog
   template variable always offers `*`. Environments reuse cluster and replica ids, so a value grouped by id merges
   them. The dashboard's note tells readers to pick one environment.

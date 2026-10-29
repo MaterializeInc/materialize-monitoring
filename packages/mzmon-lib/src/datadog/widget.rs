@@ -39,7 +39,8 @@ use datadog_api_client::datadogV1::model::{
     TimeseriesWidgetDefinitionType, TimeseriesWidgetLegendLayout, TimeseriesWidgetRequest,
     ToplistWidgetDefinition, ToplistWidgetDefinitionType, ToplistWidgetRequest, Widget, WidgetAxis,
     WidgetComparator, WidgetConditionalFormat, WidgetDefinition, WidgetDisplayType, WidgetFormula,
-    WidgetFormulaLimit, WidgetLayoutType, WidgetNumberFormat, WidgetPalette,
+    WidgetFormulaLimit, WidgetLayoutType, WidgetLegacyLiveSpan, WidgetLiveSpan, WidgetNumberFormat,
+    WidgetPalette, WidgetTime,
 };
 
 use super::formula::{Expression, aggregates_in_layers, combine, query_name};
@@ -141,6 +142,7 @@ pub struct Look {
     precision: Option<i64>,
     log_scale: bool,
     min_zero: bool,
+    instant: bool,
     colors: Vec<(WidgetComparator, f64, WidgetPalette)>,
 }
 
@@ -152,6 +154,7 @@ impl Default for Look {
             precision: None,
             log_scale: false,
             min_zero: false,
+            instant: false,
             colors: Vec::new(),
         }
     }
@@ -193,6 +196,19 @@ impl Look {
     /// A y-axis that starts at 0.
     pub fn min_zero(mut self) -> Self {
         self.min_zero = true;
+        self
+    }
+
+    /// Read the last five minutes rather than the dashboard's time window, for a
+    /// registry query marked `instant`.
+    ///
+    /// An instant PromQL query reads each series' latest sample within a
+    /// five-minute lookback, so a series that stopped reporting drops out. A
+    /// scalar widget's `last` over the dashboard's window keeps a stopped
+    /// series' final value instead. The cost is that the widget always shows the
+    /// present: it doesn't follow the time picker into the past.
+    pub fn instant(mut self) -> Self {
+        self.instant = true;
         self
     }
 
@@ -254,6 +270,14 @@ impl Look {
         built
     }
 
+    fn time(&self) -> Option<WidgetTime> {
+        self.instant.then(|| {
+            WidgetTime::WidgetLegacyLiveSpan(Box::new(
+                WidgetLegacyLiveSpan::new().live_span(WidgetLiveSpan::PAST_FIVE_MINUTES),
+            ))
+        })
+    }
+
     fn yaxis(&self) -> Option<WidgetAxis> {
         match (self.log_scale, self.min_zero) {
             (false, false) => None,
@@ -295,6 +319,9 @@ fn value_widget(title: &str, expr: Option<&Expression>, description: &str, look:
     if !description.is_empty() {
         definition = definition.description(description.to_string());
     }
+    if let Some(time) = look.time() {
+        definition = definition.time(time);
+    }
     Widget::new(WidgetDefinition::QueryValueWidgetDefinition(Box::new(
         definition,
     )))
@@ -329,6 +356,9 @@ pub fn toplist(title: &str, query: &PanelQuery, look: &Look, count: i64) -> Widg
     if !query.description.is_empty() {
         definition = definition.description(query.description.clone());
     }
+    if let Some(time) = look.time() {
+        definition = definition.time(time);
+    }
     Widget::new(WidgetDefinition::ToplistWidgetDefinition(Box::new(
         definition,
     )))
@@ -357,6 +387,9 @@ pub fn sunburst(title: &str, query: &PanelQuery, look: &Look) -> Widget {
             )));
     if !query.description.is_empty() {
         definition = definition.description(query.description.clone());
+    }
+    if let Some(time) = look.time() {
+        definition = definition.time(time);
     }
     Widget::new(WidgetDefinition::SunburstWidgetDefinition(Box::new(
         definition,
@@ -467,6 +500,9 @@ pub fn table(title: &str, query: &PanelQuery, columns: &[Column], look: &Look) -
             .title(title.to_string());
     if !query.description.is_empty() {
         definition = definition.description(query.description.clone());
+    }
+    if let Some(time) = look.time() {
+        definition = definition.time(time);
     }
     Widget::new(WidgetDefinition::TableWidgetDefinition(Box::new(
         definition,

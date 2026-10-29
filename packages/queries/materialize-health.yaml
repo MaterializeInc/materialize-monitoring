@@ -336,6 +336,17 @@ queries:
           )[%%{rangeWindow}:1m]
         )
       )
+    # cutoff_max drops each series' sentinel before the group-by max, as the
+    # PromQL's `< 1e9` does before its maxima. It drops a whole rollup bucket
+    # holding a sentinel rather than the sample alone. A dashboard or monitor
+    # takes the peak over its own window.
     datadogQuery: |
-      max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND quantile:1}.rollup(max, 3600)
+      max(
+        cutoff_max(
+          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND instance_id:* AND quantile:1}
+            by {namespace,pod,instance_id,replica_id,collection_id}.rollup(max),
+          1e9
+        ),
+        {*}
+      )
     instant: true

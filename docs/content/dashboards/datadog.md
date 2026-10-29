@@ -47,6 +47,9 @@ Pick one value or `*` in each of the following variables:
 **replica**
 : Narrows the panels to one replica, by id.
 
+**Least Fresh Objects** and **Slowest Hydrating Objects** always show the last five minutes, as their Grafana panels do when the time range ends now.
+They don't follow the time picker into the past.
+
 ## Enable percentiles
 
 The **Peek Latency** and **Iceberg Commit Latency** panels read percentiles of a histogram.
