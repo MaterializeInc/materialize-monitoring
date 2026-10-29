@@ -34,7 +34,7 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "Object storage, as Materialize experiences it.\n\nReads, writes, failures, compaction and what the stored data is for, measured by the processes that use the bucket — the same on every store. What a Ceph object store reports about itself is on the Object Store Internals tab, and what a cloud bucket's provider reports is on the Infrastructure Cloud Provider dashboard.",
+    "description": "Object storage, as Materialize experiences it.\n\nReads, writes, failures, compaction and what the stored data is for, measured by the processes that use the bucket — the same on every store. What a Ceph object store reports about itself, and what Cloud Monitoring reports about a GCS bucket, is on the Object Store Internals tab; what the provider reports about an S3 or Azure Blob bucket is on the Infrastructure Cloud Provider dashboard.",
     "editable": true,
     "elements": {
       "ceph-bucket-pool-available": {
@@ -1993,6 +1993,348 @@
           }
         }
       },
+      "gcs-bucket-bytes": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (bucket_name) (\n  last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~\"$gcsBucket\"}[30m])\n)\n",
+                        "legendFormat": "{{bucket_name}}",
+                        "qryType": 1,
+                        "query": "sum by (bucket_name) (\n  last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~\"$gcsBucket\"}[30m])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n",
+                        "legendFormat": "referenced by this environment",
+                        "qryType": 1,
+                        "query": "sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Bytes stored in each selected GCS bucket, as Google bills them, beside the data this environment accounts for.**\n\n**Nominal:** The bucket holding this environment's data close to the environment's line, and moving with it. The monitoring stack's buckets grow with retention and then level off. On a bucket with soft delete turned on, the environment's line matches its live bytes on _Bytes by Object State_ instead.\n\n**Degraded:** The environment's bucket far above its line is storage nothing is using: soft-deleted objects or noncurrent versions the bucket's policy keeps, or data Materialize orphaned. _Bytes by Object State_ separates the first two, and the Storage tab shows the third. A bucket that only ever grows is a missing lifecycle rule or a compactor that has stopped.\n\nGoogle measures bucket size once a day, so the bucket moves in daily steps and can sit below the environment's line by up to a day's growth. Compare over days, not hours. A bucket that several environments share holds all of their data.",
+          "id": 1047,
+          "links": [],
+          "title": "Bucket Size",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "scaleDistribution": {
+                      "log": 10,
+                      "type": "log"
+                    }
+                  },
+                  "noValue": "Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "gcs-bucket-objects": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (bucket_name) (\n  last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~\"$gcsBucket\"}[30m])\n)\n",
+                        "legendFormat": "{{bucket_name}}",
+                        "qryType": 1,
+                        "query": "sum by (bucket_name) (\n  last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~\"$gcsBucket\"}[30m])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Objects stored in each selected GCS bucket.**\n\n**Nominal:** Tracks bucket size. Persist writes many small objects, and compaction replaces them with fewer large ones.\n\n**Degraded:** Objects growing much faster than bytes is small files accumulating: compaction falling behind, which the Compaction tab shows.\n\nMeasured once a day.",
+          "id": 1048,
+          "links": [],
+          "title": "Object Count",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "scaleDistribution": {
+                      "log": 10,
+                      "type": "log"
+                    }
+                  },
+                  "noValue": "Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "gcs-bytes-by-type": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (bucket_name, type) (\n  last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~\"$gcsBucket\"}[30m])\n)\n",
+                        "legendFormat": "{{bucket_name}} {{type}}",
+                        "qryType": 1,
+                        "query": "sum by (bucket_name, type) (\n  last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~\"$gcsBucket\"}[30m])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n",
+                        "legendFormat": "referenced by this environment",
+                        "qryType": 1,
+                        "query": "sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n+ sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Bytes in each selected GCS bucket, split into live objects, noncurrent versions and soft-deleted objects, beside the data this environment accounts for.**\n\n**Nominal:** The environment's bucket almost all live, with its live line on the environment's own. That match is how to tell its bucket from the others.\n\n**Degraded:** Soft-deleted and noncurrent bytes are billed like live ones and read by nothing. Persist deletes constantly, so a bucket with soft delete or object versioning turned on can hold many times its live size. A persist bucket holding over a hundred times its live data in soft-deleted objects has been seen on a default GCS bucket. Turn off soft delete, or shorten its retention, on buckets Materialize owns. Live bytes well above the environment's line is data Materialize orphaned, which the Storage tab shows.",
+          "id": 1049,
+          "links": [],
+          "title": "Bytes by Object State",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "scaleDistribution": {
+                      "log": 10,
+                      "type": "log"
+                    }
+                  },
+                  "noValue": "Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "gcs-objects-by-type": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (bucket_name, type) (\n  last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~\"$gcsBucket\"}[30m])\n)\n",
+                        "legendFormat": "{{bucket_name}} {{type}}",
+                        "qryType": 1,
+                        "query": "sum by (bucket_name, type) (\n  last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~\"$gcsBucket\"}[30m])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Objects in each selected GCS bucket, split into live, noncurrent and soft-deleted.**\n\n**Nominal:** Almost all live.\n\n**Degraded:** Many more soft-deleted objects than live ones is the retention policy keeping everything compaction deleted.",
+          "id": 1050,
+          "links": [],
+          "title": "Objects by Object State",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "scaleDistribution": {
+                      "log": 10,
+                      "type": "log"
+                    }
+                  },
+                  "noValue": "Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
       "object-store-none-detected": {
         "kind": "Panel",
         "spec": {
@@ -2005,7 +2347,7 @@
             }
           },
           "description": "Why this tab has no object store rows on it.",
-          "id": 1047,
+          "id": 1051,
           "links": [],
           "title": "No Object Store Metrics",
           "vizConfig": {
@@ -2022,7 +2364,7 @@
                   "showLineNumbers": false,
                   "showMiniMap": false
                 },
-                "content": "**The object store is not reporting its own metrics.**\n\nThis tab shows what an object store running on disks you own says about itself: its health, its free space, its disks, and the server side of every request persist makes. It renders for **Ceph run by Rook**, whose S3-compatible gateway (RGW) can hold the persist bucket.\n\n- **On Rook Ceph**, scrape the manager and the per-node exporter. Setting `monitoring.enabled: true` on the `CephCluster` makes Rook create a `ServiceMonitor` for each; `deploy/examples/monitoring/` in the Rook repository has both as standalone manifests, which leave out the alert rules that setting also installs.\n- **On S3, GCS or Azure Blob**, the bucket cannot fill up or lose a disk, and what the provider reports about it is on the **Infrastructure Cloud Provider** dashboard.\n\nThe other tabs here need none of this: they are persist's own measurement of the store, and work on every one.",
+                "content": "**The object store is not reporting its own metrics.**\n\nThis tab shows what the object store says about itself. It renders for **Ceph run by Rook**, whose S3-compatible gateway (RGW) can hold the persist bucket: its health, its free space, its disks, and the server side of every request persist makes. It also renders for **GCS**, as Cloud Monitoring reports each bucket: what you are billed for beside what Materialize stores.\n\n- **On Rook Ceph**, scrape the manager and the per-node exporter. Setting `monitoring.enabled: true` on the `CephCluster` makes Rook create a `ServiceMonitor` for each; `deploy/examples/monitoring/` in the Rook repository has both as standalone manifests, which leave out the alert rules that setting also installs.\n- **On GCS**, turn on the gateway's Cloud Monitoring pull, list the bucket under `pipeline.metrics.provider.gcp.gcs.buckets` in the `materialize-monitoring` chart's values, and give the gateway's service account `roles/monitoring.viewer`. The Cloud Provider Metrics page of the documentation has the details.\n- **On S3 or Azure Blob**, the bucket cannot fill up or lose a disk, and what the provider reports about it is on the **Infrastructure Cloud Provider** dashboard.\n\nThe other tabs here need none of this: they are persist's own measurement of the store, and work on every one.",
                 "mode": "markdown"
               }
             },
@@ -3341,7 +3683,7 @@
               "transformations": []
             }
           },
-          "description": "**Data this environment's current state refers to in object storage.**\n\n**Nominal:** Grows with the data you keep, and falls when you drop objects or compaction consolidates updates.\n\nThis is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, orphaned data, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size.",
+          "description": "**Data this environment's current state refers to in object storage.**\n\n**Nominal:** Grows with the data you keep, and falls when you drop objects or compaction consolidates updates.\n\nThis is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, orphaned data, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size. For a GCS bucket, so does _Object Store Internals_.",
           "id": 1005,
           "links": [],
           "title": "Data Stored",
@@ -3882,7 +4224,7 @@
               "transformations": []
             }
           },
-          "description": "**Data this environment's current state refers to in object storage.**\n\n**Nominal:** Grows with the data you keep, and falls when you drop objects or compaction consolidates updates.\n\nThis is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, orphaned data, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size.",
+          "description": "**Data this environment's current state refers to in object storage.**\n\n**Nominal:** Grows with the data you keep, and falls when you drop objects or compaction consolidates updates.\n\nThis is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, orphaned data, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size. For a GCS bucket, so does _Object Store Internals_.",
           "id": 1025,
           "links": [],
           "title": "Data Stored",
@@ -5230,9 +5572,161 @@
                               {
                                 "kind": "ConditionalRenderingVariable",
                                 "spec": {
+                                  "operator": "matches",
+                                  "value": "gcs",
+                                  "variable": "gcsDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "gcs-bucket-bytes"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "gcs-bucket-objects"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 2,
+                                      "rowHeightMode": "tall"
+                                    }
+                                  },
+                                  "title": "Stored Data"
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "gcs-bytes-by-type"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "gcs-objects-by-type"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 2,
+                                      "rowHeightMode": "tall"
+                                    }
+                                  },
+                                  "title": "Reclaimable Data"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "title": "GCS",
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "allowCustomValue": true,
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "definition": "label_values(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes, bucket_name)",
+                              "description": "The GCS buckets to draw; the one holding this environment's data has live bytes on the environment's line",
+                              "hide": "dontHide",
+                              "includeAll": true,
+                              "label": "GCS Bucket",
+                              "multi": true,
+                              "name": "gcsBucket",
+                              "options": [],
+                              "query": {
+                                "datasource": {
+                                  "name": "${metricsDatasource}"
+                                },
+                                "group": "prometheus",
+                                "kind": "DataQuery",
+                                "spec": {
+                                  "expr": "label_values(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes, bucket_name)",
+                                  "qryType": 1,
+                                  "query": "label_values(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes, bucket_name)"
+                                },
+                                "version": "v0"
+                              },
+                              "refresh": "never",
+                              "regex": "",
+                              "regexApplyTo": "value",
+                              "skipUrlSync": false,
+                              "sort": "alphabeticalAsc"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
                                   "operator": "notMatches",
                                   "value": "ceph-mgr",
                                   "variable": "cephDetected"
+                                }
+                              },
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "notMatches",
+                                  "value": "gcs",
+                                  "variable": "gcsDetected"
                                 }
                               }
                             ],
@@ -5469,6 +5963,42 @@
               "expr": "label_values(up{app=\"ceph-mgr\"}, app)",
               "qryType": 1,
               "query": "label_values(up{app=\"ceph-mgr\"}, app)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": true,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(up{job=\"integrations/gcp\", instance=\"gcs\"}, instance)",
+          "description": "Whether GCS buckets are being pulled from Cloud Monitoring; empty when none are",
+          "hide": "hideVariable",
+          "includeAll": false,
+          "label": "GCS",
+          "multi": false,
+          "name": "gcsDetected",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(up{job=\"integrations/gcp\", instance=\"gcs\"}, instance)",
+              "qryType": 1,
+              "query": "label_values(up{job=\"integrations/gcp\", instance=\"gcs\"}, instance)"
             },
             "version": "v0"
           },

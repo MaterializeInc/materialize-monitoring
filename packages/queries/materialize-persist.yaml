@@ -169,7 +169,8 @@ queries:
         also holds data kept only for readers, uploads in flight, orphaned
         data, and whatever the provider retains for versioning or soft
         delete — _Storage_ breaks down the first three, and the Infrastructure
-        Cloud Provider dashboard has the bucket's own size.
+        Cloud Provider dashboard has the bucket's own size. For a GCS bucket,
+        so does _Object Store Internals_.
     promQL: |
       sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
       + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}}))

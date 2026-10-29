@@ -24,10 +24,12 @@
 //! that comparison: what Materialize's current state refers to, and what it is
 //! keeping only for a reader, which the bucket cannot tell apart.
 //!
-//! The exception is an on-premise store, which has no provider to ask and can
-//! fill up or lose a disk. Object Store Internals carries its own account, for
-//! Ceph run by Rook, on rows that render only where Ceph is scraped — see
-//! [`object_store`].
+//! Object Store Internals carries the store's own account, on rows that render
+//! only where it is collected — see [`object_store`]. An on-premise store has
+//! no provider to ask and can fill up or lose a disk, so Ceph run by Rook gets
+//! its health, capacity and disks. A GCS bucket gets its billed size beside
+//! this environment's data, which is the comparison above made on one
+//! dashboard. S3 and Azure Blob stay on `infra-cloud`.
 //!
 //! # Scope
 //!
@@ -88,7 +90,7 @@ pub const REC_MZ_VERSION: &str = "v26.41.0";
 /// foreground and background traffic, in the order a slowdown is usually
 /// traced. Storage is about cost and slow growth rather than about anything
 /// being broken today. Object Store Internals is last because it is the store's
-/// own account rather than persist's, and only an on-premise store gives one.
+/// own account rather than persist's, and only some stores give one here.
 fn tabs(q: &Queries) -> Vec<Tab> {
     vec![
         Tab::new(theme::OVERVIEW.title).rows(overview::rows(q)),
@@ -133,9 +135,11 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
             "Object storage, as Materialize experiences it.\n\n\
              Reads, writes, failures, compaction and what the stored data is \
              for, measured by the processes that use the bucket — the same on \
-             every store. What a Ceph object store reports about itself is on \
-             the Object Store Internals tab, and what a cloud bucket's provider \
-             reports is on the Infrastructure Cloud Provider dashboard.",
+             every store. What a Ceph object store reports about itself, and \
+             what Cloud Monitoring reports about a GCS bucket, is on the Object \
+             Store Internals tab; what the provider reports about an S3 or \
+             Azure Blob bucket is on the Infrastructure Cloud Provider \
+             dashboard.",
         )
         .tags([tags::MATERIALIZE, tags::MZMON, tags::content::DEPENDENCIES])
         .folder(Folder::Materialize)
@@ -239,18 +243,26 @@ mod tests {
     }
 
     #[test]
-    fn every_ceph_row_renders_only_where_ceph_is_scraped() {
-        // A Ceph row without a condition draws empty panels on every cloud
-        // bucket, which is most installs.
+    fn every_store_row_renders_only_where_its_store_is_collected() {
+        // A store's row without a condition draws empty panels on every
+        // deployment that does not use it, which is most installs.
         let conditions = test_support::variable_conditioned_rows(&built());
-        let when: Vec<_> = conditions
+        let mut when: Vec<_> = conditions
             .iter()
             .filter(|(_, op, _)| op == "matches")
+            .map(|(title, _, value)| (title.as_str(), value.as_str()))
             .collect();
-        // One section holds them all, so its condition is the only one.
-        assert_eq!(when.len(), 1, "{conditions:?}");
-        assert_eq!(when[0].0, object_store::CEPH_SECTION);
-        assert_eq!(when[0].2, object_store::CEPH);
+        when.sort();
+        // One section per store holds all its rows, so these are the only
+        // conditions.
+        assert_eq!(
+            when,
+            vec![
+                (object_store::CEPH_SECTION, object_store::CEPH),
+                (object_store::GCS_SECTION, object_store::GCS),
+            ],
+            "{conditions:?}"
+        );
     }
 
     #[test]
@@ -260,19 +272,26 @@ mod tests {
             .iter()
             .filter(|(_, op, _)| op == "notMatches")
             .collect();
-        assert_eq!(fallbacks.len(), 1, "{fallbacks:?}");
-        assert!(fallbacks[0].2.contains(object_store::CEPH), "{fallbacks:?}");
+        let titles: std::collections::HashSet<_> = fallbacks.iter().map(|f| &f.0).collect();
+        assert_eq!(titles.len(), 1, "{fallbacks:?}");
+        let values: Vec<_> = fallbacks.iter().map(|f| f.2.as_str()).collect();
+        for (_, value) in object_store::known_stores() {
+            assert!(values.contains(&value.as_str()), "{fallbacks:?}");
+        }
     }
 
     #[test]
-    fn selecting_every_ceph_cluster_still_renders_the_rows() {
+    fn selecting_every_store_still_renders_the_rows() {
         test_support::assert_row_conditions_can_read_all(&built());
     }
 
     #[test]
-    fn an_unset_detection_variable_renders_no_ceph_row() {
+    fn an_unset_detection_variable_renders_no_store_row() {
+        // An empty discovery reaches the condition as one of these strings.
         for unset in ["", "undefined", "null", "[object Object]"] {
-            assert!(!unset.contains(object_store::CEPH), "{unset}");
+            for (_, value) in object_store::known_stores() {
+                assert!(!unset.contains(value.as_str()), "{unset}");
+            }
         }
     }
 
@@ -290,27 +309,50 @@ mod tests {
     }
 
     #[test]
-    fn the_cluster_picker_lives_on_its_section_not_the_dashboard() {
-        // A dashboard-level picker sits in the controls of every environment,
-        // whether or not it runs this flavor; on the section, it hides with it.
+    fn every_gcs_query_is_scoped_by_the_bucket_picker() {
+        // A bucket series carries no environment, and the monitoring stack's
+        // own buckets are pulled beside the persist bucket, so the picker is
+        // the only thing keeping them off these panels once narrowed.
         let resource = built();
-        assert!(
-            !resource
-                .spec
-                .variables
-                .iter()
-                .any(|v| variable::name_of(v) == "cephNamespace"),
-            "the picker is dashboard-level"
-        );
+        let json = serde_json::to_string(&resource.spec.elements).expect("serialize");
+        let selectors = test_support::selectors_of(&json, "stackdriver_gcs_");
+        assert!(!selectors.is_empty(), "no GCS queries found");
+        for selector in selectors {
+            assert!(selector.contains("$gcsBucket"), "unscoped: {selector}");
+        }
+    }
+
+    #[test]
+    fn each_picker_lives_on_its_section_not_the_dashboard() {
+        // A dashboard-level picker sits in the controls of every environment,
+        // whether or not it uses this store; on the section, it hides with it.
+        let resource = built();
+        for picker in ["cephNamespace", "gcsBucket"] {
+            assert!(
+                !resource
+                    .spec
+                    .variables
+                    .iter()
+                    .any(|v| variable::name_of(v) == picker),
+                "{picker} is dashboard-level"
+            );
+        }
         let json = serde_json::to_value(&resource.spec.layout).expect("serialize");
         let mut found = Vec::new();
         find_section_variables(&json, &mut found);
+        found.sort();
         assert_eq!(
             found,
-            vec![(
-                object_store::CEPH_SECTION.to_string(),
-                "cephNamespace".to_string()
-            )]
+            vec![
+                (
+                    object_store::CEPH_SECTION.to_string(),
+                    "cephNamespace".to_string()
+                ),
+                (
+                    object_store::GCS_SECTION.to_string(),
+                    "gcsBucket".to_string()
+                ),
+            ]
         );
     }
 
@@ -341,6 +383,7 @@ mod tests {
     #[test]
     fn the_fallback_explains_rather_than_announces() {
         assert!(object_store::NO_STORE.contains("monitoring.enabled"));
+        assert!(object_store::NO_STORE.contains("gcp.gcs.buckets"));
         assert!(object_store::NO_STORE.contains("Infrastructure Cloud Provider"));
     }
 

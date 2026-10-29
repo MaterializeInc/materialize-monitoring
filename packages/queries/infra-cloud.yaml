@@ -716,6 +716,134 @@ queries:
     datadogQuery: |
       sum:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{*} by {bucket_name,type}
 
+  # --- Object Storage: GCS, beside one environment -----------------------------
+  # The same families, drawn on Materialize Persist's Object Store Internals
+  # tab. That dashboard is scoped to one environment, so these match the
+  # buckets picked on `$gcsBucket`, and the size panel's Materialize line is
+  # that environment's alone. They stay in this file so the provider's
+  # `metricImportance` keeps deciding where the families go.
+  - id: infra.cloud.gcs.env.bytes
+    stability: experimental
+    description:
+      summary: |
+        Bytes stored in each selected GCS bucket, as Google bills them, beside
+        the data this environment accounts for.
+      nominal: |
+        The bucket holding this environment's data close to the
+        environment's line, and moving with it. The monitoring stack's
+        buckets grow with retention and then level off. On a bucket with soft
+        delete turned on, the environment's line matches its live bytes on
+        _Bytes by Object State_ instead.
+      degraded: |
+        The environment's bucket far above its line is storage nothing is
+        using: soft-deleted objects or noncurrent versions the bucket's
+        policy keeps, or data Materialize orphaned. _Bytes by Object State_
+        separates the first two, and the Storage tab shows the third. A bucket
+        that only ever grows is a missing lifecycle rule or a compactor that
+        has stopped.
+      notes: |
+        Google measures bucket size once a day, so the bucket moves in daily
+        steps and can sit below the environment's line by up to a day's
+        growth. Compare over days, not hours. A bucket that several
+        environments share holds all of their data.
+    promQL:
+      - |
+        sum by (bucket_name) (
+          last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket"}[30m])
+        )
+      - |
+        sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
+        + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}}))
+        + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}}))
+        + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{%%{mzEnvironmentFilter}}))
+        + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}}))
+    datadogQuery:
+      - |
+        sum:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{$gcsBucket} by {bucket_name}
+      - |
+        sum(max:mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_not_leaked_not_referenced_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+
+  - id: infra.cloud.gcs.env.objects
+    stability: experimental
+    description:
+      summary: |
+        Objects stored in each selected GCS bucket.
+      nominal: |
+        Tracks bucket size. Persist writes many small objects, and compaction
+        replaces them with fewer large ones.
+      degraded: |
+        Objects growing much faster than bytes is small files accumulating:
+        compaction falling behind, which the Compaction tab shows.
+      notes: Measured once a day.
+    promQL: |
+      sum by (bucket_name) (
+        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket"}[30m])
+      )
+    datadogQuery: |
+      sum:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{$gcsBucket} by {bucket_name}
+
+  - id: infra.cloud.gcs.env.bytes_by_type
+    stability: experimental
+    description:
+      summary: |
+        Bytes in each selected GCS bucket, split into live objects,
+        noncurrent versions and soft-deleted objects, beside the data this
+        environment accounts for.
+      nominal: |
+        The environment's bucket almost all live, with its live line on the
+        environment's own. That match is how to tell its bucket from the
+        others.
+      degraded: |
+        Soft-deleted and noncurrent bytes are billed like live ones and read
+        by nothing. Persist deletes constantly, so a bucket with soft delete
+        or object versioning turned on can hold many times its live size. A
+        persist bucket holding over a hundred times its live data in
+        soft-deleted objects has been seen on a default GCS bucket. Turn off
+        soft delete, or shorten its retention, on buckets Materialize owns.
+        Live bytes well above the environment's line is data Materialize
+        orphaned, which the Storage tab shows.
+    promQL:
+      - |
+        sum by (bucket_name, type) (
+          last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{bucket_name=~"$gcsBucket"}[30m])
+        )
+      - |
+        sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
+        + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}}))
+        + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}}))
+        + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{%%{mzEnvironmentFilter}}))
+        + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}}))
+    datadogQuery:
+      - |
+        sum:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{$gcsBucket} by {bucket_name,type}
+      - |
+        sum(max:mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_not_leaked_not_referenced_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+
+  - id: infra.cloud.gcs.env.objects_by_type
+    stability: experimental
+    description:
+      summary: |
+        Objects in each selected GCS bucket, split into live, noncurrent and
+        soft-deleted.
+      nominal: Almost all live.
+      degraded: |
+        Many more soft-deleted objects than live ones is the retention policy
+        keeping everything compaction deleted.
+    promQL: |
+      sum by (bucket_name, type) (
+        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{bucket_name=~"$gcsBucket"}[30m])
+      )
+    datadogQuery: |
+      sum:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{$gcsBucket} by {bucket_name,type}
+
   # --- Object Storage: Azure Blob ----------------------------------------------
   - id: infra.cloud.blob.availability
     stability: experimental

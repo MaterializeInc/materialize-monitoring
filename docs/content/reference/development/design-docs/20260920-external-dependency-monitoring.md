@@ -971,6 +971,12 @@ The departures, each with its reason.
   It also installs Rook's `PrometheusRule`s, which the Thanos ruler imports and evaluates,
   so turning on a dashboard would turn on a second alert set.
   The fallback names both routes.
+- **GCS has a section on Object Store Internals too**, although its series are the provider pull's.
+  A reader on a GCS environment opened the tab expecting the bucket and found only the fallback, or another environment's Ceph.
+  The section draws the bucket's billed size and its live, noncurrent, and soft-deleted split beside the environment's own accounting.
+  That comparison is the one `infra-cloud` can only make against every environment on the cluster.
+  It renders on the GCS pull's own `up`, and the reader picks buckets on `$gcsBucket`, a multi-select that opens on every bucket.
+  S3 and Azure Blob stay on `infra-cloud`.
 
 ### As built: the postgres_exporter subchart
 

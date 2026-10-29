@@ -13,8 +13,9 @@
 //! cannot: of the bytes stored, which are current data, which are kept only for
 //! a reader still looking at an older version, and which nothing refers to at
 //! all. The bucket's own size is the provider's number, on `infra-cloud`, and
-//! the gap between the two — soft-deleted objects, noncurrent versions, aborted
-//! multipart uploads — is invisible from here.
+//! for GCS on Object Store Internals too. The gap between the two is
+//! soft-deleted objects, noncurrent versions and aborted multipart uploads,
+//! which this tab cannot see.
 //!
 //! Every `mz_persist_shard_usage_*` total takes `max by (shard)` first, because
 //! each process reports every shard it has open.

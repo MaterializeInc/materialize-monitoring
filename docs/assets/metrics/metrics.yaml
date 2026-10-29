@@ -4126,6 +4126,8 @@
   name: mz_persist_shard_usage_current_state_batches_bytes
   usage:
   - infra.cloud.bucket.bytes
+  - infra.cloud.gcs.env.bytes
+  - infra.cloud.gcs.env.bytes_by_type
   - materialize.consensus.ops.collections
   - materialize.persist.health.stored
   - materialize.persist.usage.by_state
@@ -4136,6 +4138,8 @@
   name: mz_persist_shard_usage_current_state_rollups_bytes
   usage:
   - infra.cloud.bucket.bytes
+  - infra.cloud.gcs.env.bytes
+  - infra.cloud.gcs.env.bytes_by_type
   - materialize.persist.health.stored
   - materialize.persist.usage.by_state
   - materialize.persist.usage.largest
@@ -4145,6 +4149,8 @@
   name: mz_persist_shard_usage_leaked_bytes
   usage:
   - infra.cloud.bucket.bytes
+  - infra.cloud.gcs.env.bytes
+  - infra.cloud.gcs.env.bytes_by_type
   - materialize.persist.usage.by_state
   - materialize.persist.usage.leaked
 - importance: extended
@@ -4153,6 +4159,8 @@
   name: mz_persist_shard_usage_not_leaked_not_referenced_bytes
   usage:
   - infra.cloud.bucket.bytes
+  - infra.cloud.gcs.env.bytes
+  - infra.cloud.gcs.env.bytes_by_type
   - materialize.persist.usage.by_state
 - importance: extended
   labels:
@@ -4160,6 +4168,8 @@
   name: mz_persist_shard_usage_referenced_not_current_state_bytes
   usage:
   - infra.cloud.bucket.bytes
+  - infra.cloud.gcs.env.bytes
+  - infra.cloud.gcs.env.bytes_by_type
   - materialize.persist.usage.by_state
   - materialize.persist.usage.held
 - importance: extended
@@ -4860,17 +4870,23 @@
   usage:
   - infra.autoscaling.cloud.gce.ssd_quota
 - importance: diagnostic
-  labels: []
+  labels:
+  - bucket_name
   name: stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes
   usage:
   - infra.cloud.bucket.bytes
   - infra.cloud.collection.resources
   - infra.cloud.gcs.bytes_by_type
+  - infra.cloud.gcs.env.bytes
+  - infra.cloud.gcs.env.bytes_by_type
 - importance: diagnostic
-  labels: []
+  labels:
+  - bucket_name
   name: stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count
   usage:
   - infra.cloud.bucket.objects
+  - infra.cloud.gcs.env.objects
+  - infra.cloud.gcs.env.objects_by_type
   - infra.cloud.gcs.objects_by_type
 - importance: diagnostic
   labels: []

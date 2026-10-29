@@ -74,10 +74,19 @@ Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible store
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
 The Storage tab is Materialize's own accounting of what the stored data is for — current data, data kept only for a reader still looking at an older version, and data nothing refers to.
 The bucket's own size, as the provider bills it, is on `infra-cloud`.
-The Object Store Internals tab is the store's own account, for a persist bucket on Ceph run by Rook:
-Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
-It appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`; on any other store, the tab says what it would show.
-It needs both a metrics and a logs datasource.
+The Object Store Internals tab is the store's own account, with a section for each store it finds:
+
+Ceph run by Rook
+: Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
+  The section appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`.
+
+GCS
+: Each bucket's billed size and object count, split into live objects, noncurrent versions, and soft-deleted objects, beside the data this environment accounts for.
+  The section appears when the gateway pulls the bucket from Cloud Monitoring, under `pipeline.metrics.provider.gcp.gcs.buckets`.
+  The **GCS Bucket** picker opens on every pulled bucket, and the environment's bucket is the one whose live bytes match the environment's line.
+
+On S3, Azure Blob, or any other store, the tab says what it would show.
+The dashboard needs both a metrics and a logs data source.
 
 {{< download-dashboards name="env-persist" >}}
 

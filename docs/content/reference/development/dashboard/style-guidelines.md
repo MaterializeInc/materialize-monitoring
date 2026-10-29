@@ -929,7 +929,7 @@ and asks a question there that has no answer.
 `Row::section(title, rows)` groups a flavor's rows under one header, and `Row::variables` declares the picker on that section.
 Put the discovery condition on the section, and leave the rows inside it unconditioned.
 Grafana renders a section variable under the section's header, resolves it for every panel inside the section, and hides it with the section.
-`env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users.
+`env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users, and `env-persist`'s GCS section uses it too.
 
 What to know about section variables:
 
