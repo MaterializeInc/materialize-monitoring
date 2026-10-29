@@ -26,15 +26,8 @@ use datadog_api_client::datadogV1::model::{
     WidgetFormula, WidgetLayoutType,
 };
 
+use super::formula::{Expression, query_name};
 use super::queries::PanelQuery;
-
-/// The name a widget gives its `index`th metric query, which its formulas use.
-///
-/// `query1`, `query2`, … is what the Datadog editor names them, so a widget edited
-/// in the UI after import keeps reading the same way.
-pub fn query_name(index: usize) -> String {
-    format!("query{}", index + 1)
-}
 
 /// A widget showing one number: the latest value of a registry query, from
 /// [`super::queries::Queries::single`].
@@ -55,15 +48,25 @@ pub fn query_values(labels: &[&str], query: &PanelQuery) -> Vec<Widget> {
         .collect()
 }
 
-/// A query value over one metric query.
-fn value_widget(title: &str, expr: Option<&String>, description: &str) -> Widget {
-    let request = QueryValueWidgetRequest::new()
-        .queries(
-            expr.into_iter()
-                .map(|e| metric_query(0, e, FormulaAndFunctionMetricAggregation::LAST))
+/// A query value over one expression: its metric queries, each reduced to its
+/// latest value, and its formula over them.
+fn value_widget(title: &str, expr: Option<&Expression>, description: &str) -> Widget {
+    let (queries, formulas) = match expr {
+        Some(expr) => (
+            expr.queries
+                .iter()
+                .enumerate()
+                .map(|(index, query)| {
+                    metric_query(index, query, FormulaAndFunctionMetricAggregation::LAST)
+                })
                 .collect(),
-        )
-        .formulas(vec![WidgetFormula::new(query_name(0))])
+            vec![WidgetFormula::new(expr.formula.clone())],
+        ),
+        None => (Vec::new(), Vec::new()),
+    };
+    let request = QueryValueWidgetRequest::new()
+        .queries(queries)
+        .formulas(formulas)
         .response_format(FormulaAndFunctionResponseFormat::SCALAR);
     let mut definition =
         QueryValueWidgetDefinition::new(vec![request], QueryValueWidgetDefinitionType::QUERY_VALUE)

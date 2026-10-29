@@ -19,6 +19,7 @@
 //! what the docsite's download table keys on.
 
 pub mod env_top;
+pub mod formula;
 pub mod queries;
 pub mod render;
 pub mod variable;

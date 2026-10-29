@@ -178,6 +178,60 @@ mod tests {
         }
     }
 
+    #[test]
+    fn every_widget_query_is_bare_and_every_formula_names_one() {
+        // Datadog draws a widget whose query object carries a function as
+        // "Invalid Formula in Query Object", although its query API evaluates
+        // the same expression. Functions and operators belong in the formula.
+        fn walk(widgets: &[Widget], name: &str, checked: &mut usize) {
+            for widget in widgets {
+                match &widget.definition {
+                    WidgetDefinition::GroupWidgetDefinition(group) => {
+                        walk(&group.widgets, name, checked)
+                    }
+                    WidgetDefinition::QueryValueWidgetDefinition(value) => {
+                        for request in &value.requests {
+                            let mut names = Vec::new();
+                            for query in request.queries.iter().flatten() {
+                                if let FormulaAndFunctionQueryDefinition::FormulaAndFunctionMetricQueryDefinition(m) = query {
+                                    assert!(
+                                        crate::datadog::formula::is_bare_metric_query(&m.query),
+                                        "{name}: `{}` is not a bare metric query",
+                                        m.query
+                                    );
+                                    names.push(m.name.clone());
+                                }
+                            }
+                            let formulas = request.formulas.clone().unwrap_or_default();
+                            assert!(!formulas.is_empty(), "{name}: a request with no formula");
+                            for formula in formulas {
+                                for used in formula
+                                    .formula
+                                    .split(|c: char| !c.is_ascii_alphanumeric())
+                                    .filter(|word| word.starts_with("query"))
+                                {
+                                    assert!(
+                                        names.iter().any(|n| n == used),
+                                        "{name}: `{}` names {used}, which its request does not define",
+                                        formula.formula
+                                    );
+                                }
+                            }
+                            *checked += 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for (name, json) in rendered() {
+            let parsed: Dashboard = serde_json::from_str(&json).expect("parse");
+            let mut checked = 0;
+            walk(&parsed.widgets, name, &mut checked);
+            assert!(checked > 0, "{name} has no widget requests to check");
+        }
+    }
+
     /// The `$name` references in a Datadog metric query.
     fn referenced_variables(query: &str) -> Vec<String> {
         query

@@ -22,6 +22,7 @@ use std::cell::RefCell;
 use mzmon_lib::grafana::query::format_description;
 use mzmon_lib::query::{QueryEngine, QueryRegistry, TemplateContext};
 
+use super::formula::Expression;
 use super::{Options, variable};
 
 /// A registry query rendered for one widget.
@@ -29,8 +30,9 @@ use super::{Options, variable};
 pub struct PanelQuery {
     /// The registry id, kept for error messages.
     pub id: String,
-    /// One Datadog metric query per template the registry entry defines.
-    pub expressions: Vec<String>,
+    /// One expression per template the registry entry defines, split into the
+    /// metric queries and the formula a widget request carries.
+    pub expressions: Vec<Expression>,
     /// The registry description, as Markdown.
     pub description: String,
 }
@@ -58,13 +60,22 @@ impl<'a> Queries<'a> {
         let Some(query) = self.registry.get(id) else {
             return self.fail(id, "no such query in the registry".to_string());
         };
-        match query.render(&self.context) {
-            Ok(expressions) => PanelQuery {
-                id: id.to_string(),
-                expressions: expressions.iter().map(|e| one_line(e)).collect(),
-                description: format_description(&query.description),
-            },
-            Err(e) => self.fail(id, e.to_string()),
+        let rendered = match query.render(&self.context) {
+            Ok(rendered) => rendered,
+            Err(e) => return self.fail(id, e.to_string()),
+        };
+        let expressions = match rendered
+            .iter()
+            .map(|e| Expression::parse(&one_line(e)))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(expressions) => expressions,
+            Err(e) => return self.fail(id, e),
+        };
+        PanelQuery {
+            id: id.to_string(),
+            expressions,
+            description: format_description(&query.description),
         }
     }
 
@@ -154,8 +165,26 @@ mod tests {
         let queries = Queries::new(test_registry(), &Options::default());
         let query = queries.get("materialize.compute.views.count");
         assert_eq!(queries.failures(), Vec::<String>::new());
-        assert_eq!(query.expressions, vec!["max:mz_views_count{$environment}"]);
+        assert_eq!(query.expressions.len(), 1);
+        assert_eq!(
+            query.expressions[0].queries,
+            vec!["max:mz_views_count{$environment}"]
+        );
+        assert_eq!(query.expressions[0].formula, "query1");
         assert!(!query.description.is_empty(), "the description comes along");
+    }
+
+    #[test]
+    fn a_wrapped_template_splits_into_a_query_and_a_formula() {
+        // The registry writes `count_not_null(avg:… by {…})` over two lines; the
+        // widget gets the bare query and the function as its formula.
+        let queries = Queries::new(test_registry(), &Options::default());
+        let query = queries.get("materialize.clusters.count");
+        assert_eq!(queries.failures(), Vec::<String>::new());
+        for expression in &query.expressions {
+            assert_eq!(expression.formula, "count_not_null(query1)");
+            assert!(expression.queries[0].starts_with("avg:mz_compute_cluster_status{"));
+        }
     }
 
     #[test]

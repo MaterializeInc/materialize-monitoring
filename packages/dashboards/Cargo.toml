@@ -12,5 +12,6 @@ repository.workspace = true
 # never called; rustls keeps it off native-tls, matching mz-monitoring-build.
 datadog-api-client = { version = "0.38", default-features = false, features = ["rustls-tls"] }
 mzmon-lib = { path = "../mzmon-lib" }
+regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"

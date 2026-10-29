@@ -174,6 +174,11 @@ These things about it are not re-derivable by reading the modules:
 - **Registry parameters are mapped one at a time** in `datadog/queries.rs`: `mzSqlPrefix`, `mzEnvironmentFilter`
   (`$environment`), and `mzClusterList` / `mzReplicaList` (`*` until env-top's pickers are ported). A template that
   uses any other parameter fails the render, so porting a panel is when its parameters get a Datadog meaning.
+- **A widget's query objects are bare metric queries**, and every function and operator goes in its formula.
+  `datadog/formula.rs` splits each rendered template that way, and a render test holds it. A query object carrying a
+  function renders in Datadog as "Invalid Formula in Query Object", yet the query API evaluates the same expression,
+  so validating through the API alone does not catch it. Nor does pasting into the widget editor, which splits a whole
+  expression itself; only imported JSON fails.
 - **A Grafana stat with several values becomes one query value per template**, through `Queries::labeled` and
   `widget::query_values`, because a Datadog query value draws one number.
 - **Environment scoping is open.** Grafana's environment picker selects exactly one environment, and a Datadog
