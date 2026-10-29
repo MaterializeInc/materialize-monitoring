@@ -15,6 +15,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Dashboards (Helm chart) v0.22.0 (Unreleased)
+
+_Changes Pending_
+
 ## Container Images v0.9.0 (Unreleased)
 
 _Changes Pending_
@@ -27,9 +31,59 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Dashboards (Helm chart) v0.21.0 (Unreleased)
+## Dashboards (Helm chart) v0.21.0
 
-_Changes Pending_
+* Datadog dashboards: port every env-top panel, with a parity ledger
+    * [materialize-monitoring#630](https://github.com/MaterializeInc/materialize-monitoring/pull/630)
+    * Datadog: `env-top`, the Materialize Environment Overview, holds the Grafana dashboard's panels, downloadable as JSON from the Available Dashboards page
+        * Environment, namespace, cluster, and replica template variables. Pick one environment and the namespace it runs in: environments reuse cluster and replica ids, and the Kubernetes panels read the namespace.
+        * The peek and Iceberg commit latency panels need percentiles enabled for their metrics in Datadog.
+        * The Datadog dashboards page lists the panels it draws differently from Grafana or leaves out, such as the alert panels.
+* Add a GCS section to the persist dashboard, and drop its always-zero storage series
+    * [materialize-monitoring#625](https://github.com/MaterializeInc/materialize-monitoring/pull/625)
+    * The Materialize Persist dashboard's Object Store Internals tab has a GCS section when the GCS Cloud Monitoring pull is on
+        * Live data, objects, and average object size per bucket, their daily change, and the live, noncurrent, and soft-deleted split
+    * The Materialize Persist dashboard's Storage tab no longer shows orphaned data or uploads in flight, which Materialize always reported as zero
+        * `mz_persist_shard_usage_leaked_bytes` and `mz_persist_shard_usage_not_leaked_not_referenced_bytes` leave the extended metric tier
+* Datadog dashboards: split widget queries into bare queries and formulas
+    * [materialize-monitoring#624](https://github.com/MaterializeInc/materialize-monitoring/pull/624)
+* Datadog dashboards: the build machinery and an env-top preview
+    * [materialize-monitoring#587](https://github.com/MaterializeInc/materialize-monitoring/pull/587)
+    * Datadog: a preview of the Materialize Environment Overview (`env-top`), with its cluster and replica counts, downloadable as JSON from the Available Dashboards page. Import it through Datadog's API or Terraform's `datadog_dashboard_json`, and pick one environment, because the counts merge environments when several are selected.
+
+### Dependencies
+
+* <details><summary>Included mzmon-lib (shared library) @ v0.13.0..v0.14.0</summary>
+
+    * Build dev dependencies without debug info
+        * [materialize-monitoring#632](https://github.com/MaterializeInc/materialize-monitoring/pull/632)
+    * Update Rust crate jsonschema to 0.60.0
+        * [materialize-monitoring#627](https://github.com/MaterializeInc/materialize-monitoring/pull/627)
+        * [`v0.60.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0601---2026-10-23)
+        * [`v0.60.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0600---2026-10-22)
+    * Update Rust crate zip to v9 [SECURITY]
+        * [materialize-monitoring#620](https://github.com/MaterializeInc/materialize-monitoring/pull/620)
+        * [`v9.0.5`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#905---2026-10-17)
+        * [`v9.0.4`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#904---2026-10-16)
+        * [`v9.0.3`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#903---2026-10-13)
+        * [`v9.0.2`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#902---2026-10-11)
+        * [`v9.0.1`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#901---2026-10-10)
+        * [`v9.0.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#900---2026-10-08)
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#603](https://github.com/MaterializeInc/materialize-monitoring/pull/603)
+    * Render canonical label names from labels.yaml in the Materialize monitors (DEP-421)
+        * [materialize-monitoring#582](https://github.com/MaterializeInc/materialize-monitoring/pull/582)
+        * The Materialize PodMonitors, and the classic and Google Cloud Managed Prometheus scrape configs, add canonical label names beside the labels Materialize emits: `cluster_id`, `replica_id`, `cluster_name`, `cluster_size`, `replica_name`, `replica_size`, `object_name`, `object_type`, `collection_id` and `shard_id`. Each is copied only where it's absent, so it adds no series. [Canonical label names](https://materializeinc.github.io/materialize-monitoring/metrics/scraping/#canonical-labels) lists where each comes from.
+        * **Deprecated:** the labels they're copied from. Both names stay on every series for at least 30 days after this release; move queries and alert routes to the canonical names.
+            * `instance_id`, `compute_instance`, `compute_cluster_id` and `cluster_environmentd_materialize_cloud_cluster_id` are `cluster_id`
+            * `compute_replica_id` and `cluster_environmentd_materialize_cloud_replica_id` are `replica_id`
+            * `compute_cluster_name`, and `name` on `mz_cluster_info`, are `cluster_name`; `size` on `mz_cluster_info` is `cluster_size`
+            * `name` and `size` on `mz_replica_info` are `replica_name` and `replica_size`
+            * `name` and `type` on `mz_object_info` are `object_name` and `object_type`
+            * `global_id` is `collection_id`, and `shard` is `shard_id`
+        * If you replace `materialize.environmentd.serviceMonitor.metricEndpoints`, `materialize.environmentdSQL.serviceMonitor.metricEndpoints`, `materialize.clusterd.serviceMonitor.metricEndpoints` or `materialize-operator.serviceMonitor.metricEndpoints`, restate the default `metricRelabelings`, or those series lack the canonical labels.
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.6.0
 
