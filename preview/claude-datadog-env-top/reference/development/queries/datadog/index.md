@@ -46,6 +46,11 @@ The widget editor makes this split for you when you paste a whole expression int
 The Datadog dashboards split each template this way in `packages/dashboards/src/datadog/formula.rs`,
 so the registry keeps one expression per template.
 
+A query value, toplist, sunburst, or table widget reduces each query over the time window with the query's `aggregator`.
+Under a group-by function such as `count(query1, {size})`, Datadog refuses an aggregator,
+so the formula reduces itself, as `reduce(count(query1, {size}), 'last')`, and its queries carry none.
+A timeseries widget takes neither.
+
 ## Layout
 
 A `datadogQuery` is laid out like the `promQL` beside it, so the two read side by side.
@@ -270,12 +275,6 @@ Otherwise the translation reads `a` alone, and a comment says to compare it with
 The `datadogQuery` carries a threshold that is never crossed, and a comment says to enable the monitor's `notify_no_data`.
 
 **`or` chains across different metrics.** `materialize.persist.failures` folds sixteen counters into one alert with `label_replace` and `or`, so Datadog needs one monitor per counter, and three representative ones are given.
-
-**Two layers of aggregation in a single number.**
-A query value, toplist, sunburst, or table widget reads through Datadog's scalar query API.
-That API refuses a group-by function such as `max(query1, {tag})`,
-with "it is unsupported to use multi-layer aggregation function max with an aggregator".
-A template that aggregates in two layers draws only as a timeseries, so the `env-top` panels built on one are timeseries in Datadog.
 
 **Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`, so a range query that drops sentinel samples before taking `max_over_time` can't drop them first.
 `materialize.info.max_lag` includes the sentinel.

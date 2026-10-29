@@ -2,6 +2,67 @@
   "description": "Overview of a Materialize environment, ported from the Grafana dashboard of the same name.",
   "layout_type": "ordered",
   "reflow_type": "auto",
+  "tabs": [
+    {
+      "id": "7ec89514-ad10-431b-9b76-f9010ec73e4c",
+      "name": "Summary",
+      "widget_ids": [
+        100,
+        101,
+        102
+      ]
+    },
+    {
+      "id": "25683934-ccbb-4720-8229-323cadb3b117",
+      "name": "Kubernetes Workloads",
+      "widget_ids": [
+        201,
+        202,
+        203,
+        204
+      ]
+    },
+    {
+      "id": "5dcbe88a-d3f2-4540-abc8-d9e0a9eee795",
+      "name": "Connections / Activity",
+      "widget_ids": [
+        301,
+        302,
+        303
+      ]
+    },
+    {
+      "id": "863c1f92-b7b6-4a16-b3c1-4f54ac3465b3",
+      "name": "Cluster Objects / Replicas",
+      "widget_ids": [
+        401,
+        402,
+        403
+      ]
+    },
+    {
+      "id": "86fdb3c2-1576-4559-b05b-dca90a44cd40",
+      "name": "Compute Objects",
+      "widget_ids": [
+        501,
+        502,
+        503,
+        504,
+        505
+      ]
+    },
+    {
+      "id": "2f6125dd-a5b2-4540-bf86-f9615f8dd4a9",
+      "name": "Sources and Sinks",
+      "widget_ids": [
+        601,
+        602,
+        603,
+        604,
+        605
+      ]
+    }
+  ],
   "template_variables": [
     {
       "defaults": [
@@ -39,12 +100,14 @@
         "background_color": "yellow",
         "content": "**Pick one environment, and the namespace it runs in.** Environments reuse cluster and replica ids, so the panels merge them when several are selected. The Kubernetes panels read the namespace picker, because pod metrics carry no environment tag. Pick one value or `*` in each picker. The peek and Iceberg commit latency panels need percentiles enabled for their metrics in Datadog.",
         "type": "note"
-      }
+      },
+      "id": 100
     },
     {
       "definition": {
         "background_color": "gray",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Environment Health",
         "type": "group",
         "widgets": [
@@ -308,12 +371,14 @@
             }
           }
         ]
-      }
+      },
+      "id": 101
     },
     {
       "definition": {
         "background_color": "gray",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Environment Info",
         "type": "group",
         "widgets": [
@@ -349,13 +414,15 @@
           {
             "definition": {
               "description": "**Total CPU cores configured across the environment's containers (sum of cAdvisor CPU limits), excluding the monitoring exporter — i.e. the CPU available to the actual workload.**\n\nSteps track `ALTER CLUSTER REPLICA SIZE`, replica create/drop, and pod restarts. Requires cAdvisor. For the same total *including* the monitoring exporter see `.all_containers`.",
-              "legend_layout": "auto",
               "requests": [
                 {
-                  "display_type": "line",
                   "formulas": [
                     {
-                      "formula": "sum(query1 / query2, {container})",
+                      "formula": "reduce(sum(query1 / query2, {container}), 'last')",
+                      "limit": {
+                        "count": 10,
+                        "order": "desc"
+                      },
                       "number_format": {
                         "unit": {
                           "type": "canonical_unit",
@@ -376,15 +443,11 @@
                       "query": "sum:container_spec_cpu_period{namespace:$namespace.value AND container:* AND NOT container:POD AND NOT container:new-promsql-exporter} by {container,pod}"
                     }
                   ],
-                  "response_format": "timeseries"
+                  "response_format": "scalar"
                 }
               ],
-              "show_legend": true,
               "title": "Total CPU Capacity",
-              "type": "timeseries",
-              "yaxis": {
-                "min": "0"
-              }
+              "type": "toplist"
             }
           },
           {
@@ -423,25 +486,29 @@
             }
           }
         ]
-      }
+      },
+      "id": 102
     },
     {
       "definition": {
         "background_color": "blue",
         "layout_type": "ordered",
-        "title": "Kubernetes Workloads",
+        "show_title": false,
+        "title": "Resources Summary",
         "type": "group",
         "widgets": [
           {
             "definition": {
               "description": "**Total CPU cores configured across every container in the environment, including the monitoring exporter — the Kubernetes view of what is provisioned rather than what is available to the workload.**\n\nDiffers from `materialize.kubernetes.cpu.capacity` only by counting the monitoring exporter. Use that one to read workload capacity; use this one when reconciling against what Kubernetes reports. Requires cAdvisor.",
-              "legend_layout": "auto",
               "requests": [
                 {
-                  "display_type": "line",
                   "formulas": [
                     {
-                      "formula": "sum(query1 / query2, {container})",
+                      "formula": "reduce(sum(query1 / query2, {container}), 'last')",
+                      "limit": {
+                        "count": 10,
+                        "order": "desc"
+                      },
                       "number_format": {
                         "unit": {
                           "type": "canonical_unit",
@@ -462,15 +529,11 @@
                       "query": "sum:container_spec_cpu_period{namespace:$namespace.value AND container:* AND NOT container:POD} by {container,pod}"
                     }
                   ],
-                  "response_format": "timeseries"
+                  "response_format": "scalar"
                 }
               ],
-              "show_legend": true,
               "title": "Total CPU Capacity",
-              "type": "timeseries",
-              "yaxis": {
-                "min": "0"
-              }
+              "type": "toplist"
             }
           },
           {
@@ -507,17 +570,30 @@
               "title": "Total Memory",
               "type": "toplist"
             }
-          },
+          }
+        ]
+      },
+      "id": 201
+    },
+    {
+      "definition": {
+        "background_color": "blue",
+        "layout_type": "ordered",
+        "show_title": false,
+        "title": "Workload Readiness",
+        "type": "group",
+        "widgets": [
           {
             "definition": {
               "description": "**Pods in the Materialize namespace grouped by phase (Running, Pending, Failed, …).**\n\n**Nominal:** Nearly all Running.\n\n**Degraded:** Pending usually means Kubernetes can't schedule them (capacity, taints, AZ constraints); Failed means a container exited and won't be restarted.\n\nRequires kube-state-metrics.\n\nCanonical because the `kube_*` families it reads are asserted against a running stack by `kube_state::labels_are_honored` in the e2e suite. That check exists for one specific failure: when the scrape does not set `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are renamed `exported_*` and replaced by the exporter pod's own identity, so this query matches nothing while `up` and `scrape_samples_scraped` stay healthy. It shipped that way once and was found by eye.",
-              "legend_layout": "auto",
+              "legend": {
+                "type": "table"
+              },
               "requests": [
                 {
-                  "display_type": "line",
                   "formulas": [
                     {
-                      "formula": "max(query1, {phase,namespace})"
+                      "formula": "reduce(max(query1, {phase,namespace}), 'last')"
                     }
                   ],
                   "queries": [
@@ -527,20 +603,19 @@
                       "query": "sum:kube_pod_status_phase{namespace:$namespace.value} by {phase,namespace,service.instance.id}"
                     }
                   ],
-                  "response_format": "timeseries"
+                  "response_format": "scalar"
                 }
               ],
-              "show_legend": true,
               "title": "Pod Readiness",
-              "type": "timeseries",
-              "yaxis": {
-                "min": "0"
-              }
+              "type": "sunburst"
             }
           },
           {
             "definition": {
               "description": "**StatefulSet replicas reporting Ready. environmentd and the cluster pods are StatefulSets.**\n\n**Nominal:** Matches the configured replica count.\n\n**Degraded:** A drop indicates a pod stuck in initialization or hydration.\n\nRequires kube-state-metrics.\n\nCanonical because the `kube_*` families it reads are asserted against a running stack by `kube_state::labels_are_honored` in the e2e suite. That check exists for one specific failure: when the scrape does not set `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are renamed `exported_*` and replaced by the exporter pod's own identity, so this query matches nothing while `up` and `scrape_samples_scraped` stay healthy. It shipped that way once and was found by eye.",
+              "legend": {
+                "type": "table"
+              },
               "requests": [
                 {
                   "formulas": [
@@ -604,12 +679,14 @@
             }
           }
         ]
-      }
+      },
+      "id": 202
     },
     {
       "definition": {
         "background_color": "blue",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Pod Metrics",
         "type": "group",
         "widgets": [
@@ -732,12 +809,14 @@
             }
           }
         ]
-      }
+      },
+      "id": 203
     },
     {
       "definition": {
         "background_color": "blue",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Pod Networking",
         "type": "group",
         "widgets": [
@@ -1010,13 +1089,15 @@
             }
           }
         ]
-      }
+      },
+      "id": 204
     },
     {
       "definition": {
         "background_color": "purple",
         "layout_type": "ordered",
-        "title": "Connections / Activity",
+        "show_title": false,
+        "title": "Connection Summary",
         "type": "group",
         "widgets": [
           {
@@ -1119,18 +1200,23 @@
             }
           }
         ]
-      }
+      },
+      "id": 301
     },
     {
       "definition": {
         "background_color": "purple",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Queries",
         "type": "group",
         "widgets": [
           {
             "definition": {
               "description": "**The mix of query kinds over the selected window — a workload-shape signal, not a rate. Heavy `set_variable`/`fetch` traffic is normal (that's how Postgres clients manage session state); heavy `insert`/`update`/`delete` on something you think of as read-mostly is worth a look.**\n\nIdle statement types are filtered out. Environment-scoped.",
+              "legend": {
+                "type": "table"
+              },
               "requests": [
                 {
                   "formulas": [
@@ -1299,12 +1385,14 @@
             }
           }
         ]
-      }
+      },
+      "id": 302
     },
     {
       "definition": {
         "background_color": "purple",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "SQL Control Plane Commands",
         "type": "group",
         "widgets": [
@@ -1339,13 +1427,15 @@
             }
           }
         ]
-      }
+      },
+      "id": 303
     },
     {
       "definition": {
         "background_color": "green",
         "layout_type": "ordered",
-        "title": "Cluster Objects / Replicas",
+        "show_title": false,
+        "title": "Cluster Summary",
         "type": "group",
         "widgets": [
           {
@@ -1457,25 +1547,28 @@
             }
           }
         ]
-      }
+      },
+      "id": 401
     },
     {
       "definition": {
         "background_color": "green",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Replication / Availability",
         "type": "group",
         "widgets": [
           {
             "definition": {
               "description": "**The replica fleet grouped by configured size. Most deployments settle on a handful of sizes; a long tail of one-off sizes usually means an experiment or a half-finished migration. The total agrees with the replica count.**",
-              "legend_layout": "auto",
+              "legend": {
+                "type": "table"
+              },
               "requests": [
                 {
-                  "display_type": "line",
                   "formulas": [
                     {
-                      "formula": "count(query1, {size})"
+                      "formula": "reduce(count(query1, {size}), 'last')"
                     }
                   ],
                   "queries": [
@@ -1485,24 +1578,22 @@
                       "query": "max:mz_compute_cluster_status{$environment AND compute_cluster_id:$cluster.value AND compute_replica_id:$replica.value} by {compute_cluster_id,compute_replica_id,size}"
                     }
                   ],
-                  "response_format": "timeseries"
+                  "response_format": "scalar"
                 }
               ],
-              "show_legend": true,
               "title": "Replica Sizes",
-              "type": "timeseries",
-              "yaxis": {
-                "min": "0"
-              }
+              "type": "sunburst"
             }
           }
         ]
-      }
+      },
+      "id": 402
     },
     {
       "definition": {
         "background_color": "green",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Cluster Information",
         "type": "group",
         "widgets": [
@@ -1537,13 +1628,15 @@
             }
           }
         ]
-      }
+      },
+      "id": 403
     },
     {
       "definition": {
         "background_color": "orange",
         "layout_type": "ordered",
-        "title": "Compute Objects",
+        "show_title": false,
+        "title": "Compute Objects Summary",
         "type": "group",
         "widgets": [
           {
@@ -1630,6 +1723,9 @@
           {
             "definition": {
               "description": "**Live SUBSCRIBE sessions — long-running queries that stream updates to a client as data changes. A handful of `system` subscribes are Materialize's own internal probes; a persistently climbing `user` count usually means a client is opening subscribes and never closing them.**\n\nEnvironment-scoped.",
+              "legend": {
+                "type": "table"
+              },
               "requests": [
                 {
                   "formulas": [
@@ -1655,6 +1751,9 @@
           {
             "definition": {
               "description": "**Indexes split by the kind of relation they sit on. Workloads normally lean heavily on indexes over views (the standard \"keep a query's result hot\" pattern); a large share of indexes on base tables is unusual and usually worth a second look.**\n\nEnvironment-scoped.",
+              "legend": {
+                "type": "table"
+              },
               "requests": [
                 {
                   "formulas": [
@@ -1678,12 +1777,14 @@
             }
           }
         ]
-      }
+      },
+      "id": 501
     },
     {
       "definition": {
         "background_color": "orange",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Freshness",
         "type": "group",
         "widgets": [
@@ -1762,13 +1863,15 @@
           {
             "definition": {
               "description": "**The 15 objects whose results are furthest behind real time — the per-object breakdown behind _Worst Freshness by Cluster_, labeled by object name.**\n\nIdle or still-hydrating objects report a sentinel and are filtered out; check hydration state directly in SQL if an object you expect is missing. Catalog (s2) objects commonly appear with a small, expected baseline freshness of a few seconds.",
-              "legend_layout": "auto",
               "requests": [
                 {
-                  "display_type": "line",
                   "formulas": [
                     {
-                      "formula": "top(max(cutoff_max(query1, 1e9), {instance_id,collection_id}), 15, 'max', 'desc')",
+                      "formula": "reduce(top(max(cutoff_max(query1, 1e9), {instance_id,collection_id}), 15, 'max', 'desc'), 'max')",
+                      "limit": {
+                        "count": 15,
+                        "order": "desc"
+                      },
                       "number_format": {
                         "unit": {
                           "type": "canonical_unit",
@@ -1784,24 +1887,22 @@
                       "query": "max:mz_dataflow_wallclock_lag_seconds{$environment AND instance_id:$cluster.value AND replica_id:$replica.value AND quantile:1} by {namespace,pod,instance_id,replica_id,collection_id}"
                     }
                   ],
-                  "response_format": "timeseries"
+                  "response_format": "scalar"
                 }
               ],
-              "show_legend": true,
               "title": "Least Fresh Objects",
-              "type": "timeseries",
-              "yaxis": {
-                "scale": "log"
-              }
+              "type": "toplist"
             }
           }
         ]
-      }
+      },
+      "id": 502
     },
     {
       "definition": {
         "background_color": "orange",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Hydration",
         "type": "group",
         "widgets": [
@@ -1898,12 +1999,14 @@
             }
           }
         ]
-      }
+      },
+      "id": 503
     },
     {
       "definition": {
         "background_color": "orange",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Dataflows",
         "type": "group",
         "widgets": [
@@ -1998,12 +2101,14 @@
             }
           }
         ]
-      }
+      },
+      "id": 504
     },
     {
       "definition": {
         "background_color": "orange",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Arrangements",
         "type": "group",
         "widgets": [
@@ -2218,13 +2323,15 @@
             }
           }
         ]
-      }
+      },
+      "id": 505
     },
     {
       "definition": {
         "background_color": "yellow",
         "layout_type": "ordered",
-        "title": "Sources and Sinks",
+        "show_title": false,
+        "title": "Storage Objects Summary",
         "type": "group",
         "widgets": [
           {
@@ -2309,25 +2416,28 @@
             }
           }
         ]
-      }
+      },
+      "id": 601
     },
     {
       "definition": {
         "background_color": "yellow",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Sources",
         "type": "group",
         "widgets": [
           {
             "definition": {
               "description": "**Sources by connector type (kafka / postgres / mysql / …) — what flavors of upstream feed make up the ingest workload. Most environments concentrate on one or two.**\n\nEnvironment-scoped.",
-              "legend_layout": "auto",
+              "legend": {
+                "type": "table"
+              },
               "requests": [
                 {
-                  "display_type": "line",
                   "formulas": [
                     {
-                      "formula": "count(query1, {object_type})"
+                      "formula": "reduce(count(query1, {object_type}), 'last')"
                     }
                   ],
                   "queries": [
@@ -2337,15 +2447,11 @@
                       "query": "max:mz_storage_objects{$environment AND type:source} by {id,object_type}"
                     }
                   ],
-                  "response_format": "timeseries"
+                  "response_format": "scalar"
                 }
               ],
-              "show_legend": true,
               "title": "Source Types",
-              "type": "timeseries",
-              "yaxis": {
-                "min": "0"
-              }
+              "type": "sunburst"
             }
           },
           {
@@ -2498,18 +2604,23 @@
             }
           }
         ]
-      }
+      },
+      "id": 602
     },
     {
       "definition": {
         "background_color": "yellow",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Sinks",
         "type": "group",
         "widgets": [
           {
             "definition": {
               "description": "**Sinks by (type, envelope) — e.g. `kafka / upsert`, `kafka / debezium`, `iceberg / upsert`. The envelope is how Materialize encodes changes: `upsert` writes the latest value per key, `debezium` writes change events with old+new values.**\n\nEnvironment-scoped.",
+              "legend": {
+                "type": "table"
+              },
               "requests": [
                 {
                   "formulas": [
@@ -2611,12 +2722,14 @@
             }
           }
         ]
-      }
+      },
+      "id": 603
     },
     {
       "definition": {
         "background_color": "yellow",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Iceberg Sinks",
         "type": "group",
         "widgets": [
@@ -2812,12 +2925,14 @@
             }
           }
         ]
-      }
+      },
+      "id": 604
     },
     {
       "definition": {
         "background_color": "yellow",
         "layout_type": "ordered",
+        "show_title": true,
         "title": "Kafka Sinks",
         "type": "group",
         "widgets": [
@@ -2943,7 +3058,8 @@
             }
           }
         ]
-      }
+      },
+      "id": 605
     }
   ]
 }

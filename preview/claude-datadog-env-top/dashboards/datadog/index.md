@@ -6,7 +6,7 @@
 # Datadog
 
 The Materialize Environment Overview, `env-top`, has a Datadog version.
-It holds the Grafana dashboard's panels, apart from the differences listed on this page, in one group per Grafana row.
+It holds the Grafana dashboard's panels, apart from the differences listed on this page, under the same tabs, with a group for each Grafana row.
 The rest of the Grafana dashboards are tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115), on the [Dashboards roadmap](/materialize-monitoring/preview/claude-datadog-env-top/reference/development/roadmap/#dashboards).
 On this page, "you" are an operator who sends Materialize metrics to Datadog.
 
@@ -67,7 +67,6 @@ which the parity ledger in packages/dashboards/tests/datadog_parity.rs enforces.
 | **Environment Alerts Firing**, **Alerts**, and **Alerts Firing Over Time** | Left out | Datadog alerts are monitors, not a series to draw |
 | **Last Restart Time** | Left out | Datadog has no `time()`, so the age of the newest container can't be derived from its start timestamp |
 | **Environment Status** | A percentage, colored by health | Grafana maps the percentage to **Healthy**, **Degraded**, or **Unhealthy** |
-| **Total CPU Capacity**, **Pod Readiness**, **Replica Sizes**, **Least Fresh Objects**, and **Source Types** | A timeseries | The query aggregates in two layers, which Datadog's single-value, toplist, pie, and table widgets can't draw |
 | **Deployment Readiness** | A table, with **Ready** and **Unavailable** columns | The two counts are separate queries, and a table shows them side by side, one row per namespace |
 
 ## Build the rest yourself

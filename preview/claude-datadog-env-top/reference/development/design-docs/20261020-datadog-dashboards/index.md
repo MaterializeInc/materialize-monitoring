@@ -199,14 +199,14 @@ A dashboard exported from the Datadog UI can carry shapes the spec doesn't descr
 A table widget built in the UI's table editor, for example, exports `request_type: "table"` with `rows` and `columns`, and metric queries with `metric_name` and `filter`.
 The backend emits the spec's form of the same table instead: a metric query grouped with `by {…}`, its formulas, and `response_format: "scalar"`.
 
-### What a scalar widget can't draw
+### Reducing a two-layer formula to one number
 
 A query value, toplist, sunburst, or table widget reads each query reduced over the time window, through Datadog's scalar query API.
-That API refuses a group-by function such as `max(query1, {tag})`, which aggregates in two layers:
-it answers "it is unsupported to use multi-layer aggregation function max with an aggregator", and "Missing aggregator" without one.
-The timeseries API accepts the same formula.
-A registry template that aggregates in two layers therefore draws as a timeseries, whatever its Grafana panel is,
-and the parity ledger lists the difference.
+Each query's `aggregator` does that reduction, except under a group-by function such as `max(query1, {tag})`, which aggregates in two layers.
+There, the API answers "it is unsupported to use multi-layer aggregation function max with an aggregator".
+The formula reduces itself instead, as `reduce(max(query1, {tag}), 'last')`, and its queries carry no aggregator.
+That's the form the Datadog UI writes.
+So every registry template draws as the widget its Grafana panel is.
 
 ### Generated models, considered
 
