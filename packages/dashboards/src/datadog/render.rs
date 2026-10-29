@@ -22,6 +22,14 @@ use super::{Options, Renderable};
 /// The artifacts' filename suffix.
 pub const EXTENSION: &str = "json";
 
+/// The artifacts' filename prefix, before the stem the Grafana counterpart's file
+/// shares.
+///
+/// A dashboards release uploads every checked-in JSON under its file name, so
+/// `env-top.json` can't name both renders. It also keeps a downloaded Datadog
+/// file apart from the Grafana one of the same stem.
+pub const FILE_PREFIX: &str = "datadog-";
+
 /// What went wrong rendering.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
