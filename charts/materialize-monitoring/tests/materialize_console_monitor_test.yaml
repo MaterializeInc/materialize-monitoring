@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# The console PodMonitor.
+#
+# The console's Service exposes only its http port, so the monitor
+# selects pods and names the internal-http container port directly.
+suite: console PodMonitor
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+templates:
+  - templates/scrapers/monitor-materialize-console.yaml
+tests:
+  - it: should render one PodMonitor on the console's internal-http port
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: PodMonitor
+      - equal:
+          path: metadata.name
+          value: mzmon-materialize-console
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: console
+      - equal:
+          path: spec.podMetricsEndpoints
+          value:
+            - port: internal-http
+              path: /metrics
+              relabelings: []
+
+  - it: should apply the selector override
+    set:
+      materialize.console.serviceMonitor.selector:
+        matchLabels:
+          app: console
+    asserts:
+      - equal:
+          path: spec.selector
+          value:
+            matchLabels:
+              app: console
+
+  - it: should render nothing when disabled
+    set:
+      materialize.console.serviceMonitor.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

@@ -74,6 +74,7 @@
   usage:
   - infra.alloy.resources.throttling
   - materialize.environmentd.cpu_throttled
+  - materialize.ingress.balancer.cpu_throttling
 - importance: essential
   labels:
   - container
@@ -82,6 +83,7 @@
   usage:
   - infra.alloy.resources.throttling
   - materialize.environmentd.cpu_throttled
+  - materialize.ingress.balancer.cpu_throttling
 - importance: essential
   labels:
   - container
@@ -97,6 +99,8 @@
   - materialize.clusters.cpu_high
   - materialize.environmentd.high_cpu
   - materialize.generations.cpu
+  - materialize.ingress.balancer.cpu_by_pod
+  - materialize.ingress.balancer.cpu_of_request
   - materialize.kubernetes.cpu.usage.absolute
   - materialize.kubernetes.cpu.usage.percent
   - materialize.kubernetes.pods.cpu_usage
@@ -145,6 +149,8 @@
   - materialize.environmentd.memory_elevated
   - materialize.generations.memory
   - materialize.generations.pods
+  - materialize.ingress.balancer.memory_by_pod
+  - materialize.ingress.balancer.memory_of_limit
   - materialize.kubernetes.memory.usage.absolute
   - materialize.kubernetes.memory.usage.percent
   - materialize.kubernetes.pods.memory_usage
@@ -244,6 +250,8 @@
   - infra.kubernetes.memory_high
   - materialize.environmentd.high_memory
   - materialize.environmentd.memory_elevated
+  - materialize.ingress.balancer.memory_by_pod
+  - materialize.ingress.balancer.memory_of_limit
   - materialize.kubernetes.memory.capacity
   - materialize.kubernetes.memory.capacity.all_containers
   - materialize.kubernetes.memory.usage.percent
@@ -259,6 +267,7 @@
   - namespace
   name: container_start_time_seconds
   usage:
+  - materialize.ingress.balancer.since_restart
   - materialize.kubernetes.last_restart
 - importance: essential
   labels:
@@ -354,18 +363,23 @@
   - infra.kubernetes.deployment_unavailable_warning
 - importance: essential
   labels:
+  - deployment
   - namespace
   name: kube_deployment_status_replicas_ready
   usage:
+  - materialize.ingress.balancer.ready_pods
+  - materialize.kubernetes.deployments.readiness
+- importance: essential
+  labels:
+  - deployment
+  - namespace
+  name: kube_deployment_status_replicas_unavailable
+  usage:
+  - materialize.ingress.balancer.unavailable_pods
   - materialize.kubernetes.deployments.readiness
 - importance: essential
   labels:
   - namespace
-  name: kube_deployment_status_replicas_unavailable
-  usage:
-  - materialize.kubernetes.deployments.readiness
-- importance: essential
-  labels: []
   name: kube_horizontalpodautoscaler_spec_max_replicas
   usage:
   - infra.autoscaling.hpa.at_max
@@ -373,8 +387,11 @@
   - infra.autoscaling.hpa.share_of_max
   - infra.kubernetes.hpa_replicas_critical
   - infra.kubernetes.hpa_replicas_high
+  - materialize.ingress.balancer.autoscaler.conditions
+  - materialize.ingress.balancer.autoscaler.replicas
 - importance: essential
-  labels: []
+  labels:
+  - namespace
   name: kube_horizontalpodautoscaler_status_current_replicas
   usage:
   - infra.autoscaling.hpa.at_max
@@ -382,6 +399,8 @@
   - infra.autoscaling.hpa.share_of_max
   - infra.kubernetes.hpa_replicas_critical
   - infra.kubernetes.hpa_replicas_high
+  - materialize.ingress.balancer.autoscaler.conditions
+  - materialize.ingress.balancer.autoscaler.replicas
 - importance: essential
   labels:
   - node
@@ -487,6 +506,8 @@
   - infra.nodes.allocation.cpu
   - infra.nodes.allocation.memory
   - infra.nodes.pods.budgets
+  - materialize.ingress.balancer.cpu_by_pod
+  - materialize.ingress.balancer.cpu_of_request
 - importance: essential
   labels:
   - container
@@ -725,6 +746,7 @@
   - materialize.connections.adapter.command_rate
   - materialize.connections.adapter.commands_by_application
   - materialize.console.errors
+  - materialize.ingress.api.console_commands
 - importance: essential
   labels:
   - path
@@ -934,9 +956,11 @@
   labels:
   - application_name
   - instance_id
+  - materialize_cloud_organization_name
   name: mz_time_to_first_row_seconds_bucket
   usage:
   - materialize.console.query_latency
+  - materialize.ingress.api.console_query_latency
 - importance: essential
   labels: []
   name: mz_views_query_successful
@@ -1452,22 +1476,49 @@
   usage:
   - infra.net.k8s.endpoints.by_namespace
 - importance: recommended
-  labels: []
+  labels:
+  - namespace
+  - scaletargetref_name
+  name: kube_horizontalpodautoscaler_info
+  usage:
+  - materialize.ingress.balancer.autoscaler.conditions
+  - materialize.ingress.balancer.autoscaler.metrics
+  - materialize.ingress.balancer.autoscaler.replicas
+- importance: recommended
+  labels:
+  - namespace
   name: kube_horizontalpodautoscaler_spec_min_replicas
   usage:
   - infra.autoscaling.hpa.replicas
+  - materialize.ingress.balancer.autoscaler.replicas
+- importance: recommended
+  labels:
+  - namespace
+  name: kube_horizontalpodautoscaler_spec_target_metric
+  usage:
+  - materialize.ingress.balancer.autoscaler.metrics
 - importance: recommended
   labels:
   - condition
+  - namespace
   - status
   name: kube_horizontalpodautoscaler_status_condition
   usage:
   - infra.autoscaling.hpa.unable_to_scale
+  - materialize.ingress.balancer.autoscaler.conditions
 - importance: recommended
-  labels: []
+  labels:
+  - namespace
   name: kube_horizontalpodautoscaler_status_desired_replicas
   usage:
   - infra.autoscaling.hpa.replicas
+  - materialize.ingress.balancer.autoscaler.replicas
+- importance: recommended
+  labels:
+  - namespace
+  name: kube_horizontalpodautoscaler_status_target_metric
+  usage:
+  - materialize.ingress.balancer.autoscaler.metrics
 - importance: recommended
   labels:
   - namespace
@@ -1503,15 +1554,27 @@
   - infra.autoscaling.pods.unscheduled_by_namespace
   - infra.autoscaling.pods.unscheduled_list
 - importance: recommended
+  labels:
+  - namespace
+  name: kube_service_info
+  usage:
+  - materialize.ingress.lb.gcp.packets
+  - materialize.ingress.lb.gcp.throughput
+- importance: recommended
   labels: []
   name: kube_service_spec_type
   usage:
   - infra.net.k8s.services.by_type
 - importance: recommended
-  labels: []
+  labels:
+  - namespace
   name: kube_service_status_load_balancer_ingress
   usage:
   - infra.net.cloud.load_balancers
+  - materialize.ingress.lb.addresses
+  - materialize.ingress.lb.azure.backends
+  - materialize.ingress.lb.azure.new_connections
+  - materialize.ingress.lb.azure.throughput
 - importance: recommended
   labels: []
   name: kubeproxy_network_programming_duration_seconds_bucket
@@ -1832,6 +1895,87 @@
   - materialize.compute.arrangements.records.user
 - importance: recommended
   labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_accepting
+  usage:
+  - materialize.ingress.balancer.accepting_by_pod
+  - materialize.ingress.overview.accepting
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_active
+  usage:
+  - materialize.ingress.balancer.capacity
+  - materialize.ingress.balancer.open_by_pod
+  - materialize.ingress.overview.open_connections
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_duration_seconds_bucket
+  usage:
+  - materialize.ingress.balancer.lifetime
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_high_watermark
+  usage:
+  - materialize.ingress.balancer.capacity
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_limit
+  usage:
+  - materialize.ingress.balancer.capacity
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_low_watermark
+  usage:
+  - materialize.ingress.balancer.capacity
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_rejected_total
+  usage:
+  - materialize.ingress.balancer.refused
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_connection_setup_duration_seconds_bucket
+  usage:
+  - materialize.ingress.balancer.setup_time
+  - materialize.ingress.overview.connection_setup
+  - materialize.ingress.overview.connection_setup_p99
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - status
+  name: mz_balancer_connection_status
+  usage:
+  - materialize.ingress.balancer.outcomes
+  - materialize.ingress.overview.balancer_error_ratio
+  - materialize.ingress.overview.balancer_errors_by_protocol
+  - materialize.ingress.overview.connections_by_protocol
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_pre_resolved_connection_active
+  usage:
+  - materialize.ingress.balancer.waiting_for_backend
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_pre_resolved_timeout_total
+  usage:
+  - materialize.ingress.balancer.refused
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_balancer_upstream_connect_duration_seconds_bucket
+  usage:
+  - materialize.ingress.balancer.upstream_connect
+- importance: recommended
+  labels:
   - compute_cluster_id
   - compute_replica_id
   - compute_replica_name
@@ -1891,12 +2035,66 @@
   - materialize.compute.dataflows.count_by_worker
 - importance: recommended
   labels:
+  - materialize_cloud_organization_name
+  - source
+  name: mz_connection_status
+  usage:
+  - materialize.ingress.api.pgwire_connections
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_console_http_connections
+  usage:
+  - materialize.ingress.console.connections
+- importance: recommended
+  labels:
+  - location
+  - materialize_cloud_organization_name
+  name: mz_console_http_request_duration_seconds_bucket
+  usage:
+  - materialize.ingress.console.response_p50
+  - materialize.ingress.console.response_p99
+  - materialize.ingress.overview.console_page_p99
+  - materialize.ingress.overview.console_response_time
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - status
+  name: mz_console_http_requests_total
+  usage:
+  - materialize.ingress.console.by_status_class
+  - materialize.ingress.console.client_errors
+  - materialize.ingress.console.server_errors
+  - materialize.ingress.console.websockets
+  - materialize.ingress.overview.console_error_ratio
+  - materialize.ingress.overview.console_errors_by_location
+  - materialize.ingress.overview.console_request_rate
+  - materialize.ingress.overview.console_requests_by_location
+- importance: recommended
+  labels:
   - instance_id
   - materialize_cloud_organization_name
   - replica_id
   name: mz_dataflow_elapsed_seconds_total
   usage:
   - materialize.compute.dataflows.elapsed_rate
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - path
+  - source
+  name: mz_http_request_duration_seconds_bucket
+  usage:
+  - materialize.ingress.api.http_response_p99
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - source
+  - status
+  name: mz_http_requests_total
+  usage:
+  - materialize.ingress.api.http_errors
+  - materialize.ingress.api.http_requests
 - importance: recommended
   labels:
   - materialize_cloud_organization_name
@@ -4519,41 +4717,55 @@
   name: aws_networkelb_active_flow_count_average
   usage:
   - infra.net.cloud.nlb.open_connections
+  - materialize.ingress.lb.aws.open_connections
 - importance: diagnostic
-  labels: []
+  labels:
+  - dimension_TargetGroup
   name: aws_networkelb_healthy_host_count_minimum
   usage:
   - infra.net.cloud.nlb.healthy_targets
+  - materialize.ingress.lb.aws.healthy_targets
+  - materialize.ingress.lb.aws.new_connections
+  - materialize.ingress.lb.aws.open_connections
+  - materialize.ingress.lb.aws.resets
+  - materialize.ingress.lb.aws.throughput
 - importance: diagnostic
   labels: []
   name: aws_networkelb_new_flow_count_sum
   usage:
   - infra.net.cloud.nlb.new_connections
+  - materialize.ingress.lb.aws.new_connections
 - importance: diagnostic
   labels: []
   name: aws_networkelb_processed_bytes_sum
   usage:
   - infra.net.cloud.nlb.throughput
+  - materialize.ingress.lb.aws.throughput
 - importance: diagnostic
   labels: []
   name: aws_networkelb_tcp_client_reset_count_sum
   usage:
   - infra.net.cloud.nlb.resets
+  - materialize.ingress.lb.aws.resets
 - importance: diagnostic
   labels: []
   name: aws_networkelb_tcp_elb_reset_count_sum
   usage:
   - infra.net.cloud.nlb.resets
+  - materialize.ingress.lb.aws.resets
 - importance: diagnostic
   labels: []
   name: aws_networkelb_tcp_target_reset_count_sum
   usage:
   - infra.net.cloud.nlb.resets
+  - materialize.ingress.lb.aws.resets
 - importance: diagnostic
-  labels: []
+  labels:
+  - dimension_TargetGroup
   name: aws_networkelb_un_healthy_host_count_maximum
   usage:
   - infra.net.cloud.nlb.unhealthy_targets
+  - materialize.ingress.lb.aws.unhealthy_targets
 - importance: diagnostic
   labels: []
   name: aws_rds_burst_balance_minimum
@@ -4727,17 +4939,20 @@
   name: azure_microsoft_network_loadbalancers_bytecount_total_bytes
   usage:
   - infra.net.cloud.azure_lb.throughput
+  - materialize.ingress.lb.azure.throughput
 - importance: diagnostic
   labels: []
   name: azure_microsoft_network_loadbalancers_dipavailability_average_count
   usage:
   - infra.net.cloud.azure_lb.healthy_backends
+  - materialize.ingress.lb.azure.backends
 - importance: diagnostic
   labels:
   - dimensionDirection
   name: azure_microsoft_network_loadbalancers_syncount_total_count
   usage:
   - infra.net.cloud.azure_lb.new_connections
+  - materialize.ingress.lb.azure.new_connections
 - importance: diagnostic
   labels: []
   name: azure_microsoft_network_loadbalancers_vipavailability_average_count
@@ -4877,21 +5092,25 @@
   name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count
   usage:
   - infra.net.cloud.gcp_lb.throughput
+  - materialize.ingress.lb.gcp.throughput
 - importance: diagnostic
   labels: []
   name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count
   usage:
   - infra.net.cloud.gcp_lb.packets
+  - materialize.ingress.lb.gcp.packets
 - importance: diagnostic
   labels: []
   name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count
   usage:
   - infra.net.cloud.gcp_lb.throughput
+  - materialize.ingress.lb.gcp.throughput
 - importance: diagnostic
   labels: []
   name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count
   usage:
   - infra.net.cloud.gcp_lb.packets
+  - materialize.ingress.lb.gcp.packets
 - importance: diagnostic
   labels: []
   name: stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count
@@ -4917,21 +5136,25 @@
   name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count
   usage:
   - infra.net.cloud.gcp_lb.throughput
+  - materialize.ingress.lb.gcp.throughput
 - importance: diagnostic
   labels: []
   name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count
   usage:
   - infra.net.cloud.gcp_lb.packets
+  - materialize.ingress.lb.gcp.packets
 - importance: diagnostic
   labels: []
   name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count
   usage:
   - infra.net.cloud.gcp_lb.throughput
+  - materialize.ingress.lb.gcp.throughput
 - importance: diagnostic
   labels: []
   name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count
   usage:
   - infra.net.cloud.gcp_lb.packets
+  - materialize.ingress.lb.gcp.packets
 - importance: diagnostic
   labels: []
   name: stackdriver_monitoring_api_calls_total

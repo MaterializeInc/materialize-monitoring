@@ -18,6 +18,7 @@
 pub(crate) mod alerts;
 pub(crate) mod dependency;
 pub mod env_consensus;
+pub mod env_ingress;
 pub mod env_logs;
 pub mod env_persist;
 pub mod env_top;
@@ -139,6 +140,11 @@ pub const ALL: &[Renderable] = &[
         name: infra_karpenter::NAME_STEM,
         summary: "How Karpenter adds, replaces and removes nodes on EKS",
         render: infra_karpenter::render,
+    },
+    Renderable {
+        name: env_ingress::NAME_STEM,
+        summary: "How users reach a Materialize environment: balancerd, the console, and the APIs",
+        render: env_ingress::render,
     },
 ];
 

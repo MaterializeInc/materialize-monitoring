@@ -122,6 +122,7 @@ The Chart column names the `materialize-monitoring-dashboards` chart that ships 
 | `infra-cloud` | `grafana/infra_cloud/` | `mz-mon-infra-cloud` | Infrastructure Cloud Provider | `-infra` |
 | `infra-autoscaling` | `grafana/infra_autoscaling/` | `mz-mon-infra-autoscaling` | Infrastructure Autoscaling | `-infra` |
 | `infra-karpenter` | `grafana/infra_karpenter/` | `mz-mon-infra-karpenter` | Karpenter | `-infra` |
+| `env-ingress` | `grafana/env_ingress/` | `mz-mon-env-ingress` | Materialize Ingress (Balancer, Console) | (main) |
 
 Each is rendered to `charts/<chart>/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -657,6 +658,62 @@ Queries are `packages/queries/infra-karpenter.yaml`, hinted `extended`.
 - **The quirks are in the style guide**: only the leader publishes `karpenter_*`, `_count` names that are gauges, the
   `service` label arriving as `exported_service`, `offering_available` reading zero for half its series at rest, and
   AWS SDK 412s being dry runs.
+
+## `env-ingress` tabs
+
+How users reach an environment, one hop per tab. Queries are `packages/queries/materialize-ingress.yaml`, hinted
+`recommended`, and the variable set is `variable::dependency_scoped`: balancerd and the console belong to no cluster.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Load Balancer | `load_balancer.rs` |
+| 3 | Balancer | `balancer.rs` |
+| 4 | Console | `console.rs` |
+| 5 | SQL and HTTP API | `api.rs` |
+
+These things about it are not re-derivable by reading the modules:
+
+- **Most of it reads metrics Materialize had not shipped when it was built.** balancerd's three timing histograms and
+  its server-fault `status` are MaterializeInc/materialize#40192, and every `mz_console_*` family is #40193. Each
+  panel on one of them says so in its empty state, and `REC_MZ_VERSION` carries a TODO to name the release.
+- **balancerd counts a connection when it closes**, so its rates trail long SQL sessions; Overview's verdict leads
+  with ratios and open connections for that reason.
+- **The console's `location` label is the nginx block**: `app` and `static` are the console pod, and `api` is
+  the hop to balancerd and everything behind it, query time included. The page-load stat reads `app|static` only.
+- **nginx counts a WebSocket when its session ends, and does not time it.** It records in the log phase, which
+  for an upgraded connection runs at close, so the Console tab's WebSocket panel counts sessions closed; a test
+  socket held open for 80 seconds on AWS mzmon proved it. environmentd counts `/api/experimental/sql` at the
+  upgrade instead. The SQL shell's latency is on the SQL and HTTP API tab, from
+  `mz_time_to_first_row_seconds{application_name="web_console_shell"}`.
+- **Panels that split into series of different sizes use a log axis** (`LOG_BASE` in `mod.rs`): health checks
+  beside API calls, `success` beside `error`, p50 beside p99. The multi-series panels that stay linear are listed,
+  with reasons, in `partitioned_panels_use_a_log_axis`.
+- **The Balancer tab's Autoscaling row renders on detection.** `variable::balancerd_autoscaler` reads
+  `kube_horizontalpodautoscaler_info{scaletargetref_name=~".+-balancerd"}` in the environment's namespace, and the row
+  matches the literal `balancerd`, which an unset variable never contains; a fallback row explains replicas without
+  one. No test install runs an HPA on balancerd, so the queries were checked against Materialize Cloud staging's
+  per-zone balancerd HPAs with the namespace and target name substituted. Resource panels find balancerd by its
+  container name and its CPU request, since balancerd usually has no CPU limit, which is also what an HPA's CPU
+  utilization target is a share of.
+- **The console seeds its rare series at 0.** `metrics.js` creates a `location` and `status` pair on its first
+  request, and a counter that first appears at 1 never counts that 1 in `rate()`. So each scrape adds `500`, `502`,
+  `503`, and `504` for every location, every histogram, and `api` `101` at 0 (MaterializeInc/materialize#40193,
+  `6d755f5795`). Other statuses still lose their first count on each pod, as does any request before a pod's first
+  scrape.
+- **Every `mz_http_*` query reads `source="external"`**, the listener balancerd forwards to; a test holds it. The
+  operator's calls and the metric scrapes would swamp the client traffic otherwise.
+- **The console's error feed drops health checks first.** On the AWS reference install the load balancer's checks
+  are nearly every console line, and half are answered `400`.
+- **The Load Balancer tab reuses `infra-net`'s pull detection.** Its provider rows render on `$cloudNetworkPullList`
+  with `infra_networking::cloud`'s pull constants, and one fallback. The pulled series carry no environment, so each
+  provider joins back to it differently: AWS by the wrappers' target group names (`<prefix>-<instance>-<pgwire|http|console>`,
+  where `<instance>` is the Materialize resource and so the environment picker's value), GKE by forwarding rule
+  (`a` plus the Service UID's first 31 hex characters, from `kube_service_info`), and Azure by frontend IP against
+  `kube_service_status_load_balancer_ingress`. AKS's Services are `externalTrafficPolicy: Local`, so only nodes
+  running the pod pass the probe.
+- **The console scrape is `podmonitor-console.yaml`**, beside `podmonitor-balancerd.yaml`. Both are PodMonitors
+  because neither Service exposes `internal-http`, and an operator that predates the console's port yields no target.
 
 ## Notes on the trickier panels
 

@@ -1,0 +1,1371 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# The front door: balancerd, the console, and the APIs behind them.
+
+description: |
+  How users reach a Materialize environment, measured at each hop.
+
+  Every SQL client, every HTTP API call and every console session enters
+  through **balancerd**. It terminates TLS for both pgwire and HTTPS, chooses
+  where to send each connection, and proxies it to environmentd. The **console** is a static web
+  app served by nginx, which also forwards the app's `/api` calls to balancerd.
+  Behind both sits **environmentd**, which runs the SQL and HTTP APIs
+  themselves.
+
+  ## Label families
+
+  * `source` on `mz_balancer_*` is the listener: `pgwire` (SQL clients) or
+    `https` (the HTTP API, the console's API calls, and WebSockets).
+  * `status` on `mz_balancer_connection_status` is `error` when balancerd or
+    the environmentd behind it could not serve the connection: a refusal at
+    the connection limit, an unreachable environmentd, or a failed lookup. A
+    client that hangs up, or sends a bad password, is the client's outcome
+    and counts as `success`. Materialize versions before that change counted
+    a client hangup as `error` and a refusal as `success`, so the ratio means
+    nothing on them.
+  * `location` on `mz_console_*` is the nginx block that served a request:
+    `app` (the page itself), `static` (scripts, styles and images), `api`
+    (calls forwarded to balancerd), `oauth_metadata`, or `other` for a
+    request rejected before reaching one.
+  * `source` on environmentd's `mz_http_*` is the listener: `external` is
+    the one balancerd forwards to, `internal` serves the operator, and
+    `metrics` serves the scrapes.
+
+  ## Resources and autoscaling
+
+  The Balancer tab's resource and autoscaler panels read the kubelet's
+  container metrics and kube-state-metrics, scoped to the environment's
+  namespace. They find balancerd by its container's name, `balancerd`, and
+  by its Deployment's, `<resource id>-balancerd`.
+
+  ## Easy to get wrong
+
+  * balancerd counts a connection when it **closes**, so a SQL session that
+    stays open for an hour reaches the rates an hour late. Open connections
+    are the live view.
+  * nginx likewise counts a WebSocket (status `101`) when its session
+    **ends**, and does not time it, because its duration is the length of
+    the session. The console's SQL shell is one, so its latency is
+    on the SQL and HTTP API tab instead.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- Overview: verdict ------------------------------------------------------
+  - id: materialize.ingress.overview.balancer_error_ratio
+    stability: experimental
+    description:
+      summary: |
+        The share of SQL and HTTPS connections balancerd could not serve.
+      nominal: |
+        Zero. A client giving up, or typing the wrong password, does not
+        count.
+      degraded: |
+        Connections are failing on the server side: environmentd is down or
+        restarting, balancerd is at its connection limit, or it cannot look
+        up where to send them. Users see `upstream server not available` or a
+        connection reset.
+      notes: |
+        _Balancer -> Refused Connections_ separates the connection limit from
+        the rest, and _Balancer -> Warnings and Errors_ has the reason for each
+        one.
+    promQL: |
+      (
+        sum(rate(mz_balancer_connection_status{%%{mzEnvironmentFilter}, status="error"}%%{interval}))
+        /
+        sum(rate(mz_balancer_connection_status{%%{mzEnvironmentFilter}}%%{interval}))
+      ) >= 0
+      or
+      0 * sum(rate(mz_balancer_connection_status{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.ingress.overview.connection_setup_p99
+    stability: experimental
+    description:
+      summary: |
+        How long the slowest 1% of new connections wait before balancerd
+        starts passing their traffic to environmentd.
+      nominal: |
+        Steady. It includes the client's TLS handshake, so clients far from
+        the cluster take longer than clients inside it.
+      degraded: |
+        Users wait this long before their first query even starts. Compare
+        with _Balancer -> Time to Reach environmentd_: when that is slow too,
+        environmentd is slow to accept connections; when it is not, the time
+        goes to TLS or to the lookup.
+      notes: |
+        Counts only connections that reached environmentd. Connections that
+        failed are on _Connection Error Ratio_.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le) (
+          rate(mz_balancer_connection_setup_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+        )
+      ) >= 0
+
+  - id: materialize.ingress.overview.accepting
+    stability: experimental
+    description:
+      summary: |
+        Whether every balancerd pod is taking new connections.
+      nominal: |
+        Accepting. Without connection watermarks configured, balancerd always
+        is.
+      degraded: |
+        At least one balancerd pod has passed its high watermark and asked
+        the load balancer to stop sending it new connections. Its existing
+        connections carry on. The other pods take the new ones, so this is
+        capacity running short rather than an outage, unless every pod is out.
+      notes: |
+        _Balancer -> Open Connections Against the Limit_ shows which pod, and
+        how close the rest are.
+    promQL: |
+      min(mz_balancer_connection_accepting{%%{mzEnvironmentFilter}})
+
+  - id: materialize.ingress.overview.console_error_ratio
+    stability: experimental
+    description:
+      summary: |
+        The share of console requests that ended in a server error (`5xx`).
+      nominal: |
+        Zero.
+      degraded: |
+        `502` and `504` from the `api` location mean nginx could not reach
+        balancerd, or balancerd could not reach environmentd: the console
+        loads but cannot run queries. Errors from `app` or `static` mean the
+        console itself is broken.
+      notes: |
+        _Console -> Server Errors by Location_ breaks this down by location
+        and status code.
+    promQL: |
+      (
+        sum(rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}, status=~"5.."}%%{interval}))
+        /
+        sum(rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}}%%{interval}))
+      ) >= 0
+      or
+      0 * sum(rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.ingress.overview.console_page_p99
+    stability: experimental
+    description:
+      summary: |
+        How long the slowest 1% of requests for the console's page and its
+        scripts take to serve.
+      nominal: |
+        Milliseconds. These are static files.
+      degraded: |
+        The console pod itself is struggling: CPU-throttled, or short of
+        memory. API calls are left out because they include the time a query
+        takes to run.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le) (
+          rate(mz_console_http_request_duration_seconds_bucket{%%{mzEnvironmentFilter}, location=~"app|static"}%%{interval})
+        )
+      ) >= 0
+
+  - id: materialize.ingress.overview.open_connections
+    stability: experimental
+    description:
+      summary: |
+        Connections balancerd is passing to environmentd right now, SQL and
+        HTTPS together.
+      nominal: |
+        Whatever the environment's clients keep open. Connection poolers and
+        BI tools hold steady numbers.
+      notes: |
+        Every open connection is also a session on environmentd. See
+        _SQL and HTTP API -> Open Sessions_.
+    promQL: |
+      sum(mz_balancer_connection_active{%%{mzEnvironmentFilter}})
+
+  - id: materialize.ingress.overview.console_request_rate
+    stability: experimental
+    description:
+      summary: |
+        Requests the console serves per second.
+      nominal: |
+        Bursts while someone has the console open, and close to zero
+        otherwise. Health checks are not counted.
+    promQL: |
+      sum(rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}}%%{interval}))
+
+  # --- Overview: rate, errors, latency ----------------------------------------
+  - id: materialize.ingress.overview.connections_by_protocol
+    stability: experimental
+    description:
+      summary: |
+        Connections balancerd finished handling per second, by protocol.
+      nominal: |
+        `pgwire` follows the SQL clients' connection habits: a connection
+        pool reconnects rarely, a script reconnects for every query. `https`
+        counts each HTTP API call and each console request that reaches the
+        API.
+      notes: |
+        Counted when a connection closes, so a long session shows up when it
+        ends rather than when it starts.
+    promQL: |
+      sum by (source) (rate(mz_balancer_connection_status{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.ingress.overview.console_requests_by_location
+    stability: experimental
+    description:
+      summary: |
+        Console requests per second, by what they asked for.
+      nominal: |
+        `static` dominates while the page loads, and `api` while someone uses
+        it.
+    promQL: |
+      sum by (location) (rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.ingress.overview.balancer_errors_by_protocol
+    stability: experimental
+    description:
+      summary: |
+        Connections per second that balancerd could not serve, by protocol.
+      nominal: Zero.
+      degraded: |
+        Both protocols at once points at environmentd or at balancerd's own
+        capacity. `https` alone, while SQL clients are fine, is usually a
+        lookup failing for the HTTP listener.
+    promQL: |
+      sum by (source) (rate(mz_balancer_connection_status{%%{mzEnvironmentFilter}, status="error"}%%{interval}))
+
+  - id: materialize.ingress.overview.console_errors_by_location
+    stability: experimental
+    description:
+      summary: |
+        Console requests per second that ended in a server error, by
+        location.
+      nominal: Zero.
+      degraded: |
+        `api` alone means the hop to balancerd is failing while the console
+        itself is up.
+    promQL: |
+      sum by (location) (rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}, status=~"5.."}%%{interval}))
+
+  - id: materialize.ingress.overview.connection_setup
+    stability: experimental
+    description:
+      summary: |
+        How long new connections wait before balancerd passes them to
+        environmentd, by protocol.
+      nominal: |
+        Steady. It includes each client's TLS handshake, so it follows how
+        far away the clients are.
+      degraded: |
+        A rise across both protocols points at environmentd or at balancerd's
+        own CPU. _Balancer -> Connection Setup Quantiles_ has more of them.
+    promQL:
+      - |
+        histogram_quantile(0.50,
+          sum by (le, source) (
+            rate(mz_balancer_connection_setup_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        ) >= 0
+      - |
+        histogram_quantile(0.99,
+          sum by (le, source) (
+            rate(mz_balancer_connection_setup_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        ) >= 0
+
+  - id: materialize.ingress.overview.console_response_time
+    stability: experimental
+    description:
+      summary: |
+        How long the slowest 1% of console requests take, by location.
+      nominal: |
+        Milliseconds for `app` and `static`. `api` includes the time each
+        query takes to run, so it follows the workload.
+      degraded: |
+        `app` and `static` rising together means the console pod is
+        struggling. `api` rising alone is the queries, or the hops behind the
+        console: compare with _Connection Setup Time_.
+      notes: |
+        WebSocket sessions, such as the SQL shell, are not timed.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le, location) (
+          rate(mz_console_http_request_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+        )
+      ) >= 0
+
+  # --- Balancer: connections --------------------------------------------------
+  - id: materialize.ingress.balancer.outcomes
+    stability: experimental
+    description:
+      summary: |
+        Connections balancerd finished handling per second, by protocol and
+        outcome.
+      nominal: |
+        All `success`.
+      degraded: |
+        `error` is a connection balancerd or environmentd could not serve.
+        The client's own failures, such as a wrong password or a dropped
+        network, are `success` here.
+    promQL: |
+      sum by (source, status) (rate(mz_balancer_connection_status{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.ingress.balancer.open_by_pod
+    stability: experimental
+    description:
+      summary: |
+        Open connections on each balancerd pod.
+      nominal: |
+        Roughly even. The load balancer in front spreads new connections
+        across the pods.
+      degraded: |
+        One pod holding most of them is normal for a while after a pod
+        restarts, because existing connections stay where they are. A
+        lasting imbalance usually means the load balancer is not routing to
+        every pod.
+    promQL: |
+      sum by (pod) (mz_balancer_connection_active{%%{mzEnvironmentFilter}})
+
+  - id: materialize.ingress.balancer.waiting_for_backend
+    stability: experimental
+    description:
+      summary: |
+        Connections balancerd has accepted but not yet sent anywhere, by
+        protocol.
+      nominal: |
+        Zero or close to it. Each connection spends a few milliseconds here.
+      degraded: |
+        Connections are stuck during setup: waiting on a slow client's
+        startup message, or on a lookup. Connections that stay too long are
+        closed and counted on _Refused Connections_.
+    promQL: |
+      sum by (source) (mz_balancer_pre_resolved_connection_active{%%{mzEnvironmentFilter}})
+
+  # --- Balancer: capacity -----------------------------------------------------
+  - id: materialize.ingress.balancer.capacity
+    stability: experimental
+    description:
+      summary: |
+        Each balancerd pod's open connections, against the limits it enforces.
+      nominal: |
+        Well under the high watermark, where one is drawn. Without a limit or
+        watermarks configured, only the pods are drawn.
+      degraded: |
+        A pod at its **high watermark** leaves the load balancer's rotation
+        and takes no new connections until it falls to its **low
+        watermark**. A pod at its **limit** refuses connections outright.
+      notes: |
+        The limit and the watermarks are the same on every pod.
+    promQL:
+      - |
+        sum by (pod) (mz_balancer_connection_active{%%{mzEnvironmentFilter}})
+      - |
+        max(mz_balancer_connection_limit{%%{mzEnvironmentFilter}}) > 0
+      - |
+        max(mz_balancer_connection_high_watermark{%%{mzEnvironmentFilter}}) > 0
+      - |
+        max(mz_balancer_connection_low_watermark{%%{mzEnvironmentFilter}}) > 0
+
+  - id: materialize.ingress.balancer.accepting_by_pod
+    stability: experimental
+    description:
+      summary: |
+        Whether each balancerd pod is in the load balancer's rotation: 1 in,
+        0 out.
+      nominal: |
+        1 everywhere, all the time.
+      degraded: |
+        A pod at 0 passed its high watermark. It keeps its connections and
+        rejoins at its low watermark.
+    promQL: |
+      min by (pod) (mz_balancer_connection_accepting{%%{mzEnvironmentFilter}})
+
+  - id: materialize.ingress.balancer.refused
+    stability: experimental
+    description:
+      summary: |
+        Connections balancerd closed before passing them on, per second, by
+        reason.
+      nominal: Zero for both.
+      degraded: |
+        **Connection limit:** a pod was full and refused the connection. More
+        balancerd replicas, or a higher limit, are the fixes.
+        **Timed out before routing:** a connection did not finish its setup
+        in time. Usually clients that open a connection and send nothing,
+        such as a port scanner or a misconfigured health check.
+    promQL:
+      - |
+        sum(rate(mz_balancer_connection_rejected_total{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum by (source) (rate(mz_balancer_pre_resolved_timeout_total{%%{mzEnvironmentFilter}}%%{interval}))
+
+  # --- Balancer: latency ------------------------------------------------------
+  - id: materialize.ingress.balancer.setup_time
+    stability: experimental
+    description:
+      summary: |
+        How long new connections wait before balancerd passes them to
+        environmentd, by protocol, at three quantiles.
+      nominal: |
+        Steady, with p99 a small multiple of p50.
+      degraded: |
+        A p99 far above p50 is a few slow connections rather than a slow
+        balancerd, often clients on a slow network finishing TLS. Compare
+        with _Time to Reach environmentd_.
+    promQL:
+      - |
+        histogram_quantile(0.50,
+          sum by (le, source) (
+            rate(mz_balancer_connection_setup_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        ) >= 0
+      - |
+        histogram_quantile(0.90,
+          sum by (le, source) (
+            rate(mz_balancer_connection_setup_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        ) >= 0
+      - |
+        histogram_quantile(0.99,
+          sum by (le, source) (
+            rate(mz_balancer_connection_setup_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        ) >= 0
+
+  - id: materialize.ingress.balancer.upstream_connect
+    stability: experimental
+    description:
+      summary: |
+        How long balancerd takes to open its own connection to environmentd,
+        by protocol.
+      nominal: |
+        A small part of the setup time, because both run in the same
+        cluster.
+      degraded: |
+        environmentd is slow to accept connections: busy, starting up, or on
+        an overloaded node. Failed attempts are not timed; they are on
+        _Overview -> Connection Error Ratio_.
+    promQL:
+      - |
+        histogram_quantile(0.50,
+          sum by (le, source) (
+            rate(mz_balancer_upstream_connect_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        ) >= 0
+      - |
+        histogram_quantile(0.99,
+          sum by (le, source) (
+            rate(mz_balancer_upstream_connect_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        ) >= 0
+
+  - id: materialize.ingress.balancer.lifetime
+    stability: experimental
+    description:
+      summary: |
+        How long connections stay open, from accept to close, by protocol.
+      nominal: |
+        Whatever the clients do. HTTP API calls last seconds, and pooled SQL
+        connections last hours.
+      degraded: |
+        A sudden drop for `pgwire` while clients did not change means
+        something is cutting sessions short: an environmentd restart, or a
+        load balancer idle timeout shorter than the clients expect.
+      notes: |
+        Measured from one second up, so connections shorter than that all
+        read as one second.
+    promQL:
+      - |
+        histogram_quantile(0.50,
+          sum by (le, source) (
+            rate(mz_balancer_connection_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        ) >= 0
+      - |
+        histogram_quantile(0.99,
+          sum by (le, source) (
+            rate(mz_balancer_connection_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        ) >= 0
+
+  # --- Balancer: summary ------------------------------------------------------
+  - id: materialize.ingress.balancer.ready_pods
+    stability: experimental
+    description:
+      summary: |
+        balancerd pods passing their readiness check.
+      nominal: |
+        The replica count the Materialize resource, or an autoscaler, asks
+        for.
+      degraded: |
+        Fewer means pods are starting, crashing, or waiting for a node.
+        _Unavailable Pods_ counts the shortfall.
+      notes: |
+        kube-state-metrics reports each Deployment once per replica of its
+        own, so the query keeps one copy.
+    promQL: |
+      sum(
+        max by (namespace, deployment) (
+          kube_deployment_status_replicas_ready{%%{mzEnvironmentNamespaceFilter}, deployment=~".+-balancerd"}
+        )
+      )
+
+  - id: materialize.ingress.balancer.unavailable_pods
+    stability: experimental
+    description:
+      summary: |
+        balancerd pods the Deployment wants that are not available.
+      nominal: |
+        Zero.
+      degraded: |
+        A pod counted here is crashing, failing its readiness check, or
+        waiting for a node. A rollout counts each new pod here until it is
+        ready.
+    promQL: |
+      sum(
+        max by (namespace, deployment) (
+          kube_deployment_status_replicas_unavailable{%%{mzEnvironmentNamespaceFilter}, deployment=~".+-balancerd"}
+        )
+      )
+
+  - id: materialize.ingress.balancer.cpu_of_request
+    stability: experimental
+    description:
+      summary: |
+        CPU balancerd's pods use, as a share of the CPU they request.
+      nominal: |
+        Well under 100%.
+      degraded: |
+        Above 100%, the pods use more than the scheduler set aside for
+        them, so a busy node can starve them. Raise the request in the
+        Materialize resource's `balancerdResourceRequirements`.
+      notes: |
+        A HorizontalPodAutoscaler's CPU utilization target is a share of
+        this same request.
+    promQL: |
+      sum(rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}, container="balancerd"}%%{interval}))
+      /
+      sum(
+        max by (namespace, pod) (
+          kube_pod_container_resource_requests{%%{mzEnvironmentNamespaceFilter}, container="balancerd", resource="cpu"}
+        )
+      )
+
+  - id: materialize.ingress.balancer.memory_of_limit
+    stability: experimental
+    description:
+      summary: |
+        Memory the busiest balancerd pod uses, as a share of its limit.
+      nominal: |
+        Well under 100%.
+      unhealthy: |
+        A pod that reaches its limit is OOM-killed, and every connection it
+        holds drops. Raise the limit in the Materialize resource's
+        `balancerdResourceRequirements`.
+      notes: |
+        Working set. Empty when balancerd has no memory limit.
+    promQL: |
+      max(
+        max by (namespace, pod) (container_memory_working_set_bytes{%%{cAdvisorFilter}, container="balancerd"})
+        /
+        max by (namespace, pod) (container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container="balancerd"} > 0)
+      )
+
+  - id: materialize.ingress.balancer.since_restart
+    stability: experimental
+    description:
+      summary: |
+        Time since the newest balancerd container started.
+      nominal: |
+        Hours to days, or as long as it has been since the last rollout.
+      degraded: |
+        Minutes means a pod just restarted or was replaced, and the
+        connections it held dropped. _Balancer -> Balancer Logs_ and the
+        environment's events say why.
+    promQL: |
+      time() - max(container_start_time_seconds{%%{cAdvisorFilter}, container="balancerd"})
+    instant: true
+
+  # --- Balancer: resources ----------------------------------------------------
+  - id: materialize.ingress.balancer.cpu_by_pod
+    stability: experimental
+    description:
+      summary: |
+        CPU each balancerd pod uses, in cores, against the CPU each one
+        requests.
+      nominal: |
+        Below the request, and roughly even across pods.
+      degraded: |
+        One pod well above the others is carrying more connections. Compare
+        _Open Connections by Pod_.
+    promQL:
+      - |
+        sum by (pod) (rate(container_cpu_usage_seconds_total{%%{cAdvisorFilter}, container="balancerd"}%%{interval}))
+      - |
+        max(
+          max by (namespace, pod) (
+            kube_pod_container_resource_requests{%%{mzEnvironmentNamespaceFilter}, container="balancerd", resource="cpu"}
+          )
+        )
+
+  - id: materialize.ingress.balancer.memory_by_pod
+    stability: experimental
+    description:
+      summary: |
+        Memory each balancerd pod uses, against its limit.
+      nominal: |
+        Flat, and well below the limit.
+      unhealthy: |
+        Steady growth toward the limit ends in an OOM kill, which drops the
+        pod's connections.
+      notes: |
+        Working set.
+    promQL:
+      - |
+        max by (pod) (container_memory_working_set_bytes{%%{cAdvisorFilter}, container="balancerd"})
+      - |
+        max(container_spec_memory_limit_bytes{%%{cAdvisorFilter}, container="balancerd"} > 0)
+
+  - id: materialize.ingress.balancer.cpu_throttling
+    stability: experimental
+    description:
+      summary: |
+        Share of each balancerd pod's CPU periods in which the kernel held
+        it back at its CPU limit.
+      nominal: |
+        Zero.
+      degraded: |
+        A throttled pod delays every connection it carries. Compare
+        _Connection Setup Quantiles_, and raise or remove the CPU limit in
+        the Materialize resource's `balancerdResourceRequirements`.
+      notes: |
+        Empty when balancerd has no CPU limit, because nothing throttles it.
+    promQL: |
+      sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{%%{cAdvisorFilter}, container="balancerd"}%%{interval}))
+      /
+      sum by (pod) (rate(container_cpu_cfs_periods_total{%%{cAdvisorFilter}, container="balancerd"}%%{interval}))
+
+  # --- Balancer: autoscaling --------------------------------------------------
+  # Every query keeps only the autoscaler whose target is balancerd's
+  # Deployment, which the operator names `<resource id>-balancerd`.
+  - id: materialize.ingress.balancer.autoscaler.replicas
+    stability: experimental
+    description:
+      summary: |
+        The replicas balancerd's HorizontalPodAutoscaler runs and wants,
+        between the bounds it scales within.
+      nominal: |
+        Current follows desired, between the minimum and the maximum.
+      degraded: |
+        Desired above current is a scale-up under way, or one whose new
+        pods cannot be scheduled. Current at the maximum cannot grow any
+        further: raise the maximum, or each pod's capacity.
+    promQL:
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas{%%{mzEnvironmentNamespaceFilter}})
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_desired_replicas{%%{mzEnvironmentNamespaceFilter}})
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_min_replicas{%%{mzEnvironmentNamespaceFilter}})
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas{%%{mzEnvironmentNamespaceFilter}})
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+
+  - id: materialize.ingress.balancer.autoscaler.metrics
+    stability: experimental
+    description:
+      summary: |
+        Each metric balancerd's autoscaler scales on, as a share of its
+        target.
+      nominal: |
+        Below 100% while load is steady.
+      degraded: |
+        Well above 100%, the autoscaler adds pods until it reaches its
+        maximum. A metric that stays above 100% at the maximum is load the
+        pods cannot absorb.
+      notes: |
+        A utilization target is a share of each pod's request, so the CPU
+        line is _CPU vs Request_ measured against the target.
+    promQL: |
+      (
+        max by (namespace, horizontalpodautoscaler, metric_name, metric_target_type) (
+          kube_horizontalpodautoscaler_status_target_metric{%%{mzEnvironmentNamespaceFilter}}
+        )
+        / on (namespace, horizontalpodautoscaler, metric_name, metric_target_type)
+        max by (namespace, horizontalpodautoscaler, metric_name, metric_target_type) (
+          kube_horizontalpodautoscaler_spec_target_metric{%%{mzEnvironmentNamespaceFilter}} > 0
+        )
+      )
+      and on (namespace, horizontalpodautoscaler)
+      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+
+  - id: materialize.ingress.balancer.autoscaler.conditions
+    stability: experimental
+    description:
+      summary: |
+        Whether balancerd's autoscaler is at its maximum, cannot read its
+        metrics, or cannot scale. Each line is 1 while it holds.
+      nominal: |
+        All three at 0.
+      unhealthy: |
+        `cannot read its metrics` holds the pods at their current count. The
+        autoscaler cannot see the metric it scales on, usually because
+        metrics-server or a custom metrics adapter is down, or because the
+        pods set no CPU request. `cannot scale` means it cannot change the
+        Deployment at all.
+    promQL:
+      - |
+        (
+          max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas{%%{mzEnvironmentNamespaceFilter}})
+          >= bool
+          max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas{%%{mzEnvironmentNamespaceFilter}})
+        )
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (
+          kube_horizontalpodautoscaler_status_condition{%%{mzEnvironmentNamespaceFilter}, condition="ScalingActive", status="false"}
+        )
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+      - |
+        max by (namespace, horizontalpodautoscaler) (
+          kube_horizontalpodautoscaler_status_condition{%%{mzEnvironmentNamespaceFilter}, condition="AbleToScale", status="false"}
+        )
+        and on (namespace, horizontalpodautoscaler)
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_info{%%{mzEnvironmentNamespaceFilter}, scaletargetref_name=~".+-balancerd"})
+
+  - id: materialize.ingress.balancer.autoscaler.events
+    stability: experimental
+    description:
+      summary: |
+        What the environment's HorizontalPodAutoscalers did and why, newest
+        first.
+      nominal: |
+        `SuccessfulRescale` lines naming the metric that moved the replica
+        count.
+      degraded: |
+        `FailedGetResourceMetric` or `FailedComputeMetricsReplicas` is an
+        autoscaler that could not read its metric. A few while a pod starts
+        are normal; a steady stream is not.
+    logQL: |
+      {job="loki.source.kubernetes_events", %%{mzEnvironmentNamespaceFilter}}
+        | reportingcontroller="horizontal-pod-autoscaler"
+        | line_format "{{.reason}} {{.name}} — {{.msg}}"
+
+  # --- Balancer: logs ---------------------------------------------------------
+  - id: materialize.ingress.balancer.logs.warnings
+    stability: experimental
+    description:
+      summary: |
+        What balancerd logged at warning level or above.
+      nominal: |
+        A shutdown notice each time a pod is replaced.
+      degraded: |
+        `failed to connect to upstream server` is environmentd refusing or
+        not answering. Lines about the connection limit or the watermarks
+        mark a pod running out of room.
+    logQL: |
+      {
+        %%{mzEnvironmentNamespaceFilter},
+        app="balancerd",
+        level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+      }
+
+  # --- Console: traffic -------------------------------------------------------
+  - id: materialize.ingress.console.by_status_class
+    stability: experimental
+    description:
+      summary: |
+        Console requests per second, by status class.
+      nominal: |
+        Mostly `2xx` and `3xx`. Some `4xx` is normal: a session that expired
+        gets `401` until the user signs in again.
+      degraded: |
+        Any `5xx`. See _Server Errors by Location_.
+    promQL: |
+      sum by (class) (
+        label_replace(
+          rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}}%%{interval}),
+          "class", "${1}xx", "status", "([0-9]).."
+        )
+      )
+
+  - id: materialize.ingress.console.websockets
+    stability: experimental
+    description:
+      summary: |
+        WebSocket sessions through the console that ended, per second, such as
+        the SQL shell.
+      nominal: |
+        One each time someone closes the shell or leaves a page that streams
+        results.
+      notes: |
+        nginx counts a WebSocket when its session ends, so a shell left open
+        for an hour reaches this panel an hour late. environmentd counts one
+        when it opens, as `/api/experimental/sql` on _SQL and HTTP API -> HTTP
+        Requests by Path_.
+
+        Each one is also an `https` connection on balancerd, open for as long
+        as the session.
+    promQL: |
+      sum(rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}, status="101"}%%{interval}))
+
+  - id: materialize.ingress.console.connections
+    stability: experimental
+    description:
+      summary: |
+        Client connections nginx holds open, by what each is doing.
+      nominal: |
+        `waiting` (idle keep-alive connections) is most of them. `reading`
+        and `writing` are requests in flight.
+      notes: |
+        `active` is the total of the other three.
+    promQL: |
+      sum by (state) (mz_console_http_connections{%%{mzEnvironmentFilter}})
+
+  # --- Console: errors --------------------------------------------------------
+  - id: materialize.ingress.console.server_errors
+    stability: experimental
+    description:
+      summary: |
+        Console requests per second that ended in a server error, by location
+        and status code.
+      nominal: Zero.
+      degraded: |
+        `502` and `504` from `api`: nginx could not reach balancerd, or it
+        timed out. Check _Overview -> Connection Error Ratio_ next. `5xx` from
+        `app` or `static` is the console pod itself.
+    promQL: |
+      sum by (location, status) (rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}, status=~"5.."}%%{interval}))
+
+  - id: materialize.ingress.console.client_errors
+    stability: experimental
+    description:
+      summary: |
+        Console requests per second rejected as the client's mistake, by
+        location and status code.
+      nominal: |
+        Low and bursty. `401` from `api` is an expired sign-in, and `404` is
+        a stale link or a bookmark.
+      degraded: |
+        A steady `401` stream means something keeps calling the API with
+        credentials it does not have, such as a script or a forgotten
+        browser tab.
+    promQL: |
+      sum by (location, status) (rate(mz_console_http_requests_total{%%{mzEnvironmentFilter}, status=~"4.."}%%{interval}))
+
+  # --- Console: latency -------------------------------------------------------
+  - id: materialize.ingress.console.response_p50
+    stability: experimental
+    description:
+      summary: |
+        The median time to serve a console request, by location.
+      nominal: |
+        Milliseconds for `app` and `static`. `api` is the median query.
+    promQL: |
+      histogram_quantile(0.50,
+        sum by (le, location) (
+          rate(mz_console_http_request_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+        )
+      ) >= 0
+
+  - id: materialize.ingress.console.response_p99
+    stability: experimental
+    description:
+      summary: |
+        The time the slowest 1% of console requests take, by location.
+      nominal: |
+        Milliseconds for `app` and `static`. `api` follows the slowest
+        queries users run from the console.
+      degraded: |
+        `app` and `static` slow together is the console pod: check its CPU
+        on the Materialize Environment Overview dashboard, under _Kubernetes
+        Workloads_.
+      notes: |
+        Measured in buckets up to 10 seconds, so anything slower reads as 10.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le, location) (
+          rate(mz_console_http_request_duration_seconds_bucket{%%{mzEnvironmentFilter}}%%{interval})
+        )
+      ) >= 0
+
+  # --- Console: logs ----------------------------------------------------------
+  - id: materialize.ingress.console.logs.errors
+    stability: experimental
+    description:
+      summary: |
+        Console requests that ended in a server error, and what nginx logged
+        about them.
+      nominal: Empty.
+      degraded: |
+        Access lines show the request and its status. nginx's own `[error]`
+        lines follow with the reason, such as `connect() failed` or
+        `upstream timed out` for the hop to balancerd.
+      notes: |
+        Load balancer and Kubernetes health checks are left out.
+    logQL: |
+      {%%{mzEnvironmentNamespaceFilter}, app="console"}
+        != "HealthChecker"
+        != "kube-probe"
+        |~ "\" 5[0-9][0-9] |\\[(error|crit|alert|emerg)\\]"
+
+  # --- SQL and HTTP API -------------------------------------------------------
+  - id: materialize.ingress.api.http_requests
+    stability: experimental
+    description:
+      summary: |
+        HTTP API requests environmentd served per second, by path.
+      nominal: |
+        `/api/sql` is SQL over HTTP, from the console and from HTTP clients.
+        `/api/experimental/sql` is a WebSocket upgrade, one per streaming
+        session.
+      notes: |
+        Only requests that arrived through balancerd. The operator's own
+        calls and the metric scrapes are left out.
+    promQL: |
+      sum by (path) (rate(mz_http_requests_total{%%{mzEnvironmentFilter}, source="external"}%%{interval}))
+
+  - id: materialize.ingress.api.http_errors
+    stability: experimental
+    description:
+      summary: |
+        HTTP API requests per second that environmentd answered with a server
+        error, by path and status code.
+      nominal: Zero.
+      degraded: |
+        environmentd itself failed the request. A query error is not a
+        server error: `/api/sql` reports those inside a `200` response.
+    promQL: |
+      sum by (path, status) (rate(mz_http_requests_total{%%{mzEnvironmentFilter}, source="external", status=~"5.."}%%{interval}))
+
+  - id: materialize.ingress.api.http_response_p99
+    stability: experimental
+    description:
+      summary: |
+        The time the slowest 1% of HTTP API requests take, by path.
+      nominal: |
+        For `/api/sql`, the slowest queries clients run over HTTP.
+      notes: |
+        WebSocket upgrades are left out: their time is the handshake, not the
+        session.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le, path) (
+          rate(mz_http_request_duration_seconds_bucket{%%{mzEnvironmentFilter}, source="external", path!="/api/experimental/sql"}%%{interval})
+        )
+      ) >= 0
+
+  - id: materialize.ingress.api.pgwire_connections
+    stability: experimental
+    description:
+      summary: |
+        SQL connections environmentd finished per second, by outcome, as
+        environmentd counts them.
+      nominal: |
+        Close to balancerd's `pgwire` rate on _Balancer -> Connection Outcomes_.
+        Each SQL connection is one connection at each hop.
+      notes: |
+        environmentd's `error` is any connection that ended in an error,
+        whichever side caused it, so it does not match balancerd's.
+    promQL: |
+      sum by (status) (rate(mz_connection_status{%%{mzEnvironmentFilter}, source="external"}%%{interval}))
+
+  - id: materialize.ingress.api.console_commands
+    stability: experimental
+    description:
+      summary: |
+        SQL commands the console ran per second, by part of the console and
+        outcome.
+      nominal: |
+        `web_console` is the console's own queries, which it runs to draw
+        every page. `web_console_shell` is what users type into the SQL
+        shell.
+      degraded: |
+        `error` from `web_console` is the console failing to load data, which
+        users see as empty or broken pages. `error` from the shell is usually
+        users' own SQL errors.
+    promQL: |
+      sum by (application_name, status) (
+        rate(mz_adapter_commands{%%{mzEnvironmentFilter}, application_name=~"web_console|web_console_shell"}%%{interval})
+      )
+
+  - id: materialize.ingress.api.console_query_latency
+    stability: experimental
+    description:
+      summary: |
+        How long the slowest 1% of the console's queries take to return their
+        first row.
+      nominal: |
+        Steady for `web_console`, whose queries read Materialize's catalog.
+        The shell follows whatever users run.
+      degraded: |
+        Slow `web_console` queries make every console page slow. They run on
+        the `mz_catalog_server` cluster, so check its CPU first.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le, application_name) (
+          rate(mz_time_to_first_row_seconds_bucket{%%{mzEnvironmentFilter}, application_name=~"web_console|web_console_shell"}%%{interval})
+        )
+      ) >= 0
+
+  # --- Load balancer -----------------------------------------------------------
+  #
+  # The cloud load balancer in front of balancerd and the console, from the
+  # gateway's provider pulls (`infra-networking.yaml` reads the same families
+  # for every load balancer in the cluster, and its header explains the
+  # `last_over_time` windows and the per-minute arithmetic). Those series carry
+  # no environment, so each provider is tied back to this one its own way:
+  #
+  # * AWS: the Terraform wrappers name target groups
+  #   `<prefix>-<instance>-<pgwire|http|console>`, and `<instance>` is the
+  #   Materialize resource's name, which is the environment picker's value. A
+  #   load balancer's own series are kept when one of those target groups is
+  #   pulled beside it.
+  # * Google Cloud: GKE names a Service's forwarding rule `a` plus the first 31
+  #   characters of the Service's UID without dashes, so `kube_service_info` in
+  #   the environment's namespace maps each rule to its Service.
+  # * Azure: each series names its frontend IP, which is the address
+  #   Kubernetes gave the environment's LoadBalancer Service.
+
+  - id: materialize.ingress.lb.addresses
+    stability: experimental
+    instant: true
+    description:
+      summary: |
+        The environment's LoadBalancer Services, and the address each was
+        given.
+      nominal: |
+        One for balancerd and one for the console, where the deployment
+        exposes them through Kubernetes. The AWS Terraform wrappers make their
+        Network Load Balancer in Terraform instead, so there are none on those
+        installs.
+      degraded: |
+        A Service with no address has not been given a load balancer yet.
+        That is normal for a minute after it is created, and a fault after
+        several: subnets missing their tags, no free public addresses, or a
+        controller without permission.
+    promQL: |
+      max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}})
+
+  - id: materialize.ingress.lb.aws.healthy_targets
+    stability: experimental
+    description:
+      summary: |
+        balancerd and console pods passing the Network Load Balancer's health
+        check, per target group, at the worst moment of the last five minutes.
+      nominal: |
+        One target per pod: the balancerd pods in `pgwire` and `http`, and the
+        console pods in `console`.
+      unhealthy: |
+        **Zero is a target group the load balancer has nowhere to send.** An
+        NLB whose targets are all unhealthy sends to all of them anyway, so
+        connections may still work, but a check that never passes means the
+        check itself is wrong: its port or path, or a security group that
+        does not admit it.
+      notes: |
+        CloudWatch publishes health only per target group, so this needs the
+        target groups pulled beside the load balancer.
+    promQL: |
+      min by (target_group) (
+        label_replace(
+          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+        )
+      )
+
+  - id: materialize.ingress.lb.aws.unhealthy_targets
+    stability: experimental
+    description:
+      summary: |
+        balancerd and console pods failing the Network Load Balancer's health
+        check, per target group, at the worst moment of the last five minutes.
+      nominal: Zero.
+      degraded: |
+        A pod here that Kubernetes reports Ready is one the load balancer cannot
+        check: usually the network between them, or a check aimed at the wrong
+        port. balancerd fails its check on purpose while it is over its high
+        watermark; _Balancer -> Taking New Connections by Pod_ says when.
+    promQL: |
+      max by (target_group) (
+        label_replace(
+          last_over_time(aws_networkelb_un_healthy_host_count_maximum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+        )
+      )
+
+  - id: materialize.ingress.lb.aws.open_connections
+    stability: experimental
+    description:
+      summary: |
+        Connections open through the Network Load Balancer in front of this
+        environment, averaged over the newest minute.
+      nominal: |
+        Close to balancerd's _Overview -> Open Connections_, plus any console
+        connections.
+      notes: |
+        Kept only for a load balancer whose target groups are pulled too,
+        because those are what name the environment.
+    promQL: |
+      max by (load_balancer) (
+        label_replace(
+          last_over_time(aws_networkelb_active_flow_count_average[15m])
+          and on (dimension_LoadBalancer)
+          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+        )
+      )
+
+  - id: materialize.ingress.lb.aws.new_connections
+    stability: experimental
+    description:
+      summary: |
+        New connections per second through the Network Load Balancer, over
+        the newest whole minute CloudWatch has published.
+      nominal: |
+        The rate clients connect at. Health checks are not counted.
+      degraded: |
+        Connections arriving here and missing from balancerd's
+        _Balancer -> Connection Outcomes_ are lost between the two.
+    promQL: |
+      max by (load_balancer) (
+        label_replace(
+          last_over_time(aws_networkelb_new_flow_count_sum[15m])
+          and on (dimension_LoadBalancer)
+          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+        )
+      ) / 60
+
+  - id: materialize.ingress.lb.aws.throughput
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second through the Network Load Balancer, both directions
+        together, over the newest whole minute.
+      nominal: |
+        Follows query results: most of it is data leaving Materialize.
+    promQL: |
+      max by (load_balancer) (
+        label_replace(
+          last_over_time(aws_networkelb_processed_bytes_sum[15m])
+          and on (dimension_LoadBalancer)
+          last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+        )
+      ) / 60
+
+  - id: materialize.ingress.lb.aws.resets
+    stability: experimental
+    description:
+      summary: |
+        TCP resets through the Network Load Balancer in the last five minutes,
+        by which side sent them.
+      nominal: |
+        Some from clients, which close connections abruptly all the time. Few
+        or none from targets or the load balancer.
+      degraded: |
+        **Target** resets come from balancerd or the console: a pod restarting,
+        or balancerd refusing a connection. **Load balancer** resets are the
+        NLB itself: a connection idle past its timeout, or a target that went
+        away. A pooled SQL client that drops its connections every 350 seconds
+        is meeting the NLB's idle timeout, and needs TCP keepalives.
+      notes: |
+        Five-minute totals that end at the pull, so read them as "any", not
+        "how many".
+    promQL:
+      - |
+        max by (load_balancer) (
+          label_replace(
+            last_over_time(aws_networkelb_tcp_client_reset_count_sum[15m])
+            and on (dimension_LoadBalancer)
+            last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+            "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+          )
+        )
+      - |
+        max by (load_balancer) (
+          label_replace(
+            last_over_time(aws_networkelb_tcp_target_reset_count_sum[15m])
+            and on (dimension_LoadBalancer)
+            last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+            "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+          )
+        )
+      - |
+        max by (load_balancer) (
+          label_replace(
+            last_over_time(aws_networkelb_tcp_elb_reset_count_sum[15m])
+            and on (dimension_LoadBalancer)
+            last_over_time(aws_networkelb_healthy_host_count_minimum{dimension_TargetGroup=~"targetgroup/.+-${environmentNameList}-(pgwire|http|console)/.+"}[15m]),
+            "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+          )
+        )
+
+  - id: materialize.ingress.lb.gcp.packets
+    stability: experimental
+    description:
+      summary: |
+        Packets per second through each of the environment's load balancers,
+        by Service and direction.
+      nominal: |
+        Follows client traffic. Cloud Monitoring publishes no health or
+        connection counts for these load balancers, so traffic is the whole
+        of the provider's view.
+      degraded: |
+        Packets arriving with none leaving usually means the load balancer
+        has no backend to send them to: check that the balancerd and console
+        pods are Ready.
+      notes: |
+        Cloud Monitoring publishes a minute only when it carried traffic, so
+        an idle load balancer has gaps rather than zeros.
+    promQL:
+      - |
+        sum by (service) (
+          (
+            (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[10m])
+            or
+            (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[10m])
+          )
+          * on (forwarding_rule_name) group_left (service)
+          label_replace(
+            max by (service, uid) (kube_service_info{%%{mzEnvironmentNamespaceFilter}}),
+            "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+          )
+        ) / 60
+      - |
+        sum by (service) (
+          (
+            (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[10m])
+            or
+            (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[10m])
+          )
+          * on (forwarding_rule_name) group_left (service)
+          label_replace(
+            max by (service, uid) (kube_service_info{%%{mzEnvironmentNamespaceFilter}}),
+            "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+          )
+        ) / 60
+
+  - id: materialize.ingress.lb.gcp.throughput
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second through each of the environment's load balancers, by
+        Service and direction.
+      nominal: |
+        Follows query results: most of it leaves Materialize.
+      notes: |
+        As with packets, an idle minute is a gap rather than a zero.
+    promQL:
+      - |
+        sum by (service) (
+          (
+            (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[10m])
+            or
+            (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[10m])
+          )
+          * on (forwarding_rule_name) group_left (service)
+          label_replace(
+            max by (service, uid) (kube_service_info{%%{mzEnvironmentNamespaceFilter}}),
+            "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+          )
+        ) / 60
+      - |
+        sum by (service) (
+          (
+            (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[10m])
+            or
+            (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[10m])
+          )
+          * on (forwarding_rule_name) group_left (service)
+          label_replace(
+            max by (service, uid) (kube_service_info{%%{mzEnvironmentNamespaceFilter}}),
+            "forwarding_rule_name", "a$1$2$3$4$5", "uid", "(.{8})-(.{4})-(.{4})-(.{4})-(.{11}).*"
+          )
+        ) / 60
+
+  - id: materialize.ingress.lb.azure.backends
+    stability: experimental
+    description:
+      summary: |
+        Backends behind each of the environment's load balancer frontends, and
+        how many passed every health probe in the last five minutes.
+      nominal: |
+        Healthy equals the number of nodes running that Service's pods, and
+        total is every node in the pool. An AKS load balancer's backends are
+        nodes, and the Materialize Services set `externalTrafficPolicy: Local`,
+        so a node passes the probe only while it runs a balancerd or console
+        pod.
+      degraded: |
+        Fewer healthy nodes than pods is a node the load balancer cannot
+        probe. Zero healthy is a frontend with nowhere to send.
+    promQL:
+      - |
+        sum by (service) (
+          (last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m]) == bool 100)
+          * on (dimensionFrontendIPAddress) group_left (service)
+          label_replace(
+            max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+            "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+          )
+        )
+      - |
+        count by (service) (
+          last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m])
+          * on (dimensionFrontendIPAddress) group_left (service)
+          label_replace(
+            max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+            "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+          )
+        )
+
+  - id: materialize.ingress.lb.azure.new_connections
+    stability: experimental
+    description:
+      summary: |
+        New connections per second arriving at each of the environment's load
+        balancer frontends, from the SYN packets Azure counts.
+      nominal: |
+        The rate clients connect at.
+    promQL: |
+      sum by (service) (
+        last_over_time(azure_microsoft_network_loadbalancers_syncount_total_count{dimensionDirection="In"}[15m])
+        * on (dimensionFrontendIPAddress) group_left (service)
+        label_replace(
+          max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+          "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+        )
+      ) / 60
+
+  - id: materialize.ingress.lb.azure.throughput
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second through each of the environment's load balancer
+        frontends, by Service and direction.
+      nominal: |
+        Follows query results: most of it leaves Materialize.
+    promQL:
+      - |
+        sum by (service) (
+          last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="In"}[15m])
+          * on (dimensionFrontendIPAddress) group_left (service)
+          label_replace(
+            max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+            "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+          )
+        ) / 60
+      - |
+        sum by (service) (
+          last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="Out"}[15m])
+          * on (dimensionFrontendIPAddress) group_left (service)
+          label_replace(
+            max by (service, ip) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}}),
+            "dimensionFrontendIPAddress", "$1", "ip", "(.+)"
+          )
+        ) / 60

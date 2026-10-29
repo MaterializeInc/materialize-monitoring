@@ -102,6 +102,32 @@ It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-consensus" >}}
 
+### Materialize Ingress (Balancer, Console) (`env-ingress`)
+
+How users reach a Materialize environment, across five tabs: Overview, Load Balancer, Balancer, Console, and SQL and HTTP API.
+Every SQL client, HTTP API call, and console session arrives through a cloud load balancer and enters balancerd, and the console's own API calls pass through the console's nginx first.
+Both forward to environmentd, which serves the SQL and HTTP APIs.
+Each tab measures one of those hops with its rate, errors, and latency, so you can tell which hop a complaint like "users can't connect" or "the console is slow" belongs to.
+
+The Overview tab's verdict row reads each hop's error ratio and latency, and whether every balancerd pod is taking new connections.
+Below it, balancerd and the console sit side by side for each signal: when both fail, look behind them at environmentd, and when one fails, look at that one.
+The Load Balancer tab shows the address Kubernetes gave each LoadBalancer Service, and what the cloud provider reports about the load balancer in front of this environment:
+target health and connection resets on AWS, health probes on Azure, and traffic on all three clouds.
+Its provider rows appear when the gateway pulls that load balancer's metrics, and otherwise the tab says how to turn the pull on;
+see [Cloud Provider Metrics](../../metrics/collecting/cloud-provider-metrics/).
+The Balancer tab adds each pod's connections against its limit and watermarks, the time spent reaching environmentd, and balancerd's warnings.
+It opens with sparkline stats for open connections, ready and unavailable pods, CPU against the pods' request, memory against their limit, and the time since the last restart, and drills into each pod's CPU, memory, and throttling further down.
+Where a HorizontalPodAutoscaler scales balancerd, an Autoscaling row shows its replicas, the metrics it scales on against their targets, the conditions that stop it, and its events.
+Without one, the tab says how balancerd's replica count is set and how to hand it to an autoscaler.
+The Console tab splits every request by what it asked for, the page itself or an API call, and carries nginx's server-error lines.
+The SQL and HTTP API tab is environmentd's side of the same traffic, including the SQL the console runs.
+
+balancerd's connection timings, its server-side error count, and every console panel need a Materialize version that publishes them.
+On older versions, those panels say so, and the SQL and HTTP API tab is unaffected.
+It needs both a metrics and a logs datasource.
+
+{{< download-dashboards name="env-ingress" >}}
+
 ## Infrastructure (`infra-*`)
 
 ### Infrastructure Node Detail (`infra-nodes`)
