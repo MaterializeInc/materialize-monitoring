@@ -225,7 +225,7 @@ mod tests {
                 for query in &queries {
                     if let FormulaAndFunctionQueryDefinition::FormulaAndFunctionMetricQueryDefinition(m) = query {
                         assert!(
-                            crate::datadog::formula::is_bare_metric_query(&m.query),
+                            mzmon_lib::datadog::formula::is_bare_metric_query(&m.query),
                             "{name}: `{}` is not a bare metric query",
                             m.query
                         );
@@ -277,7 +277,7 @@ mod tests {
                 for (queries, formulas) in requests {
                     for formula in &formulas {
                         let layered =
-                            crate::datadog::formula::aggregates_in_layers(&formula.formula);
+                            mzmon_lib::datadog::formula::aggregates_in_layers(&formula.formula);
                         let reduced = formula.formula.contains("reduce(");
                         assert_eq!(
                             scalar && layered,
@@ -292,7 +292,7 @@ mod tests {
                             continue;
                         };
                         let named_by_a_layered_formula = formulas.iter().any(|f| {
-                            crate::datadog::formula::aggregates_in_layers(&f.formula)
+                            mzmon_lib::datadog::formula::aggregates_in_layers(&f.formula)
                                 && f.formula
                                     .split(|c: char| !c.is_ascii_alphanumeric())
                                     .any(|word| word == m.name)

@@ -19,11 +19,9 @@
 //! what the docsite's download table keys on.
 
 pub mod env_top;
-pub mod formula;
+pub mod panel;
 pub mod queries;
 pub mod render;
-pub mod variable;
-pub mod widget;
 
 use datadog_api_client::datadogV1::model::Dashboard;
 use mzmon_lib::query::QueryRegistry;

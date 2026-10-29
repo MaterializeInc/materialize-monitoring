@@ -158,7 +158,11 @@ The live UID diverged from the codified one before `mz-mon-env-top` became autho
 ## The Datadog backend
 
 `packages/dashboards/src/datadog/` renders the Datadog set from the same registry, on the models in
-`datadog-api-client` (models only, with `rustls-tls`).
+`datadog-api-client` (models only, with `rustls-tls`). The building blocks any Datadog dashboard needs live in
+`mzmon-lib` as `mzmon_lib::datadog`, behind its `datadog` feature, as the Grafana ones live in `mzmon_lib::grafana`:
+`context.rs` (registry parameters), `query.rs` (`PanelQuery`), `formula.rs`, `widget.rs`, and `variable.rs`. The
+dashboards crate keeps what belongs to its dashboards: the failure-recording `Queries` handle, `panel.rs`, which pairs
+each widget with its parity-manifest entry, and the dashboards themselves.
 The design is [Datadog dashboards from the query registry](../../../docs/content/reference/development/design-docs/20261020-datadog-dashboards.md).
 
 | Artifact stem | Module | Title |
@@ -176,7 +180,7 @@ These things about it are not re-derivable by reading the modules:
   as they build; the Grafana one is read back from the render by `grafana/manifest.rs`, which matches each panel's
   expressions to the registry. A difference fails unless the dashboard's `DIFFERENCES` lists it with a reason, and a
   listing that matches no difference fails too. `docs/content/dashboards/datadog.md` repeats the list for readers.
-- **Registry parameters are mapped one at a time** in `datadog/queries.rs`. The templates write the tag themselves,
+- **Registry parameters are mapped one at a time** in `mzmon_lib::datadog::context`. The templates write the tag themselves,
   as in `instance_id:%%{mzClusterList}`, so the pickers fill values alone: `$cluster.value`, `$replica.value`, and
   `$namespace.value`. `mzEnvironmentFilter` is the whole term, `$environment`. A template that uses any other
   parameter fails the render, so porting a panel is when its parameters get a Datadog meaning.
@@ -185,18 +189,18 @@ These things about it are not re-derivable by reading the modules:
   series carry no environment tag.
 - **A scalar widget reduces a two-layer formula in the formula.** A query value, toplist, sunburst, or table
   reduces each query with its `aggregator`, but Datadog refuses one under a group-by function such as
-  `max(query1, {tag})` ("unsupported to use multi-layer aggregation function … with an aggregator"). `scalar_parts`
+  `max(query1, {tag})` ("unsupported to use multi-layer aggregation function … with an aggregator"). `widget.rs`
   wraps such a formula as `reduce(…, 'last')` and drops its queries' aggregators, the form the Datadog UI writes, and
   a render test holds every scalar query to exactly one of the two.
 - **Tabs name groups by widget id.** Each Grafana tab is a Datadog tab, listing its top-level groups by an `id` the
   render assigns: the tab's position times 100, plus the group's. A group for a row whose header Grafana hides has its
   title hidden.
 - **A widget's query objects are bare metric queries**, and every function and operator goes in its formula.
-  `datadog/formula.rs` splits each rendered template that way, and a render test holds it. A query object carrying a
+  `mzmon_lib::datadog::formula` splits each rendered template that way, and a render test holds it. A query object carrying a
   function renders in Datadog as "Invalid Formula in Query Object", yet the query API evaluates the same expression,
   so validating through the API alone does not catch it. Nor does pasting into the widget editor, which splits a whole
   expression itself; only imported JSON fails.
-- **Grafana kinds map onto `widget.rs` builders**: a single-value stat is `query_value`, a stat with several
+- **Grafana kinds map onto `datadog/panel.rs` builders**: a single-value stat is `query_value`, a stat with several
   templates is `query_values` (a query value draws one number), a stat or gauge with a value per series is
   `grouped_values` (a toplist), a pie is `pie` (a sunburst), a bar chart is `ranking`, and a table is `table`, one
   column per template and reducer. `Format::Fraction` scales a 0–1 formula by 100 for Datadog's `percent` unit.

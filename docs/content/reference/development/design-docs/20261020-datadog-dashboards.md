@@ -161,6 +161,9 @@ Names never go onto the data series, so a rename changes no series' identity.
 ### Models from `datadog-api-client`
 
 The Datadog backend lives in `packages/dashboards/src/datadog/`, beside `grafana/`, where `packages/dashboards/src/lib.rs` already expects a second backend.
+The building blocks any Datadog dashboard needs, such as the widget builders and the formula splitter, live in `mzmon-lib` as `mzmon_lib::datadog`,
+as the Grafana ones live in `mzmon_lib::grafana`.
+They sit behind a `datadog` feature, so the tools with no Datadog output don't compile the models.
 It builds dashboards from the models in [`datadog-api-client`](https://crates.io/crates/datadog-api-client), Datadog's official Rust client.
 The crate is generated from Datadog's OpenAPI spec and licensed Apache-2.0, and its 0.38.0 release is from 2026-10-13.
 Its `datadogV1::model` module types the dashboard, its tabs and template variables, and each widget definition.

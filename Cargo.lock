@@ -1728,7 +1728,6 @@ version = "0.13.0"
 dependencies = [
  "datadog-api-client",
  "mzmon-lib",
- "regex",
  "serde_json",
  "thiserror",
  "uuid",
@@ -1794,6 +1793,7 @@ dependencies = [
 name = "mzmon-lib"
 version = "0.1.0"
 dependencies = [
+ "datadog-api-client",
  "indexmap 2.14.2",
  "itertools",
  "jsonschema",

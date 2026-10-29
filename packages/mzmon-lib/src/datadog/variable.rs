@@ -13,7 +13,7 @@
 //! as `$name` gets `prefix:value` spliced in, or nothing when it is `*`. A query
 //! that writes the tag itself names `$name.value` instead, which is the picked
 //! value alone, or `*`. Each variable here backs registry parameters in
-//! [`super::queries`].
+//! [`super::context`].
 
 use datadog_api_client::datadogV1::model::DashboardTemplateVariable;
 

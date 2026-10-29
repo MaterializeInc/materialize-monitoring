@@ -1,4 +1,6 @@
 pub mod alloy;
+#[cfg(feature = "datadog")]
+pub mod datadog;
 pub mod grafana;
 pub mod query;
 pub mod scrape;

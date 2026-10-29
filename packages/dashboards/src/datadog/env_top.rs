@@ -29,13 +29,15 @@ use datadog_api_client::datadogV1::model::{
 use mzmon_lib::query::QueryRegistry;
 use uuid::Uuid;
 
+use super::Options;
+use super::panel::{self, Panel};
 use super::queries::Queries;
 use super::render::{Error, Result};
-use super::widget::{self, Column, Format, Look, Panel, Reduce};
-use super::{Options, variable};
 use crate::grafana::env_top as grafana;
 use crate::grafana::env_top::theme;
 use crate::manifest::{self, Difference, Gap};
+use mzmon_lib::datadog::variable;
+use mzmon_lib::datadog::widget::{self, Column, Format, Look, Reduce};
 
 /// Artifact stem, shared with the Grafana dashboard.
 pub const NAME_STEM: &str = grafana::NAME_STEM;
@@ -166,7 +168,7 @@ fn build(options: &Options, registry: &QueryRegistry) -> Result<(Dashboard, Vec<
             let id = t * 100 + g;
             ids.push(id);
             widgets.push(
-                widget::group(
+                panel::group(
                     section.title,
                     tab.color,
                     section.show_title,
@@ -243,7 +245,7 @@ fn tabs(q: &Queries) -> Vec<Tab> {
 /// The Summary tab: health at a glance, and what is running.
 fn summary(q: &Queries) -> Vec<Section> {
     let health = vec![
-        widget::query_value(
+        panel::query_value(
             "is-healthy",
             "Environment Status",
             &q.single("materialize.health.clusters.status.percentage"),
@@ -251,7 +253,7 @@ fn summary(q: &Queries) -> Vec<Section> {
                 .format(Format::Percent)
                 .healthy_from(80.0, 100.0),
         ),
-        widget::query_value(
+        panel::query_value(
             "availability-percent",
             "Environment Availability (Select Time Range)",
             &q.single("materialize.health.environment.availability.percentage"),
@@ -263,7 +265,7 @@ fn summary(q: &Queries) -> Vec<Section> {
                 .healthy_from(95.0, 99.0),
         ),
         currently_hydrating(q, "summary-currently-hydrating"),
-        widget::query_value(
+        panel::query_value(
             "summary-max-lag",
             "Worst Freshness (Select Time Range)",
             &q.single("materialize.info.max_lag"),
@@ -272,13 +274,13 @@ fn summary(q: &Queries) -> Vec<Section> {
                 .format(Format::Seconds)
                 .unhealthy_from(60.0, 3600.0),
         ),
-        widget::grouped_values(
+        panel::grouped_values(
             "cpu-usage-current",
             "Current CPU Usage (5 min)",
             &q.single("materialize.kubernetes.cpu.usage.percent"),
             &Look::new().format(Format::Fraction),
         ),
-        widget::grouped_values(
+        panel::grouped_values(
             "memory-usage-current",
             "Current Memory Usage",
             &q.single("materialize.kubernetes.memory.usage.percent"),
@@ -288,19 +290,19 @@ fn summary(q: &Queries) -> Vec<Section> {
     let info = vec![
         // One bar per version: a version is a tag, and a query value draws a
         // number.
-        widget::grouped_values(
+        panel::grouped_values(
             "materialize-version",
             "Materialize Version",
             &q.single("materialize.info.version"),
             &Look::new(),
         ),
-        widget::grouped_values(
+        panel::grouped_values(
             "summary-cpu-total",
             "Total CPU Capacity",
             &q.single("materialize.kubernetes.cpu.capacity"),
             &Look::new().format(Format::Cores),
         ),
-        widget::grouped_values(
+        panel::grouped_values(
             "summary-memory-total",
             "Total Memory",
             &q.single("materialize.kubernetes.memory.capacity"),
@@ -316,7 +318,7 @@ fn summary(q: &Queries) -> Vec<Section> {
 /// The Currently Hydrating number, which the Summary and Compute Objects tabs
 /// both show.
 fn currently_hydrating(q: &Queries, slug: &str) -> Panel {
-    widget::query_value(
+    panel::query_value(
         slug,
         "Currently Hydrating",
         &q.single("materialize.compute.hydration.currently_hydrating"),
@@ -334,13 +336,13 @@ fn kubernetes(q: &Queries) -> Vec<Section> {
         "Other pods tx",
     ];
     let summary = vec![
-        widget::grouped_values(
+        panel::grouped_values(
             "k8s-res-cpu-total",
             "Total CPU Capacity",
             &q.single("materialize.kubernetes.cpu.capacity.all_containers"),
             &Look::new().format(Format::Cores),
         ),
-        widget::grouped_values(
+        panel::grouped_values(
             "k8s-res-memory-total",
             "Total Memory",
             &q.single("materialize.kubernetes.memory.capacity.all_containers"),
@@ -348,19 +350,19 @@ fn kubernetes(q: &Queries) -> Vec<Section> {
         ),
     ];
     let readiness = vec![
-        widget::pie(
+        panel::pie(
             "resource-pod-status",
             "Pod Readiness",
             &q.single("materialize.kubernetes.pods.readiness"),
             &Look::new(),
         ),
-        widget::pie(
+        panel::pie(
             "resource-statefulset-status",
             "StatefulSet Readiness",
             &q.single("materialize.kubernetes.statefulsets.ready"),
             &Look::new(),
         ),
-        widget::table(
+        panel::table(
             "resource-deployment-status",
             "Deployment Readiness",
             &q.labeled(
@@ -375,14 +377,14 @@ fn kubernetes(q: &Queries) -> Vec<Section> {
         ),
     ];
     let pods = vec![
-        widget::timeseries(
+        panel::timeseries(
             "pod-cpu-percent",
             "Pod CPU Usage",
             &q.labeled("materialize.kubernetes.pods.cpu_usage", replicas_and_rest),
             replicas_and_rest,
             &Look::new().format(Format::Fraction),
         ),
-        widget::timeseries(
+        panel::timeseries(
             "pod-memory-percent",
             "Pod Memory Usage",
             &q.labeled(
@@ -394,28 +396,28 @@ fn kubernetes(q: &Queries) -> Vec<Section> {
         ),
     ];
     let networking = vec![
-        widget::timeseries(
+        panel::timeseries(
             "pod-network-rx",
             "Pod Network Rx",
             &q.labeled("materialize.kubernetes.pods.network_rx", replicas_and_rest),
             replicas_and_rest,
             &Look::new().format(Format::BytesPerSecond),
         ),
-        widget::timeseries(
+        panel::timeseries(
             "pod-network-tx",
             "Pod Network Tx",
             &q.labeled("materialize.kubernetes.pods.network_tx", replicas_and_rest),
             replicas_and_rest,
             &Look::new().format(Format::BytesPerSecond),
         ),
-        widget::timeseries(
+        panel::timeseries(
             "pod-network-errors",
             "Pod Network Errors",
             &q.labeled("materialize.kubernetes.pods.network_errors", by_direction),
             by_direction,
             &Look::new().format(Format::PerSecond("error")),
         ),
-        widget::timeseries(
+        panel::timeseries(
             "pod-network-drops",
             "Pod Network Packet Drops",
             &q.labeled("materialize.kubernetes.pods.network_drops", by_direction),
@@ -434,19 +436,19 @@ fn kubernetes(q: &Queries) -> Vec<Section> {
 /// The Connections / Activity tab: who is talking to Materialize, and how fast.
 fn connections(q: &Queries) -> Vec<Section> {
     let summary = vec![
-        widget::grouped_values(
+        panel::grouped_values(
             "connections-active-sessions",
             "Active Sessions",
             &q.single("materialize.connections.sessions.active"),
             &Look::new(),
         ),
-        widget::grouped_values(
+        panel::grouped_values(
             "connections-active-queries",
             "Active Queries",
             &q.single("materialize.connections.queries.rate"),
             &Look::new().format(Format::PerSecond("query")),
         ),
-        widget::query_value(
+        panel::query_value(
             "connections-adapter-command-rate",
             "SQL Control Plane Command Rate",
             &q.single("materialize.connections.adapter.command_rate"),
@@ -456,7 +458,7 @@ fn connections(q: &Queries) -> Vec<Section> {
         ),
     ];
     let latency = |slug, title, id| {
-        widget::timeseries(
+        panel::timeseries(
             slug,
             title,
             &q.single(id),
@@ -466,13 +468,13 @@ fn connections(q: &Queries) -> Vec<Section> {
         )
     };
     let queries = vec![
-        widget::pie(
+        panel::pie(
             "queries-distribution",
             "Query Distribution (by statement_type)",
             &q.single("materialize.connections.queries.distribution"),
             &Look::new().reduce(Reduce::Sum),
         ),
-        widget::timeseries(
+        panel::timeseries(
             "queries-rate-by-statement",
             "Query Rate (by statement_type / session_type)",
             &q.single("materialize.connections.queries.rate_by_statement"),
@@ -495,7 +497,7 @@ fn connections(q: &Queries) -> Vec<Section> {
             "materialize.connections.peek_latency.p99",
         ),
     ];
-    let commands = vec![widget::table(
+    let commands = vec![panel::table(
         "adapter-commands-by-app",
         "SQL Control Plane Commands by Application",
         &q.single("materialize.connections.adapter.commands_by_application"),
@@ -514,14 +516,14 @@ fn clusters(q: &Queries) -> Vec<Section> {
     const CLUSTERS: &[&str] = &["Total Clusters", "System Clusters"];
     const REPLICAS: &[&str] = &["Total Replicas", "Redundant Replicas"];
     let summary = vec![
-        widget::query_values(
+        panel::query_values(
             "cluster-count",
             "Cluster Count",
             CLUSTERS,
             &q.labeled("materialize.clusters.count", CLUSTERS),
             &Look::new(),
         ),
-        widget::query_values(
+        panel::query_values(
             "replica-count",
             "Replica Count",
             REPLICAS,
@@ -529,14 +531,14 @@ fn clusters(q: &Queries) -> Vec<Section> {
             &Look::new(),
         ),
     ];
-    let replication = vec![widget::pie(
+    let replication = vec![panel::pie(
         "replica-sizes",
         "Replica Sizes",
         &q.single("materialize.clusters.replicas.sizes"),
         &Look::new(),
     )];
     // The status value says nothing here; the group tags are the content.
-    let information = vec![widget::table(
+    let information = vec![panel::table(
         "cluster-table",
         "Cluster Information",
         &q.single("materialize.clusters.info"),
@@ -552,7 +554,7 @@ fn clusters(q: &Queries) -> Vec<Section> {
 
 /// The Compute Objects tab: what the clusters are doing.
 fn compute(q: &Queries) -> Vec<Section> {
-    let count = |slug, title, id| widget::query_value(slug, title, &q.single(id), &Look::new());
+    let count = |slug, title, id| panel::query_value(slug, title, &q.single(id), &Look::new());
     let summary = vec![
         count(
             "active-mzd-views",
@@ -569,13 +571,13 @@ fn compute(q: &Queries) -> Vec<Section> {
             "Active Views",
             "materialize.compute.views.count",
         ),
-        widget::pie(
+        panel::pie(
             "active-subscribes",
             "Active Subscribes",
             &q.single("materialize.compute.subscribes.active"),
             &Look::new(),
         ),
-        widget::pie(
+        panel::pie(
             "index-types",
             "Index Relationship Types",
             &q.single("materialize.compute.indexes.by_type"),
@@ -583,7 +585,7 @@ fn compute(q: &Queries) -> Vec<Section> {
         ),
     ];
     let freshness = vec![
-        widget::timeseries(
+        panel::timeseries(
             "freshness-lag-by-cluster",
             "Worst Freshness by Cluster",
             &q.single("materialize.compute.freshness.lag_by_cluster"),
@@ -592,14 +594,14 @@ fn compute(q: &Queries) -> Vec<Section> {
         ),
         // No log scale, unlike its neighbor: it would flatten the decay that shows
         // rehydration finishing.
-        widget::timeseries(
+        panel::timeseries(
             "freshness-lag-total-by-cluster",
             "Total Freshness by Cluster",
             &q.single("materialize.compute.freshness.lag_total_by_cluster"),
             &[],
             &Look::new().format(Format::Seconds).min_zero(),
         ),
-        widget::ranking(
+        panel::ranking(
             "freshness-top-collections",
             "Least Fresh Objects",
             &q.single("materialize.compute.freshness.top_collections"),
@@ -609,14 +611,14 @@ fn compute(q: &Queries) -> Vec<Section> {
     ];
     let hydration = vec![
         currently_hydrating(q, "hydration-unhydrated-count"),
-        widget::timeseries(
+        panel::timeseries(
             "hydration-queue-size",
             "Hydration Queue Size",
             &q.single("materialize.compute.hydration.queue_size"),
             &[],
             &Look::new().min_zero(),
         ),
-        widget::ranking(
+        panel::ranking(
             "hydration-slowest-collections",
             "Slowest Hydrating Objects",
             &q.single("materialize.compute.hydration.slowest_collections"),
@@ -625,21 +627,21 @@ fn compute(q: &Queries) -> Vec<Section> {
         ),
     ];
     let dataflows = vec![
-        widget::timeseries(
+        panel::timeseries(
             "dataflow-count",
             "Dataflow Count",
             &q.single("materialize.compute.dataflows.count"),
             &[],
             &Look::new().min_zero(),
         ),
-        widget::timeseries(
+        panel::timeseries(
             "dataflow-count-by-worker",
             "Dataflow Count (per worker)",
             &q.single("materialize.compute.dataflows.count_by_worker"),
             &[],
             &Look::new().min_zero(),
         ),
-        widget::timeseries(
+        panel::timeseries(
             "dataflow-elapsed-rate",
             "Dataflow Elapsed Rate",
             &q.single("materialize.compute.dataflows.elapsed_rate"),
@@ -648,7 +650,7 @@ fn compute(q: &Queries) -> Vec<Section> {
         ),
     ];
     let records = |slug, title, id| {
-        widget::table(
+        panel::table(
             slug,
             title,
             &q.single(id),
@@ -661,14 +663,14 @@ fn compute(q: &Queries) -> Vec<Section> {
         )
     };
     let arrangements = vec![
-        widget::timeseries(
+        panel::timeseries(
             "arrangement-rate",
             "Arrangement Maintenance Rate",
             &q.single("materialize.compute.arrangements.maintenance_rate"),
             &[],
             &Look::new(),
         ),
-        widget::timeseries(
+        panel::timeseries(
             "arrangement-rate-by-worker",
             "Arrangement Maintenance Rate (per worker)",
             &q.single("materialize.compute.arrangements.maintenance_rate_by_worker"),
@@ -702,11 +704,11 @@ fn compute(q: &Queries) -> Vec<Section> {
 
 /// The Sources and Sinks tab: what flows in, and what flows out.
 fn sources_sinks(q: &Queries) -> Vec<Section> {
-    let count = |slug, title, id| widget::query_value(slug, title, &q.single(id), &Look::new());
+    let count = |slug, title, id| panel::query_value(slug, title, &q.single(id), &Look::new());
     let line =
-        |slug, title, id, look: Look| widget::timeseries(slug, title, &q.single(id), &[], &look);
+        |slug, title, id, look: Look| panel::timeseries(slug, title, &q.single(id), &[], &look);
     let lines = |slug, title, id, labels: &[&str], look: Look| {
-        widget::timeseries(slug, title, &q.labeled(id, labels), labels, &look)
+        panel::timeseries(slug, title, &q.labeled(id, labels), labels, &look)
     };
     let summary = vec![
         count(
@@ -726,13 +728,13 @@ fn sources_sinks(q: &Queries) -> Vec<Section> {
         ),
     ];
     let sources = vec![
-        widget::pie(
+        panel::pie(
             "sources-types",
             "Source Types",
             &q.single("materialize.storage.sources.by_type"),
             &Look::new(),
         ),
-        widget::table(
+        panel::table(
             "sources-status-table",
             "Sources",
             &q.single("materialize.storage.sources.catalog"),
@@ -760,7 +762,7 @@ fn sources_sinks(q: &Queries) -> Vec<Section> {
         ),
     ];
     let sinks = vec![
-        widget::pie(
+        panel::pie(
             "sinks-types",
             "Sink Types",
             &q.single("materialize.storage.sinks.by_type"),

@@ -11,10 +11,7 @@
 //!
 //! The crate's models are `#[non_exhaustive]`, built with `new` and a setter per
 //! optional field. These builders fix the choices every widget of a kind shares,
-//! so a dashboard module names a slug, a title, a registry query, and a [`Look`].
-//!
-//! Each builder returns a [`Panel`]: the widgets it drew and the manifest entry
-//! the parity ledger compares with the Grafana panel of the same slug.
+//! so a dashboard names a title, a registry query, and a [`Look`].
 //!
 //! Widgets carry no `layout`: the dashboards use the ordered layout with
 //! automatic reflow, which places widgets in the order they are listed. Only a
@@ -46,8 +43,7 @@ use datadog_api_client::datadogV1::model::{
 };
 
 use super::formula::{Expression, aggregates_in_layers, combine, query_name};
-use super::queries::PanelQuery;
-use crate::manifest::{self, Kind};
+use super::query::PanelQuery;
 
 /// How a scalar widget reduces each metric query over the time window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,18 +97,6 @@ pub enum Format {
 }
 
 impl Format {
-    fn unit(self) -> manifest::Unit {
-        match self {
-            Format::Plain => manifest::Unit::None,
-            Format::Seconds => manifest::Unit::Seconds,
-            Format::Bytes => manifest::Unit::Bytes,
-            Format::BytesPerSecond => manifest::Unit::BytesPerSecond,
-            Format::Percent | Format::Fraction => manifest::Unit::Percent,
-            Format::Cores => manifest::Unit::Cores,
-            Format::PerSecond(_) => manifest::Unit::PerSecond,
-        }
-    }
-
     /// Datadog's canonical unit and per-unit names.
     fn canonical(self) -> Option<(&'static str, Option<&'static str>)> {
         match self {
@@ -187,6 +171,11 @@ impl Look {
     pub fn format(mut self, format: Format) -> Self {
         self.format = format;
         self
+    }
+
+    /// What the widget's numbers measure, as [`Look::format`] set it.
+    pub fn formatting(&self) -> Format {
+        self.format
     }
 
     /// Decimal places on a query value. Whole numbers, unless set.
@@ -274,61 +263,22 @@ impl Look {
     }
 }
 
-/// What a builder drew for one Grafana panel's slug.
-#[derive(Debug, Clone)]
-pub struct Panel {
-    /// The entry the parity ledger compares.
-    pub manifest: manifest::Panel,
-    /// Usually one widget. A Grafana stat with several values draws one query
-    /// value per value, because a Datadog query value draws one number.
-    pub widgets: Vec<Widget>,
+/// One number: a registry query's first template, reduced over the window.
+pub fn query_value(title: &str, query: &PanelQuery, look: &Look) -> Widget {
+    value_widget(title, query.expressions.first(), &query.description, look)
 }
 
-fn panel(
-    slug: &str,
-    title: &str,
-    query: &PanelQuery,
-    kind: Kind,
-    look: &Look,
-    widgets: Vec<Widget>,
-) -> Panel {
-    Panel {
-        manifest: manifest::Panel {
-            slug: slug.to_string(),
-            title: title.to_string(),
-            queries: vec![query.id.clone()],
-            kind,
-            unit: look.format.unit(),
-        },
-        widgets,
-    }
-}
-
-/// One number: a registry query from [`super::queries::Queries::single`], reduced
-/// over the window.
-pub fn query_value(slug: &str, title: &str, query: &PanelQuery, look: &Look) -> Panel {
-    let widget = value_widget(title, query.expressions.first(), &query.description, look);
-    panel(slug, title, query, Kind::Value, look, vec![widget])
-}
-
-/// One number per template, each in its own widget and titled by its label, from
-/// [`super::queries::Queries::labeled`].
+/// One number per template, each in its own widget and titled by its label, in
+/// order.
 ///
 /// A Grafana stat panel draws several values side by side, and a Datadog query
 /// value draws one, so a two-template registry entry becomes two widgets.
-pub fn query_values(
-    slug: &str,
-    title: &str,
-    labels: &[&str],
-    query: &PanelQuery,
-    look: &Look,
-) -> Panel {
-    let widgets = labels
+pub fn query_values(labels: &[&str], query: &PanelQuery, look: &Look) -> Vec<Widget> {
+    labels
         .iter()
         .zip(&query.expressions)
         .map(|(label, expr)| value_widget(label, Some(expr), &query.description, look))
-        .collect();
-    panel(slug, title, query, Kind::Value, look, widgets)
+        .collect()
 }
 
 fn value_widget(title: &str, expr: Option<&Expression>, description: &str, look: &Look) -> Widget {
@@ -350,20 +300,11 @@ fn value_widget(title: &str, expr: Option<&Expression>, description: &str, look:
     )))
 }
 
-/// One bar per group, for a Grafana stat or gauge that shows a value per series,
-/// such as sessions by type.
-pub fn grouped_values(slug: &str, title: &str, query: &PanelQuery, look: &Look) -> Panel {
-    let widget = toplist(title, query, look, 10);
-    panel(slug, title, query, Kind::Value, look, vec![widget])
-}
-
-/// The top `count` groups as bars, for a Grafana bar chart.
-pub fn ranking(slug: &str, title: &str, query: &PanelQuery, look: &Look, count: i64) -> Panel {
-    let widget = toplist(title, query, look, count);
-    panel(slug, title, query, Kind::Ranking, look, vec![widget])
-}
-
-fn toplist(title: &str, query: &PanelQuery, look: &Look, count: i64) -> Widget {
+/// The top `count` groups of a registry query's first template, as bars.
+///
+/// It draws a Grafana stat or gauge that shows a value per series, such as
+/// sessions by type, as well as a Grafana bar chart.
+pub fn toplist(title: &str, query: &PanelQuery, look: &Look, count: i64) -> Widget {
     let (queries, formulas) = scalar_parts(
         query.expressions.first().map(|e| (e, look.reduce, None)),
         look,
@@ -393,12 +334,13 @@ fn toplist(title: &str, query: &PanelQuery, look: &Look, count: i64) -> Widget {
     )))
 }
 
-/// Parts of a whole, for a Grafana pie chart: one slice per group, with a table
-/// of the groups and their values beside it.
+/// Parts of a whole, a Datadog pie chart: one slice per group of a registry
+/// query's first template, with a table of the groups and their values beside
+/// it.
 ///
 /// The automatic legend shows nothing on most pies at a dashboard's widget size,
 /// so a reader couldn't tell the slices apart.
-pub fn pie(slug: &str, title: &str, query: &PanelQuery, look: &Look) -> Panel {
+pub fn sunburst(title: &str, query: &PanelQuery, look: &Look) -> Widget {
     let (queries, formulas) = scalar_parts(
         query.expressions.first().map(|e| (e, look.reduce, None)),
         look,
@@ -416,10 +358,9 @@ pub fn pie(slug: &str, title: &str, query: &PanelQuery, look: &Look) -> Panel {
     if !query.description.is_empty() {
         definition = definition.description(query.description.clone());
     }
-    let widget = Widget::new(WidgetDefinition::SunburstWidgetDefinition(Box::new(
+    Widget::new(WidgetDefinition::SunburstWidgetDefinition(Box::new(
         definition,
-    )));
-    panel(slug, title, query, Kind::Pie, look, vec![widget])
+    )))
 }
 
 /// Every template over time, as lines, each aliased by its label when there are
@@ -427,13 +368,7 @@ pub fn pie(slug: &str, title: &str, query: &PanelQuery, look: &Look) -> Panel {
 ///
 /// The templates share one request, so their queries are named across all of
 /// them.
-pub fn timeseries(
-    slug: &str,
-    title: &str,
-    query: &PanelQuery,
-    labels: &[&str],
-    look: &Look,
-) -> Panel {
+pub fn timeseries(title: &str, query: &PanelQuery, labels: &[&str], look: &Look) -> Widget {
     let parts: Vec<(&Expression, ())> = query.expressions.iter().map(|e| (e, ())).collect();
     let (queries, formulas) = combine(&parts);
     let queries = queries
@@ -462,10 +397,9 @@ pub fn timeseries(
     if !query.description.is_empty() {
         definition = definition.description(query.description.clone());
     }
-    let widget = Widget::new(WidgetDefinition::TimeseriesWidgetDefinition(Box::new(
+    Widget::new(WidgetDefinition::TimeseriesWidgetDefinition(Box::new(
         definition,
-    )));
-    panel(slug, title, query, Kind::TimeSeries, look, vec![widget])
+    )))
 }
 
 /// A table column: one of the query's templates, reduced over the window.
@@ -501,13 +435,7 @@ impl Column {
 ///
 /// Every column has to group by the same tags, or Datadog can't line their rows
 /// up.
-pub fn table(
-    slug: &str,
-    title: &str,
-    query: &PanelQuery,
-    columns: &[Column],
-    look: &Look,
-) -> Panel {
+pub fn table(title: &str, query: &PanelQuery, columns: &[Column], look: &Look) -> Widget {
     let (queries, formulas) = scalar_parts(
         columns.iter().filter_map(|column| {
             query
@@ -540,10 +468,9 @@ pub fn table(
     if !query.description.is_empty() {
         definition = definition.description(query.description.clone());
     }
-    let widget = Widget::new(WidgetDefinition::TableWidgetDefinition(Box::new(
+    Widget::new(WidgetDefinition::TableWidgetDefinition(Box::new(
         definition,
-    )));
-    panel(slug, title, query, Kind::Table, look, vec![widget])
+    )))
 }
 
 /// The metric queries and formulas of a scalar request, each expression reduced
@@ -601,11 +528,7 @@ fn scalar_parts<'a>(
 ///
 /// `show_title` is false for a row whose header Grafana hides, such as a tab's
 /// leading summary.
-pub fn group(title: &str, color: &str, show_title: bool, panels: &[Panel]) -> Widget {
-    let widgets = panels
-        .iter()
-        .flat_map(|p| p.widgets.iter().cloned())
-        .collect();
+pub fn group(title: &str, color: &str, show_title: bool, widgets: Vec<Widget>) -> Widget {
     let definition = GroupWidgetDefinition::new(
         WidgetLayoutType::ORDERED,
         GroupWidgetDefinitionType::GROUP,

@@ -49,7 +49,7 @@ the metric queries, each named, and a formula over those names that carries ever
 `count_not_null(avg:m{…} by {…})` becomes the query `avg:m{…} by {…}` and the formula `count_not_null(query1)`.
 A query object that still carries a function renders as "Invalid Formula in Query Object", although the query API evaluates the whole expression.
 The widget editor makes this split for you when you paste a whole expression into its query box, so only JSON you import needs the two parts.
-The Datadog dashboards split each template this way in `packages/dashboards/src/datadog/formula.rs`,
+The Datadog dashboards split each template this way in `packages/mzmon-lib/src/datadog/formula.rs`,
 so the registry keeps one expression per template.
 
 A query value, toplist, sunburst, or table widget reduces each query over the time window with the query's `aggregator`.
