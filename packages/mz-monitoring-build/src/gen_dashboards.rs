@@ -19,7 +19,9 @@
 //! * Grafana, `--format json`, into `docs/assets/dashboards/grafana/`, which the
 //!   docsite offers for download. One tree for every folder.
 //! * Datadog, JSON only, into `docs/assets/dashboards/datadog/`, which the
-//!   docsite offers for download beside the Grafana file of the same stem.
+//!   docsite offers for download beside the Grafana file of the same stem. The
+//!   files are named `datadog-<stem>.json`, because a release uploads both trees
+//!   under their file names.
 //!
 //! Every tree is checked in, so the render is deterministic — see
 //! `mz_dashboards::canonical`. Repeated runs over unchanged sources produce
@@ -209,6 +211,10 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
         OutputFormat::Yaml => "yaml",
         OutputFormat::Json => "json",
     };
+    let prefix = match args.flavor {
+        Flavor::Grafana => "",
+        Flavor::Datadog => datadog::render::FILE_PREFIX,
+    };
     if args.flavor == Flavor::Datadog && !args.folder.is_empty() {
         anyhow::bail!("--folder selects Grafana folders, and Datadog dashboards are filed in none");
     }
@@ -264,7 +270,7 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
             continue;
         };
         rendered_any = true;
-        let path = output_dir.join(format!("{name}.{extension}"));
+        let path = output_dir.join(format!("{prefix}{name}.{extension}"));
 
         if args.check {
             match std::fs::read_to_string(&path) {

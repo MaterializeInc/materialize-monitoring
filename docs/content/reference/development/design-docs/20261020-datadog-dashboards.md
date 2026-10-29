@@ -76,7 +76,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 
 ## Technical BLUF
 
-- **The dashboards ship as downloadable JSON on the docs site, never in a chart.** The docs site's `download-dashboards` shortcode already has a Datadog row that reads `docs/assets/dashboards/datadog/NAME.json`. The Grafana dashboards are the only ones that live in the cluster.
+- **The dashboards ship as downloadable JSON on the docs site, never in a chart.** The docs site's `download-dashboards` shortcode already has a Datadog row that reads `docs/assets/dashboards/datadog/datadog-NAME.json`. The Grafana dashboards are the only ones that live in the cluster.
 - **The backend builds on the models in `datadog-api-client`, Datadog's official Rust client.** The crate is generated from Datadog's OpenAPI spec. The workspace already builds its HTTP stack, so the added cost is compiling the models.
 - **Names, where a panel shows them, come from formula arithmetic.** A formula such as `a * (b * 0 + 1)`, with `b` an `_info` query grouped by the id and the name, keeps `a`'s values and carries `b`'s extra tags. It's Datadog's counterpart to `* on (id) group_left (name)`, and it's an inner join, so a series with no `_info` row drops out of the panel.
 - **The join matches on tag names, so both sides have to spell the id and the environment the same way.** Datadog can't rename a tag inside a query. The relabel rules from the label-vocabulary design give both sides the canonical names, and names in Datadog wait on them.
@@ -103,7 +103,7 @@ The following table lists what a Datadog dashboard set can build on, as of 2026-
 | Piece | State | Where |
 |---|---|---|
 | Datadog metrics destination | ✅ Shipped | `otelcol.exporter.datadog` in the gateway, configured under `pipeline.metrics.gateway.destination.otel.datadogExporter`, at tier `recommended` by default |
-| A download row for Datadog JSON | ✅ Shipped | `docs/layouts/_shortcodes/download-dashboards.html` lists a Datadog format at `dashboards/datadog/%s.json`, and shows it as absent until a render exists |
+| A download row for Datadog JSON | ✅ Shipped | `docs/layouts/_shortcodes/download-dashboards.html` lists a Datadog format at `dashboards/datadog/datadog-%s.json`, and shows it as absent until a render exists |
 | The Datadog dashboards page | ⚠️ Placeholder | `docs/content/dashboards/datadog.md` says no set exists, and points at Common Queries |
 | Datadog query templates | ⚠️ Partial | 228 of the registry's 734 queries carry a `datadogQuery`. The clusters, compute, connections, kubernetes, and storage files are covered. Consensus, persist, generations, operator, and every `infra-*` file except `infra-alerts.yaml` aren't. The templates are best-effort and less tested than the PromQL |
 | Name enrichment for Datadog | ❌ Missing | `mzClusterName`, `mzObjectName`, and `mzEnvironmentName` attach only to `promQL` templates, where `packages/mzmon-lib/src/query/enrich.rs` renders them as `group_left` joins. No `datadogQuery` takes a `functions` list |
@@ -121,7 +121,7 @@ The following table lists what a Datadog dashboard set can build on, as of 2026-
 flowchart LR
   subgraph repo["This repository"]
     build["mz-monitoring-build<br/>registry and datadog-api-client models"]
-    docs["Docs site<br/>dashboards/datadog/NAME.json"]
+    docs["Docs site<br/>dashboards/datadog/datadog-NAME.json"]
     build --> docs
   end
 
@@ -206,7 +206,8 @@ Generated models stay the fallback if the crate's compile time becomes a problem
 
 ## Delivery: a download from the docs site
 
-`make datadog-dashboards` renders each dashboard to `docs/assets/dashboards/datadog/NAME.json`.
+`make datadog-dashboards` renders each dashboard to `docs/assets/dashboards/datadog/datadog-NAME.json`.
+The `datadog-` prefix keeps each file's name apart from its Grafana counterpart's, because a dashboards release uploads both under their file names.
 The `download-dashboards` shortcode already lists a Datadog row for every dashboard, and offers the file as soon as it exists.
 An operator downloads the file and imports it into Datadog, through the UI or `POST /api/v1/dashboard`.
 An operator who uses Terraform can pass the same file to the Datadog provider's `datadog_dashboard_json` resource.

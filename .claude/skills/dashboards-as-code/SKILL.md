@@ -171,7 +171,9 @@ The design is [Datadog dashboards from the query registry](../../../docs/content
 
 These things about it are not re-derivable by reading the modules:
 
-- **It renders only to `docs/assets/dashboards/datadog/<stem>.json`**, through `gen-dashboards --flavor datadog`.
+- **It renders only to `docs/assets/dashboards/datadog/datadog-<stem>.json`**, through `gen-dashboards --flavor datadog`.
+  The prefix is there because a dashboards release uploads every checked-in JSON by file name, and the Grafana render
+  is `<stem>.json`; a test over `packages/components.yaml` fails on two artifacts with one name.
   No chart carries it, so that file is the only copy and is not marked `linguist-generated`.
 - **A Datadog dashboard shares its stem with its Grafana counterpart**, because the docsite's download table keys on
   the stem. A test holds that.

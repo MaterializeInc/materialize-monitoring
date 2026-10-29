@@ -236,3 +236,30 @@ fn content_type(path: &Path) -> &'static str {
         _ => "application/octet-stream",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_components_checked_in_artifacts_have_unique_names() {
+        // A release uploads each artifact under its file name, so two that share
+        // one fail the release only after the version bump has merged. The
+        // checked-in artifacts can be checked on every pull request instead. The
+        // chart tarballs are built at release time, and their names carry the
+        // chart and version.
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let components =
+            load_components(&root.join("packages/components.yaml")).expect("load components");
+        for (name, component) in &components {
+            let patterns: Vec<String> = component
+                .artifacts
+                .iter()
+                .map(|pattern| root.join(pattern).to_string_lossy().into_owned())
+                .collect();
+            if let Err(e) = resolve_artifacts(&patterns) {
+                panic!("{name}: {e}");
+            }
+        }
+    }
+}

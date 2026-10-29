@@ -8,7 +8,7 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## Dashboards (Helm chart) v0.22.0 (Unreleased)
+## Dashboards (Helm chart) v0.21.1 (Unreleased)
 
 _Changes Pending_
 
