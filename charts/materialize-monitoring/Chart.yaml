@@ -174,7 +174,7 @@ dependencies:
       - metrics-server
   - name: prometheus-postgres-exporter
     alias: postgres-exporter
-    version: "8.2.0"
+    version: "8.2.1"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: postgres-exporter.enabled
     tags:
