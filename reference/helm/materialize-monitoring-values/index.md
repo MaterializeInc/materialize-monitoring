@@ -8052,7 +8052,7 @@ for the full checklist.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/grafana",
-  "tag": "13.2.4"
+  "tag": "13.3.0"
 }</pre>
 </td>
       <td class="helm-value-desc">Grafana server image.
