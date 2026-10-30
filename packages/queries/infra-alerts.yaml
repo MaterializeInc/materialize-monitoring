@@ -472,6 +472,211 @@ alerts:
         kube_node_spec_taint{key="node.kubernetes.io/unreachable"}
       datadogQuery: |
         min(last_10m):max:kube_node_spec_taint{key:node.kubernetes.io/unreachable} by {node} >= 1
+
+  # A node being drained: cordoned, or tainted by the cluster autoscaler or
+  # Karpenter ahead of removal. Evicting environmentd or a clusterd replica
+  # restarts it even when a replacement node is ready; the graceful way off a
+  # node is a Materialize rollout, which starts the next generation on
+  # schedulable nodes. So the materialize-node-* alerts grade one condition by
+  # how long those pods have stayed: a notice as the drain starts, since
+  # someone usually started it, then a warning and a page while no rollout
+  # moves them. Every other node gets the one warning in `node-drain-stuck`,
+  # a day in: balancerd, the console, and other workloads with replicas ride
+  # out a drain, and when their replacements cannot schedule, the pending-pod
+  # alerts report it.
+  #
+  # The pod pattern is every generation's environmentd and clusterd. Which
+  # generation is serving is not exported, and during a rollout the old one
+  # serves until the new one is promoted.
+  #
+  # Node series carry the scraping kube-state-metrics pod's `namespace` and
+  # `pod`, so the drain side reduces to `node` before the join.
+  # `karpenter.sh/disruption` is Karpenter's taint before v1.
+  - alert: materialize-node-draining
+    group: node_draining
+    stability: best-effort
+    enabledByDefault: true
+    # Long enough to skip a cordon that comes straight off again. A drain that
+    # moves the pods sooner is in the Kubernetes events the stack collects.
+    for: 10m
+    labels:
+      severity: notice
+      component: kubernetes
+    annotations:
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/operating/runbooks/node-drains/#materialize-node-draining
+    description:
+      summary: A node running environmentd or a cluster replica has been cordoned or marked for removal for 10m, so those pods restart when it drains.
+      degraded: |
+        Usually a node-pool upgrade or a scale-down that someone started.
+        Evicting environmentd interrupts its environment until the replacement
+        starts, and evicting a clusterd pod restarts that replica, which then
+        rehydrates.
+        To move them without an outage, roll out the Materialize instance, so
+        its next generation starts on schedulable nodes. On GKE, the operator's
+        node-upgrade rollout trigger does this for a node pool upgrade.
+      notes: |
+        Fires on a cordon, and on the taints the cluster autoscaler
+        (`ToBeDeletedByClusterAutoscaler`) and Karpenter (`karpenter.sh/disrupted`)
+        add before removing a node. Covers every deployment generation, because
+        which one is serving is not exported.
+    query:
+      id: infra.kubernetes.materialize_node_draining
+      stability: best-effort
+      description:
+        summary: environmentd and clusterd pods on a node that is cordoned or marked for removal.
+      promQL:
+        template: |
+          max by (namespace, pod, node) (
+            kube_pod_info{%%{mzEnvironmentNamespaceFilter}, pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", %%{excludeEnvironmentFilter}}
+          )
+          and on (node) (
+            max by (node) (kube_node_spec_unschedulable) > 0
+            or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+      # Datadog cannot take the union of two gauge queries, so this covers the
+      # cordon and not the autoscalers' taints.
+      datadogQuery: |
+        max(last_1m):(
+          max:kube_pod_info{%%{mzEnvironmentNamespaceFilter} AND (pod:*-environmentd-* OR pod:*-gen-*) AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod,node}
+          * max:kube_node_spec_unschedulable{*} by {node}
+        ) > 0
+  - alert: materialize-node-drain-slow
+    group: node_draining
+    stability: best-effort
+    enabledByDefault: true
+    for: 2h
+    labels:
+      severity: warning
+      component: kubernetes
+    annotations:
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/operating/runbooks/node-drains/#materialize-node-drain-slow
+    description:
+      summary: A node running environmentd or a cluster replica has been cordoned or marked for removal for 2h, and no rollout has moved those pods.
+      degraded: |
+        Either no Materialize rollout has started, or one is stuck. The
+        instance's `UpToDate` condition shows whether a rollout is still
+        applying, and the next generation's pods show what it is waiting on.
+        If the node is going, roll out the instance so its next generation
+        starts on schedulable nodes; if the node is staying, uncordon it.
+        Until then, whatever drains the node evicts these pods and interrupts
+        the environment.
+      notes: |
+        Where a rollout routinely takes longer, such as for an environment
+        that takes hours to hydrate, lengthen `for` with `rules.overrides`.
+    query:
+      id: infra.kubernetes.materialize_node_drain_slow
+      stability: best-effort
+      description:
+        summary: environmentd and clusterd pods on a node that is cordoned or marked for removal.
+      promQL:
+        template: |
+          max by (namespace, pod, node) (
+            kube_pod_info{%%{mzEnvironmentNamespaceFilter}, pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", %%{excludeEnvironmentFilter}}
+          )
+          and on (node) (
+            max by (node) (kube_node_spec_unschedulable) > 0
+            or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+      datadogQuery: |
+        min(last_2h):(
+          max:kube_pod_info{%%{mzEnvironmentNamespaceFilter} AND (pod:*-environmentd-* OR pod:*-gen-*) AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod,node}
+          * max:kube_node_spec_unschedulable{*} by {node}
+        ) > 0
+  - alert: materialize-node-drain-stuck
+    group: node_draining
+    stability: best-effort
+    enabledByDefault: true
+    for: 24h
+    labels:
+      severity: critical
+      component: kubernetes
+    annotations:
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/operating/runbooks/node-drains/#materialize-node-drain-stuck
+    description:
+      summary: A node running environmentd or a cluster replica has been cordoned or marked for removal for 24h, so its drain is stuck or forgotten.
+      unhealthy: |
+        A managed upgrade drains the node anyway after its wait runs out, which
+        for GKE's blue-green upgrades is three days by default. That eviction
+        interrupts the environment, and if no replacement capacity is left by
+        then, the evicted pods stay Pending.
+        Find why the instance's next generation is not ready, or roll the
+        instance out if no rollout started. If the node is staying, uncordon
+        it. If the drain belongs to a node pool you do not manage, escalate to
+        whoever does.
+    query:
+      id: infra.kubernetes.materialize_node_drain_stuck
+      stability: best-effort
+      description:
+        summary: environmentd and clusterd pods on a node that is cordoned or marked for removal.
+      promQL:
+        template: |
+          max by (namespace, pod, node) (
+            kube_pod_info{%%{mzEnvironmentNamespaceFilter}, pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", %%{excludeEnvironmentFilter}}
+          )
+          and on (node) (
+            max by (node) (kube_node_spec_unschedulable) > 0
+            or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+      datadogQuery: |
+        min(last_1d):(
+          max:kube_pod_info{%%{mzEnvironmentNamespaceFilter} AND (pod:*-environmentd-* OR pod:*-gen-*) AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod,node}
+          * max:kube_node_spec_unschedulable{*} by {node}
+        ) > 0
+  - alert: node-drain-stuck
+    group: node_draining
+    stability: best-effort
+    enabledByDefault: true
+    # The same day as materialize-node-drain-stuck, a grade lower.
+    for: 24h
+    labels:
+      severity: warning
+      component: kubernetes
+    annotations:
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/operating/runbooks/node-drains/#node-drain-stuck
+    description:
+      summary: A node has been cordoned or marked for removal for 24h, so its drain is stuck or forgotten.
+      degraded: |
+        Nothing new schedules on the node, so the cluster runs short of its
+        capacity, and whatever removes the node next evicts what is still on it.
+        A drain usually blocks on a PodDisruptionBudget with no disruptions
+        allowed, which `kubectl get pdb -A` shows. If the node is going, find
+        what blocks the drain; if it is staying, uncordon it. If the node pool
+        is not yours to manage, escalate to whoever runs it.
+      notes: |
+        A GKE blue-green upgrade keeps every old node in the pool cordoned for
+        the pool's wait, three days by default, and nothing moves pods other
+        than Materialize's during it, so this fires a day into such an upgrade.
+        Nodes running environmentd or clusterd are left to the
+        `materialize-node-*` alerts.
+    query:
+      id: infra.kubernetes.node_drain_stuck
+      stability: best-effort
+      description:
+        summary: Nodes cordoned or marked for removal that run no environmentd or clusterd pods.
+      promQL: |
+        (
+          max by (node) (kube_node_spec_unschedulable) > 0
+          or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+        )
+        unless on (node)
+          kube_pod_info{%%{mzEnvironmentNamespaceFilter}, pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", %%{excludeEnvironmentFilter}}
+      # Datadog has neither `or` nor `unless` between gauge queries, so this
+      # covers the cordon alone, on every node.
+      datadogQuery: |
+        min(last_1d):max:kube_node_spec_unschedulable{*} by {node} > 0
+
   - alert: k8s-horizontalpodautoscaler-replicas-critical
     group: hpa
     stability: best-effort

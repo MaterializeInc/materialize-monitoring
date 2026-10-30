@@ -50,6 +50,13 @@ Labels:
           {{- end }}
 </p>
         {{- end }}
+        {{- /* An alert with a runbook of its own names it in `runbook_url`; the
+               rest point back at this page. A link into this site is made
+               relative, so a local preview stays on the preview. */}}
+        {{- $alertName := .alert }}
+        {{- with .annotations }}{{ with .runbook_url }}
+<p><strong>Runbook:</strong> <a href="{{ strings.TrimPrefix site.BaseURL . | relURL }}">how to respond to <code>{{ $alertName }}</code></a>.</p>
+        {{- end }}{{ end }}
         {{- /* A rule's query is PromQL for the Thanos ruler or LogQL for the Loki
                ruler. Chroma has no LogQL lexer, and PromQL's is close enough to
                mark up its selectors and strings. */}}
