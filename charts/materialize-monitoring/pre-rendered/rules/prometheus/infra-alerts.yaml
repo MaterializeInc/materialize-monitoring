@@ -288,6 +288,174 @@ groups:
     annotations:
       summary: A Kubernetes node is marked unreachable, which may indicate a node or network problem.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#node-unreachable
+- name: node_draining
+  rules:
+  - alert: materialize-node-draining
+    expr: |-
+      (
+      (
+      max by (namespace, pod, node) (
+        kube_pod_info{namespace=~"__mzmon_environment_namespaces__", pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", namespace!~"__mzmon_excluded_namespaces__"}
+      )
+      and on (node) (
+        max by (node) (kube_node_spec_unschedulable) > 0
+        or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+      )
+      )
+      * on (namespace) group_left(materialize_cloud_organization_name)
+      (
+      group by (namespace, materialize_cloud_organization_name) (
+      last_over_time(up{job=~".*/.*materialize-(environmentd|clusterd)", materialize_cloud_organization_name!=""}[1h])
+      )
+      and on (namespace)
+      (
+      count by (namespace) (
+      group by (namespace, materialize_cloud_organization_name) (
+      last_over_time(up{job=~".*/.*materialize-(environmentd|clusterd)", materialize_cloud_organization_name!=""}[1h])
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace)
+      (
+      max by (namespace, pod, node) (
+        kube_pod_info{namespace=~"__mzmon_environment_namespaces__", pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", namespace!~"__mzmon_excluded_namespaces__"}
+      )
+      and on (node) (
+        max by (node) (kube_node_spec_unschedulable) > 0
+        or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+      )
+      )
+    for: 0s
+    labels:
+      severity: notice
+      component: kubernetes
+      audience: platform
+    annotations:
+      summary: A node running environmentd or a cluster replica is cordoned or marked for removal, so those pods restart when it drains.
+      description: |-
+        Usually a node-pool upgrade or a scale-down that someone started.
+        Evicting environmentd interrupts its environment until the replacement
+        starts, and evicting a clusterd pod restarts that replica, which then
+        rehydrates.
+        Check that replacement nodes are joining with `kubectl get nodes`, and
+        that the restarts land at a time the workload can take them.
+
+        Fires on a cordon, and on the taints the cluster autoscaler
+        (`ToBeDeletedByClusterAutoscaler`) and Karpenter (`karpenter.sh/disrupted`)
+        add before removing a node. Covers every deployment generation, because
+        which one is serving is not exported.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#materialize-node-draining
+  - alert: materialize-node-drain-slow
+    expr: |-
+      (
+      (
+      max by (namespace, pod, node) (
+        kube_pod_info{namespace=~"__mzmon_environment_namespaces__", pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", namespace!~"__mzmon_excluded_namespaces__"}
+      )
+      and on (node) (
+        max by (node) (kube_node_spec_unschedulable) > 0
+        or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+      )
+      )
+      * on (namespace) group_left(materialize_cloud_organization_name)
+      (
+      group by (namespace, materialize_cloud_organization_name) (
+      last_over_time(up{job=~".*/.*materialize-(environmentd|clusterd)", materialize_cloud_organization_name!=""}[1h])
+      )
+      and on (namespace)
+      (
+      count by (namespace) (
+      group by (namespace, materialize_cloud_organization_name) (
+      last_over_time(up{job=~".*/.*materialize-(environmentd|clusterd)", materialize_cloud_organization_name!=""}[1h])
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace)
+      (
+      max by (namespace, pod, node) (
+        kube_pod_info{namespace=~"__mzmon_environment_namespaces__", pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", namespace!~"__mzmon_excluded_namespaces__"}
+      )
+      and on (node) (
+        max by (node) (kube_node_spec_unschedulable) > 0
+        or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+      )
+      )
+    for: 2h
+    labels:
+      severity: warning
+      component: kubernetes
+      audience: platform
+    annotations:
+      summary: A node running environmentd or a cluster replica has been cordoned or marked for removal for 2h.
+      description: |-
+        Longer than a node-pool upgrade takes, so the drain is blocked, or the
+        node was cordoned and left that way.
+        A drain blocks on a pod it cannot evict: a PodDisruptionBudget at its
+        limit, a pod annotated `karpenter.sh/do-not-disrupt` or
+        `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`, or evicted
+        pods with no node to go to.
+        `kubectl describe node` shows the node's taints and events.
+        If the node is going, finish the drain when the restarts are acceptable;
+        if it is staying, uncordon it.
+
+        Where drains routinely take longer, lengthen `for` with `rules.overrides`.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#materialize-node-drain-slow
+  - alert: materialize-node-drain-stuck
+    expr: |-
+      (
+      (
+      max by (namespace, pod, node) (
+        kube_pod_info{namespace=~"__mzmon_environment_namespaces__", pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", namespace!~"__mzmon_excluded_namespaces__"}
+      )
+      and on (node) (
+        max by (node) (kube_node_spec_unschedulable) > 0
+        or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+      )
+      )
+      * on (namespace) group_left(materialize_cloud_organization_name)
+      (
+      group by (namespace, materialize_cloud_organization_name) (
+      last_over_time(up{job=~".*/.*materialize-(environmentd|clusterd)", materialize_cloud_organization_name!=""}[1h])
+      )
+      and on (namespace)
+      (
+      count by (namespace) (
+      group by (namespace, materialize_cloud_organization_name) (
+      last_over_time(up{job=~".*/.*materialize-(environmentd|clusterd)", materialize_cloud_organization_name!=""}[1h])
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace)
+      (
+      max by (namespace, pod, node) (
+        kube_pod_info{namespace=~"__mzmon_environment_namespaces__", pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", namespace!~"__mzmon_excluded_namespaces__"}
+      )
+      and on (node) (
+        max by (node) (kube_node_spec_unschedulable) > 0
+        or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+      )
+      )
+    for: 24h
+    labels:
+      severity: critical
+      component: kubernetes
+      audience: platform
+    annotations:
+      summary: A node running environmentd or a cluster replica has been cordoned or marked for removal for 24h — the drain is stuck or forgotten.
+      description: |-
+        Nothing new schedules on the node, and whatever removes it next, such as
+        an autoscaler, a node expiry, or a retried upgrade, restarts the
+        Materialize pods still on it at a time nobody chose.
+        If no replacement capacity is left by then, those pods stay Pending.
+        Decide whether the node is going. If it is, make sure replacement nodes
+        can join and finish the drain at a quiet time; if not, uncordon it.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#materialize-node-drain-stuck
 - name: hpa
   rules:
   - alert: k8s-horizontalpodautoscaler-replicas-critical

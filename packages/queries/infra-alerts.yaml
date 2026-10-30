@@ -472,6 +472,158 @@ alerts:
         kube_node_spec_taint{key="node.kubernetes.io/unreachable"}
       datadogQuery: |
         min(last_10m):max:kube_node_spec_taint{key:node.kubernetes.io/unreachable} by {node} >= 1
+
+  # A node being drained: cordoned, or tainted by the cluster autoscaler or
+  # Karpenter ahead of removal. Evicting environmentd or a clusterd replica
+  # restarts it even when a replacement node is ready, so these three grade one
+  # condition by how long it has lasted: a notice as it starts, since someone
+  # usually started it, then a warning and a page as it fails to finish.
+  # balancerd and the console run several replicas and ride out a drain, so they
+  # are left out; when their replacements cannot schedule, the pending-pod
+  # alerts in materialize-alerts.yaml report it.
+  #
+  # The pod pattern is every generation's environmentd and clusterd. Which
+  # generation is serving is not exported, and during a rollout the old one
+  # serves until the new one is promoted.
+  #
+  # Node series carry the scraping kube-state-metrics pod's `namespace` and
+  # `pod`, so the drain side reduces to `node` before the join.
+  # `karpenter.sh/disruption` is Karpenter's taint before v1.
+  - alert: materialize-node-draining
+    group: node_draining
+    stability: best-effort
+    enabledByDefault: true
+    # A drain can evict these pods within a minute, and a `for` would let one
+    # that went smoothly pass without a record of the restarts.
+    for: 0s
+    labels:
+      severity: notice
+      component: kubernetes
+    description:
+      summary: A node running environmentd or a cluster replica is cordoned or marked for removal, so those pods restart when it drains.
+      degraded: |
+        Usually a node-pool upgrade or a scale-down that someone started.
+        Evicting environmentd interrupts its environment until the replacement
+        starts, and evicting a clusterd pod restarts that replica, which then
+        rehydrates.
+        Check that replacement nodes are joining with `kubectl get nodes`, and
+        that the restarts land at a time the workload can take them.
+      notes: |
+        Fires on a cordon, and on the taints the cluster autoscaler
+        (`ToBeDeletedByClusterAutoscaler`) and Karpenter (`karpenter.sh/disrupted`)
+        add before removing a node. Covers every deployment generation, because
+        which one is serving is not exported.
+    query:
+      id: infra.kubernetes.materialize_node_draining
+      stability: best-effort
+      description:
+        summary: environmentd and clusterd pods on a node that is cordoned or marked for removal.
+      promQL:
+        template: |
+          max by (namespace, pod, node) (
+            kube_pod_info{%%{mzEnvironmentNamespaceFilter}, pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", %%{excludeEnvironmentFilter}}
+          )
+          and on (node) (
+            max by (node) (kube_node_spec_unschedulable) > 0
+            or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+      # Datadog cannot take the union of two gauge queries, so this covers the
+      # cordon and not the autoscalers' taints.
+      datadogQuery: |
+        max(last_1m):(
+          max:kube_pod_info{%%{mzEnvironmentNamespaceFilter} AND (pod:*-environmentd-* OR pod:*-gen-*) AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod,node}
+          * max:kube_node_spec_unschedulable{*} by {node}
+        ) > 0
+  - alert: materialize-node-drain-slow
+    group: node_draining
+    stability: best-effort
+    enabledByDefault: true
+    for: 2h
+    labels:
+      severity: warning
+      component: kubernetes
+    description:
+      summary: A node running environmentd or a cluster replica has been cordoned or marked for removal for 2h.
+      degraded: |
+        Longer than a node-pool upgrade takes, so the drain is blocked, or the
+        node was cordoned and left that way.
+        A drain blocks on a pod it cannot evict: a PodDisruptionBudget at its
+        limit, a pod annotated `karpenter.sh/do-not-disrupt` or
+        `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`, or evicted
+        pods with no node to go to.
+        `kubectl describe node` shows the node's taints and events.
+        If the node is going, finish the drain when the restarts are acceptable;
+        if it is staying, uncordon it.
+      notes: |
+        Where drains routinely take longer, lengthen `for` with `rules.overrides`.
+    query:
+      id: infra.kubernetes.materialize_node_drain_slow
+      stability: best-effort
+      description:
+        summary: environmentd and clusterd pods on a node that is cordoned or marked for removal.
+      promQL:
+        template: |
+          max by (namespace, pod, node) (
+            kube_pod_info{%%{mzEnvironmentNamespaceFilter}, pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", %%{excludeEnvironmentFilter}}
+          )
+          and on (node) (
+            max by (node) (kube_node_spec_unschedulable) > 0
+            or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+      datadogQuery: |
+        min(last_2h):(
+          max:kube_pod_info{%%{mzEnvironmentNamespaceFilter} AND (pod:*-environmentd-* OR pod:*-gen-*) AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod,node}
+          * max:kube_node_spec_unschedulable{*} by {node}
+        ) > 0
+  - alert: materialize-node-drain-stuck
+    group: node_draining
+    stability: best-effort
+    enabledByDefault: true
+    for: 24h
+    labels:
+      severity: critical
+      component: kubernetes
+    description:
+      summary: A node running environmentd or a cluster replica has been cordoned or marked for removal for 24h — the drain is stuck or forgotten.
+      unhealthy: |
+        Nothing new schedules on the node, and whatever removes it next, such as
+        an autoscaler, a node expiry, or a retried upgrade, restarts the
+        Materialize pods still on it at a time nobody chose.
+        If no replacement capacity is left by then, those pods stay Pending.
+        Decide whether the node is going. If it is, make sure replacement nodes
+        can join and finish the drain at a quiet time; if not, uncordon it.
+    query:
+      id: infra.kubernetes.materialize_node_drain_stuck
+      stability: best-effort
+      description:
+        summary: environmentd and clusterd pods on a node that is cordoned or marked for removal.
+      promQL:
+        template: |
+          max by (namespace, pod, node) (
+            kube_pod_info{%%{mzEnvironmentNamespaceFilter}, pod=~".*-(environmentd|gen)-[0-9]+-[0-9]+", %%{excludeEnvironmentFilter}}
+          )
+          and on (node) (
+            max by (node) (kube_node_spec_unschedulable) > 0
+            or max by (node) (kube_node_spec_taint{key=~"ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption"})
+          )
+        functions:
+          - name: mzEnvironmentName
+            args: ["namespace"]
+      datadogQuery: |
+        min(last_1d):(
+          max:kube_pod_info{%%{mzEnvironmentNamespaceFilter} AND (pod:*-environmentd-* OR pod:*-gen-*) AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod,node}
+          * max:kube_node_spec_unschedulable{*} by {node}
+        ) > 0
+
   - alert: k8s-horizontalpodautoscaler-replicas-critical
     group: hpa
     stability: best-effort

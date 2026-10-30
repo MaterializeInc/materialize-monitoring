@@ -107,6 +107,88 @@ tests:
           - labels: '{node="node-a"}'
             value: 1
 
+  # --- materialize-node-draining and its escalations ------------------------
+  #
+  # One condition graded by how long it lasts: a notice at once, a warning at
+  # 2h, a page at 24h. Only environmentd and clusterd count, because a drain
+  # restarts them even when a replacement node is ready; balancerd and the
+  # console have replicas to spare. Node series carry the scraping
+  # kube-state-metrics pod's own `namespace` and `pod`, as they do on a real
+  # install, so a join that kept those labels would match nothing.
+  - name: materialize-node-draining escalates on a node hosting environmentd or clusterd
+    interval: 5m
+    input_series:
+      # node-a: cordoned, running environmentd and a replica, plus a pod
+      # outside Materialize whose name happens to fit the pattern.
+      - series: 'kube_node_spec_unschedulable{node="node-a", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "1x300"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-environmentd-3-0", node="node-a"}'
+        values: "1x300"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-cluster-u1-replica-u1-gen-3-0", node="node-a"}'
+        values: "1x300"
+      - series: 'kube_pod_info{namespace="shop", pod="web-gen-1-0", node="node-a"}'
+        values: "1x300"
+      # node-b: cordoned, running only balancerd and the console.
+      - series: 'kube_node_spec_unschedulable{node="node-b", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "1x300"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-balancerd-7c9f8d6b5-abcde", node="node-b"}'
+        values: "1x300"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-console-5d8b7c9f4-fghij", node="node-b"}'
+        values: "1x300"
+      # node-c: schedulable, running a replica.
+      - series: 'kube_node_spec_unschedulable{node="node-c", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "0x300"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-cluster-u2-replica-u2-gen-3-0", node="node-c"}'
+        values: "1x300"
+    promql_expr_test:
+      - expr: count by (alertname, pod) (ALERTS{alertname=~"materialize-node-.*", alertstate="firing"})
+        eval_time: 1h
+        exp_samples:
+          - labels: '{alertname="materialize-node-draining", pod="mz1-environmentd-3-0"}'
+            value: 1
+          - labels: '{alertname="materialize-node-draining", pod="mz1-cluster-u1-replica-u1-gen-3-0"}'
+            value: 1
+      - expr: count by (alertname) (ALERTS{alertname=~"materialize-node-.*", alertstate="firing"})
+        eval_time: 3h
+        exp_samples:
+          - labels: '{alertname="materialize-node-draining"}'
+            value: 2
+          - labels: '{alertname="materialize-node-drain-slow"}'
+            value: 2
+      - expr: count by (alertname) (ALERTS{alertname=~"materialize-node-.*", alertstate="firing"})
+        eval_time: 25h
+        exp_samples:
+          - labels: '{alertname="materialize-node-draining"}'
+            value: 2
+          - labels: '{alertname="materialize-node-drain-slow"}'
+            value: 2
+          - labels: '{alertname="materialize-node-drain-stuck"}'
+            value: 2
+
+  # An autoscaler that removes a node taints it rather than cordoning it.
+  # A node the cluster autoscaler only lists as a candidate is not draining.
+  - name: materialize-node-draining reads the autoscalers' removal taints
+    interval: 1m
+    input_series:
+      - series: 'kube_node_spec_unschedulable{node="node-k", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "0x10"
+      - series: 'kube_node_spec_taint{node="node-k", key="karpenter.sh/disrupted", value="", effect="NoSchedule", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "1x10"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-cluster-u1-replica-u1-gen-3-0", node="node-k"}'
+        values: "1x10"
+      - series: 'kube_node_spec_unschedulable{node="node-d", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "0x10"
+      - series: 'kube_node_spec_taint{node="node-d", key="DeletionCandidateOfClusterAutoscaler", value="1767225600", effect="PreferNoSchedule", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "1x10"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-environmentd-3-0", node="node-d"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: count by (alertname, node) (ALERTS{alertname=~"materialize-node-.*", alertstate="firing"})
+        eval_time: 5m
+        exp_samples:
+          - labels: '{alertname="materialize-node-draining", node="node-k"}'
+            value: 1
+
   # --- k8s-infra-pod-pending-too-long: everything but Materialize -----------
   #
   # Written against Cloud's `environment-*` namespaces, it treated Materialize's
