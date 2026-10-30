@@ -4466,7 +4466,7 @@ loki:
     image:
       registry: docker.io
       repository: prom/memcached-exporter
-      tag: v0.17.0
+      tag: v0.18.0
   sidecar:
     # -- Rules sidecar image, pinned here rather than left at the subchart's default.
     # It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads
