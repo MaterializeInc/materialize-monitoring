@@ -66,6 +66,65 @@ The following list holds every runbook page and its sections, so that you can se
 </ul>
   </li>
   <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/">Node drains</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#how-a-drain-affects-materialize">How a drain affects Materialize</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#the-alerts">The alerts</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#materialize-node-draining">materialize-node-draining</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#materialize-node-drain-slow">materialize-node-drain-slow</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#materialize-node-drain-stuck">materialize-node-drain-stuck</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#node-drain-stuck">node-drain-stuck</a>
+  </li>
+</ul>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#diagnose-the-drain">Diagnose the drain</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#find-what-is-draining-the-node">Find what is draining the node</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#list-what-is-still-on-the-node">List what is still on the node</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#check-the-instances-rollout">Check the instance&rsquo;s rollout</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#find-what-blocks-the-drain">Find what blocks the drain</a>
+  </li>
+</ul>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#resolve-the-drain">Resolve the drain</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#move-materialize-off-the-node">Move Materialize off the node</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#keep-the-node">Keep the node</a>
+  </li>
+</ul>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#check-the-node-pool">Check the node pool</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/node-drains/#escalate-to-the-node-pools-owner">Escalate to the node pool&rsquo;s owner</a>
+  </li>
+</ul>
+  </li>
+  <li>
     <a href="/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/operating/runbooks/kubernetes/">Kubernetes</a>
 <ul>
   <li>

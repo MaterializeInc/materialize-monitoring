@@ -192,6 +192,13 @@ The first two are checked mechanically; the rest are for the author and the revi
 7. The name SHOULD describe the condition rather than its grade, so that re-grading does not force a rename.
 8. The `summary` MUST be actionable without following the runbook link, since an air-gapped install cannot follow it.
 
+## Runbooks
+
+Every rule carries a `runbook_url` annotation, which points at the alert's entry on [Common Alerts](/materialize-monitoring/preview/claude-draining-nodes-alerts-5e6d99/reference/common-alerts/) by default.
+An alert with a runbook under `docs/content/operating/runbooks/` sets `annotations.runbook_url` to that page's published URL and the alert's heading,
+and its Common Alerts entry links there.
+The runbook SHOULD give each alert a heading named after it, so the anchor is the alert's name.
+
 ## Log-derived alerts
 
 An alert whose query is LogQL reads Materialize's log lines instead of its metrics.
