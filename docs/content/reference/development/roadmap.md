@@ -356,6 +356,25 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 | [CLO-76] Optional continuous profiling, off by default | ⬜ |
 | [DEP-252] Cost visibility through an optional OpenCost component, with its design in review as [#365] | 🔨 |
 
+### Runtime security
+
+Designed in [Runtime security with Falco](../design-docs/20261027-falco-runtime-security/), and not yet ticketed.
+It answers the platform half of the Security team's runtime-detection item, [SEC-671].
+**Falco's detections travel paths the stack already has.**
+Falco is an optional DaemonSet, off by default everywhere, that downloads nothing and has no network egress.
+Its detections are JSON log lines that the agent ships to Loki, and its drop counters are metrics the gateway scrapes into Thanos.
+
+| Item | Status |
+|---|---|
+| The `falco` subchart: the modern eBPF probe in least-privileged mode, the ruleset from the image, and a NetworkPolicy with no egress | ⬜ |
+| The gateway's Falco stage: Falco's priority as `level`, and the rule and the workload it names as structured metadata | ⬜ |
+| A Trivy scenario with Falco on, and its baseline | ⬜ |
+| `infra-falco.yaml`, the `falco` capability, and the alerts for when Falco is blind | ⬜ |
+| The `security` audience, and the detection alerts | ⬜ |
+| An `infra-security` dashboard: detections, drops, footprint, and coverage | ⬜ |
+| The Terraform module input, and the wrappers' variable | ⬜ |
+| A customer-facing page: turning Falco on, its privileges, rules of your own, and routing detections | ⬜ |
+
 ### Platform
 
 | Item | Status |
@@ -384,6 +403,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 | [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/) | Ready | [Metric label standardization](#metric-label-standardization) |
 | Cost visibility with OpenCost | Draft, in review as [#365] | [Collection](#collection) |
 | [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | Ready | [Dashboards](#dashboards) |
+| [Runtime security with Falco](../design-docs/20261027-falco-runtime-security/) | Draft | [Runtime security](#runtime-security) |
 
 [adopt]: https://linear.app/materializeinc/project/adopt-materialize-monitoring-in-cloud-cce4b8af4db8/overview
 [clom]: https://linear.app/materializeinc/project/metrics-for-cloud-070c13ddba6a/overview
@@ -520,3 +540,4 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385
+[SEC-671]: https://linear.app/materializeinc/issue/SEC-671
