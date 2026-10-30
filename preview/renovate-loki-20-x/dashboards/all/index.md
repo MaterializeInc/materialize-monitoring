@@ -21,7 +21,7 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 Every dashboard has a **Grafana dashboard schema v2** render, which needs **Grafana 12 or later**.
 For more information, see [Grafana compatibility](/materialize-monitoring/preview/renovate-loki-20-x/reference/compatibility/#grafana).
-`env-top` also has a **Datadog** preview, which [Datadog](/materialize-monitoring/preview/renovate-loki-20-x/dashboards/datadog/) describes.
+`env-top` also has a **Datadog** render, which [Datadog](/materialize-monitoring/preview/renovate-loki-20-x/dashboards/datadog/) describes.
 Each table below lists every format, so you can see which ones a dashboard has no render for.
 Grafana 10 and 11 (schema v1) renders are not planned.
 The rest of the Datadog set, and the Google Cloud Monitoring and Honeycomb sets, are tracked on the [roadmap](/materialize-monitoring/preview/renovate-loki-20-x/reference/development/roadmap/#dashboards).
@@ -73,8 +73,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-loki-20-x/dashboards/datadog/env-top.json?xxhash=5f158d9fd234d0f1" download="env-top.json"><code>env-top.json</code></a>
-        <br /><small>UID <code>env-top</code></small>
+        <a href="/materialize-monitoring/preview/renovate-loki-20-x/dashboards/datadog/datadog-env-top.json?xxhash=a69490b0047379ae" download="datadog-env-top.json"><code>datadog-env-top.json</code></a>
       </td>
       <td>
           <em>No annotations</em>

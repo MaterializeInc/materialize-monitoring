@@ -103,8 +103,8 @@ A new doc starts at Draft.
     <li>
       <a href="/materialize-monitoring/preview/renovate-loki-20-x/reference/development/design-docs/20261020-datadog-dashboards/">Datadog dashboards from the query registry</a>
       <ul>
-            <li><strong>lastmod:</strong> 2026-10-21 00:00:00 &#43;0000 UTC</li>
-            <li><strong>status:</strong> Draft</li>
+            <li><strong>lastmod:</strong> 2026-10-29 00:00:00 &#43;0000 UTC</li>
+            <li><strong>status:</strong> Ready</li>
       </ul>
     </li>
 </ul>
