@@ -299,6 +299,16 @@ rules:
     - kube-state-metrics
     enabledByDefault: true
     minImportance: essential
+  node-drain-stuck:
+    file: prometheus/infra-alerts.yaml
+    engine: promql
+    group: node_draining
+    severity: warning
+    audience: platform
+    requires:
+    - kube-state-metrics
+    enabledByDefault: true
+    minImportance: essential
   k8s-horizontalpodautoscaler-replicas-critical:
     file: prometheus/infra-alerts.yaml
     engine: promql

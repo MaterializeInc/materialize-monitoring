@@ -109,7 +109,7 @@ tests:
 
   # --- materialize-node-draining and its escalations ------------------------
   #
-  # One condition graded by how long it lasts: a notice at once, a warning at
+  # One condition graded by how long it lasts: a notice at 10m, a warning at
   # 2h, a page at 24h. Only environmentd and clusterd count, because a drain
   # restarts them even when a replacement node is ready; balancerd and the
   # console have replicas to spare. Node series carry the scraping
@@ -166,27 +166,67 @@ tests:
             value: 2
 
   # An autoscaler that removes a node taints it rather than cordoning it.
-  # A node the cluster autoscaler only lists as a candidate is not draining.
-  - name: materialize-node-draining reads the autoscalers' removal taints
+  # A node the cluster autoscaler only lists as a candidate is not draining,
+  # and a cordon lifted within 10m never reaches the notice.
+  - name: materialize-node-draining reads the autoscalers' removal taints and skips a brief cordon
     interval: 1m
     input_series:
       - series: 'kube_node_spec_unschedulable{node="node-k", namespace="monitoring", pod="kube-state-metrics-0"}'
-        values: "0x10"
+        values: "0x20"
       - series: 'kube_node_spec_taint{node="node-k", key="karpenter.sh/disrupted", value="", effect="NoSchedule", namespace="monitoring", pod="kube-state-metrics-0"}'
-        values: "1x10"
+        values: "1x20"
       - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-cluster-u1-replica-u1-gen-3-0", node="node-k"}'
-        values: "1x10"
+        values: "1x20"
       - series: 'kube_node_spec_unschedulable{node="node-d", namespace="monitoring", pod="kube-state-metrics-0"}'
-        values: "0x10"
+        values: "0x20"
       - series: 'kube_node_spec_taint{node="node-d", key="DeletionCandidateOfClusterAutoscaler", value="1767225600", effect="PreferNoSchedule", namespace="monitoring", pod="kube-state-metrics-0"}'
-        values: "1x10"
+        values: "1x20"
       - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-environmentd-3-0", node="node-d"}'
-        values: "1x10"
+        values: "1x20"
+      # Cordoned for 5m, then uncordoned.
+      - series: 'kube_node_spec_unschedulable{node="node-q", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "1x5 0x15"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-cluster-u2-replica-u2-gen-3-0", node="node-q"}'
+        values: "1x20"
     promql_expr_test:
       - expr: count by (alertname, node) (ALERTS{alertname=~"materialize-node-.*", alertstate="firing"})
-        eval_time: 5m
+        eval_time: 15m
         exp_samples:
           - labels: '{alertname="materialize-node-draining", node="node-k"}'
+            value: 1
+
+  # --- node-drain-stuck: every other node, after GKE's upgrade wait ---------
+  #
+  # GKE's blue-green upgrades keep every old node cordoned for three days by
+  # default, so a routine upgrade must stay under the rule's 4d. A node that
+  # runs a replica is the materialize-node-* alerts' to report instead.
+  - name: node-drain-stuck waits out a GKE upgrade and leaves Materialize nodes to their own alerts
+    interval: 5m
+    input_series:
+      # node-g: cordoned for 5 days, running balancerd and an application.
+      - series: 'kube_node_spec_unschedulable{node="node-g", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "1x1440"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-balancerd-7c9f8d6b5-abcde", node="node-g"}'
+        values: "1x1440"
+      - series: 'kube_pod_info{namespace="shop", pod="web-0", node="node-g"}'
+        values: "1x1440"
+      # node-m: cordoned for 5 days, running a replica.
+      - series: 'kube_node_spec_unschedulable{node="node-m", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "1x1440"
+      - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-cluster-u1-replica-u1-gen-3-0", node="node-m"}'
+        values: "1x1440"
+      # node-w: cordoned for the 3 days of a blue-green upgrade's wait, then
+      # uncordoned.
+      - series: 'kube_node_spec_unschedulable{node="node-w", namespace="monitoring", pod="kube-state-metrics-0"}'
+        values: "1x864 0x576"
+    promql_expr_test:
+      - expr: count by (node) (ALERTS{alertname="node-drain-stuck", alertstate="firing"})
+        eval_time: 95h
+        exp_samples: []
+      - expr: count by (node) (ALERTS{alertname="node-drain-stuck", alertstate="firing"})
+        eval_time: 97h
+        exp_samples:
+          - labels: '{node="node-g"}'
             value: 1
 
   # --- k8s-infra-pod-pending-too-long: everything but Materialize -----------
