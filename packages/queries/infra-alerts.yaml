@@ -480,10 +480,10 @@ alerts:
   # schedulable nodes. So the materialize-node-* alerts grade one condition by
   # how long those pods have stayed: a notice as the drain starts, since
   # someone usually started it, then a warning and a page while no rollout
-  # moves them. Every other node gets the one, later warning in
-  # `node-drain-stuck`: balancerd, the console, and other workloads with
-  # replicas ride out a drain, and when their replacements cannot schedule,
-  # the pending-pod alerts report it.
+  # moves them. Every other node gets the one warning in `node-drain-stuck`,
+  # a day in: balancerd, the console, and other workloads with replicas ride
+  # out a drain, and when their replacements cannot schedule, the pending-pod
+  # alerts report it.
   #
   # The pod pattern is every generation's environmentd and clusterd. Which
   # generation is serving is not exported, and during a rollout the old one
@@ -638,16 +638,15 @@ alerts:
     group: node_draining
     stability: best-effort
     enabledByDefault: true
-    # Longer than GKE's default blue-green upgrade wait, which keeps every old
-    # node in a pool cordoned for three days on purpose.
-    for: 4d
+    # The same day as materialize-node-drain-stuck, a grade lower.
+    for: 24h
     labels:
       severity: warning
       component: kubernetes
     annotations:
       runbook_url: https://materializeinc.github.io/materialize-monitoring/operating/runbooks/node-drains/#node-drain-stuck
     description:
-      summary: A node has been cordoned or marked for removal for 4 days, so its drain is stuck or forgotten.
+      summary: A node has been cordoned or marked for removal for 24h, so its drain is stuck or forgotten.
       degraded: |
         Nothing new schedules on the node, so the cluster runs short of its
         capacity, and whatever removes the node next evicts what is still on it.
@@ -656,9 +655,11 @@ alerts:
         what blocks the drain; if it is staying, uncordon it. If the node pool
         is not yours to manage, escalate to whoever runs it.
       notes: |
-        Where GKE's blue-green upgrades wait longer than three days, lengthen
-        `for` with `rules.overrides` to match. Nodes running environmentd or
-        clusterd are left to the `materialize-node-*` alerts.
+        A GKE blue-green upgrade keeps every old node in the pool cordoned for
+        the pool's wait, three days by default, and nothing moves pods other
+        than Materialize's during it, so this fires a day into such an upgrade.
+        Nodes running environmentd or clusterd are left to the
+        `materialize-node-*` alerts.
     query:
       id: infra.kubernetes.node_drain_stuck
       stability: best-effort
@@ -674,7 +675,7 @@ alerts:
       # Datadog has neither `or` nor `unless` between gauge queries, so this
       # covers the cordon alone, on every node.
       datadogQuery: |
-        min(last_4d):max:kube_node_spec_unschedulable{*} by {node} > 0
+        min(last_1d):max:kube_node_spec_unschedulable{*} by {node} > 0
 
   - alert: k8s-horizontalpodautoscaler-replicas-critical
     group: hpa

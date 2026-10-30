@@ -195,36 +195,37 @@ tests:
           - labels: '{alertname="materialize-node-draining", node="node-k"}'
             value: 1
 
-  # --- node-drain-stuck: every other node, after GKE's upgrade wait ---------
+  # --- node-drain-stuck: every other node, a day in ------------------------
   #
-  # GKE's blue-green upgrades keep every old node cordoned for three days by
-  # default, so a routine upgrade must stay under the rule's 4d. A node that
-  # runs a replica is the materialize-node-* alerts' to report instead.
-  - name: node-drain-stuck waits out a GKE upgrade and leaves Materialize nodes to their own alerts
+  # A GKE blue-green upgrade keeps every old node cordoned for its wait, three
+  # days by default, with nothing moving the pods on a pool that runs no
+  # Materialize; that is a drain to hear about. A node that runs a replica is
+  # the materialize-node-* alerts' to report instead.
+  - name: node-drain-stuck fires a day into a drain and leaves Materialize nodes to their own alerts
     interval: 5m
     input_series:
-      # node-g: cordoned for 5 days, running balancerd and an application.
+      # node-g: cordoned for the 3 days of a blue-green upgrade's wait, running
+      # balancerd and an application.
       - series: 'kube_node_spec_unschedulable{node="node-g", namespace="monitoring", pod="kube-state-metrics-0"}'
-        values: "1x1440"
+        values: "1x864"
       - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-balancerd-7c9f8d6b5-abcde", node="node-g"}'
-        values: "1x1440"
+        values: "1x864"
       - series: 'kube_pod_info{namespace="shop", pod="web-0", node="node-g"}'
-        values: "1x1440"
-      # node-m: cordoned for 5 days, running a replica.
+        values: "1x864"
+      # node-m: cordoned for 3 days, running a replica.
       - series: 'kube_node_spec_unschedulable{node="node-m", namespace="monitoring", pod="kube-state-metrics-0"}'
-        values: "1x1440"
+        values: "1x864"
       - series: 'kube_pod_info{namespace="materialize-environment", pod="mz1-cluster-u1-replica-u1-gen-3-0", node="node-m"}'
-        values: "1x1440"
-      # node-w: cordoned for the 3 days of a blue-green upgrade's wait, then
-      # uncordoned.
+        values: "1x864"
+      # node-w: cordoned for 20h of maintenance, then uncordoned.
       - series: 'kube_node_spec_unschedulable{node="node-w", namespace="monitoring", pod="kube-state-metrics-0"}'
-        values: "1x864 0x576"
+        values: "1x240 0x624"
     promql_expr_test:
       - expr: count by (node) (ALERTS{alertname="node-drain-stuck", alertstate="firing"})
-        eval_time: 95h
+        eval_time: 23h
         exp_samples: []
       - expr: count by (node) (ALERTS{alertname="node-drain-stuck", alertstate="firing"})
-        eval_time: 97h
+        eval_time: 25h
         exp_samples:
           - labels: '{node="node-g"}'
             value: 1
