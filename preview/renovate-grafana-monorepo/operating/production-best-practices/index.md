@@ -1,2 +1,0 @@
-# Production best practices
-
