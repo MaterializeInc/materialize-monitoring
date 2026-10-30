@@ -470,7 +470,7 @@ Labels:
 <h4 id="node-drain-stuck">node-drain-stuck
   <a class="anchor" href="#node-drain-stuck">#</a>
 </h4>
-A node has been cordoned or marked for removal for 4 days, so its drain is stuck or forgotten.
+A node has been cordoned or marked for removal for 24h, so its drain is stuck or forgotten.
 Labels:
 <ul>
         <li><strong>audience:</strong> platform</li>

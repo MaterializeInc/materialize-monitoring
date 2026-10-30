@@ -11650,7 +11650,7 @@ The following table lists them:
 | `materialize-node-draining` | notice | 10 minutes | Each `environmentd` and `clusterd` pod on a draining node |
 | `materialize-node-drain-slow` | warning | 2 hours | The same pods |
 | `materialize-node-drain-stuck` | critical | 24 hours | The same pods |
-| `node-drain-stuck` | warning | 4 days | Draining nodes that run no `environmentd` or `clusterd` pods |
+| `node-drain-stuck` | warning | 24 hours | Draining nodes that run no `environmentd` or `clusterd` pods |
 
 Every alert names the `node`.
 The `materialize-node-*` alerts also name the `namespace` and `pod`.
@@ -11680,12 +11680,11 @@ If the drain belongs to a node pool you don't manage, [escalate to the node pool
 
 ### node-drain-stuck
 
-A node that runs no `environmentd` or `clusterd` pods has been cordoned or marked for removal for 4 days.
+A node that runs no `environmentd` or `clusterd` pods has been cordoned or marked for removal for 24 hours.
 Nothing new schedules on it, so the cluster runs short of the node's capacity.
+Whatever removes the node next evicts what is still on it, such as a single-instance database or the monitoring stack.
 [Find what blocks the drain](#find-what-blocks-the-drain).
-
-GKE's blue-green upgrades keep every old node in a pool cordoned for their whole wait, which is three days by default.
-If your node pools wait longer, lengthen this alert's `for` with `rules.overrides` to match.
+If a GKE blue-green upgrade cordoned the node, see the GKE tab in [Check the node pool](#check-the-node-pool).
 
 ## Diagnose the drain
 
@@ -11935,10 +11934,15 @@ For setting it up without the modules,
 see [GKE node pool upgrades](https://materialize.com/docs/self-managed-deployments/deployment-guidelines/gke-node-pool-upgrades/)
 in the Materialize documentation.
 
-While the trigger works, `materialize-node-draining` resolves after each instance's rollout,
-and only `node-drain-stuck` could fire for the blue nodes, after its 4 days.
+While the trigger works, `materialize-node-draining` resolves after each instance's rollout.
 If `materialize-node-drain-slow` fires during an upgrade, the trigger's rollout didn't move the instance.
 [Check the instance's rollout](#check-the-instances-rollout), and the operator's logs.
+
+Nothing moves other pods off the blue nodes during the wait.
+They stay until GKE drains the node, so `node-drain-stuck` fires for those nodes a day into the wait.
+The wait serves the operator's rollouts, so a node pool that runs no `environmentd` or `clusterd` pods gains nothing from it.
+To have GKE drain such a pool sooner in its next upgrade, its owner can shorten the pool's wait,
+with `upgrade_wait_for_drain_duration` in the Terraform modules.
 
 To find a running upgrade and its phase, list the cluster's running node upgrades:
 
