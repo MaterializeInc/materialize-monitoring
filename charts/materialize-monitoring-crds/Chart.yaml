@@ -45,7 +45,7 @@ annotations:
 # chart's Chart.yaml for the reasoning.
 dependencies:
   - name: prometheus-operator-crds
-    version: "31.0.0"
+    version: "31.0.1"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: prometheus-operator-crds.enabled
     tags:
