@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Prometheus Scrapers v0.7.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.15.0 (Unreleased)
 
 _Changes Pending_
@@ -34,9 +38,59 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Prometheus Scrapers v0.6.0 (Unreleased)
+## Prometheus Scrapers v0.6.0
 
-_Changes Pending_
+* Scrape balancerd with a PodMonitor
+    * [materialize-monitoring#604](https://github.com/MaterializeInc/materialize-monitoring/pull/604)
+    * Scrape balancerd's connection metrics (`mz_balancer_*`)
+        * A new PodMonitor collects `mz_balancer_*` from each balancerd pod's `internal-http` port. It needs Materialize v26.24.0 or later, which labels balancerd pods `app.kubernetes.io/name: balancerd`.
+        * Configure it under `materialize.balancerd.serviceMonitor`, the same shape as `materialize.clusterd.serviceMonitor`. It's on by default; set `enabled: false` to turn it off.
+        * The classic and Google Cloud Managed Prometheus downloads include a matching `balancerd` scrape config.
+
+### Dependencies
+
+* <details><summary>Included mzmon-lib (shared library) @ v0.14.0..v0.15.0</summary>
+
+    * Release mzmon-lib (shared library) v0.14.0
+        * [materialize-monitoring#532](https://github.com/MaterializeInc/materialize-monitoring/pull/532)
+    * Name the Datadog dashboard files datadog-<stem>.json, unblocking the dashboards release
+        * [materialize-monitoring#633](https://github.com/MaterializeInc/materialize-monitoring/pull/633)
+        * The Datadog dashboard downloads are named `datadog-<stem>.json`, such as `datadog-env-top.json`, so they no longer share a file name with the Grafana render of the same dashboard.
+    * Datadog dashboards: port every env-top panel, with a parity ledger
+        * [materialize-monitoring#630](https://github.com/MaterializeInc/materialize-monitoring/pull/630)
+        * Datadog: `env-top`, the Materialize Environment Overview, holds the Grafana dashboard's panels, downloadable as JSON from the Available Dashboards page
+            * Environment, namespace, cluster, and replica template variables. Pick one environment and the namespace it runs in: environments reuse cluster and replica ids, and the Kubernetes panels read the namespace.
+            * The peek and Iceberg commit latency panels need percentiles enabled for their metrics in Datadog.
+            * The Datadog dashboards page lists the panels it draws differently from Grafana or leaves out, such as the alert panels.
+    * Build dev dependencies without debug info
+        * [materialize-monitoring#632](https://github.com/MaterializeInc/materialize-monitoring/pull/632)
+    * Update Rust crate jsonschema to 0.60.0
+        * [materialize-monitoring#627](https://github.com/MaterializeInc/materialize-monitoring/pull/627)
+        * [`v0.60.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0601---2026-10-23)
+        * [`v0.60.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0600---2026-10-22)
+    * Update Rust crate zip to v9 [SECURITY]
+        * [materialize-monitoring#620](https://github.com/MaterializeInc/materialize-monitoring/pull/620)
+        * [`v9.0.5`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#905---2026-10-17)
+        * [`v9.0.4`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#904---2026-10-16)
+        * [`v9.0.3`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#903---2026-10-13)
+        * [`v9.0.2`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#902---2026-10-11)
+        * [`v9.0.1`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#901---2026-10-10)
+        * [`v9.0.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#900---2026-10-08)
+    * Add a GCS section to the persist dashboard, and drop its always-zero storage series
+        * [materialize-monitoring#625](https://github.com/MaterializeInc/materialize-monitoring/pull/625)
+        * The Materialize Persist dashboard's Object Store Internals tab has a GCS section when the GCS Cloud Monitoring pull is on
+            * Live data, objects, and average object size per bucket, their daily change, and the live, noncurrent, and soft-deleted split
+        * The Materialize Persist dashboard's Storage tab no longer shows orphaned data or uploads in flight, which Materialize always reported as zero
+            * `mz_persist_shard_usage_leaked_bytes` and `mz_persist_shard_usage_not_leaked_not_referenced_bytes` leave the extended metric tier
+    * Datadog dashboards: split widget queries into bare queries and formulas
+        * [materialize-monitoring#624](https://github.com/MaterializeInc/materialize-monitoring/pull/624)
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#603](https://github.com/MaterializeInc/materialize-monitoring/pull/603)
+    * Datadog dashboards: the build machinery and an env-top preview
+        * [materialize-monitoring#587](https://github.com/MaterializeInc/materialize-monitoring/pull/587)
+        * Datadog: a preview of the Materialize Environment Overview (`env-top`), with its cluster and replica counts, downloadable as JSON from the Available Dashboards page. Import it through Datadog's API or Terraform's `datadog_dashboard_json`, and pick one environment, because the counts merge environments when several are selected.
+
+  </details>
 
 ## Dashboards (Helm chart) v0.21.0
 
