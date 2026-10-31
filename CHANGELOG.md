@@ -8,13 +8,24 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Dashboards (Helm chart) v0.23.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.15.0 (Unreleased)
 
 _Changes Pending_
 
-## Dashboards (Helm chart) v0.22.0 (Unreleased)
+## Dashboards (Helm chart) v0.22.0
 
-_Changes Pending_
+### Dependencies
+
+* <details><summary>Included mzmon-lib (shared library) @ v0.14.0..v0.15.0</summary>
+
+    * Release mzmon-lib (shared library) v0.14.0
+        * [materialize-monitoring#532](https://github.com/MaterializeInc/materialize-monitoring/pull/532)
+
+  </details>
 
 ## Dashboards (Helm chart) v0.21.1
 
