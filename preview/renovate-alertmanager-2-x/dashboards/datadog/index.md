@@ -5,11 +5,12 @@
 
 # Datadog
 
-The Materialize Environment Overview, `env-top`, has a Datadog preview.
-It holds the cluster and replica counts from the Grafana dashboard's Cluster Objects / Replicas tab.
+The Materialize Environment Overview, `env-top`, has a Datadog version.
+It holds the Grafana dashboard's panels, apart from the differences listed on this page, under the same tabs, with a group for each Grafana row.
 The rest of the Grafana dashboards are tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115), on the [Dashboards roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/roadmap/#dashboards).
+On this page, "you" are an operator who sends Materialize metrics to Datadog.
 
-## Import the preview
+## Import the dashboard
 
 1. Download the Datadog file from the `env-top` row of [Available Dashboards](/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/all/#materialize-environment-overview-env-top).
 2. Create the dashboard through Datadog's API, with an API key and an application key that has the `dashboards_write` permission:
@@ -19,13 +20,57 @@ The rest of the Grafana dashboards are tracked as [DEP-115](https://linear.app/m
      -H "DD-API-KEY: ${DD_API_KEY}" \
      -H "DD-APPLICATION-KEY: ${DD_APP_KEY}" \
      -H "Content-Type: application/json" \
-     --data @env-top.json
+     --data @datadog-env-top.json
    ```
 
    Replace `DATADOG_SITE` with your Datadog site, such as `datadoghq.com`.
    If you manage Datadog with Terraform, pass the same file to the Datadog provider's `datadog_dashboard_json` resource instead.
-3. Pick one environment in the dashboard's **environment** variable.
-   Environments reuse cluster and replica ids, so the counts merge them when several are selected.
+3. Pick one environment in the **environment** variable, and the namespace it runs in in the **namespace** variable.
+
+## Pick what the dashboard shows
+
+The dashboard's template variables default to `*`, which selects every value.
+Pick one value or `*` in each of the following variables:
+
+**environment**
+: Scopes the Materialize panels to one environment, by `materialize_cloud_organization_name`.
+  Environments reuse cluster and replica ids, so the panels merge them when several environments are selected.
+
+**namespace**
+: Scopes the Kubernetes panels to one namespace.
+  cAdvisor and kube-state-metrics series carry no environment tag, so these panels read the namespace instead.
+  At `*`, they show every pod in the Kubernetes cluster.
+
+**cluster**
+: Narrows the panels to one cluster, by id, such as `u1`.
+
+**replica**
+: Narrows the panels to one replica, by id.
+
+**Least Fresh Objects** and **Slowest Hydrating Objects** always show the last five minutes, as their Grafana panels do when the time range ends now.
+They don't follow the time picker into the past.
+
+## Enable percentiles
+
+The **Peek Latency** and **Iceberg Commit Latency** panels read percentiles of a histogram.
+Datadog doesn't compute them until percentiles are enabled for the metric, and until then the panels show an error.
+Enable percentiles for `mz_compute_peek_duration_seconds` and `mz_sink_iceberg_commit_duration_seconds` under **Metrics** > **Summary** in Datadog.
+Enabled percentiles count toward your Datadog custom metrics.
+
+## How the Datadog version differs
+
+The Datadog panels show cluster, replica, and object ids where the Grafana panels show names.
+The following table lists the Grafana panels that the Datadog version draws differently or leaves out:
+
+<!-- Agent note: keep this table in step with `DIFFERENCES` in packages/dashboards/src/datadog/env_top.rs,
+which the parity ledger in packages/dashboards/tests/datadog_parity.rs enforces. -->
+
+| Grafana panel | In Datadog | Why |
+|---|---|---|
+| **Environment Alerts Firing**, **Alerts**, and **Alerts Firing Over Time** | Left out | Datadog alerts are monitors, not a series to draw |
+| **Last Restart Time** | Left out | Datadog has no `time()`, so the age of the newest container can't be derived from its start timestamp |
+| **Environment Status** | A percentage, colored by health | Grafana maps the percentage to **Healthy**, **Degraded**, or **Unhealthy** |
+| **Deployment Readiness** | A table, with **Ready** and **Unavailable** columns | The two counts are separate queries, and a table shows them side by side, one row per namespace |
 
 ## Build the rest yourself
 
