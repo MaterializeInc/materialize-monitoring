@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v1.8.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.15.0 (Unreleased)
 
 _Changes Pending_
@@ -30,9 +34,102 @@ _Changes Pending_
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v1.7.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.7.0
 
-_Changes Pending_
+* Update docker.io/grafana/grafana Docker tag to v13.3.0
+    * [materialize-monitoring#638](https://github.com/MaterializeInc/materialize-monitoring/pull/638)
+    * [`v13.3.0`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1330-2026-10-27)
+    * [`v13.2.5`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1325-2026-10-27)
+* Update grafana Helm Chart to v14.2.0
+    * [materialize-monitoring#621](https://github.com/MaterializeInc/materialize-monitoring/pull/621)
+    * [`v14.2.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/grafana-14.2.0)
+    * [`v14.1.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/grafana-14.1.0)
+* Update alloy Helm Chart to v1.14.3
+    * [materialize-monitoring#611](https://github.com/MaterializeInc/materialize-monitoring/pull/611)
+    * [`v1.14.3`](https://redirect.github.com/grafana/helm-charts/releases/tag/alloy-1.14.3)
+    * [`v1.14.2`](https://redirect.github.com/grafana/helm-charts/releases/tag/alloy-1.14.2)
+    * [`v1.14.1`](https://redirect.github.com/grafana/helm-charts/releases/tag/alloy-1.14.1)
+* Update quay.io/prometheus/alertmanager Docker tag to v0.34.2
+    * [materialize-monitoring#623](https://github.com/MaterializeInc/materialize-monitoring/pull/623)
+    * [`v0.34.2`](https://redirect.github.com/prometheus/alertmanager/releases/tag/v0.34.2): 0.34.2 / 2026-10-29
+* Update kube-state-metrics Helm Chart to v8.8.0
+    * [materialize-monitoring#631](https://github.com/MaterializeInc/materialize-monitoring/pull/631)
+    * [`v8.8.0`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/kube-state-metrics-8.8.0)
+* Update kube-state-metrics Helm Chart to v8.7.1
+    * [materialize-monitoring#622](https://github.com/MaterializeInc/materialize-monitoring/pull/622)
+    * [`v8.7.1`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/kube-state-metrics-8.7.1)
+    * [`v8.7.0`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/kube-state-metrics-8.7.0)
+* Update registry.k8s.io/metrics-server/metrics-server Docker tag to v0.9.1
+    * [materialize-monitoring#626](https://github.com/MaterializeInc/materialize-monitoring/pull/626)
+* Update quay.io/thanos/thanos Docker tag to v0.42.5
+    * [materialize-monitoring#616](https://github.com/MaterializeInc/materialize-monitoring/pull/616)
+* Update ghcr.io/materializeinc/mzmon-alloy Docker tag to v1.21.2
+    * [materialize-monitoring#619](https://github.com/MaterializeInc/materialize-monitoring/pull/619)
+* Update prometheus-node-exporter Helm Chart to v4.60.1
+    * [materialize-monitoring#615](https://github.com/MaterializeInc/materialize-monitoring/pull/615)
+    * [`v4.60.1`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-node-exporter-4.60.1)
+* Update quay.io/prometheus-operator/prometheus-config-reloader Docker tag to v0.94.2
+    * [materialize-monitoring#594](https://github.com/MaterializeInc/materialize-monitoring/pull/594)
+* Update thanos Helm Chart to v0.48.0
+    * [materialize-monitoring#597](https://github.com/MaterializeInc/materialize-monitoring/pull/597)
+    * [`v0.48.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.48.0)
+* Scrape balancerd with a PodMonitor
+    * [materialize-monitoring#604](https://github.com/MaterializeInc/materialize-monitoring/pull/604)
+    * Scrape balancerd's connection metrics (`mz_balancer_*`)
+        * A new PodMonitor collects `mz_balancer_*` from each balancerd pod's `internal-http` port. It needs Materialize v26.24.0 or later, which labels balancerd pods `app.kubernetes.io/name: balancerd`.
+        * Configure it under `materialize.balancerd.serviceMonitor`, the same shape as `materialize.clusterd.serviceMonitor`. It's on by default; set `enabled: false` to turn it off.
+        * The classic and Google Cloud Managed Prometheus downloads include a matching `balancerd` scrape config.
+
+### Dependencies
+
+* <details><summary>Included Pipelines @ v0.12.0..v0.13.0</summary>
+
+    * Add a GCS section to the persist dashboard, and drop its always-zero storage series
+        * [materialize-monitoring#625](https://github.com/MaterializeInc/materialize-monitoring/pull/625)
+        * The Materialize Persist dashboard's Object Store Internals tab has a GCS section when the GCS Cloud Monitoring pull is on
+            * Live data, objects, and average object size per bucket, their daily change, and the live, noncurrent, and soft-deleted split
+        * The Materialize Persist dashboard's Storage tab no longer shows orphaned data or uploads in flight, which Materialize always reported as zero
+            * `mz_persist_shard_usage_leaked_bytes` and `mz_persist_shard_usage_not_leaked_not_referenced_bytes` leave the extended metric tier
+
+  </details>
+
+* Included Prometheus Scrapers @ v0.5.0..v0.6.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.14.0..v0.15.0</summary>
+
+    * Release mzmon-lib (shared library) v0.14.0
+        * [materialize-monitoring#532](https://github.com/MaterializeInc/materialize-monitoring/pull/532)
+    * Name the Datadog dashboard files datadog-<stem>.json, unblocking the dashboards release
+        * [materialize-monitoring#633](https://github.com/MaterializeInc/materialize-monitoring/pull/633)
+        * The Datadog dashboard downloads are named `datadog-<stem>.json`, such as `datadog-env-top.json`, so they no longer share a file name with the Grafana render of the same dashboard.
+    * Datadog dashboards: port every env-top panel, with a parity ledger
+        * [materialize-monitoring#630](https://github.com/MaterializeInc/materialize-monitoring/pull/630)
+        * Datadog: `env-top`, the Materialize Environment Overview, holds the Grafana dashboard's panels, downloadable as JSON from the Available Dashboards page
+            * Environment, namespace, cluster, and replica template variables. Pick one environment and the namespace it runs in: environments reuse cluster and replica ids, and the Kubernetes panels read the namespace.
+            * The peek and Iceberg commit latency panels need percentiles enabled for their metrics in Datadog.
+            * The Datadog dashboards page lists the panels it draws differently from Grafana or leaves out, such as the alert panels.
+    * Build dev dependencies without debug info
+        * [materialize-monitoring#632](https://github.com/MaterializeInc/materialize-monitoring/pull/632)
+    * Update Rust crate jsonschema to 0.60.0
+        * [materialize-monitoring#627](https://github.com/MaterializeInc/materialize-monitoring/pull/627)
+        * [`v0.60.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0601---2026-10-23)
+        * [`v0.60.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0600---2026-10-22)
+    * Update Rust crate zip to v9 [SECURITY]
+        * [materialize-monitoring#620](https://github.com/MaterializeInc/materialize-monitoring/pull/620)
+        * [`v9.0.5`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#905---2026-10-17)
+        * [`v9.0.4`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#904---2026-10-16)
+        * [`v9.0.3`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#903---2026-10-13)
+        * [`v9.0.2`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#902---2026-10-11)
+        * [`v9.0.1`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#901---2026-10-10)
+        * [`v9.0.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#900---2026-10-08)
+    * Datadog dashboards: split widget queries into bare queries and formulas
+        * [materialize-monitoring#624](https://github.com/MaterializeInc/materialize-monitoring/pull/624)
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#603](https://github.com/MaterializeInc/materialize-monitoring/pull/603)
+    * Datadog dashboards: the build machinery and an env-top preview
+        * [materialize-monitoring#587](https://github.com/MaterializeInc/materialize-monitoring/pull/587)
+        * Datadog: a preview of the Materialize Environment Overview (`env-top`), with its cluster and replica counts, downloadable as JSON from the Available Dashboards page. Import it through Datadog's API or Terraform's `datadog_dashboard_json`, and pick one environment, because the counts merge environments when several are selected.
+
+  </details>
 
 ## Prometheus Scrapers v0.6.0 (Unreleased)
 
