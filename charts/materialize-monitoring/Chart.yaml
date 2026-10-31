@@ -92,7 +92,7 @@ annotations:
 dependencies:
   - name: alloy
     alias: alloy-agent
-    version: "1.14.3"
+    version: "1.14.4"
     repository: https://grafana.github.io/helm-charts
     condition: alloy-agent.enabled
     tags:
@@ -101,7 +101,7 @@ dependencies:
       - alloy-agent
   - name: alloy
     alias: alloy-gateway
-    version: "1.14.3"
+    version: "1.14.4"
     repository: https://grafana.github.io/helm-charts
     condition: alloy-gateway.enabled
     tags:
