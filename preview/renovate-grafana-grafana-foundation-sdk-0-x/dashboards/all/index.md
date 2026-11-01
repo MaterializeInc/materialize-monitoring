@@ -19,10 +19,13 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 ## Formats
 
-Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/compatibility/#grafana).
-Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
+Every dashboard has a **Grafana dashboard schema v2** render, which needs **Grafana 12 or later**.
+For more information, see [Grafana compatibility](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/compatibility/#grafana).
+`env-top` also has a **Datadog** render, which [Datadog](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/datadog/) describes.
+Each table below lists every format, so you can see which ones a dashboard has no render for.
 Grafana 10 and 11 (schema v1) renders are not planned.
-The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/development/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/common-queries/) is the query material to build one yourself.
+The rest of the Datadog set, and the Google Cloud Monitoring and Honeycomb sets, are tracked on the [roadmap](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/development/roadmap/#dashboards).
+[Common Queries](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/common-queries/) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -69,7 +72,12 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/datadog/datadog-env-top.json?xxhash=a69490b0047379ae" download="datadog-env-top.json"><code>datadog-env-top.json</code></a>
+      </td>
+      <td>
+          <em>No annotations</em>
+      </td>
     </tr>
   </tbody>
 </table>
@@ -170,10 +178,22 @@ Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible store
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
 The Storage tab is Materialize's own accounting of what the stored data is for — current data, data kept only for a reader still looking at an older version, and data nothing refers to.
 The bucket's own size, as the provider bills it, is on `infra-cloud`.
-The Object Store Internals tab is the store's own account, for a persist bucket on Ceph run by Rook:
-Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
-It appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`; on any other store, the tab says what it would show.
-It needs both a metrics and a logs datasource.
+The Object Store Internals tab is the store's own account, with a section for each store it finds:
+
+Ceph run by Rook
+: Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
+  The section appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`.
+
+GCS
+: Each bucket's live data, object count, and average object size, and how much its data and object count change each day.
+  Two donuts split the selected buckets' billed bytes and objects into live objects, noncurrent versions, and soft-deleted objects.
+  The section appears when the gateway pulls the bucket from Cloud Monitoring, under `pipeline.metrics.provider.gcp.gcs.buckets`.
+  The **GCS Bucket** picker opens on every pulled bucket.
+  The environment's bucket is the one whose **Live Data** tile reads the same as the environment's.
+  Google measures a bucket once a day, so the section's charts show the last 14 days whatever time range you pick.
+
+On S3, Azure Blob, or any other store, the tab says what it would show.
+The dashboard needs both a metrics and a logs data source.
 
 <table class="download-dashboards">
   <thead>
@@ -187,7 +207,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-persist.json?xxhash=e663d6143588b394" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-persist.json?xxhash=c0fab4e6eba7f16e" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
         <br /><small>UID <code>mz-mon-env-persist</code></small>
       </td>
       <td>
@@ -428,7 +448,7 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-cloud.json?xxhash=fd53e6e0add2299f" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-cloud.json?xxhash=ac9d1d80199b2b7d" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
         <br /><small>UID <code>mz-mon-infra-cloud</code></small>
       </td>
       <td>
