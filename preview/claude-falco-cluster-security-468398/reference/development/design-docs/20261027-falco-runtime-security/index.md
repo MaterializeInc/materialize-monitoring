@@ -19,7 +19,7 @@ date: 2026-10-27
         </tr>
         <tr>
           <th>lastmod</th>
-          <td>2026-10-27 00:00:00 &#43;0000 UTC</td>
+          <td>2026-11-02 00:00:00 &#43;0000 UTC</td>
         </tr>
         <tr>
           <th>publishdate</th>
@@ -45,11 +45,22 @@ Falco's health is a Prometheus endpoint, which the gateway already scrapes throu
 An alert on either is a rule on the rulers the stack already runs, through the Alertmanager it already runs.
 What's new is the privileged DaemonSet itself, a gateway stage that understands Falco's priorities, a NetworkPolicy, and the rules.
 
+The following decisions shape everything else, so the doc settles them first:
+
+Performance
+: Falco's largest cost lands inside Materialize's own system calls, where Falco's metrics don't show it. Falco isn't recommended for Materialize's nodes until that cost is measured on Materialize's metrics. See [Performance impact on Materialize](#performance-impact-on-materialize).
+
+Where detections live
+: Detections are audit records. They go to the `audit` log class, which no tenant can read, and they're kept for 365 days rather than the 30 days operational logs get. See [Detections are audit records](#detections-are-audit-records).
+
+Who is notified
+: Detection alerts carry `audience: security`, which is planned separately. This design consumes it.
+
 <!--
 Agent note: this doc records decisions and their why. When a decision lands in code, update the section and
 check the matching row in "Chart-side prerequisites".
 
-Four claims here are load-bearing and easy to soften by accident:
+Six claims here are load-bearing and easy to soften by accident:
   1. Falco is off by default everywhere: in no tag group, `default` included, and off in the Terraform module and the
      per-cloud wrappers. It's a privileged DaemonSet that loads an eBPF program into every node's kernel, and it must
      never arrive in an upgrade.
@@ -61,6 +72,18 @@ Four claims here are load-bearing and easy to soften by accident:
   4. Detection only. Nothing in the chart acts on a workload in response to a detection. Monitoring that takes down
      the thing it monitors is worse than monitoring that is late, which is the same reasoning as the
      `preemptionPolicy: Never` on the priority classes.
+  5. Performance is measured on Materialize's own metrics, not Falco's. The probe's time is spent on clusterd's
+     threads, inside clusterd's system calls, so Falco's CPU and memory never show it. The operator page doesn't
+     recommend Falco on Materialize's nodes until the A/B measurement in "Testing" exists. Shaped by the author,
+     2026-11-02.
+  6. Detections are audit records: the `audit` log class, 365 days. The author leans this way (2026-11-02) and
+     considered a `security` class instead; the open question records it. The `security` audience is planned
+     outside this doc, so don't redesign it here.
+
+Falco's overhead mechanics (the tracepoints fire for every system call, the in-kernel filter to the rules' syscall set,
+the single-threaded event loop, the buffer presets) come from falco.org's tuning, performance, dropping and metrics pages
+and the adaptive-syscalls blog post, read 2026-11-02. Falco publishes no workload benchmark. The per-invocation times
+quoted are sample snapshots with no workload stated; don't present them as a measurement.
 
 The gateway finding in "What exists today" (every Falco line lands at level UNKNOWN, in the droppable bucket) was read
 from packages/alloy-pipelines/gateway.yaml on 2026-10-27, not observed live. Re-check it against the pipeline before
@@ -81,11 +104,14 @@ The goals come from the following stakeholders:
 Functional requirements are framed as value-first user stories.
 Priority tags (**Must** / **Should** / **Could**) are relative to the first shipped version.
 
+- **[Must] As an operator,** I want Falco's cost to Materialize's throughput and latency measured and published, so that I can weigh it before I turn Falco on.
+- **[Must] As an operator,** I want CPU contention between Falco and Materialize resolved in Materialize's favor, so that a busy node costs me detections rather than query latency.
 - **[Must] As an operator,** I want to turn on runtime detection for every node in the cluster with one value, so that I don't integrate a separate security agent by hand.
 - **[Must] As an operator,** I want Falco to stay off until I turn it on, so that a privileged DaemonSet never arrives in an upgrade.
 - **[Must] As an operator,** I want each detection stored with the rule, the node, and the namespace, pod, and image it came from, so that I know which workload to look at.
 - **[Must] As an operator of an air-gapped cluster,** I want Falco to run without downloading anything, so that it works with no internet access and runs exactly the rules that were reviewed.
 - **[Must] As an operator,** I want to know when Falco is blind, because it's dropping kernel events or isn't running on a node, so that a quiet detection stream means nothing happened rather than nothing was watched.
+- **[Must] As a security team,** I want detections kept for a year and readable by an audit reader but by no tenant, so that an investigation months later still has them and no tenant reads about another's workloads.
 - **[Should] As a security team,** I want to add rules of our own through values, so that they ship with the chart's release without a fork.
 - **[Should] As a security team,** I want high-priority detections to reach our receiver rather than the platform on-call, so that the people who triage them are the ones notified.
 - **[Should] As an operator,** I want a dashboard of detections and of Falco's health per node, so that I can see coverage and noise in one place.
@@ -94,13 +120,15 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 
 ## Technical BLUF
 
+- **Falco's largest cost lands inside Materialize's own system calls.** The probe runs on tracepoints that fire for every system call on the node, in the calling thread, so clusterd pays it as latency and CPU that clusterd's metrics report. Falco's own event loop is single-threaded and loses CPU contention to clusterd by design. An A/B measurement on clusterd comes before any recommendation.
+- **Detections are audit records, kept for 365 days.** They're the first producer for the `audit` log class, which the tenant-scoped read path grants to an audit reader alone. They get a retention of their own, and they're kept out of every rate limit that drops lines.
 - **The upstream `falco` chart, as a subchart in no tag group.** It comes from `oci://ghcr.io/falcosecurity/charts`, version 9.2.1 with Falco 0.45.1 as of 2026-10-27, and turns on with `tags.falco: true`. The `postgres-exporter` subchart is the precedent.
 - **The modern eBPF probe only, in least-privileged mode.** The probe is compiled once and relocated against the kernel's BTF at load, so there's no kernel module and no driver loader. The container gets a short list of capabilities instead of `privileged: true`.
 - **Nothing is downloaded.** The upstream chart runs `falcoctl` to fetch the ruleset and the container plugin at start, and to poll for new rules weekly. The Falco image already contains both, so `falcoctl` stays off, and rules change only when the pinned image does.
 - **Detections are log lines.** Falco writes JSON to standard output, and the agent ships it with every other pod's logs. A new gateway stage maps Falco's priority onto the pipeline's `level` and lifts the rule and the workload it names into structured metadata.
 - **Falco's health is metrics.** Falco's Prometheus endpoint counts events, drops, and rule matches, and the gateway scrapes it through the subchart's `ServiceMonitor` with no change to discovery.
 - **Detection alerts read Loki, and blindness alerts read Thanos.** The workload a detection names exists only in the log line, so detection alerts are LogQL. Drops and coverage are counters, so their alerts are PromQL. A derived `falco` capability installs both only where Falco runs.
-- **A `security` audience routes detections.** Routes match on `audience`, and today's values are `platform`, `workload`, and `development`. None of them names the people who triage a detection.
+- **Detections route on the planned `security` audience.** Routes match on `audience`, and the `security` audience is planned separately for the people who triage detections. Blindness alerts stay `platform`, because the team that runs the cluster fixes them.
 - **Falco has no network egress.** The umbrella chart renders a NetworkPolicy that admits the gateway's scrape and denies all egress, because with `falcoctl` off nothing in the pod dials out.
 - **Falco runs on every node.** It tolerates every `NoSchedule` taint, as the agent does, and takes the `monitoring-critical` priority class, because a node without it is a node nobody watches.
 
@@ -113,6 +141,53 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 - **The kernel-module driver and the driver loader.** Both need privileges this design avoids, and the loader downloads or builds a driver at start.
 - **`falcosidekick`.** It's a second component with its own egress and its own copy of output integrations the gateway already has. See [Why not falcosidekick](#why-not-falcosidekick).
 - **On by default anywhere.** Not in the chart, the Terraform module, or the per-cloud wrappers.
+
+## Performance impact on Materialize
+
+Falco shares every node with Materialize, and Materialize is the reason the node exists.
+This section says where Falco's cost lands, what raises it, and how the design keeps contention in Materialize's favor.
+None of it has been measured on a Materialize workload; [Testing](#testing) says how it's measured.
+
+### Where the cost lands
+
+The following table lists where Falco spends resources on a node, and who pays:
+
+| Where | What it costs | Who pays |
+|---|---|---|
+| The kernel, on every system call | The probe runs on the system-call enter and exit tracepoints, which fire for every system call on the node. Falco filters in the kernel to the system calls its loaded rules need before it extracts any fields. An untraced call pays the check, and a traced call also pays the copy into the ring buffer | The calling thread. A tracepoint program runs in the context of the thread that made the system call, so the time is clusterd's: latency on clusterd's own calls, and CPU that clusterd's metrics report |
+| User space, beside clusterd | Falco's event loop reads every event from the ring buffers and evaluates the rules against it. Falco's docs describe the loop as single-threaded, so it can't use more than one CPU | Whatever else wants that CPU on the node |
+| Memory | The upstream chart requests 512Mi, where the agent requests 300Mi, and the request comes out of every node's allocatable. The ring buffers are preallocated: 8 MB each at the default `buf_size_preset: 4`, one for every two CPUs, so a 64-CPU node holds 32 buffers, or 256 MB | Every pod that can't schedule because of it |
+
+Falco's metrics page shows sample snapshots of 54 to 677 nanoseconds per run of a tracepoint program, with no workload stated.
+They give an order of magnitude, not a measurement.
+What a clusterd node pays depends on how many system calls clusterd makes, and that rate hasn't been measured.
+clusterd's system calls are mostly its I/O: the network between replicas and to environmentd, persist's reads and writes to object storage, and local disk.
+
+**The kernel half matters most, and nothing else in this design can trade it away.**
+Falco's metrics report Falco's CPU and memory, and the probe's time appears in neither.
+It shows only on clusterd's side, so the measurement reads clusterd's metrics.
+
+### What raises it
+
+Falco traces the system calls its loaded rules need, plus a base set its state engine needs.
+`read` and `write` are among the events Falco ignores by default for performance reasons.
+A rule that needs a system call adds it to the traced set, and every such call on the node then pays the capture and the copy, not only the check.
+`base_syscalls.all: true` does the same for every event Falco supports, and Falco's docs warn that it can hurt performance.
+
+Rules of your own are therefore a performance decision as well as a detection one.
+A rule on a rare system call, such as loading a kernel module or setting up an `io_uring` ring, costs little, because the call is rare.
+A rule on `read` or `write`, or on another call clusterd makes at a high rate, puts clusterd's I/O path through the probe's capture.
+The operator page says so, and the testing plan measures one such rule.
+
+### How the design contains it
+
+The design contains the cost in the following ways:
+
+- **Contention resolves in Materialize's favor.** Falco has a small CPU request and no CPU limit. Falco can use idle CPU, and under contention the kernel's scheduler divides CPU by request, so a busy clusterd keeps its share. A Falco that falls behind drops events rather than slowing clusterd, and the drop alert reports it. A CPU limit would add throttling on top of that, and buy nothing for clusterd.
+- **The kernel cost is measured, not assumed.** An A/B on the test installs runs the same Materialize workload with Falco off and on, and compares clusterd's CPU, its peek and ingest latency, and its throughput. The operator page publishes the result, and doesn't recommend Falco on Materialize's nodes without it.
+- **Memory is sized for the largest node.** The ring buffers grow with a node's CPU count, and a DaemonSet's request is one number for every node. The request is set from the calibration on the largest node type the wrappers ship.
+- **Opting Materialize's nodes out is visible.** An operator can keep Falco off Materialize's node pools through affinity or tolerations. The coverage alert then reports those nodes as uncovered, so the trade is visible.
+- **Turning Falco off is a values change.** Removing the DaemonSet detaches the probe, and nothing in Materialize restarts.
 
 ## What exists today
 
@@ -127,7 +202,9 @@ The following table lists what Falco can build on, as of 2026-10-27.
 | An optional subchart in no tag group | ✅ Precedent | `postgres-exporter`: off by default, `tags.postgres-exporter`, a derived capability, and its own registry file |
 | NetworkPolicies for subcharts that ship none | ✅ Shipped | The `networkPolicies` block renders them from `templates/networkpolicies.yaml`. The Falco chart ships none |
 | Derived capabilities | ✅ Shipped | `packages/mzmon-lib/src/query/rules/capability.rs`, the schema enum, and `mzmon.rules.derivedCapabilities` in the chart |
-| An audience for security | ❌ Missing | `gen-rules` and the chart's override validator accept `platform`, `workload`, and `development` |
+| An audience for security | ⬜ Planned | Planned separately. `gen-rules` and the chart's override validator accept `platform`, `workload`, and `development` until it lands |
+| The `audit` log class | ⚠️ Name only | `pipeline.logging.tenancy.tenantMap.audit` is a values key, and `GATEWAY_TENANT_MAP_AUDIT` reaches the gateway's ConfigMap, where no stage reads it. A producer is [DEP-277](https://linear.app/materializeinc/issue/DEP-277) |
+| Retention longer than operational logs | ❌ Missing | The bundled Loki sets one `retention_period: 30d` for every stream. The AWS and GCP wrappers' `logs_retention_days` expires the whole Loki bucket when set, and is `null` by default |
 | Trivy scanning of optional components | ⚠️ Partial | `bin/security-scan.sh` renders the `tier1`, `azure`, and `mtls3` scenarios. None turns on `postgres-exporter`, and none would turn on Falco |
 | Falco | ❌ Missing | Not in the chart. The Security team's item, [SEC-671](https://linear.app/materializeinc/issue/SEC-671), proposes it for Materialize Cloud's EKS clusters, and [SEC-676](https://linear.app/materializeinc/issue/SEC-676) asks for a rule on kernel module loads |
 
@@ -152,7 +229,7 @@ flowchart LR
   end
 
   gw["Alloy gateway<br/>Falco stage: priority to level,<br/>rule and target to metadata"]
-  loki[("Loki")]
+  loki[("Loki<br/>audit class, 365 days")]
   thanos[("Thanos")]
   lruler["Loki ruler<br/>detection alerts"]
   truler["Thanos ruler<br/>blindness alerts"]
@@ -278,24 +355,21 @@ This trades rule freshness for review.
 A new upstream detection reaches an install when Renovate bumps the image and a release ships it, not within a week.
 An operator who wants faster rule updates can turn `falcoctl` back on through values, and has to open its egress through `networkPolicies.falco.egress.extra`.
 
-### Scheduling and footprint
+### Scheduling
 
 Falco runs on every node, as a DaemonSet, with a rolling update of at most 10% of nodes at a time, matching node-exporter.
+It runs in a namespace of its own, through the subchart's `namespaceOverride`, for the reason in [Kept out of the limits that drop](#kept-out-of-the-limits-that-drop).
 
 The upstream chart requests 100m of CPU and 512Mi of memory, and limits it to 1,000m and 1Gi.
-The agent requests 100m and 300Mi, so Falco more than doubles the stack's per-node request.
-That request comes out of every Materialize node's allocatable.
-
-Falco's CPU scales with the system-call rate on its node, and clusterd's nodes do a lot of I/O.
-The chart sets no CPU limit, because a throttled Falco falls behind the ring buffer and drops events.
-The memory envelope is calibrated on a loaded clusterd node before it's committed; see [Testing](#testing).
+This design keeps the CPU request, drops the CPU limit, and sets memory from the calibration.
+[Performance impact on Materialize](#performance-impact-on-materialize) says why.
 
 ### The network policy
 
 The upstream chart ships no NetworkPolicy, so the umbrella chart renders one under `networkPolicies.falco`, in the same eight-key shape as Alertmanager's.
 
 Ingress
-: Port `8765`, from the release namespace, for the gateway's scrape. The kubelet's probes reach the same port from the node, and Cilium and Calico both exempt host-to-pod traffic.
+: Port `8765`, from the gateway's pods in the release namespace, for the scrape. Falco's namespace isn't the gateway's, so the rule names both a `namespaceSelector` and a `podSelector`. The kubelet's probes reach the same port from the node, and Cilium and Calico both exempt host-to-pod traffic.
 
 Egress
 : None. `inNamespace`, `dns`, and `external` are all off, so the policy denies every outbound connection. The CRI socket is a Unix socket and isn't network traffic.
@@ -362,6 +436,7 @@ It sets `level` from Falco's `priority`, before the stage that promotes `level` 
 
 With the mapping, a Warning or higher detection is exempt from the per-level limits.
 A Notice or Informational detection shares the `INFO` limit, which applies backpressure rather than dropping.
+The stage also assigns each detection to the `audit` log class; see [Detections are audit records](#detections-are-audit-records).
 
 The stage also writes the following structured metadata, so a rule or a query can filter on them without parsing the line:
 
@@ -398,15 +473,58 @@ A burst of detections can outrun the agent's per-pod limit of 5,000 lines a seco
 Falco's own output queue can also drop detections before they're written.
 The `falco-dropping-detections` alert counts those, and calibration measures the other two.
 
-### Retention and tenancy
+## Detections are audit records
 
-The bundled Loki keeps every stream for `retention_period: 30d`.
-Security teams often need detections for longer than operational logs.
-Loki's per-stream retention can keep `{app="falco"}` longer without keeping everything longer; see [Open questions](#open-questions).
+A detection is evidence about a workload, not an operational log line.
+It names another workload, it can carry that workload's command line and file paths, and it's read during an investigation, often months later.
+Detections therefore get the `audit` log class and a retention of their own.
 
-A detection names another workload and can carry its command line and file paths.
-Under the [tenant-scoped read path](../20260916-tenant-query-api/), a tenant can't be allowed to read detections about another tenant's workloads.
-Which log class detections belong to is an open question.
+### The `audit` class
+
+The [tenant-scoped read path](../20260916-tenant-query-api/) defines four log classes, and grants the `audit` class to an audit reader and to no tenant.
+A tenant therefore can't read detections about another tenant's workloads.
+
+The class exists in name only today.
+`tenantMap.audit` is a values key, and `GATEWAY_TENANT_MAP_AUDIT` reaches the gateway, but no stage assigns a line to the class.
+The Falco stage assigns detections to it, which makes Falco the class's first producer.
+That answers part of the read path design's open question about what feeds the `audit` class.
+[DEP-277](https://linear.app/materializeinc/issue/DEP-277), a producer for the class, is a prerequisite for this section.
+
+The alternative is a class of its own, `security`, beside `audit`.
+It would keep detections apart from the read path's own audit records, such as the proxy's record of who read which tenant.
+It costs a fifth key in `tenantMap`, a fifth class in the grant matrix, and another class the gateway assigns.
+This design leans to `audit`, and the choice is an [open question](#open-questions).
+
+A Loki rule reads one tenant.
+When the `audit` class maps to a tenant of its own, the detection alerts install into that tenant through `rules.logTenants`.
+
+### 365 days
+
+Operational logs keep the bundled Loki's `retention_period: 30d`, and detections keep 365 days.
+How Loki applies the longer period depends on tenancy:
+
+- When `tenantMap.audit` maps the class to a tenant of its own, that tenant's `retention_period` override sets it.
+- Under the default `static` tenancy, every class shares the `loki` tenant, so a per-stream rule, `retention_stream` with the selector `{app="falco"}`, sets it.
+
+A bucket lifecycle rule overrides both.
+The AWS and GCP wrappers' `logs_retention_days` expires every object in the Loki bucket after that many days.
+A value below 365 therefore deletes detections, whatever Loki's own retention says.
+The variable defaults to `null`, and the wrappers refuse a value below 365 while Falco is on.
+
+A year of detections costs whatever the rules write.
+Calibration measures that volume, and a rule that fires on routine activity is what makes it expensive.
+
+### Kept out of the limits that drop
+
+The read path's design treats Loki's copy of an audit record as best-effort, because Loki and the pipeline shed load by design.
+For detections, Loki holds the only copy, so the design keeps them clear of every limit that drops a line:
+
+- The level mapping puts Warning and higher outside the per-level limits. Notice and Informational detections share the `INFO` limit, which applies backpressure instead of dropping.
+- The gateway's first limit drops lines past 25,000 a second per namespace. Falco runs in a namespace of its own, so the rest of the stack's logs can't spend its share.
+- When the `audit` class has a tenant of its own, that tenant's Loki ingestion limits are sized for completeness rather than for shedding.
+
+Object Lock or WORM on the bucket protects a detection after it's written, as the read path's design notes.
+It does nothing for a detection that was never ingested.
 
 ## Falco's health is metrics
 
@@ -454,16 +572,14 @@ sum by (rule, node, target_namespace, target_pod) (
 The blindness alerts are about Falco itself, so they go to whoever runs the cluster.
 The detection alerts go to whoever triages detections.
 
-### A `security` audience
+### The `security` audience
 
-A route matches on `audience` to send alerts to different people, and the alerting presets route by severity first.
-None of `platform`, `workload`, or `development` names the people who triage a detection.
-This design adds `security` to the audiences `gen-rules` and the chart's override validator accept.
-An operator routes it with an entry under `alerting.routes.extra`, matching `audience="security"`.
+Detection alerts carry `audience: security`, which is planned separately for the people who triage detections.
+This design consumes the audience and doesn't define it.
+`gen-rules` accepts `platform`, `workload`, and `development` until it lands, so the detection alerts wait on it.
+
+An operator routes the audience with an entry under `alerting.routes.extra`, matching `audience="security"`.
 Without that route, a detection falls through to the preset's severity routes, so it reaches somebody either way.
-
-The alternative is `audience: platform` with a `component: falco` label to route on.
-It adds nothing to the schema, and it routes a security team's alerts as if they were the platform's.
 
 ### A `falco` capability
 
@@ -484,7 +600,7 @@ Terraform module
 : An input that turns Falco on and passes rules of your own, off by default, with a render assertion that the default plans no Falco objects.
 
 Per-cloud wrappers
-: A variable passed through to the module, off by default, although the wrappers turn the rest of the stack on.
+: A variable passed through to the module, off by default, although the wrappers turn the rest of the stack on. The wrappers refuse a `logs_retention_days` below 365 while Falco is on.
 
 Materialize Cloud
 : Through the Pulumi component's values, like any other chart setting, with no privileged path. Security's rules arrive in `falco.customRules`, matching SEC-671's split: Falco the workload belongs to the team that runs the cluster, and the rules, response, and routing belong to Security.
@@ -498,16 +614,19 @@ None of it is ticketed yet.
 
 | Item | Why it's needed | Blocking? |
 |---|---|---|
-| **The `falco` subchart**: the dependency, the values block, `tags.falco`, and the image pin | The feature | **Blocking** |
-| **`networkPolicies.falco`**, ingress on `8765` from the namespace and no egress | A privileged pod with no egress | **Blocking** |
-| **The gateway's Falco stage**: the priority mapping and the structured metadata | Without it, detections land at `UNKNOWN` in a bucket that drops | **Blocking** |
+| **The `falco` subchart**: the dependency, the values block, `tags.falco`, the image pin, and a namespace of its own | The feature | **Blocking** |
+| **`networkPolicies.falco`**, ingress on `8765` from the gateway's pods and no egress | A privileged pod with no egress | **Blocking** |
+| **The gateway's Falco stage**: the priority mapping, the structured metadata, and the `audit` class | Without it, detections land at `UNKNOWN` in a bucket that drops | **Blocking** |
+| **The A/B measurement on clusterd**, published on the operator page | No recommendation for Materialize's nodes without it | **Blocking** for the operator page |
+| **A producer for the `audit` log class**, [DEP-277](https://linear.app/materializeinc/issue/DEP-277) | Detections are its first producer | **Blocking** |
+| **365-day retention for detections**: a per-stream rule under `static` tenancy, or the `audit` tenant's override | Detections outlive operational logs | **Blocking** |
 | **A Trivy scenario with Falco on**, and its baseline in `.trivyignore.yaml` | The gate inspects nothing it doesn't render. [DEP-249](https://linear.app/materializeinc/issue/DEP-249) applies: a baseline by check ID also masks this repository's templates | **Blocking** |
 | **`packages/queries/infra-falco.yaml`**, its tiers, and the `falco` capability | The metric queries and the blindness alerts | Blocking for alerts |
-| **The `security` audience** in `gen-rules`, the schema, and the chart's validator | Routing detections to the people who triage them | Blocking for detection alerts |
+| **The `security` audience**, planned separately | The detection alerts carry it | Blocking for detection alerts |
 | **The detection and blindness alerts**, with `promtool` cases for the PromQL ones | The alerts | Not blocking |
 | **The mirror registry profile's `falco` entry** | Installs that rewrite image references | Not blocking |
 | **An `infra-security` dashboard**: detections by rule, priority, and target namespace, and drops, footprint, and coverage per node | The dashboard story | Not blocking |
-| **The Terraform module input**, and the wrappers' variable downstream | Terraform installs | Not blocking |
+| **The Terraform module input**, and the wrappers' variable downstream, which refuses a `logs_retention_days` below 365 while Falco is on | Terraform installs | Not blocking |
 
 ## Testing
 
@@ -519,27 +638,33 @@ The following tests cover the design:
 - **kind.** A kind tier with Falco on starts a shell in a pod, and asserts that Loki holds the detection with `target_pod` set, and that Thanos holds a match for the rule. This proves the probe loads on the CI runners' kernel, not on the wrappers' images.
 - **The wrappers' images.** The probe loads in least-privileged mode on Bottlerocket on arm64, on GKE's default image, and on AKS's default image.
 - **Calibration.** A bake of at least a week on the AWS and GCP test installs records matches per rule, the drop ratio under a loaded clusterd, and Falco's CPU and memory. The chart's exceptions and the alerts' thresholds come from it.
-- **Overhead on Materialize.** A clusterd replica's throughput and latency, on the same workload, with and without Falco on its node.
+- **Overhead on Materialize.** The same workload on the test installs, read from clusterd's metrics: its CPU, its peek and ingest latency, and its throughput. It runs with Falco off, with the stable ruleset, and with one rule of your own on a high-rate system call such as `write`. Each run also records the node's system-call rate and Falco's drop ratio, so the result says how busy the node was. The largest node type the wrappers ship is one of the runs, because the ring buffers grow with CPU count.
+- **Completeness.** Logs from the rest of the stack, pushed past the gateway's per-namespace limit, don't stop a triggered detection reaching Loki.
+- **Retention.** The render under `static` tenancy carries the per-stream rule for `{app="falco"}`, and the bundled Loki still returns a detection after operational logs from the same day have expired.
 - **Live evaluation.** Each alert is quiet over the bake, and fires over a window that contains a triggered rule, before it enters the default set.
 
 ## Documentation to update
 
-- A new operator page under `operating/`: turning Falco on, what it can and can't see, the privileges it holds, rules of your own, routing detections, and the per-node cost.
+- A new operator page under `operating/`: turning Falco on, its measured cost to Materialize, what it can and can't see, the privileges it holds, rules of your own and their performance cost, routing detections, and their retention.
+- `logs-and-events/storing.md`, whose retention section gains the detections' 365 days, and the rule that a bucket lifecycle can't be shorter.
+- The [tenant-scoped read path](../20260916-tenant-query-api/) design, whose open question about what feeds the `audit` class gains Falco's detections, once this design is Ready.
 - `operating/securing.md`, whose trust boundaries and cluster permissions gain what turning Falco on grants.
 - `architecture.md`, which lists the components.
-- `alerting/configuring.md`, which gains the `falco` capability and the `security` audience.
-- `reference/development/queries/alerts.md`, whose audience and capability tables gain the same.
+- `alerting/configuring.md`, which gains the `falco` capability.
+- `reference/development/queries/alerts.md`, whose capability table gains the same.
 - `reference/development/repo-layout.md`, whose vendored subchart list gains `falco`.
 - `reference/development/roadmap.md`. ✅ Done: a row under **Designs in flight**, and a **Runtime security** section under **Backlog**.
 
 ## Open questions
 
+- [ ] **What overhead budget does a Materialize node accept?** The A/B gives a number, and the budget it's judged against is a product decision. A budget per metric, for clusterd's CPU, its peek latency, and its ingest throughput, is the shape to settle.
+- [ ] **How many system calls a second does a busy clusterd node make?** That rate sets both the probe's cost to clusterd and Falco's risk of dropping. Falco's dropping guide cites adopters who find fewer than about 1,000 kernel events a second per CPU usually isn't a problem.
+- [ ] **Is ring-buffer memory charged to Falco's container?** Falco's docs don't say. If it isn't, the memory request understates what Falco takes from a large node.
+- [ ] **`audit`, or a `security` class of its own?** This design leans to `audit`. A class of its own is worth its cost if the people who read detections and the people who read the proxy's read records differ.
+- [ ] **Is 365 days the retention?** It's the working figure. Calibration's detection volume says what it costs.
 - [ ] **Does least-privileged mode load under Bottlerocket's SELinux policy?** Bottlerocket enforces SELinux, and neither Falco's docs nor the upstream chart mention it. If it doesn't load, the EKS profile needs `seLinuxOptions` or `privileged: true`, and the privileges table changes for the most common image the wrappers ship.
 - [ ] **Do the wrappers' default images all expose BTF and the BPF ring buffer?** Falco's docs say most kernels from 5.8 do. Each image is checked rather than assumed.
 - [ ] **What does Falco see of I/O submitted through io_uring?** Falco traces `io_uring_setup`, `io_uring_enter`, and `io_uring_register`, and its docs don't say whether the operations a ring carries are visible. A workload that can create a ring might act outside Falco's view.
-- [ ] **Is `security` the right audience**, or does the `component` label carry it?
-- [ ] **How long are detections kept?** Per-stream retention for `{app="falco"}` in the bundled Loki, and whether the chart sets a default for it.
-- [ ] **Which log class do detections belong to** under the tenant-scoped read path, and who can read it?
 - [ ] **Can an operator who already runs Falco declare the `falco` capability**, so the stack's alerts work with their Falco? The gateway stage already applies to any pod labeled `app.kubernetes.io/name: falco` that writes JSON.
 - [ ] **What do the hardened-image vendors ship?** A Falco image without the bundled ruleset or the container plugin breaks the no-download design.
 - [ ] **Which exceptions does the chart ship** for its own components, after calibration?

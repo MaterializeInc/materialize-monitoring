@@ -110,7 +110,7 @@ A new doc starts at Draft.
     <li>
       <a href="/materialize-monitoring/preview/claude-falco-cluster-security-468398/reference/development/design-docs/20261027-falco-runtime-security/">Runtime security with Falco</a>
       <ul>
-            <li><strong>lastmod:</strong> 2026-10-27 00:00:00 &#43;0000 UTC</li>
+            <li><strong>lastmod:</strong> 2026-11-02 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Draft</li>
       </ul>
     </li>

@@ -57,7 +57,7 @@ From 1.0, a breaking change to the committed surface owes a deprecation cycle un
 | Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls provider metrics from CloudWatch, Cloud Monitoring and Azure Monitor, and scrapes an optional `postgres_exporter` watching the metadata and Grafana databases. Rust panics are merged into one entry at ingest |
 | Destinations | The bundled Loki and Thanos, any number of Prometheus remote-write destinations, OTLP, Datadog and Google Cloud's Telemetry API, each filtered by importance tier |
 | Dashboards | `env-top`, `env-logs`, `env-upgrade`, `env-persist` and `env-consensus` for Materialize. `infra-logs`, `infra-nodes`, `infra-net`, `infra-autoscaling`, `infra-karpenter`, `infra-cloud`, `infra-loki` and `infra-alloy` for the platform. All are rendered from Rust against the query registry |
-| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-five alerts are in the default set, four of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
+| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. A default set of metric and log-derived alerts installs wherever it applies, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
 | Security | A NetworkPolicy on every component, opt-in mTLS through cert-manager in three phases, and Trivy scanning of the rendered chart and the published images |
 | Qualification | Tier-0 Terraform render checks, kind tiers 1 and 2, and a Rust E2E suite run on kind and on real cloud installs |
 | Release | Per-component SemVer streams, automated release PRs, a changelog carrying each PR's release notes, a deprecation policy, and a committed-surface check |
@@ -357,14 +357,17 @@ It answers the platform half of the Security team's runtime-detection item, [SEC
 **Falco's detections travel paths the stack already has.**
 Falco is an optional DaemonSet, off by default everywhere, that downloads nothing and has no network egress.
 Its detections are JSON log lines that the agent ships to Loki, and its drop counters are metrics the gateway scrapes into Thanos.
+Its largest cost lands inside Materialize's own system calls, so the cost is measured on clusterd before Falco is recommended for Materialize's nodes.
 
 | Item | Status |
 |---|---|
-| The `falco` subchart: the modern eBPF probe in least-privileged mode, the ruleset from the image, and a NetworkPolicy with no egress | ⬜ |
-| The gateway's Falco stage: Falco's priority as `level`, and the rule and the workload it names as structured metadata | ⬜ |
+| The `falco` subchart: the modern eBPF probe in least-privileged mode, the ruleset from the image, a namespace of its own, and a NetworkPolicy with no egress | ⬜ |
+| An A/B of clusterd's CPU, latency, and throughput with Falco off and on, published on the operator page | ⬜ |
+| The gateway's Falco stage: Falco's priority as `level`, the rule and the workload it names as structured metadata, and the `audit` log class | ⬜ |
+| Detections as the first producer for the `audit` class ([DEP-277]), kept for 365 days | ⬜ |
 | A Trivy scenario with Falco on, and its baseline | ⬜ |
 | `infra-falco.yaml`, the `falco` capability, and the alerts for when Falco is blind | ⬜ |
-| The `security` audience, and the detection alerts | ⬜ |
+| The detection alerts, on the planned `security` audience | ⬜ |
 | An `infra-security` dashboard: detections, drops, footprint, and coverage | ⬜ |
 | The Terraform module input, and the wrappers' variable | ⬜ |
 | A customer-facing page: turning Falco on, its privileges, rules of your own, and routing detections | ⬜ |
