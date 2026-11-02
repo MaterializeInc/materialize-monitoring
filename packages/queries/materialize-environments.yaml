@@ -33,17 +33,20 @@ queries:
         installed, and that its ClusterRole grants list and watch on
         `materializes`.
       notes: |
-        `environment_id` is the resource's `spec.environmentId`, the key that
-        environments are joined on. `environment_name` is its `metadata.name`.
+        `environment_id` is the resource's `spec.environmentId`, and
+        `environment_name` is its `metadata.name`. Environments are joined on
+        `(cluster, environment_id)`, because an id is unique only within a
+        Kubernetes cluster.
 
-        Grouped so that the `customresource_*` labels kube-state-metrics adds
-        never split a row.
+        The grouping keeps `cluster` for that join and drops the
+        `customresource_*` labels kube-state-metrics adds, so they never split
+        a row.
     promQL: |
-      group by (environment_id, environment_name, environment_namespace) (
+      group by (cluster, environment_id, environment_name, environment_namespace) (
         kube_mz_environment_info
       )
     datadogQuery: |
-      max:kube_mz_environment_info{*} by {environment_id,environment_name,environment_namespace}
+      max:kube_mz_environment_info{*} by {cluster,environment_id,environment_name,environment_namespace}
     instant: true
 
   - id: materialize.environments.active_generation
@@ -70,9 +73,9 @@ queries:
         highest generation in an environment's pod names is not a stand-in:
         a rollout that never promotes leaves the older one serving.
     promQL: |
-      max by (environment_id, environment_name, environment_namespace, generation) (
+      max by (cluster, environment_id, environment_name, environment_namespace, generation) (
         kube_mz_environment_active_generation
       )
     datadogQuery: |
-      max:kube_mz_environment_active_generation{*} by {environment_id,environment_name,environment_namespace,generation}
+      max:kube_mz_environment_active_generation{*} by {cluster,environment_id,environment_name,environment_namespace,generation}
     instant: true

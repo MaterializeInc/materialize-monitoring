@@ -442,10 +442,10 @@ pub const MATERIALIZE_GVK: (&str, &str, &str) = ("materialize.cloud", "v1alpha1"
 
 /// Each environment's active generation, kept only where its info series
 /// exists too, so one query answers for both bridged metrics.
-const ENVIRONMENT_GENERATION_QUERY: &str = r#"max by (environment_namespace, environment_name, environment_id, generation) (
+const ENVIRONMENT_GENERATION_QUERY: &str = r#"max by (cluster, environment_namespace, environment_name, environment_id, generation) (
   kube_mz_environment_active_generation
-  and on (environment_namespace, environment_name, environment_id)
-  group by (environment_namespace, environment_name, environment_id) (kube_mz_environment_info)
+  and on (cluster, environment_namespace, environment_name, environment_id)
+  group by (cluster, environment_namespace, environment_name, environment_id) (kube_mz_environment_info)
 )"#;
 
 /// Every `Materialize` resource reaches Thanos as `kube_mz_environment_info` and
