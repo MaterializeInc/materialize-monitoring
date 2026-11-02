@@ -451,6 +451,23 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         joins_replicas,
         checks::kube_state::pod_labels_join_to_replicas,
     ));
+    // The bridge reads the `Materialize` resources, which the kind tiers never
+    // create, so like the replica join this is gated on the cluster as well as
+    // the values.
+    let bridges_environments = kube_state
+        && ctx
+            .features
+            .get("kube-state-metrics.customResourceState.enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+        && materialize_resources_present(runtime, ctx);
+    trials.push(trial(
+        runtime,
+        ctx,
+        "kube_state::environments_are_bridged",
+        bridges_environments,
+        checks::kube_state::environments_are_bridged,
+    ));
 
     // The node-detail dashboard's join spans both exporters, so it needs both
     // features present before the assertion means anything.
@@ -563,6 +580,17 @@ fn materialize_replicas_present(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> bool 
         Ok(pods) => !pods.is_empty(),
         Err(err) => {
             eprintln!("warning: could not look for Materialize replica pods ({err:#})");
+            true
+        }
+    }
+}
+
+fn materialize_resources_present(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> bool {
+    let (group, version, kind) = checks::kube_state::MATERIALIZE_GVK;
+    match runtime.block_on(ctx.cluster.list_custom_everywhere(group, version, kind)) {
+        Ok(resources) => resources.is_some_and(|r| !r.is_empty()),
+        Err(err) => {
+            eprintln!("warning: could not look for {kind} resources ({err:#})");
             true
         }
     }

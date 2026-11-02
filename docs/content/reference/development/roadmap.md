@@ -146,8 +146,8 @@ The monitors already fill the initial aliases, rendered from `packages/prometheu
 
 | Where | Items, all ⬜ |
 |---|---|
-| This repository | [DEP-349] target aliases, and reserved moves and drops, rendered from `labels.yaml` · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-361] `mz_environment_info` through kube-state-metrics · [DEP-360] retire the aliases after 30 days |
-| Upstream | [DEP-348] the orchestratord pod label and `mz_environment_info` · [DEP-347] clusterd's `cluster="compute"` · [DEP-352] the label lint · [DEP-353] `/metrics/public` replica labels · [DEP-357] `cluster_id` · [DEP-358] entity-qualified `_info` labels · [DEP-359] the `cluster` and `honeycomb` const labels · [DEP-362] shard, persist-name and version renames · [DEP-363] an optional `spec.environmentName` · [DEP-364] wallclock lag as a histogram · [DEP-365] `environment_id` on reconciliation metrics |
+| This repository | [DEP-349] target aliases, and reserved moves and drops, rendered from `labels.yaml` · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-360] retire the aliases after 30 days |
+| Upstream | [DEP-348] the orchestratord pod label, `mz_environment_info` and `mz_environment_active_generation` · [DEP-347] clusterd's `cluster="compute"` · [DEP-352] the label lint · [DEP-353] `/metrics/public` replica labels · [DEP-357] `cluster_id` · [DEP-358] entity-qualified `_info` labels · [DEP-359] the `cluster` and `honeycomb` const labels · [DEP-362] shard, persist-name and version renames · [DEP-363] an optional `spec.environmentName` · [DEP-364] wallclock lag as a histogram · [DEP-365] `environment_id` on reconciliation metrics |
 
 ### Metrics contract (upstream dependency)
 
@@ -497,7 +497,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-358]: https://linear.app/materializeinc/issue/DEP-358
 [DEP-359]: https://linear.app/materializeinc/issue/DEP-359
 [DEP-360]: https://linear.app/materializeinc/issue/DEP-360
-[DEP-361]: https://linear.app/materializeinc/issue/DEP-361
 [DEP-362]: https://linear.app/materializeinc/issue/DEP-362
 [DEP-363]: https://linear.app/materializeinc/issue/DEP-363
 [DEP-364]: https://linear.app/materializeinc/issue/DEP-364

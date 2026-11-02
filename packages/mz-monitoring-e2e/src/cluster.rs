@@ -283,6 +283,29 @@ impl Cluster {
         Ok(list.items)
     }
 
+    /// List custom resources of one kind in every namespace.
+    ///
+    /// Cluster-wide for the same reason as [`Self::pods_with_label`]: the
+    /// `Materialize` resources live in namespaces the release does not own.
+    /// `None` when the API server does not serve the kind at all, which is a
+    /// cluster without its CRD rather than an error.
+    pub async fn list_custom_everywhere(
+        &self,
+        group: &str,
+        version: &str,
+        kind: &str,
+    ) -> Result<Option<Vec<DynamicObject>>> {
+        let gvk = GroupVersionKind::gvk(group, version, kind);
+        let resource = ApiResource::from_gvk(&gvk);
+        let api: Api<DynamicObject> = Api::all_with(self.client.clone(), &resource);
+
+        match api.list(&ListParams::default()).await {
+            Ok(list) => Ok(Some(list.items)),
+            Err(kube::Error::Api(response)) if response.code == 404 => Ok(None),
+            Err(err) => Err(err).with_context(|| format!("listing {kind} in every namespace")),
+        }
+    }
+
     /// GET `path` from a Service over the configured transport.
     ///
     /// `path` is everything after the service root, query string included —

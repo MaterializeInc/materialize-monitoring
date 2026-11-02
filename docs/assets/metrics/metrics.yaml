@@ -383,6 +383,16 @@
   - infra.kubernetes.hpa_replicas_critical
   - infra.kubernetes.hpa_replicas_high
 - importance: essential
+  labels: []
+  name: kube_mz_environment_active_generation
+  usage:
+  - materialize.environments.active_generation
+- importance: essential
+  labels: []
+  name: kube_mz_environment_info
+  usage:
+  - materialize.environments.info
+- importance: essential
   labels:
   - node
   name: kube_node_created
