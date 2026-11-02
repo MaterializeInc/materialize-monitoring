@@ -16,7 +16,7 @@ ARG USERNAME="alloy"
 ARG ALLOY_VERSION=v1.21.2
 
 # Seed with distroless user/group files
-COPY --from=gcr.io/distroless/base-debian13@sha256:f5e95195e998742ff590b7569bae479accce1226e51ae6c3118954030121cdcb /etc/passwd /etc/group /etc/
+COPY --from=gcr.io/distroless/base-debian13@sha256:075a33d9c49026ca7ee72738b4c4a1caea55d0f44227356e46a611a211050e20 /etc/passwd /etc/group /etc/
 
 # Create alloy user in container, but do not set it as default
 RUN groupadd --gid "$UID" "$USERNAME" \
@@ -51,7 +51,7 @@ RUN export DEBIAN_FRONTEND="noninteractive" \
 # What the distroless base already ships. Read out of the image rather than
 # hardcoded, so a base bump cannot quietly turn "the base provides this" into a
 # library that is missing at runtime.
-COPY --from=gcr.io/distroless/base-debian13@sha256:f5e95195e998742ff590b7569bae479accce1226e51ae6c3118954030121cdcb /usr/lib/${LINUX_TAG}/*.so* /base-lib/
+COPY --from=gcr.io/distroless/base-debian13@sha256:075a33d9c49026ca7ee72738b4c4a1caea55d0f44227356e46a611a211050e20 /usr/lib/${LINUX_TAG}/*.so* /base-lib/
 
 # Stage libsystemd and everything it needs, by either mechanism, for the final
 # image.
@@ -147,7 +147,7 @@ RUN mkdir -p /tmp/alloy \
 RUN alloy --version | grep boringcrypto
 
 ## Final build image
-FROM gcr.io/distroless/base-debian13@sha256:f5e95195e998742ff590b7569bae479accce1226e51ae6c3118954030121cdcb
+FROM gcr.io/distroless/base-debian13@sha256:075a33d9c49026ca7ee72738b4c4a1caea55d0f44227356e46a611a211050e20
 
 ARG TARGETARCH
 ARG LINUX_TAG1=${TARGETARCH/arm64/aarch64}
