@@ -16097,7 +16097,7 @@ name, and the namespace it runs in.
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>environment_id, environment_name, environment_namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  mz_environment_info
+</span></span><span style="display:flex;"><span>  kube_mz_environment_info
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -16105,7 +16105,7 @@ name, and the namespace it runs in.
   <label for="materialize.environments.info-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>mz_environment_info{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">environment_id</span>,<span style="color:#960050;background-color:#1e0010">environment_name</span>,<span style="color:#960050;background-color:#1e0010">environment_namespace</span>}
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>kube_mz_environment_info{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">environment_id</span>,<span style="color:#960050;background-color:#1e0010">environment_name</span>,<span style="color:#960050;background-color:#1e0010">environment_namespace</span>}
 </span></span></code></pre></div>
   </div>
 </div>
@@ -16120,7 +16120,7 @@ the operator last promoted.
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>environment_id, environment_name, environment_namespace, generation<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  mz_environment_active_generation
+</span></span><span style="display:flex;"><span>  kube_mz_environment_active_generation
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -16128,7 +16128,7 @@ the operator last promoted.
   <label for="materialize.environments.active_generation-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>mz_environment_active_generation{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">environment_id</span>,<span style="color:#960050;background-color:#1e0010">environment_name</span>,<span style="color:#960050;background-color:#1e0010">environment_namespace</span>,<span style="color:#960050;background-color:#1e0010">generation</span>}
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>kube_mz_environment_active_generation{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">environment_id</span>,<span style="color:#960050;background-color:#1e0010">environment_name</span>,<span style="color:#960050;background-color:#1e0010">environment_namespace</span>,<span style="color:#960050;background-color:#1e0010">generation</span>}
 </span></span></code></pre></div>
   </div>
 </div>
