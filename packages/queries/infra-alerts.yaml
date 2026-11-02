@@ -473,21 +473,9 @@ alerts:
       datadogQuery: |
         min(last_10m):max:kube_node_spec_taint{key:node.kubernetes.io/unreachable} by {node} >= 1
 
-  # A node being drained: cordoned, or tainted by the cluster autoscaler or
-  # Karpenter ahead of removal. Evicting environmentd or a clusterd replica
-  # restarts it even when a replacement node is ready; the graceful way off a
-  # node is a Materialize rollout, which starts the next generation on
-  # schedulable nodes. So the materialize-node-* alerts grade one condition by
-  # how long those pods have stayed: a notice as the drain starts, since
-  # someone usually started it, then a warning and a page while no rollout
-  # moves them. Every other node gets the one warning in `node-drain-stuck`,
-  # a day in: balancerd, the console, and other workloads with replicas ride
-  # out a drain, and when their replacements cannot schedule, the pending-pod
-  # alerts report it.
-  #
-  # The pod pattern is every generation's environmentd and clusterd. Which
-  # generation is serving is not exported, and during a rollout the old one
-  # serves until the new one is promoted.
+  # balancerd and the console are left out of the pod pattern, and so fall to
+  # `node-drain-stuck`: they run several replicas, and the pending-pod alerts
+  # report replacements that cannot schedule.
   #
   # Node series carry the scraping kube-state-metrics pod's `namespace` and
   # `pod`, so the drain side reduces to `node` before the join.
@@ -496,8 +484,7 @@ alerts:
     group: node_draining
     stability: best-effort
     enabledByDefault: true
-    # Long enough to skip a cordon that comes straight off again. A drain that
-    # moves the pods sooner is in the Kubernetes events the stack collects.
+    # A shorter drain is on record in the Kubernetes events the stack collects.
     for: 10m
     labels:
       severity: notice
@@ -638,7 +625,6 @@ alerts:
     group: node_draining
     stability: best-effort
     enabledByDefault: true
-    # The same day as materialize-node-drain-stuck, a grade lower.
     for: 24h
     labels:
       severity: warning

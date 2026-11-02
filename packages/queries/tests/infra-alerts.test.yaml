@@ -109,12 +109,9 @@ tests:
 
   # --- materialize-node-draining and its escalations ------------------------
   #
-  # One condition graded by how long it lasts: a notice at 10m, a warning at
-  # 2h, a page at 24h. Only environmentd and clusterd count, because a drain
-  # restarts them even when a replacement node is ready; balancerd and the
-  # console have replicas to spare. Node series carry the scraping
-  # kube-state-metrics pod's own `namespace` and `pod`, as they do on a real
-  # install, so a join that kept those labels would match nothing.
+  # Node series carry the scraping kube-state-metrics pod's own `namespace`
+  # and `pod`, as they do on a real install, so a join that kept those labels
+  # would match nothing.
   - name: materialize-node-draining escalates on a node hosting environmentd or clusterd
     interval: 5m
     input_series:
@@ -165,9 +162,8 @@ tests:
           - labels: '{alertname="materialize-node-drain-stuck"}'
             value: 2
 
-  # An autoscaler that removes a node taints it rather than cordoning it.
-  # A node the cluster autoscaler only lists as a candidate is not draining,
-  # and a cordon lifted within 10m never reaches the notice.
+  # An autoscaler that removes a node taints it rather than cordoning it, and
+  # one that only lists a node as a candidate is not draining it.
   - name: materialize-node-draining reads the autoscalers' removal taints and skips a brief cordon
     interval: 1m
     input_series:
@@ -196,11 +192,6 @@ tests:
             value: 1
 
   # --- node-drain-stuck: every other node, a day in ------------------------
-  #
-  # A GKE blue-green upgrade keeps every old node cordoned for its wait, three
-  # days by default, with nothing moving the pods on a pool that runs no
-  # Materialize; that is a drain to hear about. A node that runs a replica is
-  # the materialize-node-* alerts' to report instead.
   - name: node-drain-stuck fires a day into a drain and leaves Materialize nodes to their own alerts
     interval: 5m
     input_series:

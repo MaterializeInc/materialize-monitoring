@@ -50,9 +50,10 @@ Labels:
           {{- end }}
 </p>
         {{- end }}
-        {{- /* An alert with a runbook of its own names it in `runbook_url`; the
-               rest point back at this page. A link into this site is made
-               relative, so a local preview stays on the preview. */}}
+        {{- /* Only an alert with a runbook of its own sets `runbook_url` in the
+               registry; gen-rules points the rest back at this page. A link
+               into this site is made relative, so a local preview stays on
+               the preview. */}}
         {{- $alertName := .alert }}
         {{- with .annotations }}{{ with .runbook_url }}
 <p><strong>Runbook:</strong> <a href="{{ strings.TrimPrefix site.BaseURL . | relURL }}">how to respond to <code>{{ $alertName }}</code></a>.</p>
