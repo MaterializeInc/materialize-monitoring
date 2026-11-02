@@ -214,6 +214,12 @@ const SOURCES: &[(&str, MetricSource)] = &[
         "mz_memory_limiter_.+",
         MetricSource::Capability(Capability::MemoryLimiter),
     ),
+    // Read off the `Materialize` resources by kube-state-metrics'
+    // `customResourceState`, not scraped from Materialize's processes.
+    (
+        "mz_environment_(info|active_generation)",
+        MetricSource::Capability(Capability::KubeStateMetrics),
+    ),
     ("mz_.+", MetricSource::Capability(Capability::Materialize)),
     (
         "(orchestratord|environmentd)_.+",
@@ -322,6 +328,8 @@ mod tests {
             ),
             ("mz_external_envd_up", C(ExternalUptime)),
             ("mz_memory_limiter_memory_usage_bytes", C(MemoryLimiter)),
+            ("mz_environment_active_generation", C(KubeStateMetrics)),
+            ("mz_environment_info", C(KubeStateMetrics)),
             ("mz_persist_blob_failures", C(Materialize)),
             (
                 "orchestratord_reconciliations_total",

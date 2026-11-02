@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Environment facts read off the `Materialize` resources
+
+description: |
+  Which Materialize environments run in the Kubernetes cluster, and which
+  deployment generation each one serves, as their `Materialize` resources
+  record it.
+
+  kube-state-metrics publishes these from each `materializes.materialize.cloud`
+  resource (`kube-state-metrics.customResourceState` in the chart). They keep
+  reporting while an environment's environmentd is down or mid-rollout, which
+  is when a reader most needs to know which environment and generation they are
+  looking at.
+
+  The environment's namespace is `environment_namespace`. `namespace` on these
+  series is the kube-state-metrics pod's.
+
+# One series per environment, and the join target for anything that names an
+# environment or its serving generation, so every destination keeps them.
+metricImportanceHint: essential
+
+queries:
+  - id: materialize.environments.info
+    stability: experimental
+    description:
+      summary: |
+        Each Materialize environment in the Kubernetes cluster, by its id, its
+        name, and the namespace it runs in.
+      nominal: One row per `Materialize` resource.
+      degraded: |
+        No rows while Materialize environments are running. kube-state-metrics
+        is not reading the resources: check that the Materialize CRD is
+        installed, and that its ClusterRole grants list and watch on
+        `materializes`.
+      notes: |
+        `environment_id` is the resource's `spec.environmentId`, the key that
+        environments are joined on. `environment_name` is its `metadata.name`.
+
+        Grouped so that a second producer of the same series, or the
+        `customresource_*` labels kube-state-metrics adds, never doubles a row.
+    promQL: |
+      group by (environment_id, environment_name, environment_namespace) (
+        mz_environment_info
+      )
+    datadogQuery: |
+      max:mz_environment_info{*} by {environment_id,environment_name,environment_namespace}
+    instant: true
+
+  - id: materialize.environments.active_generation
+    stability: experimental
+    description:
+      summary: |
+        The deployment generation each Materialize environment serves: the one
+        the operator last promoted.
+      nominal: |
+        The environment's newest generation between rollouts.
+      degraded: |
+        An older generation than the newest one running, for as long as a
+        rollout takes. The active generation serves until the new one has
+        caught up and been promoted.
+      unhealthy: |
+        An older generation than the newest one running, for far longer than a
+        rollout takes. The rollout has not promoted, so the older generation
+        still serves; the instance's `UpToDate` condition says what it is
+        waiting on.
+      notes: |
+        Read off the resource's `status.activeGeneration`. The value is the
+        generation, and the `generation` label carries the same number, so a
+        query can join this series to the generation in a pod's name. The
+        highest generation in an environment's pod names is not a stand-in:
+        a rollout that never promotes leaves the older one serving.
+    promQL: |
+      max by (environment_id, environment_name, environment_namespace, generation) (
+        mz_environment_active_generation
+      )
+    datadogQuery: |
+      max:mz_environment_active_generation{*} by {environment_id,environment_name,environment_namespace,generation}
+    instant: true

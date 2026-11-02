@@ -790,6 +790,16 @@
   usage:
   - materialize.environmentd.simplest_query
 - importance: essential
+  labels: []
+  name: mz_environment_active_generation
+  usage:
+  - materialize.environments.active_generation
+- importance: essential
+  labels: []
+  name: mz_environment_info
+  usage:
+  - materialize.environments.info
+- importance: essential
   labels:
   - status
   name: mz_external_calls_count

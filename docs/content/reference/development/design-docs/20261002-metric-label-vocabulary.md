@@ -432,8 +432,11 @@ And it keeps emitting while environmentd is down, which is when a dashboard most
 The resource's namespace is `environment_namespace` and not `namespace`, because orchestratord's own `namespace` target label names the operator's namespace and an emitted `namespace` would be renamed `exported_namespace`.
 It replaces `materialize_cloud_organization_namespace`, which on an environment's own series repeats the `namespace` target label.
 
-kube-state-metrics can produce the same series today from its `customResourceState` support, with no upstream change, by reading the `Materialize` resource.
+kube-state-metrics produces the same series from its `customResourceState` support, with no upstream change, by reading the `Materialize` resource.
 It is the fallback if the orchestratord change slips, and it covers operator versions that predate it.
+Beside it, kube-state-metrics publishes `mz_environment_active_generation`, the generation the environment serves, from `status.activeGeneration`.
+Its value is the generation, and its `generation` label carries the same number, so a query can join it to the generation in a pod's name.
+The orchestratord change emits it with the same labels.
 Every join reads the info metric through `group by (cluster, environment_id, environment_name)`, which collapses identical series from two producers, so the bridge and orchestratord can overlap safely.
 The join is on `(cluster, environment_id)`, never on `environment_id` alone, for the [uniqueness](#global-uniqueness-is-a-should-and-cloud-is-why) reason above.
 
@@ -722,7 +725,7 @@ Tracked in the same milestone, gated on design acceptance in [DEP-346](https://l
 | **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
 | **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)) | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |
 | **Compatibility declaration** of the operator version that sets the pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | The switch is safe only above it | **Blocking** for the switch |
-| **`mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes` ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | Covers operators that predate the upstream info metric | Could |
+| **`mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes`, and `mz_environment_active_generation` beside it ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | Covers operators that predate the upstream info metric, and says which generation each environment serves | ✅ Done |
 | **Agent writes `environment_id`** as log structured metadata from the same pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | One environment key across both engines | Should |
 | **Registry migration**: queries, selectors in `env_top/selector.rs`, variables, and the `mzClusterName` / `mzObjectName` helpers onto canonical names ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | Step 3 of the overlap | **Blocking** for retiring aliases |
 | **Alert rules aggregate by both names** through the window, with the promtool tests updated ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | No alert loses a label inside the window | **Blocking** for the registry migration |

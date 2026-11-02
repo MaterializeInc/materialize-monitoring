@@ -98,6 +98,8 @@ essential:
 - mz_cluster_server_last_command_received
 - mz_dataflow_replica_expiration_remaining_seconds
 - mz_dataflow_wallclock_lag_seconds
+- mz_environment_active_generation
+- mz_environment_info
 - mz_external_calls_count
 - mz_external_envd_up
 - mz_memory_limiter_memory_limit_bytes

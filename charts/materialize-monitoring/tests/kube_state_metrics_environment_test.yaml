@@ -1,0 +1,102 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# `mz_environment_info` and `mz_environment_active_generation`, read off the
+# `Materialize` resources by kube-state-metrics' `customResourceState`.
+#
+# The config is pinned whole. Its metric names and labels are what every
+# environment join and the drain alerts read, and kube-state-metrics publishes
+# nothing for a resource whose config it cannot use, without failing anything.
+suite: kube-state-metrics Materialize environment metrics
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.kube-state-metrics: true
+tests:
+  # One entry, pinned to v1alpha1: kube-state-metrics takes one entry per
+  # resource, and a wildcard version lists each resource once per served version.
+  # The Info entry restates `environment_name` because an Info metric without
+  # labels of its own publishes no sample.
+  - it: should read the environment id, name, namespace and active generation off each Materialize resource
+    template: ../charts/kube-state-metrics/templates/crs-configmap.yaml
+    asserts:
+      - equal:
+          path: data["config.yaml"]
+          value: |
+            kind: CustomResourceStateMetrics
+            spec:
+              resources:
+              - groupVersionKind:
+                  group: materialize.cloud
+                  kind: Materialize
+                  version: v1alpha1
+                labelsFromPath:
+                  environment_id:
+                  - spec
+                  - environmentId
+                  environment_name:
+                  - metadata
+                  - name
+                  environment_namespace:
+                  - metadata
+                  - namespace
+                metricNamePrefix: mz
+                metrics:
+                - each:
+                    info:
+                      labelsFromPath:
+                        environment_name:
+                        - metadata
+                        - name
+                    type: Info
+                  help: 1 for each Materialize environment, naming it.
+                  name: environment_info
+                - each:
+                    gauge:
+                      labelsFromPath:
+                        generation:
+                        - activeGeneration
+                      path:
+                      - status
+                      valueFrom:
+                      - activeGeneration
+                    type: Gauge
+                  help: The deployment generation the Materialize environment serves.
+                  name: environment_active_generation
+
+  - it: should point kube-state-metrics at the config
+    template: ../charts/kube-state-metrics/templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --custom-resource-state-config-file=/etc/customresourcestate/config.yaml
+
+  # Without list and watch on `materializes`, kube-state-metrics logs a
+  # forbidden error and publishes nothing for the resource.
+  - it: should grant list and watch on Materialize resources and on CRDs
+    template: ../charts/kube-state-metrics/templates/role.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [materialize.cloud]
+            resources: [materializes]
+            verbs: [list, watch]
+      - contains:
+          path: rules
+          content:
+            apiGroups: [apiextensions.k8s.io]
+            resources: [customresourcedefinitions]
+            verbs: [list, watch]
+
+  - it: should drop the config and its flag when the bridge is turned off
+    set:
+      kube-state-metrics.customResourceState.enabled: false
+    template: ../charts/kube-state-metrics/templates/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --custom-resource-state-config-file=/etc/customresourcestate/config.yaml
