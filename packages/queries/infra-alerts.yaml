@@ -539,7 +539,7 @@ alerts:
       # Datadog cannot take the union of two gauge queries, so this covers the
       # cordon and not the autoscalers' taints.
       datadogQuery: |
-        max(last_1m):(
+        min(last_10m):(
           max:kube_pod_info{%%{mzEnvironmentNamespaceFilter} AND (pod:*-environmentd-* OR pod:*-gen-*) AND %%{excludeEnvironmentFilter}}
             by {namespace,pod,node}
           * max:kube_node_spec_unschedulable{*} by {node}
