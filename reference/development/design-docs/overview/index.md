@@ -96,7 +96,7 @@ A new doc starts at Draft.
     <li>
       <a href="/materialize-monitoring/reference/development/design-docs/20261002-metric-label-vocabulary/">A Label Vocabulary for Materialize Metrics</a>
       <ul>
-            <li><strong>lastmod:</strong> 2026-10-21 00:00:00 &#43;0000 UTC</li>
+            <li><strong>lastmod:</strong> 2026-11-02 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Ready</li>
       </ul>
     </li>
