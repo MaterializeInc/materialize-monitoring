@@ -358,10 +358,11 @@ It answers the platform half of the Security team's runtime-detection item, [SEC
 Falco is an optional DaemonSet, off by default everywhere, that downloads nothing and has no network egress.
 Its detections are JSON log lines that the agent ships to Loki, and its drop counters are metrics the gateway scrapes into Thanos.
 Its largest cost lands inside Materialize's own system calls, so the cost is measured on clusterd before Falco is recommended for Materialize's nodes.
+A node selector on a trust-class label enables it per node pool: on untrusted pools and off trusted ones, which pay nothing.
 
 | Item | Status |
 |---|---|
-| The `falco` subchart: the modern eBPF probe in least-privileged mode, the ruleset from the image, a namespace of its own, and a NetworkPolicy with no egress | ⬜ |
+| The `falco` subchart: the modern eBPF probe in least-privileged mode, the ruleset from the image, a node selector by trust class, a namespace of its own, and a NetworkPolicy with no egress | ⬜ |
 | An A/B of clusterd's CPU, latency, and throughput with Falco off and on, published on the operator page | ⬜ |
 | The gateway's Falco stage: Falco's priority as `level`, the rule and the workload it names as structured metadata, and the `audit` log class | ⬜ |
 | Detections as the first producer for the `audit` class ([DEP-277]), kept for 365 days | ⬜ |
@@ -370,6 +371,7 @@ Its largest cost lands inside Materialize's own system calls, so the cost is mea
 | The detection alerts, on the planned `security` audience | ⬜ |
 | An `infra-security` dashboard: detections, drops, footprint, and coverage | ⬜ |
 | The Terraform module input, and the wrappers' variable | ⬜ |
+| Trust classes in the wrappers: a Materialize pool per class, the label, a taint on trusted pools, and untrusted replica sizes | ⬜ |
 | A customer-facing page: turning Falco on, its privileges, rules of your own, and routing detections | ⬜ |
 
 ### Platform
