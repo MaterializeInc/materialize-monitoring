@@ -86,6 +86,8 @@ pub const REGISTRY_KUBE_METRICS: &[&str] = &[
     "kube_horizontalpodautoscaler_status_condition",
     "kube_horizontalpodautoscaler_status_current_replicas",
     "kube_horizontalpodautoscaler_status_desired_replicas",
+    "kube_mz_environment_active_generation",
+    "kube_mz_environment_info",
     "kube_networkpolicy_spec_egress_rules",
     "kube_networkpolicy_spec_ingress_rules",
     "kube_node_created",
@@ -441,13 +443,13 @@ pub const MATERIALIZE_GVK: (&str, &str, &str) = ("materialize.cloud", "v1alpha1"
 /// Each environment's active generation, kept only where its info series
 /// exists too, so one query answers for both bridged metrics.
 const ENVIRONMENT_GENERATION_QUERY: &str = r#"max by (environment_namespace, environment_name, environment_id, generation) (
-  mz_environment_active_generation
+  kube_mz_environment_active_generation
   and on (environment_namespace, environment_name, environment_id)
-  group by (environment_namespace, environment_name, environment_id) (mz_environment_info)
+  group by (environment_namespace, environment_name, environment_id) (kube_mz_environment_info)
 )"#;
 
-/// Every `Materialize` resource reaches Thanos as `mz_environment_info` and
-/// `mz_environment_active_generation`, with the resource's own values.
+/// Every `Materialize` resource reaches Thanos as `kube_mz_environment_info` and
+/// `kube_mz_environment_active_generation`, with the resource's own values.
 ///
 /// kube-state-metrics publishes nothing for a resource it cannot list or a
 /// config it cannot use, and fails nothing either. A missing grant on
@@ -465,7 +467,7 @@ pub async fn environments_are_bridged(ctx: &Ctx) -> Result<()> {
     let (group, version, kind) = MATERIALIZE_GVK;
 
     retry_until(
-        "every Materialize resource is bridged into mz_environment_*",
+        "every Materialize resource is bridged into kube_mz_environment_*",
         ctx.deadline,
         ctx.interval,
         || async {
@@ -524,7 +526,7 @@ pub async fn environments_are_bridged(ctx: &Ctx) -> Result<()> {
             let missing: Vec<_> = want.difference(&got).collect();
             let extra: Vec<_> = got.difference(&want).collect();
             bail!(
-                "mz_environment_* name {} environment(s), and the API server has {}. Missing \
+                "kube_mz_environment_* name {} environment(s), and the API server has {}. Missing \
                  (namespace, name, environment_id, generation, value): {missing:?}; not on any \
                  resource: {extra:?}. With every environment missing, check that \
                  `kube-state-metrics.customResourceState` is enabled, that its ClusterRole \

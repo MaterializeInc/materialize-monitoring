@@ -36,14 +36,14 @@ queries:
         `environment_id` is the resource's `spec.environmentId`, the key that
         environments are joined on. `environment_name` is its `metadata.name`.
 
-        Grouped so that a second producer of the same series, or the
-        `customresource_*` labels kube-state-metrics adds, never doubles a row.
+        Grouped so that the `customresource_*` labels kube-state-metrics adds
+        never split a row.
     promQL: |
       group by (environment_id, environment_name, environment_namespace) (
-        mz_environment_info
+        kube_mz_environment_info
       )
     datadogQuery: |
-      max:mz_environment_info{*} by {environment_id,environment_name,environment_namespace}
+      max:kube_mz_environment_info{*} by {environment_id,environment_name,environment_namespace}
     instant: true
 
   - id: materialize.environments.active_generation
@@ -71,8 +71,8 @@ queries:
         a rollout that never promotes leaves the older one serving.
     promQL: |
       max by (environment_id, environment_name, environment_namespace, generation) (
-        mz_environment_active_generation
+        kube_mz_environment_active_generation
       )
     datadogQuery: |
-      max:mz_environment_active_generation{*} by {environment_id,environment_name,environment_namespace,generation}
+      max:kube_mz_environment_active_generation{*} by {environment_id,environment_name,environment_namespace,generation}
     instant: true

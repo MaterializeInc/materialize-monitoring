@@ -40,7 +40,7 @@ tests:
   # keys. With the allowlist alone the join keys are the long `label_*` names.
   # Each copy matches `(.+)`: with the default `(.*)` it also fires where the pod
   # label is absent, and its empty value removes `environment_id` from
-  # `mz_environment_info`, which carries its own.
+  # `kube_mz_environment_info`, which carries its own.
   - it: should publish the Materialize pod labels under their canonical names
     template: ../charts/kube-state-metrics/templates/servicemonitor.yaml
     asserts:

@@ -5,7 +5,7 @@ weight: 20261002
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-10-02
-lastmod: 2026-10-21
+lastmod: 2026-11-02
 # custom parameters
 params:
   author: Heather Lapointe
@@ -117,7 +117,10 @@ The stakeholders are operators reading the shipped dashboards, customers who bri
 - **Alert labels get the strictest treatment.** Rules pass `instance_id` and the long-form ids through to alerts, and an external routing tree may match on them. Rules aggregate by both names through the overlap, so an alert never loses a label inside the window.
 - **An environment is keyed by `environment_id`, read from `Materialize.spec.environmentId`.** It is a UUID that orchestratord already resolves on first reconcile and already refuses to duplicate within a Kubernetes cluster, and the CRD forbids changing it because persist's layout depends on it. Every series from an environment's processes carries it.
 - **An environment is named by `environment_name`, on `mz_environment_info` only.** The name is `metadata.name` today and could become a mutable `spec.environmentName`. Names are not unique and may change, so they are joined in, not stamped on every series, which is the same rule this doc applies to cluster and replica names.
-- **The environment key needs one small upstream change before this repo can relabel it.** No pod label carries `spec.environmentId` today. orchestratord adding `materialize.cloud/environment-id` to the labels it puts on every pod, and emitting `mz_environment_info`, is a single change and the first item of upstream work.
+- **The environment key needs one small upstream change before this repo can relabel it.**
+  No pod label carries `spec.environmentId` today.
+  orchestratord adding `materialize.cloud/environment-id` to the labels it puts on every pod,
+  and emitting `mz_environment_info` and `mz_environment_active_generation`, is a single change and the first item of upstream work.
 - **`%%{mzEnvironmentFilter}` is the switch.** The query registry names the fragment 250 times and writes the environment label out 24 times, 22 of them in the two alert files. Moving the fragment from `materialize_cloud_organization_name` to `environment_id` is one change, made once the supported operator floor carries the pod label.
 - **Cloud is the documented exception to global uniqueness.** Cloud sets `spec.environmentId` to the organization's UUID, which repeats in every region the organization uses. The globally unique key is therefore `(cluster, environment_id)`, which is one more reason `cluster` is reserved.
 
@@ -432,12 +435,18 @@ And it keeps emitting while environmentd is down, which is when a dashboard most
 The resource's namespace is `environment_namespace` and not `namespace`, because orchestratord's own `namespace` target label names the operator's namespace and an emitted `namespace` would be renamed `exported_namespace`.
 It replaces `materialize_cloud_organization_namespace`, which on an environment's own series repeats the `namespace` target label.
 
-kube-state-metrics produces the same series from its `customResourceState` support, with no upstream change, by reading the `Materialize` resource.
+Beside it, orchestratord emits `mz_environment_active_generation`, with the same labels.
+Its value is the generation the environment serves, from `status.activeGeneration`.
+Its `generation` label carries the same number, so a query can join it to the generation in a pod's name.
+
+kube-state-metrics publishes both from its `customResourceState` support, with no upstream change, by reading the `Materialize` resource.
 It is the fallback if the orchestratord change slips, and it covers operator versions that predate it.
-Beside it, kube-state-metrics publishes `mz_environment_active_generation`, the generation the environment serves, from `status.activeGeneration`.
-Its value is the generation, and its `generation` label carries the same number, so a query can join it to the generation in a pod's name.
-The orchestratord change emits it with the same labels.
-Every join reads the info metric through `group by (cluster, environment_id, environment_name)`, which collapses identical series from two producers, so the bridge and orchestratord can overlap safely.
+Its series are `kube_mz_environment_info` and `kube_mz_environment_active_generation`, with the same labels.
+The `kube_` prefix keeps the two producers from ever writing the same series where both run, and says which one a query reads.
+Consumers read the bridge's names until an operator release emits the upstream ones.
+Every join reads the info metric through `group by (cluster, environment_id, environment_name)`, which drops the labels particular to each producer.
+A consumer that reads both producers during the overlap groups `mz_environment_info or kube_mz_environment_info` the same way,
+which gives one series per environment.
 The join is on `(cluster, environment_id)`, never on `environment_id` alone, for the [uniqueness](#global-uniqueness-is-a-should-and-cloud-is-why) reason above.
 
 ### What consumers change
@@ -460,7 +469,10 @@ Every other alias in this design is a fill-if-empty copy of the same value under
 The environment key cannot be one, because `environment_id` and `materialize_cloud_organization_name` hold different values, and no relabeling rule can derive a UUID from a name.
 Its overlap is therefore "both labels present", and it starts when the operator puts the new pod label on the pods.
 
-1. orchestratord adds `materialize.cloud/environment-id` to `default_labels()`, which reaches environmentd, balancerd and console pods directly and clusterd pods through the service labels orchestratord passes environmentd. It emits `mz_environment_info`. The label changes the pod template, so it reaches an environment's pods at its next rollout.
+1. orchestratord adds `materialize.cloud/environment-id` to `default_labels()`, which reaches environmentd, balancerd and console pods directly
+   and clusterd pods through the service labels orchestratord passes environmentd.
+   It emits `mz_environment_info` and `mz_environment_active_generation`.
+   The label changes the pod template, so it reaches an environment's pods at its next rollout.
 2. The shipped monitors add a target alias from that pod label to `environment_id`. On an older operator the meta label is absent and the rule does nothing.
 3. [Compatibility](../../../compatibility/) declares the operator version that carries the label.
 4. Once the supported operator floor includes that version, `%%{mzEnvironmentFilter}`, the picker, the namespace picker and `mzEnvironmentName` move to the new keys in one change. A `**Deprecated:**` note names `materialize_cloud_organization_name`, `_namespace` and `_id`.
@@ -692,6 +704,7 @@ The metrics owners are the SQL team's Improve Prometheus Metrics project, with p
 |---|---|---|
 | orchestratord adds `materialize.cloud/environment-id` to `default_labels()` ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | The only route for `environment_id` onto every series; everything environment-scoped waits on it | 1, additive |
 | orchestratord emits `mz_environment_info{environment_id, environment_name, environment_namespace}`, one series per resource ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | The environment's name, available while environmentd is down | 1, additive |
+| orchestratord emits `mz_environment_active_generation` with the same labels and `generation`, valued `status.activeGeneration` ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | Which generation serves, which a rollout's pod names cannot say | 1, additive |
 | Label lint over `doc/user/data/metrics.yml`, reading the vocabulary ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)) | Stops the vocabulary eroding one metric at a time | 1 |
 | Reserved check on postprocessor labels and on metric-sink user labels ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)) | Two label sources the lint cannot see | 1 |
 | `add_replica_labels` replaces rather than appends ([DEP-353](https://linear.app/materializeinc/issue/DEP-353)) | A latent duplicate label name the day any clusterd series carries `cluster_id` | 2 |
@@ -725,7 +738,7 @@ Tracked in the same milestone, gated on design acceptance in [DEP-346](https://l
 | **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
 | **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)) | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |
 | **Compatibility declaration** of the operator version that sets the pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | The switch is safe only above it | **Blocking** for the switch |
-| **`mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes`, and `mz_environment_active_generation` beside it ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | Covers operators that predate the upstream info metric, and says which generation each environment serves | ✅ Done |
+| **`kube_mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes`, and `kube_mz_environment_active_generation` beside it ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | Covers operators that predate the upstream info metric, and says which generation each environment serves | ✅ Done |
 | **Agent writes `environment_id`** as log structured metadata from the same pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | One environment key across both engines | Should |
 | **Registry migration**: queries, selectors in `env_top/selector.rs`, variables, and the `mzClusterName` / `mzObjectName` helpers onto canonical names ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | Step 3 of the overlap | **Blocking** for retiring aliases |
 | **Alert rules aggregate by both names** through the window, with the promtool tests updated ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | No alert loses a label inside the window | **Blocking** for the registry migration |
@@ -749,7 +762,8 @@ The render tests prove a rule exists, and the important assertions are about wha
 - **Alert label sets.** The promtool tests' `by (…) (ALERTS)` assertions carry both names through the window and only the canonical name after.
 - **Join correctness.** A query joining `mz_cluster_info` and `mz_replica_info` in one expression returns both `cluster_name` and `replica_name`, which fails today.
 - **Environment key everywhere.** On an operator that sets the pod label, every series from environmentd, clusterd, balancerd and console carries `environment_id`, and its value equals the resource's `spec.environmentId`.
-- **One info series per environment.** `count by (cluster, environment_id) (group by (cluster, environment_id, environment_name) (mz_environment_info))` is 1 for every environment, with orchestratord and the bridge both running.
+- **One info series per environment.** With orchestratord and the bridge both running, `mz_environment_info or kube_mz_environment_info`
+  grouped by `(cluster, environment_id, environment_name)` has one series for every environment, so the two producers agree on its name.
 - **A rename splits nothing.** Changing `spec.environmentName` changes `mz_environment_info` and no other series' label set.
 - **The name survives an outage.** With environmentd scaled to zero, the environment picker still lists the environment by name.
 - **Upstream lint.** A test fixture in `MaterializeInc/materialize` registers a metric with a reserved label and asserts the lint refuses it.

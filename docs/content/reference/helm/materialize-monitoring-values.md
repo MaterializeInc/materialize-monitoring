@@ -9147,7 +9147,7 @@ addition, and arrives as `label_<key>`.
               "namespace"
             ]
           },
-          "metricNamePrefix": "mz",
+          "metricNamePrefix": "kube_mz",
           "metrics": [
             {
               "each": {
@@ -9198,8 +9198,8 @@ kube-state-metrics publishes one series of each per `materializes.materialize.cl
 
 | Metric | Value | Labels |
 | ------ | ----- | ------ |
-| `mz_environment_info` | 1 | `environment_id` (`spec.environmentId`), `environment_name` (`metadata.name`) and `environment_namespace` (`metadata.namespace`) |
-| `mz_environment_active_generation` | The deployment generation the environment serves, `status.activeGeneration` | The same, and `generation`, the same number as a label |
+| `kube_mz_environment_info` | 1 | `environment_id` (`spec.environmentId`), `environment_name` (`metadata.name`) and `environment_namespace` (`metadata.namespace`) |
+| `kube_mz_environment_active_generation` | The deployment generation the environment serves, `status.activeGeneration` | The same, and `generation`, the same number as a label |
 
 The active generation is the one the operator last promoted.
 During a rollout it is the older generation, until the new one has caught up and been promoted.
@@ -9210,7 +9210,7 @@ so the highest generation in the environment's pod names doesn't stand in for it
 The environment's namespace is `environment_namespace`.
 `namespace` and `pod` on these series name the kube-state-metrics pod, as on every node-level `kube_*` series.
 kube-state-metrics also adds `customresource_group`, `customresource_kind` and `customresource_version`.
-Read `mz_environment_info` through `group by (cluster, environment_id, environment_name, environment_namespace)`,
+Read `kube_mz_environment_info` through `group by (cluster, environment_id, environment_name, environment_namespace)`,
 which drops those labels.
 
 **Pinned to `v1alpha1`.** kube-state-metrics takes one entry per resource,
@@ -9458,7 +9458,7 @@ allowlisted.
 Each copy matches `(.+)`, so it fires only where the pod label is
 present. With the default `(.*)` it would also fire where the label is
 absent and write an empty value, which removes the canonical label from
-a series that carries its own: `mz_environment_info` would lose its
+a series that carries its own: `kube_mz_environment_info` would lose its
 `environment_id`. Restate these rules when overriding the list, since
 Helm replaces it.
 </td>

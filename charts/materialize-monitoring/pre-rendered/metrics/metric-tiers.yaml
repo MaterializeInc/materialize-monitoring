@@ -59,6 +59,8 @@ essential:
 - kube_deployment_status_replicas_unavailable
 - kube_horizontalpodautoscaler_spec_max_replicas
 - kube_horizontalpodautoscaler_status_current_replicas
+- kube_mz_environment_active_generation
+- kube_mz_environment_info
 - kube_node_created
 - kube_node_info
 - kube_node_spec_taint
@@ -98,8 +100,6 @@ essential:
 - mz_cluster_server_last_command_received
 - mz_dataflow_replica_expiration_remaining_seconds
 - mz_dataflow_wallclock_lag_seconds
-- mz_environment_active_generation
-- mz_environment_info
 - mz_external_calls_count
 - mz_external_envd_up
 - mz_memory_limiter_memory_limit_bytes
