@@ -580,6 +580,24 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="kube_mz_environment_active_generation">kube_mz_environment_active_generation
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.environments.active_generation">materialize.environments.active_generation</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_mz_environment_info">kube_mz_environment_info
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.environments.info">materialize.environments.info</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="kube_node_created">kube_node_created
         <details>
             Used labels: node
