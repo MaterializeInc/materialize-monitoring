@@ -45,6 +45,9 @@ materialize:
   balancerd:
     serviceMonitor:
       enabled: false
+  console:
+    serviceMonitor:
+      enabled: false
 materialize-operator:
   serviceMonitor:
     enabled: false

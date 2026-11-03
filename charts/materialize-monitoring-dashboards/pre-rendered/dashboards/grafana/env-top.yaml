@@ -1834,6 +1834,7 @@ spec:
                   scaleDistribution:
                     log: 10
                     type: log
+                decimals: 4
                 unit: none
               overrides: []
             options:

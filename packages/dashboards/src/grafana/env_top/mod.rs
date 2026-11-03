@@ -199,6 +199,17 @@ mod tests {
     }
 
     #[test]
+    fn log_axes_label_their_ticks_below_one() {
+        let resource = build("mz_", crate::grafana::queries::test_registry()).expect("build");
+        let checked =
+            crate::grafana::test_support::assert_log_axes_label_ticks_below_one(&resource);
+        assert!(
+            checked > 0,
+            "no log axes in a unit that needs decimals found"
+        );
+    }
+
+    #[test]
     fn the_sql_prefix_reaches_the_cluster_variable_and_nothing_else() {
         let cloud = build("v2_mz_", crate::grafana::queries::test_registry()).expect("build");
         let json = serde_json::to_string(&cloud.spec.variables).expect("serialize");

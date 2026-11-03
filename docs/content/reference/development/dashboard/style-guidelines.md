@@ -192,6 +192,17 @@ For single-series sparklines, leave the default `VALUE` text mode — the panel 
 When the tiles differ by orders of magnitude, add `.min_max_per_field()`.
 Grafana scales every tile's sparkline against the largest series by default, which draws the small tiles flat at zero.
 
+### Log axes below 1
+
+Grafana labels every tick on a time series axis with one decimal count, which it guesses from the tick spacing of the
+axis's *linear* range.
+When the axis tops out at a few units or less, that guess is one or two decimals, so the 0.01 and 0.001 ticks read `0`.
+Units that rescale below 1, such as `s` (to `ms` and `µs`) and the byte units, label their small ticks correctly.
+For any other unit on a log axis, such as `cps`, `reqps`, `ops`, or `none`, set `.decimals(...)`, which stops the guess.
+`env-ingress` sets three for its per-second rates and `env-top` four for busy cores, and
+`test_support::assert_log_axes_label_ticks_below_one` holds the rule on both.
+Verified on Grafana 13.2.4.
+
 ### Timeseries legend
 
 Apply the shared timeseries legend builder to every multi-series timeseries panel:
