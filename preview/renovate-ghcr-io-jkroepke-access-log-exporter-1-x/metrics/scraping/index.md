@@ -319,6 +319,12 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
     </tr>
       
     <tr>
+      <td>console</td>
+      <td>monitoring.coreos.com/v1/PodMonitor</td>
+      <td><a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-1-x/prometheus-scrapers/prometheus-operator/podmonitor-console.yaml?xxhash=af60be47aa414907" download="console-af60be47aa414907.yaml"><code>podmonitor-console.yaml</code></a></td>
+    </tr>
+      
+    <tr>
       <td>environmentd</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
       <td><a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-1-x/prometheus-scrapers/prometheus-operator/podmonitor-environmentd.yaml?xxhash=5d8260a46712e25a" download="environmentd-5d8260a46712e25a.yaml"><code>podmonitor-environmentd.yaml</code></a></td>
@@ -392,7 +398,7 @@ These are placed into your Prometheus configuration (prometheus.yml) as a single
     <tr>
       <td>scrape_config</td>
       <td>Classic ScrapeConfig</td>
-      <td><a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-1-x/prometheus-scrapers/classic/scrape_config.yaml?xxhash=0367b6ad8e977aa4" download="scrape_config-0367b6ad8e977aa4.yaml"><code>scrape_config.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-1-x/prometheus-scrapers/classic/scrape_config.yaml?xxhash=9b29846c7f7742d0" download="scrape_config-9b29846c7f7742d0.yaml"><code>scrape_config.yaml</code></a></td>
     </tr>
   </tbody>
 </table>
@@ -453,6 +459,12 @@ These are PodMonitoring resources specifically for [Google Cloud Managed Service
       <td>cni-cilium-metrics-1</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
       <td><a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-1-x/prometheus-scrapers/gmp/cni-cilium-metrics-1.yaml?xxhash=3527423cc8bf7694" download="cni-cilium-metrics-1-3527423cc8bf7694.yaml"><code>cni-cilium-metrics-1.yaml</code></a></td>
+    </tr>
+      
+    <tr>
+      <td>console</td>
+      <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
+      <td><a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-1-x/prometheus-scrapers/gmp/console.yaml?xxhash=6be5c4cfa07dc4d4" download="console-6be5c4cfa07dc4d4.yaml"><code>console.yaml</code></a></td>
     </tr>
       
     <tr>
