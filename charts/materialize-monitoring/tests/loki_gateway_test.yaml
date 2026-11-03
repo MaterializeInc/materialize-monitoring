@@ -37,13 +37,13 @@ tests:
       - equal:
           path: spec.replicas
           value: 2
-      # The tag moves with Renovate, so this pins the image and variant, not the version.
+      # The tags move with Renovate, so these pin each image and variant, not the version.
       - matchRegex:
           path: spec.template.spec.containers[0].image
           pattern: '^docker\.io/nginxinc/nginx-unprivileged:\d+\.\d+\.\d+-alpine-slim$'
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[1].image
-          value: ghcr.io/jkroepke/access-log-exporter:0.4.22
+          pattern: '^ghcr\.io/jkroepke/access-log-exporter:\d+\.\d+\.\d+$'
       - equal:
           path: spec.template.spec.priorityClassName
           value: monitoring-scalable
@@ -476,6 +476,6 @@ tests:
       - ../profiles/registry/chainguard.values.yaml
     template: ../charts/loki/templates/gateway/deployment.yaml
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: cgr.dev/<ORG>/nginx:1.31.6
+          pattern: '^cgr\.dev/<ORG>/nginx:\d+\.\d+\.\d+$'

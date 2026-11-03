@@ -68,21 +68,22 @@ tests:
           value: node-exporter
 
   # --- image -----------------------------------------------------------------
-  - it: should use the pinned distroless image rather than the chart appVersion
+  # The tag moves with Renovate, so these pin the image and variant, not the version.
+  - it: should use the pinned distroless image
     template: ../charts/node-exporter/templates/daemonset.yaml
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: quay.io/prometheus/node-exporter:v1.12.1-distroless
+          pattern: '^quay\.io/prometheus/node-exporter:v\d+\.\d+\.\d+-distroless$'
 
   - it: should honor the global image registry override
     set:
       global.imageRegistry: mirror.example.com
     template: ../charts/node-exporter/templates/daemonset.yaml
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: mirror.example.com/prometheus/node-exporter:v1.12.1-distroless
+          pattern: '^mirror\.example\.com/prometheus/node-exporter:v\d+\.\d+\.\d+-distroless$'
 
   # --- resources -------------------------------------------------------------
   # A CPU limit is deliberately absent: this is a DaemonSet that bursts for the

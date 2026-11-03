@@ -438,17 +438,17 @@ tests:
           pattern: 'SELECTOR="mzmon\.materialize\.cloud/flavor!=logql"'
 
   # The sidecar shells out and runs curl, so it cannot be the distroless
-  # `registry.k8s.io/kubectl` the cleanup hook uses. Pinned so a default install
-  # does not track a floating tag.
+  # `registry.k8s.io/kubectl` the cleanup hook uses. Pinned to a full version so a
+  # default install does not track a floating tag; Renovate moves which one.
   - it: pins the rule-import sidecar to an image with a shell
     template: ../charts/thanos/templates/ruler/statefulset.yaml
     asserts:
       - equal:
           path: spec.template.spec.containers[1].name
           value: prometheus-rule-importer
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[1].image
-          value: docker.io/alpine/kubectl:1.36.4
+          pattern: '^docker\.io/alpine/kubectl:\d+\.\d+\.\d+$'
 
   # --- addressing edge cases ------------------------------------------------
 
