@@ -16,6 +16,11 @@ Check if loki is enabled.
 
 This returns a truthy string if enabled and a falsy string (empty) if not.
 
+`values.yaml` sets `loki.enabled: null` to clear the subchart's own `true`
+default, and Helm only drops that `null` when it merges the subchart's values.
+When the tags leave the subchart out, the key reaches here still present and
+`null`, so test it with `typeIs "<nil>"` rather than `hasKey`.
+
 Usage:
   {{- if ( include "mzmon.loki.enabled" $ ) }}
     ...
@@ -24,7 +29,7 @@ Usage:
 {{- define "mzmon.loki.enabled" }}
   {{- $values := $.Values.loki | required "loki is missing from values." }}
   {{- $tags := $.Values.tags }}
-  {{- if hasKey $values "enabled" }}
+  {{- if not ( typeIs "<nil>" $values.enabled ) }}
     {{- ternary "true" "" $values.enabled }}
   {{- else }}
     {{- if ( or $tags.default ( index $tags "bundled-backends" ) $tags.loki ) }}
@@ -417,8 +422,8 @@ With `use_thanos_objstore` on, Loki reads the top-level `ruler_storage`, which
 the subchart renders from `loki.storage.object_store.type` and a
 `structuredConfig` may override. Otherwise it reads the legacy `ruler.storage`,
 which the subchart derives the way `loki.rulerStorageConfig` does: an explicit
-`rulerConfig.storage.type`, else `s3` for the bundled MinIO, else the object
-store `loki.storage.type` names, else `local`.
+`rulerConfig.storage.type`, else the object store `loki.storage.type` names,
+else `local`.
 
 Only `local` refuses writes through the ruler API, which is how the chart's
 LogQL rules arrive; the Thanos objstore `filesystem` backend accepts them.
@@ -432,8 +437,6 @@ Usage:
     {{- dig "loki" "structuredConfig" "ruler_storage" "backend" ( dig "loki" "storage" "object_store" "type" "" $values ) $values }}
   {{- else if dig "loki" "rulerConfig" "storage" "type" "" $values }}
     {{- dig "loki" "rulerConfig" "storage" "type" "" $values }}
-  {{- else if dig "minio" "enabled" false $values }}
-    {{- "s3" }}
   {{- else if has ( dig "loki" "storage" "type" "" $values ) ( list "s3" "gcs" "azure" "swift" "alibabacloud" "cos" "bos" ) }}
     {{- dig "loki" "storage" "type" "" $values }}
   {{- else }}

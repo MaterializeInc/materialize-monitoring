@@ -56,14 +56,32 @@ tests:
           kind: ServiceAccount
           name: loki
           namespace: test-monitoring
-  # This test case doesn't work since it relies on the template to exist
-  # - it: should not loki enabled with circuit-breaker off
-  #   set:
-  #     loki.enabled: false
-  #   template: ../charts/loki/templates/serviceaccount.yaml
-  #   asserts:
-  #     - hasDocuments:
-  #         count: 0
+  # A left-out subchart has no templates to name, so these two assert on the
+  # whole render. The Loki chart defaults `enabled` to `true`, which outranks
+  # every tag unless `values.yaml` clears it; the first case catches that.
+  - it: should leave loki out when no tag selects it
+    set:
+      tags.default: false
+      tags.bundled-backends: false
+      tags.loki: false
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: ServiceAccount
+          name: loki
+        not: true
+  - it: should leave loki out with the circuit-breaker off
+    set:
+      tags.default: false
+      tags.bundled-backends: false
+      tags.loki: true
+      loki.enabled: false
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: ServiceAccount
+          name: loki
+        not: true
   - it: should fail if buckets are not defined
     set:
       loki.loki.storage.bucketNames.chunks: "<REPLACE-ME>"
