@@ -3318,11 +3318,11 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{namespace=~\"$mzNamespaceList\"})\n",
+                        "expr": "max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{namespace=~\"$mzNamespaceList\"})\nor on (service)\nmax by (service) (kube_service_spec_type{namespace=~\"$mzNamespaceList\", type=\"LoadBalancer\"})\n",
                         "format": "table",
                         "instant": true,
                         "qryType": 2,
-                        "query": "max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{namespace=~\"$mzNamespaceList\"})\n"
+                        "query": "max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{namespace=~\"$mzNamespaceList\"})\nor on (service)\nmax by (service) (kube_service_spec_type{namespace=~\"$mzNamespaceList\", type=\"LoadBalancer\"})\n"
                       },
                       "version": "v0"
                     },
@@ -3353,7 +3353,7 @@
               ]
             }
           },
-          "description": "**The environment's LoadBalancer Services, and the address each was given.**\n\n**Nominal:** One for balancerd and one for the console, where the deployment exposes them through Kubernetes. The AWS Terraform wrappers make their Network Load Balancer in Terraform instead, so there are none on those installs.\n\n**Degraded:** A Service with no address has not been given a load balancer yet. That is normal for a minute after it is created, and a fault after several: subnets missing their tags, no free public addresses, or a controller without permission.",
+          "description": "**The environment's LoadBalancer Services, and the address each was given.**\n\n**Nominal:** One for balancerd and one for the console, where the deployment exposes them through Kubernetes. The AWS Terraform wrappers make their Network Load Balancer in Terraform instead, so there are none on those installs.\n\n**Degraded:** A Service with no address has not been given a load balancer yet. That is normal for a minute after it is created, and a fault after several: subnets missing their tags, no free public addresses, or a controller without permission.\n\nA Service without an address has no ingress series, so the query adds every LoadBalancer Service that lacks one, with its address columns empty.",
           "id": 1013,
           "links": [],
           "title": "Load Balancer Addresses",

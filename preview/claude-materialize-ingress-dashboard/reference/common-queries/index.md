@@ -17943,6 +17943,8 @@ given.
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service, ip, hostname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_status_load_balancer_ingress{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_service_spec_type{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentNamespaceFilter' title='mzEnvironmentNamespaceFilter'>namespace=~"materialize-environment"</span>, type<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">LoadBalancer</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>

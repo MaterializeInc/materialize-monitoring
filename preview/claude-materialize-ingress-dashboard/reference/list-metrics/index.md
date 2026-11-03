@@ -2242,10 +2242,12 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_service_spec_type">kube_service_spec_type
         <details>
+            Used labels: namespace, type
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.net.k8s.services.by_type">infra.net.k8s.services.by_type</a></li>
+                <li><a href="../common-queries#materialize.ingress.lb.addresses">materialize.ingress.lb.addresses</a></li>
             </ul>
         </details>
     </li>
