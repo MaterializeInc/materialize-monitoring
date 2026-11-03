@@ -5479,7 +5479,7 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 Every dashboard has a **Grafana dashboard schema v2** render, which needs **Grafana 12 or later**.
 For more information, see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
-`env-top` also has a **Datadog** preview, which [Datadog]({{< relref "datadog.md" >}}) describes.
+`env-top` also has a **Datadog** render, which [Datadog]({{< relref "datadog.md" >}}) describes.
 Each table below lists every format, so you can see which ones a dashboard has no render for.
 Grafana 10 and 11 (schema v1) renders are not planned.
 The rest of the Datadog set, and the Google Cloud Monitoring and Honeycomb sets, are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).
@@ -5532,10 +5532,22 @@ Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible store
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
 The Storage tab is Materialize's own accounting of what the stored data is for — current data, data kept only for a reader still looking at an older version, and data nothing refers to.
 The bucket's own size, as the provider bills it, is on `infra-cloud`.
-The Object Store Internals tab is the store's own account, for a persist bucket on Ceph run by Rook:
-Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
-It appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`; on any other store, the tab says what it would show.
-It needs both a metrics and a logs datasource.
+The Object Store Internals tab is the store's own account, with a section for each store it finds:
+
+Ceph run by Rook
+: Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
+  The section appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`.
+
+GCS
+: Each bucket's live data, object count, and average object size, and how much its data and object count change each day.
+  Two donuts split the selected buckets' billed bytes and objects into live objects, noncurrent versions, and soft-deleted objects.
+  The section appears when the gateway pulls the bucket from Cloud Monitoring, under `pipeline.metrics.provider.gcp.gcs.buckets`.
+  The **GCS Bucket** picker opens on every pulled bucket.
+  The environment's bucket is the one whose **Live Data** tile reads the same as the environment's.
+  Google measures a bucket once a day, so the section's charts show the last 14 days whatever time range you pick.
+
+On S3, Azure Blob, or any other store, the tab says what it would show.
+The dashboard needs both a metrics and a logs data source.
 
 {{< download-dashboards name="env-persist" >}}
 
@@ -6971,11 +6983,12 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/claude-mate
 
 # Datadog
 
-The Materialize Environment Overview, `env-top`, has a Datadog preview.
-It holds the cluster and replica counts from the Grafana dashboard's Cluster Objects / Replicas tab.
+The Materialize Environment Overview, `env-top`, has a Datadog version.
+It holds the Grafana dashboard's panels, apart from the differences listed on this page, under the same tabs, with a group for each Grafana row.
 The rest of the Grafana dashboards are tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115), on the [Dashboards roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).
+On this page, "you" are an operator who sends Materialize metrics to Datadog.
 
-## Import the preview
+## Import the dashboard
 
 1. Download the Datadog file from the `env-top` row of [Available Dashboards]({{< relref "all.md" >}}#materialize-environment-overview-env-top).
 2. Create the dashboard through Datadog's API, with an API key and an application key that has the `dashboards_write` permission:
@@ -6985,13 +6998,57 @@ The rest of the Grafana dashboards are tracked as [DEP-115](https://linear.app/m
      -H "DD-API-KEY: ${DD_API_KEY}" \
      -H "DD-APPLICATION-KEY: ${DD_APP_KEY}" \
      -H "Content-Type: application/json" \
-     --data @env-top.json
+     --data @datadog-env-top.json
    ```
 
    Replace `DATADOG_SITE` with your Datadog site, such as `datadoghq.com`.
    If you manage Datadog with Terraform, pass the same file to the Datadog provider's `datadog_dashboard_json` resource instead.
-3. Pick one environment in the dashboard's **environment** variable.
-   Environments reuse cluster and replica ids, so the counts merge them when several are selected.
+3. Pick one environment in the **environment** variable, and the namespace it runs in in the **namespace** variable.
+
+## Pick what the dashboard shows
+
+The dashboard's template variables default to `*`, which selects every value.
+Pick one value or `*` in each of the following variables:
+
+**environment**
+: Scopes the Materialize panels to one environment, by `materialize_cloud_organization_name`.
+  Environments reuse cluster and replica ids, so the panels merge them when several environments are selected.
+
+**namespace**
+: Scopes the Kubernetes panels to one namespace.
+  cAdvisor and kube-state-metrics series carry no environment tag, so these panels read the namespace instead.
+  At `*`, they show every pod in the Kubernetes cluster.
+
+**cluster**
+: Narrows the panels to one cluster, by id, such as `u1`.
+
+**replica**
+: Narrows the panels to one replica, by id.
+
+**Least Fresh Objects** and **Slowest Hydrating Objects** always show the last five minutes, as their Grafana panels do when the time range ends now.
+They don't follow the time picker into the past.
+
+## Enable percentiles
+
+The **Peek Latency** and **Iceberg Commit Latency** panels read percentiles of a histogram.
+Datadog doesn't compute them until percentiles are enabled for the metric, and until then the panels show an error.
+Enable percentiles for `mz_compute_peek_duration_seconds` and `mz_sink_iceberg_commit_duration_seconds` under **Metrics** > **Summary** in Datadog.
+Enabled percentiles count toward your Datadog custom metrics.
+
+## How the Datadog version differs
+
+The Datadog panels show cluster, replica, and object ids where the Grafana panels show names.
+The following table lists the Grafana panels that the Datadog version draws differently or leaves out:
+
+<!-- Agent note: keep this table in step with `DIFFERENCES` in packages/dashboards/src/datadog/env_top.rs,
+which the parity ledger in packages/dashboards/tests/datadog_parity.rs enforces. -->
+
+| Grafana panel | In Datadog | Why |
+|---|---|---|
+| **Environment Alerts Firing**, **Alerts**, and **Alerts Firing Over Time** | Left out | Datadog alerts are monitors, not a series to draw |
+| **Last Restart Time** | Left out | Datadog has no `time()`, so the age of the newest container can't be derived from its start timestamp |
+| **Environment Status** | A percentage, colored by health | Grafana maps the percentage to **Healthy**, **Degraded**, or **Unhealthy** |
+| **Deployment Readiness** | A table, with **Ready** and **Unavailable** columns | The two counts are separate queries, and a table shows them side by side, one row per namespace |
 
 ## Build the rest yourself
 
@@ -11366,7 +11423,7 @@ Ordered so the cheapest question that could explain everything comes first.
    a database at `max_connections`.
    Each dashboard's last tab is the dependency's own account of why: Database Internals and Object Store Internals.
    Database Internals reads the PostgreSQL exporter on any PostgreSQL, or CloudNativePG's own metrics.
-   Object Store Internals reads Ceph.
+   Object Store Internals reads Ceph's own metrics, or Cloud Monitoring's account of a GCS bucket.
 5. **Is it lagging, or is it stuck?**
    *Environment Overview* → Compute Objects.
    Currently Hydrating counts collections that have produced no results yet; the freshness panels cover the ones that
@@ -11575,6 +11632,457 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/claude-mate
 --------------------------------------------------------------------------------
 
 # Meta Observability
+
+
+--------------------------------------------------------------------------------
+title: "Node drains"
+url: https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-ingress-dashboard/operating/runbooks/node-drains/index.md
+--------------------------------------------------------------------------------
+
+# Node drains runbook
+
+This page is for you if you operate the Kubernetes cluster that Materialize runs on, and a node drain alert fired.
+It covers how to find what is draining a node and why the drain hasn't finished,
+how to move Materialize off the node without an outage, and when to hand the drain to whoever manages the node pool.
+
+## How a drain affects Materialize
+
+A drain cordons a node, so that nothing new schedules on it, and then evicts the pods that are on it.
+Most workloads run several replicas, so the others keep serving while an evicted pod's replacement starts on another node.
+
+Materialize's `environmentd` and each cluster replica's `clusterd` run as one pod each.
+Evicting `environmentd` interrupts its environment until the replacement starts.
+Evicting a `clusterd` pod restarts that replica, which then rehydrates.
+Both happen even when a replacement node is ready.
+
+The Materialize operator annotates these pods with `karpenter.sh/do-not-disrupt: "true"`
+and `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`, so neither autoscaler removes a node that runs them.
+A cordon, `kubectl drain`, and a managed node pool upgrade don't read those annotations.
+
+The graceful way off a node is a Materialize rollout.
+A rollout starts the instance's next generation of `environmentd` and `clusterd` pods, which can schedule only on nodes that aren't cordoned.
+The operator tears the old generation down after the next one has caught up.
+After the rollout, the node holds no Materialize pods, and draining it interrupts nothing.
+On GKE, the operator can start these rollouts itself for a node pool upgrade; see the GKE tab in [Check the node pool](#check-the-node-pool).
+
+## The alerts
+
+The alerts treat a node as draining when it's cordoned,
+or when it carries the removal taint of the cluster autoscaler (`ToBeDeletedByClusterAutoscaler`) or Karpenter (`karpenter.sh/disrupted`).
+The following table lists them:
+
+| Alert | Severity | Fires after | Covers |
+|---|---|---|---|
+| `materialize-node-draining` | notice | 10 minutes | Each `environmentd` and `clusterd` pod on a draining node |
+| `materialize-node-drain-slow` | warning | 2 hours | The same pods |
+| `materialize-node-drain-stuck` | critical | 24 hours | The same pods |
+| `node-drain-stuck` | warning | 24 hours | Draining nodes that run no `environmentd` or `clusterd` pods |
+
+Every alert names the `node`.
+The `materialize-node-*` alerts also name the `namespace` and `pod`.
+You can change how long an alert waits with `rules.overrides`.
+For more information, see [Configuring Alerting](../../../alerting/configuring/).
+
+### materialize-node-draining
+
+A node running `environmentd` or a cluster replica has been cordoned or marked for removal for 10 minutes.
+Someone usually started it: a node pool upgrade, a scale-down, or maintenance.
+If a rollout is moving the pods, the alert resolves when the rollout finishes.
+Otherwise, [find what is draining the node](#find-what-is-draining-the-node),
+and [move Materialize off the node](#move-materialize-off-the-node) before the drain evicts it.
+
+### materialize-node-drain-slow
+
+The Materialize pods have stayed on the draining node for 2 hours.
+Either no rollout started, or one is stuck.
+To find out which, [check the instance's rollout](#check-the-instances-rollout).
+
+### materialize-node-drain-stuck
+
+The Materialize pods have stayed on the draining node for 24 hours.
+A managed upgrade drains the node anyway after its wait runs out, which for GKE's blue-green upgrades is three days by default.
+[Check the instance's rollout](#check-the-instances-rollout).
+If the drain belongs to a node pool you don't manage, [escalate to the node pool's owner](#escalate-to-the-node-pools-owner).
+
+### node-drain-stuck
+
+A node that runs no `environmentd` or `clusterd` pods has been cordoned or marked for removal for 24 hours.
+Nothing new schedules on it, so the cluster runs short of the node's capacity.
+Whatever removes the node next evicts what is still on it, such as a single-instance database or the monitoring stack.
+[Find what blocks the drain](#find-what-blocks-the-drain).
+If a GKE blue-green upgrade cordoned the node, see the GKE tab in [Check the node pool](#check-the-node-pool).
+
+## Diagnose the drain
+
+Each procedure in this section reads cluster state and changes nothing.
+In each snippet, set `KUBECONTEXT` to your cluster's context and `NODE` to the node the alert names.
+
+### Find what is draining the node
+
+1. List the node's taints, and whether it's cordoned:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NODE=gke-example-pool-1234abcd-wxyz
+
+   kubectl --context "$KUBECONTEXT" get node "$NODE" \
+     -o jsonpath='unschedulable={.spec.unschedulable}{"\n"}{range .spec.taints[*]}{.key}={.value}:{.effect}{"\n"}{end}'
+   ```
+
+   A cordon also shows as the `node.kubernetes.io/unschedulable` taint.
+   Match what you see to what started the drain:
+
+   | You see | Started by |
+   |---|---|
+   | `ToBeDeletedByClusterAutoscaler` | The cluster autoscaler, scaling the node pool down |
+   | `karpenter.sh/disrupted` | Karpenter, for consolidation, drift, or expiry |
+   | `unschedulable=true` and neither taint | A cordon: `kubectl cordon`, `kubectl drain`, or a managed node pool upgrade |
+
+1. Read the node's events:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NODE=gke-example-pool-1234abcd-wxyz
+
+   kubectl --context "$KUBECONTEXT" get events -A --sort-by=.lastTimestamp \
+     --field-selector involvedObject.kind=Node,involvedObject.name="$NODE"
+   ```
+
+   The API server keeps events for an hour by default.
+   The stack collects them into Loki, so for an older drain, run the following LogQL query in Grafana's **Explore**:
+
+   ```logql
+   {job="loki.source.kubernetes_events"} | kind="Node" | name="gke-example-pool-1234abcd-wxyz"
+   ```
+
+   A `NodeNotSchedulable` event marks the cordon.
+
+1. If no person cordoned the node, [check the node pool](#check-the-node-pool) for an upgrade or a provisioner that's replacing it.
+
+### List what is still on the node
+
+Run the following command:
+
+```bash
+KUBECONTEXT=my-cluster
+NODE=gke-example-pool-1234abcd-wxyz
+
+kubectl --context "$KUBECONTEXT" get pods -A -o wide --field-selector spec.nodeName="$NODE"
+```
+
+Materialize's pods are named `INSTANCE_ID-environmentd-GENERATION-0` and `INSTANCE_ID-cluster-CLUSTER_ID-replica-REPLICA_ID-gen-GENERATION-0`.
+`GENERATION` is the deployment generation the pod belongs to.
+
+### Check the instance's rollout
+
+1. List each Materialize instance's active generation, and whether a rollout is still applying:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   FIELDS='NAMESPACE:.metadata.namespace,NAME:.metadata.name,ACTIVE:.status.activeGeneration'
+   FIELDS+=',UP_TO_DATE:.status.conditions[?(@.type=="UpToDate")].status'
+   FIELDS+=',MESSAGE:.status.conditions[?(@.type=="UpToDate")].message'
+
+   kubectl --context "$KUBECONTEXT" get materialize -A -o custom-columns="$FIELDS"
+   ```
+
+1. Find the row for the namespace the alert names, and match its state:
+
+   - **`True`, with `Successfully applied changes for generation N`:** no rollout is in progress.
+     To move the pods, [move Materialize off the node](#move-materialize-off-the-node).
+   - **`Unknown`, with `Applying changes for generation N`:** a rollout to generation `N` is in progress.
+     The pods on the node belong to the generation before it.
+     Check generation `N`'s pods in the next step.
+
+1. List the pods of the generation the rollout is applying:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NAMESPACE=materialize-environment
+   GENERATION=2
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" get pods -o wide \
+     | grep -E -- "-(environmentd|gen)-${GENERATION}-[0-9]+ "
+   ```
+
+   Match what you see to what the rollout is waiting on:
+
+   - **No pods, or pods in `Pending`:** they have no schedulable node to go to.
+     Check that replacement nodes are joining; see [Check the node pool](#check-the-node-pool).
+     If they aren't, [escalate to the node pool's owner](#escalate-to-the-node-pools-owner).
+   - **Pods that restart or never become ready:** the next generation can't start.
+     See [Troubleshooting Materialize](../../troubleshooting-materialize/).
+   - **Pods that are running and ready:** the next generation is hydrating,
+     or, with the `ManuallyPromote` rollout strategy, waiting for you to promote it.
+     The **Generations** tab of the Materialize Upgrade dashboard shows how far it has caught up.
+
+### Find what blocks the drain
+
+A drain evicts a pod only when the pod's PodDisruptionBudget allows a disruption.
+
+1. List the PodDisruptionBudgets that allow none:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   FIELDS='NAMESPACE:.metadata.namespace,NAME:.metadata.name,ALLOWED:.status.disruptionsAllowed'
+   FIELDS+=',HEALTHY:.status.currentHealthy,DESIRED:.status.desiredHealthy'
+
+   kubectl --context "$KUBECONTEXT" get pdb -A -o custom-columns="$FIELDS" | awk 'NR == 1 || $3 == 0'
+   ```
+
+   A budget whose pods are already unhealthy allows no disruption, however many replicas its workload has.
+
+1. List the pods on the node that ask the autoscalers to leave the node alone:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NODE=gke-example-pool-1234abcd-wxyz
+   TEMPLATE='{range .items[*]}{.metadata.namespace}/{.metadata.name}'
+   TEMPLATE+=' do-not-disrupt={.metadata.annotations.karpenter\.sh/do-not-disrupt}'
+   TEMPLATE+=' safe-to-evict={.metadata.annotations.cluster-autoscaler\.kubernetes\.io/safe-to-evict}{"\n"}{end}'
+
+   kubectl --context "$KUBECONTEXT" get pods -A --field-selector spec.nodeName="$NODE" -o jsonpath="$TEMPLATE"
+   ```
+
+## Resolve the drain
+
+How you resolve a drain depends on whether the node is leaving the cluster.
+
+### Move Materialize off the node
+
+Before you start, check that the nodes that aren't cordoned have room for the instance's next generation.
+The default rollout strategy, `WaitUntilReady`, runs both generations side by side until the next one has caught up.
+
+1. Cordon every node that's leaving, so that the next generation can't land on another of them:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NODE=gke-example-pool-1234abcd-wxyz
+
+   kubectl --context "$KUBECONTEXT" cordon "$NODE"
+   ```
+
+   A managed node pool upgrade has usually cordoned them already.
+
+1. Force a rollout of the instance.
+   Use the tab for the Materialize CRD version that the instance uses.
+
+   {{< tabs >}}
+   {{% tab "Materialize CRD v1" %}}
+   Set `forceRollout` to a new UUID:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NAMESPACE=materialize-environment
+   INSTANCE=main
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" patch materialize "$INSTANCE" --type=merge \
+     -p "{\"spec\": {\"forceRollout\": \"$(uuidgen)\"}}"
+   ```
+   {{% /tab %}}
+   {{% tab "Materialize CRD v1alpha1" %}}
+   Set `requestRollout` and `forceRollout` to the same new UUID:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NAMESPACE=materialize-environment
+   INSTANCE=main
+   UUID="$(uuidgen)"
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" patch materialize "$INSTANCE" --type=merge \
+     -p "{\"spec\": {\"requestRollout\": \"$UUID\", \"forceRollout\": \"$UUID\"}}"
+   ```
+   {{% /tab %}}
+   {{< /tabs >}}
+
+1. Watch the rollout until `UpToDate` is `True` and the old generation's pods are gone:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NAMESPACE=materialize-environment
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" get pods -o wide --watch
+   ```
+
+   The `materialize-node-*` alerts resolve after the old generation's pods leave the node.
+
+For the full procedure, including replacing a node pool,
+see [Resize node pools](https://materialize.com/docs/self-managed-deployments/deployment-guidelines/resize-node-pools/)
+in the Materialize documentation.
+
+### Keep the node
+
+If the node isn't leaving, such as after a `kubectl cordon` for maintenance that's over, make it schedulable again:
+
+```bash
+KUBECONTEXT=my-cluster
+NODE=gke-example-pool-1234abcd-wxyz
+
+kubectl --context "$KUBECONTEXT" uncordon "$NODE"
+```
+
+> [!WARNING]
+> Don't uncordon a node that a managed node pool upgrade is draining.
+> Ask the node pool's owner to pause, reschedule, or roll back the upgrade instead.
+
+Uncordoning doesn't remove an autoscaler's taint.
+If the cluster autoscaler is no longer removing the node, remove its taint:
+
+```bash
+KUBECONTEXT=my-cluster
+NODE=gke-example-pool-1234abcd-wxyz
+
+kubectl --context "$KUBECONTEXT" taint node "$NODE" ToBeDeletedByClusterAutoscaler-
+```
+
+## Check the node pool
+
+Each cloud provider drains nodes for its own reasons, on its own schedule.
+The following tabs cover the node pools that the
+[Materialize Terraform modules](https://github.com/MaterializeInc/materialize-terraform-self-managed) create on each cloud.
+
+{{< tabs >}}
+{{% tab "Google Cloud (GKE)" %}}
+GKE upgrades node pools automatically, for example to roll out a new node image.
+You can delay an upgrade with maintenance windows and exclusions, but you can't turn upgrades off.
+
+The Terraform modules put node pools on autoscaled blue-green upgrades, which run in the following order:
+
+1. GKE creates an empty replacement (green) pool, and cordons every node in the original (blue) pool.
+1. GKE waits for the pool's `wait_for_drain_duration`, which is three days by default and seven at most.
+   The modules set it with `upgrade_wait_for_drain_duration`.
+1. GKE drains the blue nodes in batches, and then deletes them.
+
+During the wait, the Materialize operator's node-upgrade rollout trigger rolls out each instance with pods on the blue nodes,
+so the instance moves to the green pool.
+The modules' examples turn the trigger on with `enable_node_upgrade_rollout_trigger`.
+For setting it up without the modules,
+see [GKE node pool upgrades](https://materialize.com/docs/self-managed-deployments/deployment-guidelines/gke-node-pool-upgrades/)
+in the Materialize documentation.
+
+While the trigger works, `materialize-node-draining` resolves after each instance's rollout.
+If `materialize-node-drain-slow` fires during an upgrade, the trigger's rollout didn't move the instance.
+[Check the instance's rollout](#check-the-instances-rollout), and the operator's logs.
+
+Nothing moves other pods off the blue nodes during the wait.
+They stay until GKE drains the node, so `node-drain-stuck` fires for those nodes a day into the wait.
+The wait serves the operator's rollouts, so a node pool that runs no `environmentd` or `clusterd` pods gains nothing from it.
+To have GKE drain such a pool sooner in its next upgrade, its owner can shorten the pool's wait,
+with `upgrade_wait_for_drain_duration` in the Terraform modules.
+
+To find a running upgrade and its phase, list the cluster's running node upgrades:
+
+```bash
+PROJECT_ID=my-project
+LOCATION=us-east1
+
+gcloud container operations list --project "$PROJECT_ID" --location "$LOCATION" \
+  --filter="operationType=UPGRADE_NODES AND status=RUNNING" \
+  --format="table(name,targetLink.basename(),startTime,detail)"
+```
+
+The `detail` column names the node pool and the phase, such as `Phase: WAITING_TO_DRAIN_BLUE_POOL`.
+GKE starts draining when the wait runs out, which is the operation's start time plus the pool's `wait_for_drain_duration`.
+The node pool's owner can roll back an upgrade that's still running with `gcloud container node-pools rollback`.
+{{% /tab %}}
+{{% tab "AWS (EKS)" %}}
+The Terraform modules run Materialize and the other workloads on nodes from Karpenter, in separate Karpenter node pools.
+Karpenter itself, with a few cluster add-ons, runs on an EKS managed node group.
+
+**Karpenter.**
+The modules' Karpenter node pools set `expireAfter` to `Never` and leave `terminationGracePeriod` unset.
+With those settings, Karpenter never removes a node while Materialize pods run on it, because they carry `karpenter.sh/do-not-disrupt`.
+To replace such a node, for example after a change to its instance type,
+cordon it and [move Materialize off the node](#move-materialize-off-the-node).
+Karpenter then removes the empty node, because the modules consolidate nodes when they're empty.
+
+To see what Karpenter is doing, list its node claims and the disruptions it can't make:
+
+```bash
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" get nodeclaims
+kubectl --context "$KUBECONTEXT" get events -A --field-selector reason=DisruptionBlocked
+```
+
+**Managed node groups.**
+An update to a managed node group cordons and drains each old node.
+If a PodDisruptionBudget keeps a pod on a node for 15 minutes, the update fails with `PodEvictionFailure`, unless it was started with `--force`.
+To find the node group's updates, run the following commands:
+
+```bash
+CLUSTER=my-cluster
+NODEGROUP=my-nodegroup
+UPDATE_ID=00000000-0000-0000-0000-000000000000
+
+aws eks list-updates --name "$CLUSTER" --nodegroup-name "$NODEGROUP"
+aws eks describe-update --name "$CLUSTER" --nodegroup-name "$NODEGROUP" --update-id "$UPDATE_ID"
+```
+
+For more information,
+see [Understand each phase of node updates](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-update-behavior.html)
+in the Amazon EKS documentation.
+{{% /tab %}}
+{{% tab "Azure (AKS)" %}}
+The Terraform modules run Materialize and the other workloads on nodes from Node Auto Provisioning, which is Karpenter managed by AKS.
+The cluster's `default` node pool is an AKS node pool.
+
+**Node Auto Provisioning.**
+The modules' node pools behave as they do with Karpenter on EKS.
+Karpenter never removes a node while Materialize pods run on it.
+To replace such a node, cordon it and [move Materialize off the node](#move-materialize-off-the-node).
+The `kubectl get nodeclaims` and `DisruptionBlocked` commands on the EKS tab work here too.
+
+**AKS node pools.**
+An AKS node pool upgrade adds surge nodes, and then cordons and drains each old node.
+It waits up to the pool's drain timeout, 30 minutes by default, for a pod that a PodDisruptionBudget holds on the node.
+What happens next depends on the pool's undrainable node behavior:
+
+- **`Schedule`:** the upgrade fails.
+- **`Cordon`:** AKS leaves the blocked node cordoned, labels it `kubernetes.azure.com/upgrade-status=Quarantined`, and continues.
+  A quarantined node stays until someone resolves it.
+
+To check a node pool's upgrade state and settings, and to find quarantined nodes, run the following commands:
+
+```bash
+KUBECONTEXT=my-cluster
+RESOURCE_GROUP=my-resource-group
+CLUSTER=my-cluster
+NODE_POOL=default
+
+az aks nodepool show --resource-group "$RESOURCE_GROUP" --cluster-name "$CLUSTER" --name "$NODE_POOL" \
+  --query "{state: provisioningState, upgrade: upgradeSettings}"
+kubectl --context "$KUBECONTEXT" get nodes -l kubernetes.azure.com/upgrade-status=Quarantined
+```
+
+For more information, see [Upgrade options](https://learn.microsoft.com/en-us/azure/aks/upgrade-options) in the AKS documentation.
+{{% /tab %}}
+{{< /tabs >}}
+
+## Escalate to the node pool's owner
+
+The node pools often belong to a different team from the one that runs Materialize, such as a platform or IT team that manages the Kubernetes cluster.
+If you support an install on someone else's behalf, the owner is usually that organization's own IT team.
+
+Escalate in the following cases:
+
+- A managed upgrade, an autoscaler, or a maintenance process that you don't control started the drain,
+  and it needs pausing, rescheduling, or rolling back.
+- Replacement nodes aren't joining, so the next generation's pods stay `Pending`.
+  Quota, a node pool's maximum size, and zone capacity are fixed outside Kubernetes.
+- A PodDisruptionBudget or an annotation on a workload that you don't own blocks the drain.
+- `materialize-node-drain-stuck` fires on a node pool that you don't manage.
+  The owner's upgrade drains the node after its wait runs out, whether or not Materialize has moved.
+
+Don't escalate when a rollout fixes the drain.
+Start the rollout yourself, and if the next generation can't start, see [Troubleshooting Materialize](../../troubleshooting-materialize/).
+
+Give the owner the following information:
+
+- The node's name, its taints, and when the drain started, which the alert's start time or the `NodeNotSchedulable` event shows.
+- What is still on the node.
+- The cloud provider's operation or update ID, if one is running.
+- When the provider drains the node, if it says.
 
 
 --------------------------------------------------------------------------------
@@ -13578,6 +14086,13 @@ The first two are checked mechanically; the rest are for the author and the revi
 7. The name SHOULD describe the condition rather than its grade, so that re-grading does not force a rename.
 8. The `summary` MUST be actionable without following the runbook link, since an air-gapped install cannot follow it.
 
+## Runbooks
+
+Every rule carries a `runbook_url` annotation, which points at the alert's entry on [Common Alerts]({{< relref "../../common-alerts.md" >}}) by default.
+An alert with a runbook under `docs/content/operating/runbooks/` sets `annotations.runbook_url` to that page's published URL and the alert's heading,
+and its Common Alerts entry links there.
+The runbook SHOULD give each alert a heading named after it, so the anchor is the alert's name.
+
 ## Log-derived alerts
 
 An alert whose query is LogQL reads Materialize's log lines instead of its metrics.
@@ -13662,17 +14177,17 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.14.0 |
-| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.14.0 |
+| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.14.3 |
+| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.14.3 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.3.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.8.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
-| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.47.3 |
+| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
 
 ## Values {#values}
 
@@ -14848,7 +15363,7 @@ Materialize-specific configuration values.
       <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Deploy a PodMonitor to collect the console's request metrics (`mz_console_*`). Console pods from Materialize versions that don't declare an `internal-http` port yield no target.
+      <td class="helm-value-desc">Deploy a PodMonitor to collect the console's request metrics (`mz_console_*`). Console pods before Materialize v26.49.0 declare no `internal-http` port and yield no target.
 </td>
     </tr>
     <tr>
@@ -20185,7 +20700,7 @@ Upstream reference:
 {
   "registry": "quay.io",
   "repository": "thanos/thanos",
-  "tag": "v0.42.4"
+  "tag": "v0.42.5"
 }</pre>
 </td>
       <td class="helm-value-desc">Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
@@ -21725,7 +22240,7 @@ for the full checklist.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/grafana",
-  "tag": "13.2.4"
+  "tag": "13.3.0"
 }</pre>
 </td>
       <td class="helm-value-desc">Grafana server image.
@@ -22204,7 +22719,7 @@ the StatefulSet, whose volumes do not follow; see
       <td class="helm-value-default"><pre>
 {
   "repository": "quay.io/prometheus/alertmanager",
-  "tag": "v0.34.1"
+  "tag": "v0.34.2"
 }</pre>
 </td>
       <td class="helm-value-desc">Alertmanager image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -22387,7 +22902,7 @@ and turning `alerting.server.tls` on changes no volume.
   ],
   "image": {
     "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
-    "tag": "v0.94.1"
+    "tag": "v0.94.2"
   },
   "resources": {
     "limits": {
@@ -22790,6 +23305,132 @@ addition, and arrives as `label_<key>`.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.customResourceState</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "config": {
+    "kind": "CustomResourceStateMetrics",
+    "spec": {
+      "resources": [
+        {
+          "groupVersionKind": {
+            "group": "materialize.cloud",
+            "kind": "Materialize",
+            "version": "v1alpha1"
+          },
+          "labelsFromPath": {
+            "environment_id": [
+              "spec",
+              "environmentId"
+            ],
+            "environment_name": [
+              "metadata",
+              "name"
+            ],
+            "environment_namespace": [
+              "metadata",
+              "namespace"
+            ]
+          },
+          "metricNamePrefix": "kube_mz",
+          "metrics": [
+            {
+              "each": {
+                "info": {
+                  "labelsFromPath": {
+                    "environment_name": [
+                      "metadata",
+                      "name"
+                    ]
+                  }
+                },
+                "type": "Info"
+              },
+              "help": "1 for each Materialize environment, naming it.",
+              "name": "environment_info"
+            },
+            {
+              "each": {
+                "gauge": {
+                  "labelsFromPath": {
+                    "generation": [
+                      "activeGeneration"
+                    ]
+                  },
+                  "path": [
+                    "status"
+                  ],
+                  "valueFrom": [
+                    "activeGeneration"
+                  ]
+                },
+                "type": "Gauge"
+              },
+              "help": "The deployment generation the Materialize environment serves.",
+              "name": "environment_active_generation"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "enabled": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Environment facts that kube-state-metrics reads off each `Materialize` resource.
+
+kube-state-metrics publishes one series of each per `materializes.materialize.cloud` resource:
+
+| Metric | Value | Labels |
+| ------ | ----- | ------ |
+| `kube_mz_environment_info` | 1 | `environment_id` (`spec.environmentId`), `environment_name` (`metadata.name`) and `environment_namespace` (`metadata.namespace`) |
+| `kube_mz_environment_active_generation` | The deployment generation the environment serves, `status.activeGeneration` | The same, and `generation`, the same number as a label |
+
+The active generation is the one the operator last promoted.
+During a rollout it is the older generation, until the new one has caught up and been promoted.
+A rollout that never promotes leaves the older one serving,
+so the highest generation in the environment's pod names doesn't stand in for it.
+`generation` lets a query join the series to the generation in a pod's name.
+
+The environment's namespace is `environment_namespace`.
+`namespace` and `pod` on these series name the kube-state-metrics pod, as on every node-level `kube_*` series.
+kube-state-metrics also adds `customresource_group`, `customresource_kind` and `customresource_version`.
+Read `kube_mz_environment_info` through `group by (cluster, environment_id, environment_name, environment_namespace)`,
+which drops those labels.
+
+**Pinned to `v1alpha1`.** kube-state-metrics takes one entry per resource,
+and a wildcard version lists every resource once for each version the CRD serves.
+Every Materialize operator serves `v1alpha1`, and where the `v1` CRD is installed too,
+listing `v1alpha1` returns the resources created as `v1` as well.
+
+kube-state-metrics watches the cluster's CRDs, so it publishes nothing until the Materialize CRD exists, and picks it up when it does.
+`rbac.extraRules` grants it list and watch on `materializes`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.rbac<wbr>.extraRules</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "apiGroups": [
+      "materialize.cloud"
+    ],
+    "resources": [
+      "materializes"
+    ],
+    "verbs": [
+      "list",
+      "watch"
+    ]
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra ClusterRole rules for kube-state-metrics: list and watch on `Materialize` resources, for `customResourceState`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.networkPolicy</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -22885,24 +23526,28 @@ you know it.
   "honorLabels": true,
   "metricRelabelings": [
     {
+      "regex": "(.+)",
       "sourceLabels": [
         "label_cluster_environmentd_materialize_cloud_cluster_id"
       ],
       "targetLabel": "cluster_id"
     },
     {
+      "regex": "(.+)",
       "sourceLabels": [
         "label_cluster_environmentd_materialize_cloud_replica_id"
       ],
       "targetLabel": "replica_id"
     },
     {
+      "regex": "(.+)",
       "sourceLabels": [
         "label_cluster_environmentd_materialize_cloud_size"
       ],
       "targetLabel": "replica_size"
     },
     {
+      "regex": "(.+)",
       "sourceLabels": [
         "label_materialize_cloud_environment_id"
       ],
@@ -22946,24 +23591,28 @@ Asserted by the e2e suite: `kube_state::labels_are_honored`.
       <td class="helm-value-default"><pre>
 [
   {
+    "regex": "(.+)",
     "sourceLabels": [
       "label_cluster_environmentd_materialize_cloud_cluster_id"
     ],
     "targetLabel": "cluster_id"
   },
   {
+    "regex": "(.+)",
     "sourceLabels": [
       "label_cluster_environmentd_materialize_cloud_replica_id"
     ],
     "targetLabel": "replica_id"
   },
   {
+    "regex": "(.+)",
     "sourceLabels": [
       "label_cluster_environmentd_materialize_cloud_size"
     ],
     "targetLabel": "replica_size"
   },
   {
+    "regex": "(.+)",
     "sourceLabels": [
       "label_materialize_cloud_environment_id"
     ],
@@ -22992,9 +23641,12 @@ siblings. The `label_*` form is dropped rather than kept beside the
 canonical one, because nothing read it before these labels were
 allowlisted.
 
-A pod without the label is left alone: the copy writes an empty value,
-which is no label at all. Restate these rules when overriding the
-list, since Helm replaces it.
+Each copy matches `(.+)`, so it fires only where the pod label is
+present. With the default `(.*)` it would also fire where the label is
+absent and write an empty value, which removes the canonical label from
+a series that carries its own: `kube_mz_environment_info` would lose its
+`environment_id`. Restate these rules when overriding the list, since
+Helm replaces it.
 </td>
     </tr>
   </tbody>
@@ -23349,7 +24001,7 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 {
   "repository": "registry.k8s.io/metrics-server/metrics-server",
-  "tag": "v0.9.0"
+  "tag": "v0.9.1"
 }</pre>
 </td>
       <td class="helm-value-desc">metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
@@ -23859,7 +24511,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `mz-monitoring-build` / `mz-monitoring-check`: thin wrappers over the Rust binaries
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
-    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, `grafana/` and `datadog/`, with `canonical.rs` serializing both deterministically; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
+    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, `grafana/` and `datadog/`, with `canonical.rs` serializing both deterministically; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; `datadog/panel.rs` pairs each Datadog widget with its parity-manifest entry, `manifest.rs` holds the manifest both backends describe, and `tests/datadog_parity.rs` compares them; all driven by `mz-monitoring-build gen-dashboards`
     * `queries/`: query-registry YAML inputs — the metric, log, and alert query definitions and recording rules,
       validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
       * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
@@ -23874,7 +24526,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
-    * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; vendored upstream Grafana JSON Schema documents plus the `packages.json` plugin-id manifest under `schemas/grafana/`, and the Rust models generated from them under `src/grafana/generated/`; `tests/fixtures/env-top.python-baseline.yaml` is the frozen final Python render, shared by the model round-trip and dashboard parity suites; not consumed by customers
+    * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; vendored upstream Grafana JSON Schema documents plus the `packages.json` plugin-id manifest under `schemas/grafana/`, and the Rust models generated from them under `src/grafana/generated/`; `src/datadog/`, behind the `datadog` feature, holds the Datadog dashboard building blocks (registry context, formula splitter, widget builders, template variables); `tests/fixtures/env-top.python-baseline.yaml` is the frozen final Python render, shared by the model round-trip and dashboard parity suites; not consumed by customers
     * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`) and for the release machinery (`versioning.rs`, `propose.rs`, `publish.rs`, `release_notes.rs`, `github.rs`)
     * `mz-monitoring-check/`: Rust schema and consistency checks, one subcommand each.
       `check-queries` validates the query registry against its schema.
@@ -25760,6 +26412,23 @@ avg(last_5m):(
 
 Queries that back a **panel** are bare metric queries, with no window and no comparison.
 
+A dashboard widget's JSON holds a panel query in two parts:
+the metric queries, each named, and a formula over those names that carries every function and operator.
+`count_not_null(avg:m{…} by {…})` becomes the query `avg:m{…} by {…}` and the formula `count_not_null(query1)`.
+A query object that still carries a function renders as "Invalid Formula in Query Object", although the query API evaluates the whole expression.
+The widget editor makes this split for you when you paste a whole expression into its query box, so only JSON you import needs the two parts.
+The Datadog dashboards split each template this way in `packages/mzmon-lib/src/datadog/formula.rs`,
+so the registry keeps one expression per template.
+
+A query value, toplist, sunburst, or table widget reduces each query over the time window with the query's `aggregator`.
+Under a group-by function such as `count(query1, {size})`, Datadog refuses an aggregator,
+so the formula reduces itself, as `reduce(count(query1, {size}), 'last')`, and its queries carry none.
+A timeseries widget takes neither.
+
+A scalar widget's `last` keeps the final value of a series that stopped reporting anywhere in its window,
+where an instant PromQL query drops a series after five minutes without a sample.
+So a widget for a registry query marked `instant` sets its own timeframe to the last five minutes, and doesn't follow the dashboard's time picker.
+
 ## Layout
 
 A `datadogQuery` is laid out like the `promQL` beside it, so the two read side by side.
@@ -25898,7 +26567,8 @@ The following table maps each PromQL construct to its Datadog form:
 | `a * on (k) group_left (name) info` | `a * (info * 0 + 1)`, with both grouped by `k` |
 | `a and on (k) b` | `a * (b * 0 + 1)`, with `b` grouped by `k` |
 | `a and on (k) (b > c)` | `a * (cutoff_min(b, c) * 0 + 1)`, with `b` grouped by `k` |
-| `topk(15, q)` | `top(q, 15, 'max', 'desc')` |
+| `topk(15, q)` over a range | `top(q, 15, 'max', 'desc')` |
+| `topk(15, q)` in an instant query | `top(q, 15, 'last', 'desc')`, so the ranking is by the latest value |
 | `(q) or vector(0)` | `default_zero(q)`, which yields a zero series even when `q` has no data at all. Grouped, it can't add a missing group |
 | `count(x == 0) or 0 * count(x)`, zero only while `x` exists | `count_not_null(cutoff_max(min:x{…} by {…}, 0))` |
 | `clamp_min(q, 0)` | `clamp_min(q, 0)` |
@@ -25985,8 +26655,10 @@ The `datadogQuery` carries a threshold that is never crossed, and a comment says
 
 **`or` chains across different metrics.** `materialize.persist.failures` folds sixteen counters into one alert with `label_replace` and `or`, so Datadog needs one monitor per counter, and three representative ones are given.
 
-**Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`, so a range query that drops sentinel samples before taking `max_over_time` can't drop them first.
-`materialize.info.max_lag` includes the sentinel.
+**Filtering before a time rollup.** A function such as `cutoff_max` runs after a query's `.rollup()`.
+Where the PromQL drops a sentinel sample before `max_over_time`, the Datadog form drops the whole rollup bucket that holds it,
+so a bucket in which an object finished hydrating loses its finite reading too.
+Filter each series before any group-by aggregation, as `materialize.info.max_lag` does, or the sentinel survives into the maximum.
 
 ## Template parameters
 
@@ -26011,6 +26683,11 @@ A value containing `OR` is parenthesized, so it can't change the precedence of t
 Dashboard variables that the registry's Grafana queries use appear in the Datadog form as a standalone filter term, such as `{$nodeList AND mode:idle}`.
 A Datadog template variable carries its own tag prefix, so the dashboard that defines `$nodeList` decides which tag it filters.
 Where the Grafana variable holds part of a value, the Datadog variable holds the whole term: `$cnpgClusterList` names a CNPG cluster in Grafana, so a Datadog dashboard defines it as a pod pattern, such as `pod:CLUSTER-*`.
+
+A dashboard whose templates write the tag themselves fills a parameter with a template variable's value alone.
+`env-top` sets `mzClusterList`, `mzReplicaList`, and `mzNamespaceList` to `$cluster.value`, `$replica.value`, and `$namespace.value`,
+so `instance_id:%%{mzClusterList}` filters `instance_id` by the picked cluster id.
+The query API doesn't expand template variables, so to check a dashboard's queries, substitute the picked values first.
 
 To render a query's Datadog template, build a context on the `Datadog` engine:
 
@@ -26552,14 +27229,18 @@ Panel::stat(title)
 
 For single-series sparklines, leave the default `VALUE` text mode — the panel title is the label.
 
+When the tiles differ by orders of magnitude, add `.min_max_per_field()`.
+Grafana scales every tile's sparkline against the largest series by default, which draws the small tiles flat at zero.
+
 ### Log axes below 1
 
 Grafana labels every tick on a time series axis with one decimal count, which it guesses from the tick spacing of the
 axis's *linear* range.
-On a log axis that runs up to about 1, it picks one decimal, so the 0.01 and 0.001 ticks both read `0`.
+When the axis tops out at a few units or less, that guess is one or two decimals, so the 0.01 and 0.001 ticks read `0`.
 Units that rescale below 1, such as `s` (to `ms` and `µs`) and the byte units, label their small ticks correctly.
-For any other unit on a log axis, such as `cps`, `reqps`, or `ops`, set `.decimals(...)`, which stops the guess.
-`env-ingress` sets three for its per-second rates, and a test there holds the rule.
+For any other unit on a log axis, such as `cps`, `reqps`, `ops`, or `none`, set `.decimals(...)`, which stops the guess.
+`env-ingress` sets three for its per-second rates and `env-top` four for busy cores, and
+`test_support::assert_log_axes_label_ticks_below_one` holds the rule on both.
 Verified on Grafana 13.2.4.
 
 ### Timeseries legend
@@ -26637,7 +27318,7 @@ Product review set these three:
 |---|---|---|
 | object | collection | an index, materialized view, source, or table — what `collection_id` identifies |
 | freshness | lag | how far an object's results trail real time, from `mz_dataflow_wallclock_lag_seconds` |
-| orphaned | leaked | persist data nothing refers to that cleanup missed, from `mz_persist_shard_usage_leaked_bytes` |
+| orphaned | leaked | persist data nothing refers to that cleanup missed |
 
 Freshness is a duration, so a larger value is worse.
 Titles qualify it — _Worst Freshness_, _Total Freshness_, _Least Fresh Objects_ — rather than saying _Max Freshness_, which reads as the freshest.
@@ -27098,6 +27779,10 @@ Things that have surprised us during development; worth knowing before touching 
   maximum size is not published. The timestamp oracle has its own pool under `mz_ts_oracle_postgres_connpool_*`.
 - **`mz_persist_shard_*` is reported by every process that has the shard open**, so a total takes `max by (shard)`
   first. environmentd has every shard open; on the reference installs a plain sum counted 100 shards as 180.
+- **Two of the five `mz_persist_shard_usage_*` gauges always read zero.** environmentd's periodic usage pass sets
+  `current_state_batches_bytes`, `current_state_rollups_bytes` and `referenced_not_current_state_bytes`.
+  `not_leaked_not_referenced_bytes` and `leaked_bytes` are set only by the audit that lists the bucket, which only
+  `persistcli inspect` runs, so every scraped series of them is zero. `env-persist` reads the first three.
 - **`mz_persist_s3_*` exists on Azure Blob and reads zero.** Materialize registers the S3 client's counters on every
   install, but reaches Azure Blob with Azure's own client. A panel on them keeps its series only while
   `mz_persist_s3_operations` is non-zero, so Azure shows the empty state instead of a flat "no timeouts".
@@ -27302,7 +27987,7 @@ and asks a question there that has no answer.
 `Row::section(title, rows)` groups a flavor's rows under one header, and `Row::variables` declares the picker on that section.
 Put the discovery condition on the section, and leave the rows inside it unconditioned.
 Grafana renders a section variable under the section's header, resolves it for every panel inside the section, and hides it with the section.
-`env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users.
+`env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users, and `env-persist`'s GCS section uses it too.
 
 What to know about section variables:
 
@@ -27330,6 +28015,7 @@ the conventions below are the ones a query against those families has to follow.
 | Never `rate()` a provider counter over `$__rate_interval` | That interval is sized from the datasource's scrape interval, which is far shorter than a pull, so the window holds one sample and draws nothing. Use a fixed `[30m]` |
 | One expression per provider in a cross-provider query, each with its own legend | Two of the three are empty on any install, which costs nothing. The alternative, a `label_replace` onto a common resource label, hides which provider a number came from |
 | Convert to 0–1 in the query | CloudWatch and Azure publish percent as 0–100; Cloud Monitoring publishes 0–1 with a unit label of `10^2.%`. Transaction-ID consumption is a fraction of 2^31 |
+| Draw a once-a-day family over a fixed range: `PanelQuery::time_from("14d")`, and `min_interval("1d")` for day-over-day bars | Over a dashboard's hours a daily measurement is a flat line, and a bar at the default step is one scrape wide. GCS storage is the case on `env-persist` |
 | Tier the families at `diagnostic` in the registry | A registry tier admits a metric at that tier and above; `diagnostic` is the one level no `metricImportance` value can undercut, so the per-provider value stays in charge |
 
 Whether a pull *failed* is published differently by each provider, and by one of them not at all.
@@ -28034,11 +28720,12 @@ It degrades rather than breaking on an older release, and not uniformly — the 
 | Events | The Kubernetes Activity row works — those events come from the kubelet and the scheduler. The Rollout and Operator Health rows are empty. |
 | Reconciliation | Empty, apart from Reconciling Replicas and Environments Needing Update, whose gauges predate the rest. |
 
-The **`env-ingress`** dashboard, Materialize Ingress (Balancer, Console), reads balancerd's connection timings and
-server-side error count, and the console's request metrics, which Materialize versions before them don't publish.
-On those versions it degrades by tab:
+The **`env-ingress`** dashboard, Materialize Ingress (Balancer, Console), reads the console's request metrics, which
+Materialize publishes from `v26.49.0`, and balancerd's connection timings and server-side error count, which it
+publishes from `v26.50.0`.
+On versions without them, it degrades by tab:
 
-<!-- TODO: name the release once MaterializeInc/materialize#40192 and #40193 ship, and drop "before them". -->
+<!-- TODO: confirm both versions once they're tagged. v26.49.0-rc.1 carries MaterializeInc/materialize#40193, and #40192 merged after that rc was cut. -->
 
 | Tab | On a Materialize version without them |
 |---|---|
@@ -28049,10 +28736,9 @@ On those versions it degrades by tab:
 | SQL and HTTP API | **Fully working.** Every panel reads environmentd. |
 
 The Balancer tab's Autoscaling row draws any HorizontalPodAutoscaler that targets balancerd's Deployment.
-For the autoscaler to keep the count it sets, the Materialize resource needs `balancerdExternallyScaled: true`.
-Materialize versions without that field reset balancerd's replica count to `balancerdReplicas`.
-
-<!-- TODO: name the first release with `balancerdExternallyScaled` (MaterializeInc/materialize#39701) once it ships. -->
+For the autoscaler to keep the count it sets, the Materialize resource needs `balancerdExternallyScaled: true`, which
+Materialize supports from `v26.48.0`.
+Earlier versions reset balancerd's replica count to `balancerdReplicas`.
 
 Each dashboard also carries its floor as a `monitoring.materialize.cloud/min-mz-version` annotation, which the docsite's
 dashboard table shows.
@@ -28061,8 +28747,8 @@ Scrapers (v0.1.1+) require the `app.kubernetes.io/name` label that Materialize s
 The balancerd and console monitors (v0.6.0+) select on the same label, which Materialize sets on those pods from the
 same version.
 
-The console monitor scrapes the console pod's `internal-http` port, which the Materialize operator declares only from
-a version that also publishes the console's metrics.
+The console monitor scrapes the console pod's `internal-http` port, which the Materialize operator declares from
+`v26.49.0`, the same version that publishes the console's metrics.
 What you see depends on which of the two you have upgraded:
 
 | Operator | Console image | What the console monitor does |
@@ -28902,7 +29588,7 @@ From 1.0, a breaking change to the committed surface owes a deprecation cycle un
 | Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls provider metrics from CloudWatch, Cloud Monitoring and Azure Monitor, and scrapes an optional `postgres_exporter` watching the metadata and Grafana databases. Rust panics are merged into one entry at ingest |
 | Destinations | The bundled Loki and Thanos, any number of Prometheus remote-write destinations, OTLP, Datadog and Google Cloud's Telemetry API, each filtered by importance tier |
 | Dashboards | `env-top`, `env-logs`, `env-upgrade`, `env-persist` and `env-consensus` for Materialize. `infra-logs`, `infra-nodes`, `infra-net`, `infra-autoscaling`, `infra-karpenter`, `infra-cloud`, `infra-loki` and `infra-alloy` for the platform. All are rendered from Rust against the query registry |
-| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-five alerts are in the default set, four of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
+| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. A default set of metric and log-derived alerts installs wherever it applies, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
 | Security | A NetworkPolicy on every component, opt-in mTLS through cert-manager in three phases, and Trivy scanning of the rendered chart and the published images |
 | Qualification | Tier-0 Terraform render checks, kind tiers 1 and 2, and a Rust E2E suite run on kind and on real cloud installs |
 | Release | Per-component SemVer streams, automated release PRs, a changelog carrying each PR's release notes, a deprecation policy, and a committed-surface check |
@@ -28918,7 +29604,8 @@ The designs with work left are under [Designs in flight](#designs-in-flight).
 
 Tracked in [Adopt materialize-monitoring in Cloud][adopt] (**ADOPT**).
 Materialize Cloud moves its own monitoring onto this chart, on the same `values.yaml` surface self-managed customers consume.
-Cloud deploys through Pulumi, so a Pulumi component wraps the chart the way the Terraform module does ([CLO-182]).
+Cloud deploys through Pulumi, so a Pulumi component wraps the chart the way the Terraform module does.
+It starts from the chart's `noop` profile, and each service moves over by turning on its own tag.
 Cloud-only rules and configuration layer through values, with no privileged path ([DEP-125]).
 Cloud running the chart customers run is the strongest available test of the customer contract.
 
@@ -28928,7 +29615,7 @@ Each stateful component then gets a cutover of its own.
 
 | Milestone | What moves | Items |
 |---|---|---|
-| **Stateless services** | Alloy (agent and gateway), kube-state-metrics and node-exporter replace Cloud's own. Cloud parity needs generic scrape discovery and the OTLP agent→gateway transport with a node-local WAL | 🔨 [CLO-182] · ⬜ [DEP-193] · ⬜ [DEP-189] · ⬜ [DEP-223] |
+| **Stateless services** | Alloy (agent and gateway), kube-state-metrics and node-exporter replace Cloud's own. Cloud parity needs generic scrape discovery and the OTLP agent→gateway transport with a node-local WAL | ⬜ [DEP-193] · ⬜ [DEP-189] · ⬜ [DEP-223] |
 | **Thanos beside AMP** | Thanos stands up beside AMP, and the gateway fans out to both as components move. Both take canonical `mz_*` once AMP's readers stop depending on `v2_mz_*`. AMP scales down as its consumers move | ⬜ [DEP-383] |
 | **Loki cutover** | Cloud's Loki moves onto the chart's Loki on its existing storage backend, so no log data is copied. Log tenancy moves to `tenantMap: byEnvironment`, which the read path needs | ⬜ [CLO-296] |
 | **Alerting** | Cloud's rules run on the chart's rulers and route through its Alertmanager to Cloud's receivers. The Loki rules Cloud clicked into Grafana are already ported by shape in `materialize-log-alerts.yaml` | ⬜ [DEP-125] |
@@ -28984,8 +29671,8 @@ The monitors already fill the initial aliases, rendered from `packages/prometheu
 
 | Where | Items, all ⬜ |
 |---|---|
-| This repository | [DEP-349] target aliases, and reserved moves and drops, rendered from `labels.yaml` · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-361] `mz_environment_info` through kube-state-metrics · [DEP-360] retire the aliases after 30 days |
-| Upstream | [DEP-348] the orchestratord pod label and `mz_environment_info` · [DEP-347] clusterd's `cluster="compute"` · [DEP-352] the label lint · [DEP-353] `/metrics/public` replica labels · [DEP-357] `cluster_id` · [DEP-358] entity-qualified `_info` labels · [DEP-359] the `cluster` and `honeycomb` const labels · [DEP-362] shard, persist-name and version renames · [DEP-363] an optional `spec.environmentName` · [DEP-364] wallclock lag as a histogram · [DEP-365] `environment_id` on reconciliation metrics |
+| This repository | [DEP-349] target aliases, and reserved moves and drops, rendered from `labels.yaml` · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-360] retire the aliases after 30 days |
+| Upstream | [DEP-348] the orchestratord pod label, `mz_environment_info` and `mz_environment_active_generation` · [DEP-347] clusterd's `cluster="compute"` · [DEP-352] the label lint · [DEP-353] `/metrics/public` replica labels · [DEP-357] `cluster_id` · [DEP-358] entity-qualified `_info` labels · [DEP-359] the `cluster` and `honeycomb` const labels · [DEP-362] shard, persist-name and version renames · [DEP-363] an optional `spec.environmentName` · [DEP-364] wallclock lag as a histogram · [DEP-365] `environment_id` on reconciliation metrics |
 
 ### Metrics contract (upstream dependency)
 
@@ -29004,11 +29691,6 @@ environmentd has to emit those families natively before that path can retire.
 | Native hydration and frontier / freshness signals | The Hydration and Freshness drilldowns | ⛓️ |
 | Label-family harmonization | Joins across families. Now carried by [Metric label standardization](#metric-label-standardization) | ⬜ |
 | Latency histograms for `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle, which publish only a mean | Tail latency on `env-persist` and `env-consensus` | ⬜ |
-| Latency histograms for `balancerd` ([materialize#40192]), and request metrics from `console` ([materialize#40193]) | The latency and console panels on `env-ingress` | 🔨 |
-
-`env-ingress` reads both, and its panels on them stay empty until a Materialize release carries them.
-Its error ratio for `balancerd` needs the same release, because [materialize#40192] also fixes [CLO-282].
-Until then, the console's rate and errors come from its nginx access log and from environmentd's `application_name="web_console"` series.
 
 ### Materialize-side emission
 
@@ -29016,7 +29698,6 @@ Until then, the console's rate and errors come from its nginx access log and fro
 |---|---|
 | [CLO-55] Reconciliation timing, stalls, errors and successes for the k8s controllers, and an optional reconcile timeout | ⬜ |
 | [CLO-299] The controller crate logs every failed reconcile at error level, transient Kubernetes errors included | ⬜ |
-| [CLO-282] `mz_balancer_connection_status` counts a refused connection as `success` and a client's dropped connection as `error`. Fixed in [materialize#40192] | 🔨 |
 | [CLO-256] Reduce less-essential environmentd metrics on very large environments | ⬜ |
 | [CLO-255] Compress the metrics endpoint's responses | ⬜ |
 | [DEP-221] Move the scrapers into the `materialize-operator` chart, which should own them | ⬜ |
@@ -29147,7 +29828,7 @@ Its adapters are therefore the ones this repository can test end to end.
 | [DEP-225] Sizing (Day 1) | ⬜ |
 | [DEP-378] `infra-pods`: one workload's health, logs and metrics | ⬜ |
 | [DEP-379] Meta-monitoring for Grafana, Thanos and Alertmanager | ⬜ |
-| [DEP-115] A Datadog dashboard set, starting with `env-top`, downloaded from the docs site as JSON. Names join from the `_info` series by formula arithmetic, on the canonical labels the monitors carry. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | ⬜ |
+| [DEP-115] A Datadog dashboard set, downloaded from the docs site as JSON. `env-top` ships, held to its Grafana counterpart by a parity ledger; Field Engineering sets the order of the rest. Names join from the `_info` series by formula arithmetic, on the canonical labels the monitors carry. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | 🔨 |
 | [DEP-217] A Google Cloud Monitoring dashboard set | ⬜ |
 | [DEP-218] A Honeycomb dashboard set | ⬜ |
 | [DEP-325] `infra-*` variables that reference variables those dashboards never define | ⬜ |
@@ -29203,7 +29884,6 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 | [DEP-249] Trivy suppressions are per check, so they also mask our own templates | ⬜ |
 | [DEP-251] SARIF findings point at temporary render paths | ⬜ |
 | [DEP-381] `tflint` in Terraform CI | ⬜ |
-| [DEP-369] The per-cloud wrappers pass the Kubernetes cluster name as `cluster_name` | ⬜ |
 | [DEP-370] Renovate bumps the `mzmon-alloy` tag and leaves its digest | ⬜ |
 | [DEP-371] Release PRs leave `Cargo.lock` stale | ⬜ |
 | [DEP-111] and [DEP-118] An ArgoCD and FluxCD CI matrix | ⬜ |
@@ -29222,7 +29902,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 | [Secret Filtering](../design-docs/20260924-log-secret-filtering/) | Ready | [Secret filtering](#secret-filtering) |
 | [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/) | Ready | [Metric label standardization](#metric-label-standardization) |
 | Cost visibility with OpenCost | Draft, in review as [#365] | [Collection](#collection) |
-| [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | Draft | [Dashboards](#dashboards) |
+| [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | Ready | [Dashboards](#dashboards) |
 
 [adopt]: https://linear.app/materializeinc/project/adopt-materialize-monitoring-in-cloud-cce4b8af4db8/overview
 [clom]: https://linear.app/materializeinc/project/metrics-for-cloud-070c13ddba6a/overview
@@ -29232,16 +29912,12 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [oo]: https://linear.app/materializeinc/project/operational-observability-abf9af76c03a/overview
 
 [#365]: https://github.com/MaterializeInc/materialize-monitoring/pull/365
-[materialize#40192]: https://github.com/MaterializeInc/materialize/pull/40192
-[materialize#40193]: https://github.com/MaterializeInc/materialize/pull/40193
 
 [CLO-55]: https://linear.app/materializeinc/issue/CLO-55
 [CLO-76]: https://linear.app/materializeinc/issue/CLO-76
-[CLO-182]: https://linear.app/materializeinc/issue/CLO-182
 [CLO-255]: https://linear.app/materializeinc/issue/CLO-255
 [CLO-256]: https://linear.app/materializeinc/issue/CLO-256
 [CLO-266]: https://linear.app/materializeinc/issue/CLO-266
-[CLO-282]: https://linear.app/materializeinc/issue/CLO-282
 [CLO-296]: https://linear.app/materializeinc/issue/CLO-296
 [CLO-299]: https://linear.app/materializeinc/issue/CLO-299
 [DEP-111]: https://linear.app/materializeinc/issue/DEP-111
@@ -29339,7 +30015,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-358]: https://linear.app/materializeinc/issue/DEP-358
 [DEP-359]: https://linear.app/materializeinc/issue/DEP-359
 [DEP-360]: https://linear.app/materializeinc/issue/DEP-360
-[DEP-361]: https://linear.app/materializeinc/issue/DEP-361
 [DEP-362]: https://linear.app/materializeinc/issue/DEP-362
 [DEP-363]: https://linear.app/materializeinc/issue/DEP-363
 [DEP-364]: https://linear.app/materializeinc/issue/DEP-364
@@ -29347,7 +30022,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-366]: https://linear.app/materializeinc/issue/DEP-366
 [DEP-406]: https://linear.app/materializeinc/issue/DEP-406
 [DEP-368]: https://linear.app/materializeinc/issue/DEP-368
-[DEP-369]: https://linear.app/materializeinc/issue/DEP-369
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
 [DEP-371]: https://linear.app/materializeinc/issue/DEP-371
 [DEP-372]: https://linear.app/materializeinc/issue/DEP-372
@@ -35684,6 +36358,15 @@ The departures, each with its reason.
   It also installs Rook's `PrometheusRule`s, which the Thanos ruler imports and evaluates,
   so turning on a dashboard would turn on a second alert set.
   The fallback names both routes.
+- **GCS has a section on Object Store Internals too**, although its series are the provider pull's.
+  A reader on a GCS environment opened the tab expecting the bucket and found only the fallback, or another environment's Ceph.
+  The section draws each bucket's live data beside the environment's own accounting.
+  It adds each bucket's day-over-day change, and its live, noncurrent, and soft-deleted split.
+  Google measures a bucket once a day, so a line chart reads flat over a dashboard's hours.
+  The section uses stat tiles, daily bars, and donuts over a fixed 14 days instead.
+  That comparison is the one `infra-cloud` can only make against every environment on the cluster.
+  It renders on the GCS pull's own `up`, and the reader picks buckets on `$gcsBucket`, a multi-select that opens on every bucket.
+  S3 and Azure Blob stay on `infra-cloud`.
 
 ### As built: the postgres_exporter subchart
 
@@ -37032,7 +37715,10 @@ The stakeholders are operators reading the shipped dashboards, customers who bri
 - **Alert labels get the strictest treatment.** Rules pass `instance_id` and the long-form ids through to alerts, and an external routing tree may match on them. Rules aggregate by both names through the overlap, so an alert never loses a label inside the window.
 - **An environment is keyed by `environment_id`, read from `Materialize.spec.environmentId`.** It is a UUID that orchestratord already resolves on first reconcile and already refuses to duplicate within a Kubernetes cluster, and the CRD forbids changing it because persist's layout depends on it. Every series from an environment's processes carries it.
 - **An environment is named by `environment_name`, on `mz_environment_info` only.** The name is `metadata.name` today and could become a mutable `spec.environmentName`. Names are not unique and may change, so they are joined in, not stamped on every series, which is the same rule this doc applies to cluster and replica names.
-- **The environment key needs one small upstream change before this repo can relabel it.** No pod label carries `spec.environmentId` today. orchestratord adding `materialize.cloud/environment-id` to the labels it puts on every pod, and emitting `mz_environment_info`, is a single change and the first item of upstream work.
+- **The environment key needs one small upstream change before this repo can relabel it.**
+  No pod label carries `spec.environmentId` today.
+  orchestratord adding `materialize.cloud/environment-id` to the labels it puts on every pod,
+  and emitting `mz_environment_info` and `mz_environment_active_generation`, is a single change and the first item of upstream work.
 - **`%%{mzEnvironmentFilter}` is the switch.** The query registry names the fragment 250 times and writes the environment label out 24 times, 22 of them in the two alert files. Moving the fragment from `materialize_cloud_organization_name` to `environment_id` is one change, made once the supported operator floor carries the pod label.
 - **Cloud is the documented exception to global uniqueness.** Cloud sets `spec.environmentId` to the organization's UUID, which repeats in every region the organization uses. The globally unique key is therefore `(cluster, environment_id)`, which is one more reason `cluster` is reserved.
 
@@ -37347,9 +38033,18 @@ And it keeps emitting while environmentd is down, which is when a dashboard most
 The resource's namespace is `environment_namespace` and not `namespace`, because orchestratord's own `namespace` target label names the operator's namespace and an emitted `namespace` would be renamed `exported_namespace`.
 It replaces `materialize_cloud_organization_namespace`, which on an environment's own series repeats the `namespace` target label.
 
-kube-state-metrics can produce the same series today from its `customResourceState` support, with no upstream change, by reading the `Materialize` resource.
+Beside it, orchestratord emits `mz_environment_active_generation`, with the same labels.
+Its value is the generation the environment serves, from `status.activeGeneration`.
+Its `generation` label carries the same number, so a query can join it to the generation in a pod's name.
+
+kube-state-metrics publishes both from its `customResourceState` support, with no upstream change, by reading the `Materialize` resource.
 It is the fallback if the orchestratord change slips, and it covers operator versions that predate it.
-Every join reads the info metric through `group by (cluster, environment_id, environment_name)`, which collapses identical series from two producers, so the bridge and orchestratord can overlap safely.
+Its series are `kube_mz_environment_info` and `kube_mz_environment_active_generation`, with the same labels.
+The `kube_` prefix keeps the two producers from ever writing the same series where both run, and says which one a query reads.
+Consumers read the bridge's names until an operator release emits the upstream ones.
+Every join reads the info metric through `group by (cluster, environment_id, environment_name)`, which drops the labels particular to each producer.
+A consumer that reads both producers during the overlap groups `mz_environment_info or kube_mz_environment_info` the same way,
+which gives one series per environment.
 The join is on `(cluster, environment_id)`, never on `environment_id` alone, for the [uniqueness](#global-uniqueness-is-a-should-and-cloud-is-why) reason above.
 
 ### What consumers change
@@ -37372,7 +38067,10 @@ Every other alias in this design is a fill-if-empty copy of the same value under
 The environment key cannot be one, because `environment_id` and `materialize_cloud_organization_name` hold different values, and no relabeling rule can derive a UUID from a name.
 Its overlap is therefore "both labels present", and it starts when the operator puts the new pod label on the pods.
 
-1. orchestratord adds `materialize.cloud/environment-id` to `default_labels()`, which reaches environmentd, balancerd and console pods directly and clusterd pods through the service labels orchestratord passes environmentd. It emits `mz_environment_info`. The label changes the pod template, so it reaches an environment's pods at its next rollout.
+1. orchestratord adds `materialize.cloud/environment-id` to `default_labels()`, which reaches environmentd, balancerd and console pods directly
+   and clusterd pods through the service labels orchestratord passes environmentd.
+   It emits `mz_environment_info` and `mz_environment_active_generation`.
+   The label changes the pod template, so it reaches an environment's pods at its next rollout.
 2. The shipped monitors add a target alias from that pod label to `environment_id`. On an older operator the meta label is absent and the rule does nothing.
 3. [Compatibility](../../../compatibility/) declares the operator version that carries the label.
 4. Once the supported operator floor includes that version, `%%{mzEnvironmentFilter}`, the picker, the namespace picker and `mzEnvironmentName` move to the new keys in one change. A `**Deprecated:**` note names `materialize_cloud_organization_name`, `_namespace` and `_id`.
@@ -37604,6 +38302,7 @@ The metrics owners are the SQL team's Improve Prometheus Metrics project, with p
 |---|---|---|
 | orchestratord adds `materialize.cloud/environment-id` to `default_labels()` ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | The only route for `environment_id` onto every series; everything environment-scoped waits on it | 1, additive |
 | orchestratord emits `mz_environment_info{environment_id, environment_name, environment_namespace}`, one series per resource ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | The environment's name, available while environmentd is down | 1, additive |
+| orchestratord emits `mz_environment_active_generation` with the same labels and `generation`, valued `status.activeGeneration` ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | Which generation serves, which a rollout's pod names cannot say | 1, additive |
 | Label lint over `doc/user/data/metrics.yml`, reading the vocabulary ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)) | Stops the vocabulary eroding one metric at a time | 1 |
 | Reserved check on postprocessor labels and on metric-sink user labels ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)) | Two label sources the lint cannot see | 1 |
 | `add_replica_labels` replaces rather than appends ([DEP-353](https://linear.app/materializeinc/issue/DEP-353)) | A latent duplicate label name the day any clusterd series carries `cluster_id` | 2 |
@@ -37637,7 +38336,7 @@ Tracked in the same milestone, gated on design acceptance in [DEP-346](https://l
 | **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
 | **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)) | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |
 | **Compatibility declaration** of the operator version that sets the pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | The switch is safe only above it | **Blocking** for the switch |
-| **`mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes` ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | Covers operators that predate the upstream info metric | Could |
+| **`kube_mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes`, and `kube_mz_environment_active_generation` beside it ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | Covers operators that predate the upstream info metric, and says which generation each environment serves | ✅ Done |
 | **Agent writes `environment_id`** as log structured metadata from the same pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | One environment key across both engines | Should |
 | **Registry migration**: queries, selectors in `env_top/selector.rs`, variables, and the `mzClusterName` / `mzObjectName` helpers onto canonical names ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | Step 3 of the overlap | **Blocking** for retiring aliases |
 | **Alert rules aggregate by both names** through the window, with the promtool tests updated ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | No alert loses a label inside the window | **Blocking** for the registry migration |
@@ -37661,7 +38360,8 @@ The render tests prove a rule exists, and the important assertions are about wha
 - **Alert label sets.** The promtool tests' `by (…) (ALERTS)` assertions carry both names through the window and only the canonical name after.
 - **Join correctness.** A query joining `mz_cluster_info` and `mz_replica_info` in one expression returns both `cluster_name` and `replica_name`, which fails today.
 - **Environment key everywhere.** On an operator that sets the pod label, every series from environmentd, clusterd, balancerd and console carries `environment_id`, and its value equals the resource's `spec.environmentId`.
-- **One info series per environment.** `count by (cluster, environment_id) (group by (cluster, environment_id, environment_name) (mz_environment_info))` is 1 for every environment, with orchestratord and the bridge both running.
+- **One info series per environment.** With orchestratord and the bridge both running, `mz_environment_info or kube_mz_environment_info`
+  grouped by `(cluster, environment_id, environment_name)` has one series for every environment, so the two producers agree on its name.
 - **A rename splits nothing.** Changing `spec.environmentName` changes `mz_environment_info` and no other series' label set.
 - **The name survives an outage.** With environmentd scaled to zero, the environment picker still lists the environment by name.
 - **Upstream lint.** A test fixture in `MaterializeInc/materialize` registers a metric with a reserved label and asserts the lint refuses it.
@@ -37767,7 +38467,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 
 ## Technical BLUF
 
-- **The dashboards ship as downloadable JSON on the docs site, never in a chart.** The docs site's `download-dashboards` shortcode already has a Datadog row that reads `docs/assets/dashboards/datadog/NAME.json`. The Grafana dashboards are the only ones that live in the cluster.
+- **The dashboards ship as downloadable JSON on the docs site, never in a chart.** The docs site's `download-dashboards` shortcode already has a Datadog row that reads `docs/assets/dashboards/datadog/datadog-NAME.json`. The Grafana dashboards are the only ones that live in the cluster.
 - **The backend builds on the models in `datadog-api-client`, Datadog's official Rust client.** The crate is generated from Datadog's OpenAPI spec. The workspace already builds its HTTP stack, so the added cost is compiling the models.
 - **Names, where a panel shows them, come from formula arithmetic.** A formula such as `a * (b * 0 + 1)`, with `b` an `_info` query grouped by the id and the name, keeps `a`'s values and carries `b`'s extra tags. It's Datadog's counterpart to `* on (id) group_left (name)`, and it's an inner join, so a series with no `_info` row drops out of the panel.
 - **The join matches on tag names, so both sides have to spell the id and the environment the same way.** Datadog can't rename a tag inside a query. The relabel rules from the label-vocabulary design give both sides the canonical names, and names in Datadog wait on them.
@@ -37794,7 +38494,7 @@ The following table lists what a Datadog dashboard set can build on, as of 2026-
 | Piece | State | Where |
 |---|---|---|
 | Datadog metrics destination | ✅ Shipped | `otelcol.exporter.datadog` in the gateway, configured under `pipeline.metrics.gateway.destination.otel.datadogExporter`, at tier `recommended` by default |
-| A download row for Datadog JSON | ✅ Shipped | `docs/layouts/_shortcodes/download-dashboards.html` lists a Datadog format at `dashboards/datadog/%s.json`, and shows it as absent until a render exists |
+| A download row for Datadog JSON | ✅ Shipped | `docs/layouts/_shortcodes/download-dashboards.html` lists a Datadog format at `dashboards/datadog/datadog-%s.json`, and shows it as absent until a render exists |
 | The Datadog dashboards page | ⚠️ Placeholder | `docs/content/dashboards/datadog.md` says no set exists, and points at Common Queries |
 | Datadog query templates | ⚠️ Partial | 228 of the registry's 734 queries carry a `datadogQuery`. The clusters, compute, connections, kubernetes, and storage files are covered. Consensus, persist, generations, operator, and every `infra-*` file except `infra-alerts.yaml` aren't. The templates are best-effort and less tested than the PromQL |
 | Name enrichment for Datadog | ❌ Missing | `mzClusterName`, `mzObjectName`, and `mzEnvironmentName` attach only to `promQL` templates, where `packages/mzmon-lib/src/query/enrich.rs` renders them as `group_left` joins. No `datadogQuery` takes a `functions` list |
@@ -37812,7 +38512,7 @@ The following table lists what a Datadog dashboard set can build on, as of 2026-
 flowchart LR
   subgraph repo["This repository"]
     build["mz-monitoring-build<br/>registry and datadog-api-client models"]
-    docs["Docs site<br/>dashboards/datadog/NAME.json"]
+    docs["Docs site<br/>dashboards/datadog/datadog-NAME.json"]
     build --> docs
   end
 
@@ -37852,6 +38552,9 @@ Names never go onto the data series, so a rename changes no series' identity.
 ### Models from `datadog-api-client`
 
 The Datadog backend lives in `packages/dashboards/src/datadog/`, beside `grafana/`, where `packages/dashboards/src/lib.rs` already expects a second backend.
+The building blocks any Datadog dashboard needs, such as the widget builders and the formula splitter, live in `mzmon-lib` as `mzmon_lib::datadog`,
+as the Grafana ones live in `mzmon_lib::grafana`.
+They sit behind a `datadog` feature, so the tools with no Datadog output don't compile the models.
 It builds dashboards from the models in [`datadog-api-client`](https://crates.io/crates/datadog-api-client), Datadog's official Rust client.
 The crate is generated from Datadog's OpenAPI spec and licensed Apache-2.0, and its 0.38.0 release is from 2026-10-13.
 Its `datadogV1::model` module types the dashboard, its tabs and template variables, and each widget definition.
@@ -37874,6 +38577,15 @@ A dashboard exported from the Datadog UI can carry shapes the spec doesn't descr
 A table widget built in the UI's table editor, for example, exports `request_type: "table"` with `rows` and `columns`, and metric queries with `metric_name` and `filter`.
 The backend emits the spec's form of the same table instead: a metric query grouped with `by {…}`, its formulas, and `response_format: "scalar"`.
 
+### Reducing a two-layer formula to one number
+
+A query value, toplist, sunburst, or table widget reads each query reduced over the time window, through Datadog's scalar query API.
+Each query's `aggregator` does that reduction, except under a group-by function such as `max(query1, {tag})`, which aggregates in two layers.
+There, the API answers "it is unsupported to use multi-layer aggregation function max with an aggregator".
+The formula reduces itself instead, as `reduce(max(query1, {tag}), 'last')`, and its queries carry no aggregator.
+That's the form the Datadog UI writes.
+So every registry template draws as the widget its Grafana panel is.
+
 ### Generated models, considered
 
 The alternative is the approach the Grafana backend takes.
@@ -37885,7 +38597,8 @@ Generated models stay the fallback if the crate's compile time becomes a problem
 
 ## Delivery: a download from the docs site
 
-`make datadog-dashboards` renders each dashboard to `docs/assets/dashboards/datadog/NAME.json`.
+`make datadog-dashboards` renders each dashboard to `docs/assets/dashboards/datadog/datadog-NAME.json`.
+The `datadog-` prefix keeps each file's name apart from its Grafana counterpart's, because a dashboards release uploads both under their file names.
 The `download-dashboards` shortcode already lists a Datadog row for every dashboard, and offers the file as soon as it exists.
 An operator downloads the file and imports it into Datadog, through the UI or `POST /api/v1/dashboard`.
 An operator who uses Terraform can pass the same file to the Datadog provider's `datadog_dashboard_json` resource.
@@ -37896,8 +38609,9 @@ Helm stores each release, its chart files included, in a Kubernetes Secret, and 
 A Datadog set in a chart would spend that ceiling on files nothing in the cluster reads.
 The empty placeholder at `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/datadog/` is removed in this change for the same reason.
 
-The dashboards carry template variables for the environment and the Kubernetes cluster, defaulting to every value.
-Each panel groups by those tags as well as its own, so an organization with several environments sees one line per environment rather than a merged one.
+`env-top` carries template variables for the environment, the Kubernetes namespace, the cluster, and the replica, each defaulting to every value.
+The namespace is a picker of its own, because the cAdvisor and kube-state-metrics series carry no environment tag.
+How a panel stays scoped to one environment is an [open question](#open-questions).
 
 ## Names come from formula arithmetic
 
@@ -38064,19 +38778,23 @@ Unit
 Names
 : Whether the panel joins names, and through which enrichment function.
 
-The builders record the manifest as they build each dashboard.
-Every Grafana query lookup already passes through `Queries::bridge` in `packages/dashboards/src/grafana/queries.rs`, which records the lookups that fail.
-Recording the lookups that succeed, against the panel being built, uses the same mechanism.
+The Datadog builders record the manifest as they build each widget.
+A Grafana panel's builder never sees the slug it's placed under, so the Grafana manifest is read back from the render instead.
+The slugs come from the layout's element references.
+The registry ids come from rendering every registry query in the dashboard's context and matching each panel's expressions.
+The names field joins the manifest with the first panel that joins names.
 
 A test compares each Datadog dashboard's manifest with its Grafana counterpart's.
 It fails when a panel is in one and not the other, or when the two disagree on a field, unless the difference is listed with its reason.
-The listed differences live in one place, as `ALLOWED` and `ADDED_PANELS` do in `packages/dashboards/tests/env_top_parity.rs`, which compared the Rust `env-top` with its earlier render the same way.
+The listed differences live in one place, each Datadog dashboard's `DIFFERENCES`, which `packages/dashboards/tests/datadog_parity.rs` reads.
+A listing that matches no difference fails too, as `ALLOWED` and `ADDED_PANELS` do in `packages/dashboards/tests/env_top_parity.rs`.
 Typical reasons are a log panel, a query with no `datadogQuery` yet, and a panel kind that Datadog has no counterpart for.
 A long list means the ledger has stopped describing the two sets, and the comparison stops being worth running.
 
 The ledger has the following further uses:
 
-- The Datadog dashboards page renders the listed differences as a table of Grafana panels without a Datadog counterpart, each with its reason.
+- The Datadog dashboards page lists the differences as a table of Grafana panels that the Datadog dashboard draws differently or leaves out,
+  each with its reason.
 - A query that a Datadog panel needs and that has no `datadogQuery` fails the test until someone writes the template or lists the gap.
 
 The ledger doesn't compare layout, sizes, colors, thresholds, legends, links, or transformations.
@@ -38117,8 +38835,8 @@ None of it is ticketed yet.
 
 | Item | Why it's needed | Blocking? |
 |---|---|---|
-| **The Datadog backend** under `packages/dashboards/src/datadog/`, with `make datadog-dashboards` rendering into `docs/assets/dashboards/datadog/` and the freshness check in the dashboards workflow | The feature | ✅ Done, with an `env-top` preview |
-| **Panel manifests and the parity ledger**: both backends record a manifest as they build, and a test compares them against a list of reasoned differences | Keeps the two sets in step | **Blocking** for the first Datadog dashboard |
+| **The Datadog backend** under `packages/dashboards/src/datadog/`, with `make datadog-dashboards` rendering into `docs/assets/dashboards/datadog/` and the freshness check in the dashboards workflow | The feature | ✅ Done |
+| **Panel manifests and the parity ledger**: the Datadog builders record a manifest, the Grafana one is read from its render, and a test compares them against a list of reasoned differences | Keeps the two sets in step | ✅ Done |
 | **The Datadog dashboards page**, rewritten from its placeholder into import steps | Download is the primary way to install the set | ✅ Done |
 | **`cluster` on the Datadog chain**, filled from `CLUSTER_NAME` where it's absent | Environment scoping across Kubernetes clusters, and the Kubernetes-cluster identity every other destination already has | **Blocking** for organizations with several Kubernetes clusters |
 | **`functions` on `datadogQuery` templates**, and a Datadog rendering context that turns the enrichment functions into a hidden `_info` query and a formula factor | How a panel asks for names | Blocking for names |
@@ -38158,7 +38876,7 @@ The following tests cover the design:
 - [ ] **Is the custom-metric cost of the `_info` series acceptable at the default tier**, or do they belong in a tier an operator opts into?
 - [x] ~~**Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?~~ **Neither.** [DEP-421](https://linear.app/materializeinc/issue/DEP-421) ships the canonical labels on every destination, Datadog included.
 - [ ] **When are reference tables worth adding?** [Other ways to get names](#reference-tables) lists the conditions.
-- [ ] **How does a Datadog panel stay scoped to one environment?** Grafana's environment picker selects exactly one, and a Datadog template variable always offers `*`. Environments reuse cluster and replica ids, so a count grouped by id merges them: the `env-top` preview showed 2 clusters for two environments with 2 each. Grouping by the environment's tags as well works for a timeseries, and needs the registry's Datadog templates to group through a fragment. A query value can't group at all.
+- [ ] **How does a Datadog panel stay scoped to one environment?** Grafana's environment picker selects exactly one, and a Datadog template variable always offers `*`. Environments reuse cluster and replica ids, so a count grouped by id merges them: `env-top` showed 2 clusters for two environments with 2 each. Grouping by the environment's tags as well works for a timeseries, and needs the registry's Datadog templates to group through a fragment. A query value can't group at all.
 - [ ] **What duplication moves the panel list into a shared layer?** Two or more dashboards whose manifests match panel for panel would be a clear signal, and the threshold is a judgment call.
 - [ ] **Does CI get a Datadog test organization** for the acceptance job and the live-data checks?
 - [ ] **Which dashboards follow `env-top`?** Field Engineering's input, as DEP-115 asks.

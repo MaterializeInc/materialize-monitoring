@@ -48,11 +48,12 @@ It degrades rather than breaking on an older release, and not uniformly — the 
 | Events | The Kubernetes Activity row works — those events come from the kubelet and the scheduler. The Rollout and Operator Health rows are empty. |
 | Reconciliation | Empty, apart from Reconciling Replicas and Environments Needing Update, whose gauges predate the rest. |
 
-The **`env-ingress`** dashboard, Materialize Ingress (Balancer, Console), reads balancerd's connection timings and
-server-side error count, and the console's request metrics, which Materialize versions before them don't publish.
-On those versions it degrades by tab:
+The **`env-ingress`** dashboard, Materialize Ingress (Balancer, Console), reads the console's request metrics, which
+Materialize publishes from `v26.49.0`, and balancerd's connection timings and server-side error count, which it
+publishes from `v26.50.0`.
+On versions without them, it degrades by tab:
 
-<!-- TODO: name the release once MaterializeInc/materialize#40192 and #40193 ship, and drop "before them". -->
+<!-- TODO: confirm both versions once they're tagged. v26.49.0-rc.1 carries MaterializeInc/materialize#40193, and #40192 merged after that rc was cut. -->
 
 | Tab | On a Materialize version without them |
 |---|---|
@@ -63,10 +64,9 @@ On those versions it degrades by tab:
 | SQL and HTTP API | **Fully working.** Every panel reads environmentd. |
 
 The Balancer tab's Autoscaling row draws any HorizontalPodAutoscaler that targets balancerd's Deployment.
-For the autoscaler to keep the count it sets, the Materialize resource needs `balancerdExternallyScaled: true`.
-Materialize versions without that field reset balancerd's replica count to `balancerdReplicas`.
-
-<!-- TODO: name the first release with `balancerdExternallyScaled` (MaterializeInc/materialize#39701) once it ships. -->
+For the autoscaler to keep the count it sets, the Materialize resource needs `balancerdExternallyScaled: true`, which
+Materialize supports from `v26.48.0`.
+Earlier versions reset balancerd's replica count to `balancerdReplicas`.
 
 Each dashboard also carries its floor as a `monitoring.materialize.cloud/min-mz-version` annotation, which the docsite's
 dashboard table shows.
@@ -75,8 +75,8 @@ Scrapers (v0.1.1+) require the `app.kubernetes.io/name` label that Materialize s
 The balancerd and console monitors (v0.6.0+) select on the same label, which Materialize sets on those pods from the
 same version.
 
-The console monitor scrapes the console pod's `internal-http` port, which the Materialize operator declares only from
-a version that also publishes the console's metrics.
+The console monitor scrapes the console pod's `internal-http` port, which the Materialize operator declares from
+`v26.49.0`, the same version that publishes the console's metrics.
 What you see depends on which of the two you have upgraded:
 
 | Operator | Console image | What the console monitor does |

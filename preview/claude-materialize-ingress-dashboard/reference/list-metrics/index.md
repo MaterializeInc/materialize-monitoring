@@ -597,6 +597,24 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="kube_mz_environment_active_generation">kube_mz_environment_active_generation
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.environments.active_generation">materialize.environments.active_generation</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_mz_environment_info">kube_mz_environment_info
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.environments.info">materialize.environments.info</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="kube_node_created">kube_node_created
         <details>
             Used labels: node
@@ -630,6 +648,10 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.kubernetes.materialize_node_drain_slow">infra.kubernetes.materialize_node_drain_slow</a></li>
+                <li><a href="../common-queries#infra.kubernetes.materialize_node_drain_stuck">infra.kubernetes.materialize_node_drain_stuck</a></li>
+                <li><a href="../common-queries#infra.kubernetes.materialize_node_draining">infra.kubernetes.materialize_node_draining</a></li>
+                <li><a href="../common-queries#infra.kubernetes.node_drain_stuck">infra.kubernetes.node_drain_stuck</a></li>
                 <li><a href="../common-queries#infra.kubernetes.node_unreachable">infra.kubernetes.node_unreachable</a></li>
                 <li><a href="../common-queries#infra.nodes.taints">infra.nodes.taints</a></li>
             </ul>
@@ -642,6 +664,10 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.autoscaling.pools.cordoned">infra.autoscaling.pools.cordoned</a></li>
+                <li><a href="../common-queries#infra.kubernetes.materialize_node_drain_slow">infra.kubernetes.materialize_node_drain_slow</a></li>
+                <li><a href="../common-queries#infra.kubernetes.materialize_node_drain_stuck">infra.kubernetes.materialize_node_drain_stuck</a></li>
+                <li><a href="../common-queries#infra.kubernetes.materialize_node_draining">infra.kubernetes.materialize_node_draining</a></li>
+                <li><a href="../common-queries#infra.kubernetes.node_drain_stuck">infra.kubernetes.node_drain_stuck</a></li>
                 <li><a href="../common-queries#infra.nodes.unschedulable">infra.nodes.unschedulable</a></li>
             </ul>
         </details>
@@ -802,10 +828,14 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_pod_info">kube_pod_info
         <details>
-            Used labels: namespace, node
+            Used labels: namespace, node, pod
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.kubernetes.materialize_node_drain_slow">infra.kubernetes.materialize_node_drain_slow</a></li>
+                <li><a href="../common-queries#infra.kubernetes.materialize_node_drain_stuck">infra.kubernetes.materialize_node_drain_stuck</a></li>
+                <li><a href="../common-queries#infra.kubernetes.materialize_node_draining">infra.kubernetes.materialize_node_draining</a></li>
+                <li><a href="../common-queries#infra.kubernetes.node_drain_stuck">infra.kubernetes.node_drain_stuck</a></li>
                 <li><a href="../common-queries#infra.net.security.policies.uncovered">infra.net.security.policies.uncovered</a></li>
                 <li><a href="../common-queries#infra.nodes.allocation.pods">infra.nodes.allocation.pods</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.by_namespace">infra.nodes.pods.by_namespace</a></li>
