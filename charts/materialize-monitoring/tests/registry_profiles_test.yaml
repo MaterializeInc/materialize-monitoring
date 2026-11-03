@@ -292,9 +292,9 @@ tests:
       - ../profiles/registry/mirror.values.yaml
     template: ../charts/node-exporter/templates/daemonset.yaml
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: "<REGISTRY>/quay/prometheus/node-exporter:v1.12.1-distroless"
+          pattern: '^<REGISTRY>/quay/prometheus/node-exporter:v\d+\.\d+\.\d+-distroless$'
 
   # The images whose host lives inside `repository`, which anchors cannot reach
   # and which are the likely way to get this half-applied. Loki's memcached pair
@@ -327,9 +327,9 @@ tests:
       - ../profiles/registry/mirror.values.yaml
     template: ../charts/loki/templates/chunks-cache/statefulset.yaml
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: "<REGISTRY>/dockerhub/library/memcached:1.6.45-alpine"
+          pattern: '^<REGISTRY>/dockerhub/library/memcached:\d+\.\d+\.\d+-alpine$'
 
   # ---------------------------------------------------------------------------
   # Composition

@@ -97,3 +97,20 @@ Behavior Driven Development (BDD) unit tests are used to test the logic of
 template functions and outputs as a more black box.
 Since BDD tests should have very focused inputs and outputs, they are generally
 expected to only be updated when the corresponding template logic changes.
+
+### Match image references by shape
+
+An `equal` on a rendered image reference fails on every Renovate bump of its tag, although no template logic changed.
+That includes the minor and patch bumps that Renovate otherwise merges by itself.
+Assert the image with `matchRegex` instead.
+Anchor the registry, the repository, and any variant suffix, and leave the version digits open:
+
+```yaml
+- matchRegex:
+    path: spec.template.spec.containers[0].image
+    pattern: '^quay\.io/prometheus/node-exporter:v\d+\.\d+\.\d+-distroless$'
+```
+
+The `\d+\.\d+\.\d+` still fails a floating tag, such as `latest` or `1.36`.
+Keep `equal` for a tag that the test sets itself.
+Snapshot suites are the exception, because there a version bump is the signal; see the `chart:` section earlier on this page.
