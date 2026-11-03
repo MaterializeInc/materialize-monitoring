@@ -103,7 +103,3 @@ loki:
   # -- No canary in test (avoids extra workload and log noise).
   lokiCanary:
     enabled: false
-
-  # -- Use the filesystem backend, not the bundled MinIO.
-  minio:
-    enabled: false
