@@ -713,9 +713,10 @@ How users reach an environment, one hop per tab. Queries are `packages/queries/m
 
 These things about it are not re-derivable by reading the modules:
 
-- **Most of it reads metrics Materialize had not shipped when it was built.** balancerd's three timing histograms and
-  its server-fault `status` are MaterializeInc/materialize#40192, and every `mz_console_*` family is #40193. Each
-  panel on one of them says so in its empty state, and `REC_MZ_VERSION` carries a TODO to name the release.
+- **Most of it reads metrics new in Materialize v26.49.0 and v26.50.0.** Every `mz_console_*` family is
+  MaterializeInc/materialize#40193, in v26.49.0-rc.1. balancerd's three timing histograms and its server-fault `status`
+  are #40192, which merged after that rc was cut, so `REC_MZ_VERSION` is v26.50.0 with a TODO to confirm once it's
+  tagged. Each panel on them says so in its empty state.
 - **balancerd counts a connection when it closes**, so its rates trail long SQL sessions; Overview's verdict leads
   with ratios and open connections for that reason.
 - **The console's `location` label is the nginx block**: `app` and `static` are the console pod, and `api` is
@@ -737,8 +738,7 @@ These things about it are not re-derivable by reading the modules:
   utilization target is a share of.
 - **The console seeds its rare series at 0.** `metrics.js` creates a `location` and `status` pair on its first
   request, and a counter that first appears at 1 never counts that 1 in `rate()`. So each scrape adds `500`, `502`,
-  `503`, and `504` for every location, every histogram, and `api` `101` at 0 (MaterializeInc/materialize#40193,
-  `6d755f5795`). Other statuses still lose their first count on each pod, as does any request before a pod's first
+  `503`, and `504` for every location, every histogram, and `api` `101` at 0 (MaterializeInc/materialize#40193). Other statuses still lose their first count on each pod, as does any request before a pod's first
   scrape.
 - **Every `mz_http_*` query reads `source="external"`**, the listener balancerd forwards to; a test holds it. The
   operator's calls and the metric scrapes would swamp the client traffic otherwise.

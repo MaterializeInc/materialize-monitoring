@@ -784,7 +784,7 @@ materialize:
     # -- ServiceMonitor/PodMonitor configuration for the console
     serviceMonitor:
       # -- Deploy a PodMonitor to collect the console's request metrics (`mz_console_*`).
-      # Console pods from Materialize versions that don't declare an `internal-http` port yield no target.
+      # Console pods before Materialize v26.49.0 declare no `internal-http` port and yield no target.
       enabled: true
       # -- Override for default selector
       selector: {}

@@ -166,11 +166,6 @@ environmentd has to emit those families natively before that path can retire.
 | Native hydration and frontier / freshness signals | The Hydration and Freshness drilldowns | ⛓️ |
 | Label-family harmonization | Joins across families. Now carried by [Metric label standardization](#metric-label-standardization) | ⬜ |
 | Latency histograms for `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle, which publish only a mean | Tail latency on `env-persist` and `env-consensus` | ⬜ |
-| Latency histograms for `balancerd` ([materialize#40192]), and request metrics from `console` ([materialize#40193]) | The latency and console panels on `env-ingress` | 🔨 |
-
-`env-ingress` reads both, and its panels on them stay empty until a Materialize release carries them.
-Its error ratio for `balancerd` needs the same release, because [materialize#40192] also fixes [CLO-282].
-Until then, the console's rate and errors come from its nginx access log and from environmentd's `application_name="web_console"` series.
 
 ### Materialize-side emission
 
@@ -178,7 +173,6 @@ Until then, the console's rate and errors come from its nginx access log and fro
 |---|---|
 | [CLO-55] Reconciliation timing, stalls, errors and successes for the k8s controllers, and an optional reconcile timeout | ⬜ |
 | [CLO-299] The controller crate logs every failed reconcile at error level, transient Kubernetes errors included | ⬜ |
-| [CLO-282] `mz_balancer_connection_status` counts a refused connection as `success` and a client's dropped connection as `error`. Fixed in [materialize#40192] | 🔨 |
 | [CLO-256] Reduce less-essential environmentd metrics on very large environments | ⬜ |
 | [CLO-255] Compress the metrics endpoint's responses | ⬜ |
 | [DEP-221] Move the scrapers into the `materialize-operator` chart, which should own them | ⬜ |
@@ -393,15 +387,12 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [oo]: https://linear.app/materializeinc/project/operational-observability-abf9af76c03a/overview
 
 [#365]: https://github.com/MaterializeInc/materialize-monitoring/pull/365
-[materialize#40192]: https://github.com/MaterializeInc/materialize/pull/40192
-[materialize#40193]: https://github.com/MaterializeInc/materialize/pull/40193
 
 [CLO-55]: https://linear.app/materializeinc/issue/CLO-55
 [CLO-76]: https://linear.app/materializeinc/issue/CLO-76
 [CLO-255]: https://linear.app/materializeinc/issue/CLO-255
 [CLO-256]: https://linear.app/materializeinc/issue/CLO-256
 [CLO-266]: https://linear.app/materializeinc/issue/CLO-266
-[CLO-282]: https://linear.app/materializeinc/issue/CLO-282
 [CLO-296]: https://linear.app/materializeinc/issue/CLO-296
 [CLO-299]: https://linear.app/materializeinc/issue/CLO-299
 [DEP-111]: https://linear.app/materializeinc/issue/DEP-111

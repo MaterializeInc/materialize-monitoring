@@ -4,7 +4,7 @@ metadata:
   annotations:
     grafana.app/folder: materialize
     monitoring.materialize.cloud/min-mz-version: v26.24.0
-    monitoring.materialize.cloud/rec-mz-version: v26.24.0
+    monitoring.materialize.cloud/rec-mz-version: v26.50.0
     monitoring.materialize.cloud/sql-metric-prefix: mz_
     monitoring.materialize.cloud/target-export: generic
   name: mz-mon-env-ingress
@@ -1393,7 +1393,7 @@ spec:
               content: |-
                 **No HorizontalPodAutoscaler scales balancerd in this environment.**
 
-                The Materialize operator sets balancerd's replica count from the Materialize resource's `balancerdReplicas`. To scale it with load instead, set `balancerdExternallyScaled: true` on the Materialize resource, so that the operator stops resetting the count, and point a HorizontalPodAutoscaler at the environment's `…-balancerd` Deployment. Materialize versions without that field reset any count an autoscaler sets.
+                The Materialize operator sets balancerd's replica count from the Materialize resource's `balancerdReplicas`. To scale it with load instead, set `balancerdExternallyScaled: true` on the Materialize resource, so that the operator stops resetting the count, and point a HorizontalPodAutoscaler at the environment's `…-balancerd` Deployment. Materialize versions before v26.48.0 reset any count an autoscaler sets.
 
                 The Resources row shows the CPU an autoscaler would scale on, against each pod's request.
               mode: markdown

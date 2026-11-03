@@ -455,15 +455,13 @@ fn autoscaler_events(q: &Queries) -> dashboardv2::PanelKind {
 // --- Fallback ----------------------------------------------------------------
 
 /// Why the tab has no Autoscaling row, and how to get one.
-// TODO: name the first release with `balancerdExternallyScaled`
-// (MaterializeInc/materialize#39701) once it ships.
 pub(crate) const NO_AUTOSCALER: &str = "**No HorizontalPodAutoscaler scales balancerd in this \
      environment.**\n\n\
      The Materialize operator sets balancerd's replica count from the Materialize resource's \
      `balancerdReplicas`. To scale it with load instead, set `balancerdExternallyScaled: true` on \
      the Materialize resource, so that the operator stops resetting the count, and point a \
      HorizontalPodAutoscaler at the environment's `…-balancerd` Deployment. Materialize versions \
-     without that field reset any count an autoscaler sets.\n\n\
+     before v26.48.0 reset any count an autoscaler sets.\n\n\
      The Resources row shows the CPU an autoscaler would scale on, against each pod's request.";
 
 fn no_autoscaler() -> Row {

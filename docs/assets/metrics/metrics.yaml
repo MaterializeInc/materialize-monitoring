@@ -436,6 +436,10 @@
   - node
   name: kube_node_spec_taint
   usage:
+  - infra.kubernetes.materialize_node_drain_slow
+  - infra.kubernetes.materialize_node_drain_stuck
+  - infra.kubernetes.materialize_node_draining
+  - infra.kubernetes.node_drain_stuck
   - infra.kubernetes.node_unreachable
   - infra.nodes.taints
 - importance: essential
@@ -444,6 +448,10 @@
   name: kube_node_spec_unschedulable
   usage:
   - infra.autoscaling.pools.cordoned
+  - infra.kubernetes.materialize_node_drain_slow
+  - infra.kubernetes.materialize_node_drain_stuck
+  - infra.kubernetes.materialize_node_draining
+  - infra.kubernetes.node_drain_stuck
   - infra.nodes.unschedulable
 - importance: essential
   labels:
@@ -583,8 +591,13 @@
   labels:
   - namespace
   - node
+  - pod
   name: kube_pod_info
   usage:
+  - infra.kubernetes.materialize_node_drain_slow
+  - infra.kubernetes.materialize_node_drain_stuck
+  - infra.kubernetes.materialize_node_draining
+  - infra.kubernetes.node_drain_stuck
   - infra.net.security.policies.uncovered
   - infra.nodes.allocation.pods
   - infra.nodes.pods.by_namespace

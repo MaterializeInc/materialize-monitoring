@@ -75,9 +75,12 @@ pub const TITLE: &str = "Materialize Ingress (Balancer, Console)";
 /// which the operator sets from this version on.
 pub const MIN_MZ_VERSION: &str = "v26.24.0";
 /// Recommended Materialize version.
-// TODO: the first release carrying MaterializeInc/materialize#40192 (balancerd
-// timings and fault accounting) and #40193 (console metrics), once both ship.
-pub const REC_MZ_VERSION: &str = "v26.24.0";
+///
+/// The first to publish both balancerd's connection timings and fault
+/// accounting (MaterializeInc/materialize#40192) and the console's request
+/// metrics (#40193, from v26.49.0).
+// TODO: confirm once v26.50.0 is tagged; #40192 merged after v26.49.0-rc.1 was cut.
+pub const REC_MZ_VERSION: &str = "v26.50.0";
 
 /// What a balancerd panel shows when this environment reports nothing.
 pub(crate) fn no_balancer() -> NoValue {
