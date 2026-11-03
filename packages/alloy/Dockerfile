@@ -6,17 +6,17 @@
 # This can be used as a drop-in replacement for the upstream alloy image
 
 ## Supporting libraries
-FROM debian:13@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5 AS deb-support
+FROM debian:13@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1 AS deb-support
 
 # Standard alloy uid/username
 ARG UID="473"
 ARG USERNAME="alloy"
 
 # renovate: datasource=github-releases packageName=grafana/alloy
-ARG ALLOY_VERSION=v1.21.0
+ARG ALLOY_VERSION=v1.21.3
 
 # Seed with distroless user/group files
-COPY --from=gcr.io/distroless/base-debian13@sha256:44a80dc28b49f47396e72ab2dc644b3f849880335de09625762faed207bb891d /etc/passwd /etc/group /etc/
+COPY --from=gcr.io/distroless/base-debian13@sha256:075a33d9c49026ca7ee72738b4c4a1caea55d0f44227356e46a611a211050e20 /etc/passwd /etc/group /etc/
 
 # Create alloy user in container, but do not set it as default
 RUN groupadd --gid "$UID" "$USERNAME" \
@@ -51,7 +51,7 @@ RUN export DEBIAN_FRONTEND="noninteractive" \
 # What the distroless base already ships. Read out of the image rather than
 # hardcoded, so a base bump cannot quietly turn "the base provides this" into a
 # library that is missing at runtime.
-COPY --from=gcr.io/distroless/base-debian13@sha256:44a80dc28b49f47396e72ab2dc644b3f849880335de09625762faed207bb891d /usr/lib/${LINUX_TAG}/*.so* /base-lib/
+COPY --from=gcr.io/distroless/base-debian13@sha256:075a33d9c49026ca7ee72738b4c4a1caea55d0f44227356e46a611a211050e20 /usr/lib/${LINUX_TAG}/*.so* /base-lib/
 
 # Stage libsystemd and everything it needs, by either mechanism, for the final
 # image.
@@ -147,14 +147,14 @@ RUN mkdir -p /tmp/alloy \
 RUN alloy --version | grep boringcrypto
 
 ## Final build image
-FROM gcr.io/distroless/base-debian13@sha256:44a80dc28b49f47396e72ab2dc644b3f849880335de09625762faed207bb891d
+FROM gcr.io/distroless/base-debian13@sha256:075a33d9c49026ca7ee72738b4c4a1caea55d0f44227356e46a611a211050e20
 
 ARG TARGETARCH
 ARG LINUX_TAG1=${TARGETARCH/arm64/aarch64}
 ARG LINUX_TAG=${LINUX_TAG1/amd64/x86_64}-linux-gnu
 
 # renovate: datasource=github-releases packageName=grafana/alloy
-ARG ALLOY_VERSION=v1.21.0
+ARG ALLOY_VERSION=v1.21.3
 # Standard alloy uid/username
 ARG UID="473"
 ARG USERNAME="alloy"

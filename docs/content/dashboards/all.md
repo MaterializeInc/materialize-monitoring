@@ -19,10 +19,13 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 ## Formats
 
-Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
-Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
+Every dashboard has a **Grafana dashboard schema v2** render, which needs **Grafana 12 or later**.
+For more information, see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
+`env-top` also has a **Datadog** render, which [Datadog]({{< relref "datadog.md" >}}) describes.
+Each table below lists every format, so you can see which ones a dashboard has no render for.
 Grafana 10 and 11 (schema v1) renders are not planned.
-The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
+The rest of the Datadog set, and the Google Cloud Monitoring and Honeycomb sets, are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).
+[Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -71,10 +74,22 @@ Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible store
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
 The Storage tab is Materialize's own accounting of what the stored data is for — current data, data kept only for a reader still looking at an older version, and data nothing refers to.
 The bucket's own size, as the provider bills it, is on `infra-cloud`.
-The Object Store Internals tab is the store's own account, for a persist bucket on Ceph run by Rook:
-Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
-It appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`; on any other store, the tab says what it would show.
-It needs both a metrics and a logs datasource.
+The Object Store Internals tab is the store's own account, with a section for each store it finds:
+
+Ceph run by Rook
+: Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
+  The section appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`.
+
+GCS
+: Each bucket's live data, object count, and average object size, and how much its data and object count change each day.
+  Two donuts split the selected buckets' billed bytes and objects into live objects, noncurrent versions, and soft-deleted objects.
+  The section appears when the gateway pulls the bucket from Cloud Monitoring, under `pipeline.metrics.provider.gcp.gcs.buckets`.
+  The **GCS Bucket** picker opens on every pulled bucket.
+  The environment's bucket is the one whose **Live Data** tile reads the same as the environment's.
+  Google measures a bucket once a day, so the section's charts show the last 14 days whatever time range you pick.
+
+On S3, Azure Blob, or any other store, the tab says what it would show.
+The dashboard needs both a metrics and a logs data source.
 
 {{< download-dashboards name="env-persist" >}}
 

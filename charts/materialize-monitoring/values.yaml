@@ -3238,8 +3238,8 @@ alloy-agent:
   image:
     registry: ghcr.io
     repository: materializeinc/mzmon-alloy
-    tag: v1.20.1-mz3
-    digest: sha256:8f7b14e616095e69ba3b30273326a8ded68a566c36edc960d64b4324df0732db
+    tag: v1.21.3-mz3
+    digest: sha256:b378000c1b13ad3345ab859439a33ce9aace6dd3fe107542c3e3b8651a8c9e65
     pullPolicy: IfNotPresent
 
   configReloader:
@@ -3551,8 +3551,8 @@ alloy-gateway:
   image:
     registry: ghcr.io
     repository: materializeinc/mzmon-alloy
-    tag: v1.20.1-mz3
-    digest: sha256:8f7b14e616095e69ba3b30273326a8ded68a566c36edc960d64b4324df0732db
+    tag: v1.21.3-mz3
+    digest: sha256:b378000c1b13ad3345ab859439a33ce9aace6dd3fe107542c3e3b8651a8c9e65
     pullPolicy: IfNotPresent
 
   configReloader:
@@ -4582,7 +4582,7 @@ thanos:
     image:
       registry: quay.io
       repository: thanos/thanos
-      tag: v0.42.4
+      tag: v0.42.5
     objstore:
       createSecret: true
       secretName: thanos-objstore-config
@@ -5593,7 +5593,7 @@ grafana:
   image:
     registry: docker.io
     repository: grafana/grafana
-    tag: "13.2.4"
+    tag: "13.3.0"
     pullPolicy: IfNotPresent
 
   # -- Number of Grafana replicas.
@@ -5956,7 +5956,7 @@ alertmanager:
   # profiles under `profiles/registry/` repoint `repository` and keep this tag.
   image:
     repository: quay.io/prometheus/alertmanager
-    tag: v0.34.1
+    tag: v0.34.2
 
   # -- Scheduling priority. See the Priority classes section.
   priorityClassName: monitoring-scalable
@@ -6090,7 +6090,7 @@ alertmanager:
     enabled: true
     image:
       repository: quay.io/prometheus-operator/prometheus-config-reloader
-      tag: v0.94.1
+      tag: v0.94.2
     extraArgs:
       watched-dir: /etc/alertmanager/config
     extraVolumeMounts:
@@ -6369,6 +6369,79 @@ kube-state-metrics:
   metricLabelsAllowlist:
     - nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]
     - pods=[cluster.environmentd.materialize.cloud/cluster-id,cluster.environmentd.materialize.cloud/replica-id,cluster.environmentd.materialize.cloud/size,materialize.cloud/environment-id]
+  # The Materialize operator is meant to publish these facts itself, as
+  # `mz_environment_info` and `mz_environment_active_generation` with the same
+  # labels (DEP-348, internal). The `kube_mz_` prefix keeps the two producers'
+  # series apart where both run.
+  # -- Environment facts that kube-state-metrics reads off each `Materialize` resource.
+  # @raw
+  #
+  # kube-state-metrics publishes one series of each per `materializes.materialize.cloud` resource:
+  #
+  # | Metric | Value | Labels |
+  # | ------ | ----- | ------ |
+  # | `kube_mz_environment_info` | 1 | `environment_id` (`spec.environmentId`), `environment_name` (`metadata.name`) and `environment_namespace` (`metadata.namespace`) |
+  # | `kube_mz_environment_active_generation` | The deployment generation the environment serves, `status.activeGeneration` | The same, and `generation`, the same number as a label |
+  #
+  # The active generation is the one the operator last promoted.
+  # During a rollout it is the older generation, until the new one has caught up and been promoted.
+  # A rollout that never promotes leaves the older one serving,
+  # so the highest generation in the environment's pod names doesn't stand in for it.
+  # `generation` lets a query join the series to the generation in a pod's name.
+  #
+  # The environment's namespace is `environment_namespace`.
+  # `namespace` and `pod` on these series name the kube-state-metrics pod, as on every node-level `kube_*` series.
+  # kube-state-metrics also adds `customresource_group`, `customresource_kind` and `customresource_version`.
+  # Read `kube_mz_environment_info` through `group by (cluster, environment_id, environment_name, environment_namespace)`,
+  # which drops those labels.
+  #
+  # **Pinned to `v1alpha1`.** kube-state-metrics takes one entry per resource,
+  # and a wildcard version lists every resource once for each version the CRD serves.
+  # Every Materialize operator serves `v1alpha1`, and where the `v1` CRD is installed too,
+  # listing `v1alpha1` returns the resources created as `v1` as well.
+  #
+  # kube-state-metrics watches the cluster's CRDs, so it publishes nothing until the Materialize CRD exists, and picks it up when it does.
+  # `rbac.extraRules` grants it list and watch on `materializes`.
+  customResourceState:
+    enabled: true
+    config:
+      kind: CustomResourceStateMetrics
+      spec:
+        resources:
+          - groupVersionKind:
+              group: materialize.cloud
+              version: v1alpha1
+              kind: Materialize
+            metricNamePrefix: kube_mz
+            labelsFromPath:
+              environment_id: [spec, environmentId]
+              environment_name: [metadata, name]
+              environment_namespace: [metadata, namespace]
+            metrics:
+              - name: environment_info
+                help: "1 for each Materialize environment, naming it."
+                each:
+                  type: Info
+                  # An Info metric publishes nothing without labels of its own,
+                  # so this restates one of the resource's.
+                  info:
+                    labelsFromPath:
+                      environment_name: [metadata, name]
+              - name: environment_active_generation
+                help: "The deployment generation the Materialize environment serves."
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status]
+                    valueFrom: [activeGeneration]
+                    labelsFromPath:
+                      generation: [activeGeneration]
+  rbac:
+    # -- Extra ClusterRole rules for kube-state-metrics: list and watch on `Materialize` resources, for `customResourceState`.
+    extraRules:
+      - apiGroups: [materialize.cloud]
+        resources: [materializes]
+        verbs: [list, watch]
   # -- NetworkPolicy for kube-state-metrics.
   # @raw
   #
@@ -6470,17 +6543,24 @@ kube-state-metrics:
         # canonical one, because nothing read it before these labels were
         # allowlisted.
         #
-        # A pod without the label is left alone: the copy writes an empty value,
-        # which is no label at all. Restate these rules when overriding the
-        # list, since Helm replaces it.
+        # Each copy matches `(.+)`, so it fires only where the pod label is
+        # present. With the default `(.*)` it would also fire where the label is
+        # absent and write an empty value, which removes the canonical label from
+        # a series that carries its own: `kube_mz_environment_info` would lose its
+        # `environment_id`. Restate these rules when overriding the list, since
+        # Helm replaces it.
         metricRelabelings:
           - sourceLabels: [label_cluster_environmentd_materialize_cloud_cluster_id]
+            regex: (.+)
             targetLabel: cluster_id
           - sourceLabels: [label_cluster_environmentd_materialize_cloud_replica_id]
+            regex: (.+)
             targetLabel: replica_id
           - sourceLabels: [label_cluster_environmentd_materialize_cloud_size]
+            regex: (.+)
             targetLabel: replica_size
           - sourceLabels: [label_materialize_cloud_environment_id]
+            regex: (.+)
             targetLabel: environment_id
           - action: labeldrop
             regex: label_cluster_environmentd_materialize_cloud_(cluster_id|replica_id|size)|label_materialize_cloud_environment_id
@@ -6805,7 +6885,7 @@ metrics-server:
   # subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
   image:
     repository: registry.k8s.io/metrics-server/metrics-server
-    tag: v0.9.0
+    tag: v0.9.1
 
   # -- Pod security context.
   # The subchart ships an empty one beside an already locked-down container

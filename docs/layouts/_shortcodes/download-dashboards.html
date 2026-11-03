@@ -20,7 +20,9 @@
 
 {{- /*
   Every export format, in the order the table lists them. The pattern is the
-  asset path, with the name stem substituted in.
+  asset path, with the name stem substituted in. The Datadog files carry a
+  `datadog-` prefix, because a dashboards release uploads every JSON asset under
+  its file name, and two `env-top.json` assets would collide.
 
   apiVersion, where set, is checked against the file: a render left behind by an
   older schema is treated as absent rather than offered as this format. Only the
@@ -35,7 +37,7 @@
   (dict "label" "Grafana 10 and 11" "schema" "dashboard schema v1"
         "pattern" "dashboards/grafana-v1/%s.json")
   (dict "label" "Datadog" "schema" "dashboard JSON"
-        "pattern" "dashboards/datadog/%s.json")
+        "pattern" "dashboards/datadog/datadog-%s.json")
 -}}
 
 {{- /*
@@ -74,13 +76,17 @@
       <td>{{ .label }}<br /><small>{{ .schema }}</small></td>
       {{- if $file }}
         {{- $metadata := index $data "metadata" | default dict }}
-        {{- $uid := index $metadata "name" | default $name }}
+        {{- /* A Grafana render names its UID; a Datadog one has none, and saves under its file name. */ -}}
+        {{- $uid := index $metadata "name" }}
+        {{- $saveAs := printf "%s.json" ($uid | default (path.Base $path | strings.TrimSuffix ".json")) }}
         {{- $annotations := index $metadata "annotations" | default dict }}
         {{- /* The hash busts the cache; the download name is what gets saved. */ -}}
         {{- $href := printf "%s?xxhash=%s" $file.RelPermalink (hash.XxHash $file.Content) | relURL }}
       <td>
-        <a href="{{ $href }}" download="{{ $uid }}.json"><code>{{ path.Base $path }}</code></a>
-        <br /><small>UID <code>{{ $uid }}</code></small>
+        <a href="{{ $href }}" download="{{ $saveAs }}"><code>{{ path.Base $path }}</code></a>
+        {{- with $uid }}
+        <br /><small>UID <code>{{ . }}</code></small>
+        {{- end }}
       </td>
       <td>
         {{- if $annotations }}

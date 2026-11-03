@@ -162,8 +162,14 @@ impl Bundle {
 
     fn entry(&mut self, name: &str) -> Result<String> {
         // Listed up front: `by_name` borrows the archive mutably, so the error
-        // path cannot go back and ask what it does contain.
-        let present: Vec<String> = self.archive.file_names().map(str::to_owned).collect();
+        // path cannot go back and ask what it does contain. Raw names, decoded
+        // lossily, because the list only feeds that error message: a name that
+        // fails to decode should not fail the lookup of a different entry.
+        let present: Vec<String> = self
+            .archive
+            .file_names_raw()
+            .map(|name| String::from_utf8_lossy(name).into_owned())
+            .collect();
         let mut file = self
             .archive
             .by_name(name)

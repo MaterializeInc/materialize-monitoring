@@ -156,6 +156,70 @@ in `env_upgrade/mod.rs` is `v26.41.0` and must stay in step with the Materialize
 The live UID diverged from the codified one before `mz-mon-env-top` became authoritative — see
 [UID selection and behavior](../../../docs/content/reference/development/dashboard/generating.md#uid-selection-and-behavior).
 
+## The Datadog backend
+
+`packages/dashboards/src/datadog/` renders the Datadog set from the same registry, on the models in
+`datadog-api-client` (models only, with `rustls-tls`). The building blocks any Datadog dashboard needs live in
+`mzmon-lib` as `mzmon_lib::datadog`, behind its `datadog` feature, as the Grafana ones live in `mzmon_lib::grafana`:
+`context.rs` (registry parameters), `query.rs` (`PanelQuery`), `formula.rs`, `widget.rs`, and `variable.rs`. The
+dashboards crate keeps what belongs to its dashboards: the failure-recording `Queries` handle, `panel.rs`, which pairs
+each widget with its parity-manifest entry, and the dashboards themselves.
+The design is [Datadog dashboards from the query registry](../../../docs/content/reference/development/design-docs/20261020-datadog-dashboards.md).
+
+| Artifact stem | Module | Title |
+|---|---|---|
+| `env-top` | `datadog/env_top.rs` | Materialize Environment Overview |
+
+These things about it are not re-derivable by reading the modules:
+
+- **It renders only to `docs/assets/dashboards/datadog/datadog-<stem>.json`**, through `gen-dashboards --flavor datadog`.
+  The prefix is there because a dashboards release uploads every checked-in JSON by file name, and the Grafana render
+  is `<stem>.json`; a test over `packages/components.yaml` fails on two artifacts with one name.
+  No chart carries it, so that file is the only copy and is not marked `linguist-generated`.
+- **A Datadog dashboard shares its stem with its Grafana counterpart**, because the docsite's download table keys on
+  the stem. A test holds that.
+- **The parity ledger compares the two by slug.** Every Datadog widget is placed under its Grafana panel's slug, and
+  `tests/datadog_parity.rs` compares title, registry ids, kind, and unit. The Datadog builders record their manifest
+  as they build; the Grafana one is read back from the render by `grafana/manifest.rs`, which matches each panel's
+  expressions to the registry. A difference fails unless the dashboard's `DIFFERENCES` lists it with a reason, and a
+  listing that matches no difference fails too. `docs/content/dashboards/datadog.md` repeats the list for readers.
+- **Registry parameters are mapped one at a time** in `mzmon_lib::datadog::context`. The templates write the tag themselves,
+  as in `instance_id:%%{mzClusterList}`, so the pickers fill values alone: `$cluster.value`, `$replica.value`, and
+  `$namespace.value`. `mzEnvironmentFilter` is the whole term, `$environment`. A template that uses any other
+  parameter fails the render, so porting a panel is when its parameters get a Datadog meaning.
+- **The cluster picker lists `cluster_id`, the replica picker `replica_id`**: the canonical labels every Materialize
+  family carries beside its own spelling. The namespace picker is separate because cAdvisor and kube-state-metrics
+  series carry no environment tag.
+- **A scalar widget reduces a two-layer formula in the formula.** A query value, toplist, sunburst, or table
+  reduces each query with its `aggregator`, but Datadog refuses one under a group-by function such as
+  `max(query1, {tag})` ("unsupported to use multi-layer aggregation function … with an aggregator"). `widget.rs`
+  wraps such a formula as `reduce(…, 'last')` and drops its queries' aggregators, the form the Datadog UI writes, and
+  a render test holds every scalar query to exactly one of the two.
+- **Tabs name groups by widget id.** Each Grafana tab is a Datadog tab, listing its top-level groups by an `id` the
+  render assigns: the tab's position times 100, plus the group's. A group for a row whose header Grafana hides has its
+  title hidden.
+- **A widget's query objects are bare metric queries**, and every function and operator goes in its formula.
+  `mzmon_lib::datadog::formula` splits each rendered template that way, and a render test holds it. A query object carrying a
+  function renders in Datadog as "Invalid Formula in Query Object", yet the query API evaluates the same expression,
+  so validating through the API alone does not catch it. Nor does pasting into the widget editor, which splits a whole
+  expression itself; only imported JSON fails.
+- **Grafana kinds map onto `datadog/panel.rs` builders**: a single-value stat is `query_value`, a stat with several
+  templates is `query_values` (a query value draws one number), a stat or gauge with a value per series is
+  `grouped_values` (a toplist), a pie is `pie` (a sunburst), a bar chart is `ranking`, and a table is `table`, one
+  column per template and reducer. `Format::Fraction` scales a 0–1 formula by 100 for Datadog's `percent` unit.
+- **A ranking over an `instant: true` query reads the latest value**: its template ranks with `top(…, 'last', …)`,
+  and its widget takes `Reduce::Last` and `Look::instant()`, a five-minute timeframe of its own. Over the dashboard's
+  window, `last` keeps a stopped series' final value, so a deleted environment's objects topped Least Fresh Objects
+  over seven days (found 2026-10-29).
+- **Environment scoping is open.** Grafana's environment picker selects exactly one environment, and a Datadog
+  template variable always offers `*`. Environments reuse cluster and replica ids, so a value grouped by id merges
+  them. The dashboard's note tells readers to pick one environment.
+- **Validate widgets with their queries and formulas apart**, and substitute the pickers by hand, because the query
+  API doesn't expand template variables. `mz_views_count` and `mz_mzd_views_count` are not published on the GCP test
+  install, so those query values read no data there (checked 2026-10-29).
+- **The tests hold the render to the crate's typed models**: it round-trips with no `UnparsedObject` widget or query,
+  and every `$variable` a query names is declared.
+
 ## `env-top` tabs
 
 Six tabs, in declared order. Per-tab shades live in `env_top/theme.rs` — the source of truth, and deliberately the
@@ -545,6 +609,15 @@ These things about them are not re-derivable by reading the modules:
   `$cephNamespace`; a test holds every selector to its picker. **The pickers are section variables**, declared with `Row::variables` on the one `Row::section` that
   holds a flavor's rows, so they render under its header and hide with it instead of sitting in every environment's
   controls. `variable::consensus_scoped` and `persist_scoped` add only the hidden detection to `dependency_scoped`.
+- **Object Store Internals also has a GCS section**, the one provider view on a client dashboard.
+  It renders on `$gcsDetected` (`up{job="integrations/gcp", instance="gcs"}`, the GCS pull's own scrape), and
+  the fallback waits on both detections. Its queries are `infra.cloud.gcs.env.*` in `infra-cloud.yaml`, not in a
+  persist file, so the provider's `metricImportance` keeps deciding where the families go.
+  **`$gcsBucket` is multi-select and opens on "All"**, unlike the other pickers: bucket names are unique, so nothing
+  merges, and the monitoring stack's own buckets sort before the persist bucket. The environment's tile beside each
+  bucket's **Live Data** tile is how a reader tells its bucket apart. Panels with history draw a fixed 14 days
+  (`GCS_HISTORY`, through `PanelQuery::time_from`), because Google measures once a day; the daily-change bars also
+  step by `min_interval("1d")`. S3 and Azure Blob have no section and stay on `infra-cloud`.
 
 ### `infra-cloud` tabs
 

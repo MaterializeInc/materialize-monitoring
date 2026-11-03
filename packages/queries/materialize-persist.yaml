@@ -166,10 +166,12 @@ queries:
         compaction consolidates updates.
       notes: |
         This is what Materialize needs, not what the bucket holds. The bucket
-        also holds data kept only for readers, uploads in flight, orphaned
-        data, and whatever the provider retains for versioning or soft
-        delete — _Storage_ breaks down the first three, and the Infrastructure
-        Cloud Provider dashboard has the bucket's own size.
+        also holds data kept only for readers, which _Storage_ shows. It also
+        holds uploads not yet committed, orphaned data, and whatever the
+        provider retains for versioning or soft delete, which Materialize
+        doesn't measure. The Infrastructure Cloud Provider dashboard has the
+        bucket's own size, and for a GCS bucket, so does _Object Store
+        Internals_.
     promQL: |
       sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
       + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}}))
@@ -703,12 +705,12 @@ queries:
       degraded: |
         _Held for readers_ is data a reader still needs from an older state;
         growth there points at a stuck reader, named on _Data Held for
-        Readers by Object_. _Uploads in flight_ is written but not yet
-        committed. _Orphaned_ is data nothing refers to that cleanup missed,
-        which is billed and does nothing.
+        Readers by Object_.
       notes: |
         Materialize's own accounting, recomputed periodically rather than on
-        every write.
+        every write. It covers only data some version of an object's state
+        refers to. Uploads not yet committed and orphaned data that cleanup
+        missed are in the bucket but not here.
     promQL:
       - |
         sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
@@ -716,10 +718,6 @@ queries:
         sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}}))
       - |
         sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}}))
-      - |
-        sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{%%{mzEnvironmentFilter}}))
-      - |
-        sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}}))
     datadogQuery:
       - |
         sum(max:mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
@@ -727,26 +725,6 @@ queries:
         sum(max:mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
       - |
         sum(max:mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
-      - |
-        sum(max:mz_persist_shard_usage_not_leaked_not_referenced_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
-      - |
-        sum(max:mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
-
-  - id: materialize.persist.usage.leaked
-    stability: experimental
-    description:
-      summary: |
-        Data in object storage that nothing refers to and that cleanup did not
-        remove.
-      nominal: Zero, or close to it.
-      degraded: |
-        Orphaned data is billed and never read. A little accumulates when a
-        process is killed mid-write; a steadily growing amount is worth
-        raising with Materialize support.
-    promQL: |
-      sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}}))
-    datadogQuery: |
-      sum(max:mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
 
   - id: materialize.persist.usage.largest
     stability: experimental

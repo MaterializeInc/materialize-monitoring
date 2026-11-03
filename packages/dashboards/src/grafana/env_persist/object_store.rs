@@ -7,14 +7,23 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! The Object Store Internals tab: an on-premise object store, as it reports
-//! itself.
+//! The Object Store Internals tab: the object store, as it reports itself.
 //!
-//! A cloud bucket does not fill up or lose a disk, and its provider's view is
-//! on `infra-cloud`. An object store running on disks someone owns can do both,
-//! and is the one deployment shape where the store publishes more about itself
-//! than persist can see. Its rows render per store, on a discovered variable;
-//! Ceph, run by Rook, is the first.
+//! Each store's rows render on a discovered variable, one section per store,
+//! with one fallback for a tab where none was found.
+//!
+//! - **Ceph, run by Rook.** An object store running on disks someone owns can
+//!   fill up or lose a disk, and is the one deployment shape where the store
+//!   publishes more about itself than persist can see.
+//! - **GCS, as Cloud Monitoring reports it.** A cloud bucket does neither, so
+//!   its section is about what the bucket holds and is billed for: its live
+//!   data beside the environment's own, how that changes day to day, and the
+//!   soft-deleted and noncurrent objects billed on top. The same families are
+//!   on `infra-cloud`, for every bucket on the cluster; here they sit beside
+//!   the environment they serve.
+//!
+//! S3 and Azure Blob have no section. Their provider's view stays on
+//! `infra-cloud`, and the fallback says so.
 //!
 //! # Scoped by a picker, not by the environment
 //!
@@ -24,8 +33,14 @@
 //! Grafana's first choice is already right. The
 //! gateway panels sum every client of the store, Materialize among them.
 //!
-//! The picker is a section variable on the one Ceph row that holds the rest,
-//! so it renders under that header and hides with it, for the reason the
+//! GCS's series name a bucket and nothing about Materialize either, so the
+//! reader picks buckets on `$gcsBucket`. It opens on every bucket, for the
+//! reason [`variable::gcs_buckets`] gives. The environment's own tile, beside
+//! each bucket's live bytes, is what identifies its bucket among them: the two
+//! read the same.
+//!
+//! Each picker is a section variable on the one row that holds its store's
+//! rows, so it renders under that header and hides with it, for the reason the
 //! metadata database's CNPG section gives.
 //!
 //! # Why these signals
@@ -35,15 +50,24 @@
 //! rows are the server side of the calls on Operations — the gap between the
 //! two is the network in between. Capacity and Disks are the slow failures:
 //! a store filling unevenly stops writes at its fullest disk.
+//!
+//! GCS is pulled for size and object count only. Its request counts are a
+//! per-minute delta the pull cannot read whole, which the chart's values
+//! explain, and persist's own count of the same calls is on Operations.
 
-use mzmon_lib::grafana::generated::{dashboardv2, stat::BigValueGraphMode};
+use mzmon_lib::grafana::generated::{
+    dashboardv2,
+    stat::{BigValueGraphMode, BigValueTextMode},
+};
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
+use mzmon_lib::grafana::query::PanelQuery;
 use mzmon_lib::grafana::variable::{self, extra};
 use mzmon_lib::grafana::{palette, threshold};
 
 use super::{latency_ladder, theme, zero_is_healthy};
 use crate::grafana::dependency::{ratio_ladder, value_map};
+use crate::grafana::field_override;
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 
@@ -58,19 +82,31 @@ pub(crate) const CEPH_DETECTED: &str = extra::CEPH_DETECTED;
 /// condition as `undefined`, which `.+` matches.
 pub(crate) const CEPH: &str = "ceph-mgr";
 
-/// Every store this tab has rows for, as one alternation.
+/// The variable every GCS row renders on.
+pub(crate) const GCS_DETECTED: &str = extra::GCS_DETECTED;
+
+/// What `$gcsDetected` holds when the GCS pull is up: its scrape's `instance`.
+pub(crate) const GCS: &str = "gcs";
+
+/// Every store this tab has rows for, as the detection each one renders on.
 ///
-/// The fallback renders on the negation of this, so a store added without
+/// The fallback renders when none of these matches, so a store added without
 /// being added here would leave the fallback on screen beside its rows.
-pub(crate) fn known_stores() -> String {
-    CEPH.to_string()
+pub(crate) fn known_stores() -> Vec<(&'static str, String)> {
+    vec![
+        (CEPH_DETECTED, CEPH.to_string()),
+        (GCS_DETECTED, GCS.to_string()),
+    ]
 }
 
 /// The title of the section holding every Ceph row.
 pub(crate) const CEPH_SECTION: &str = "Ceph";
 
+/// The title of the section holding every GCS row.
+pub(crate) const GCS_SECTION: &str = "GCS";
+
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![ceph_section(q), no_store_row()]
+    vec![ceph_section(q), gcs_section(q), no_store_row()]
 }
 
 /// Every Ceph row, in one section that renders only where Ceph is scraped and
@@ -101,24 +137,51 @@ fn not_reported() -> NoValue {
     )
 }
 
+/// Every GCS row, in one section that renders only where the GCS pull runs
+/// and carries the bucket picker its rows read.
+fn gcs_section(q: &Queries) -> Row {
+    Row::section(
+        GCS_SECTION,
+        vec![gcs_stored(q), gcs_growth(q), gcs_reclaimable(q)],
+    )
+    .only_when_variable(GCS_DETECTED, GCS)
+    .variables([variable::gcs_buckets()])
+}
+
+/// What a GCS panel shows when its row rendered and the series is absent.
+///
+/// The row rendering means the pull is up, so the likely causes are a bucket
+/// not measured yet or a pull the provider is refusing.
+fn not_pulled() -> NoValue {
+    NoValue::Custom(
+        "Cloud Monitoring has not reported the selected buckets. Google measures a bucket once a day, so a new one has nothing for up to a day; Collection on the Infrastructure Cloud Provider dashboard says whether the pull is working."
+            .to_string(),
+    )
+}
+
 /// Why the tab has no store rows on it.
 pub(crate) const NO_STORE: &str = "**The object store is not reporting its own metrics.**\n\n\
-     This tab shows what an object store running on disks you own says about itself: its \
-     health, its free space, its disks, and the server side of every request persist makes. It \
-     renders for **Ceph run by Rook**, whose S3-compatible gateway (RGW) can hold the persist \
-     bucket.\n\n\
+     This tab shows what the object store says about itself. It renders for **Ceph run by \
+     Rook**, whose S3-compatible gateway (RGW) can hold the persist bucket: its health, its free \
+     space, its disks, and the server side of every request persist makes. It also renders for \
+     **GCS**, as Cloud Monitoring reports each bucket: what you are billed for beside what \
+     Materialize stores.\n\n\
      - **On Rook Ceph**, scrape the manager and the per-node exporter. Setting \
        `monitoring.enabled: true` on the `CephCluster` makes Rook create a `ServiceMonitor` for \
        each; `deploy/examples/monitoring/` in the Rook repository has both as standalone \
        manifests, which leave out the alert rules that setting also installs.\n\
-     - **On S3, GCS or Azure Blob**, the bucket cannot fill up or lose a disk, and what the \
-       provider reports about it is on the **Infrastructure Cloud Provider** dashboard.\n\n\
+     - **On GCS**, turn on the gateway's Cloud Monitoring pull, list the bucket under \
+       `pipeline.metrics.provider.gcp.gcs.buckets` in the `materialize-monitoring` chart's \
+       values, and give the gateway's service account `roles/monitoring.viewer`. The Cloud \
+       Provider Metrics page of the documentation has the details.\n\
+     - **On S3 or Azure Blob**, the bucket cannot fill up or lose a disk, and what the provider \
+       reports about it is on the **Infrastructure Cloud Provider** dashboard.\n\n\
      The other tabs here need none of this: they are persist's own measurement of the store, \
      and work on every one.";
 
 fn no_store_row() -> Row {
     Row::new("No Object Store Metrics")
-        .only_unless_variable(CEPH_DETECTED, known_stores())
+        .only_unless_variables(known_stores())
         .hide_header()
         .grid(
             AutoGrid::new(1).row_height(RowHeight::Tall).panel(
@@ -399,5 +462,189 @@ fn placement_groups(q: &Queries) -> dashboardv2::PanelKind {
         .decimals(0.0)
         .min(0.0)
         .no_value(not_reported())
+        .build(0)
+}
+
+// --- GCS -----------------------------------------------------------------
+//
+// Google measures a bucket once a day, so over the dashboard's six hours every
+// series is a flat line. The tiles and charts that draw history draw the last
+// two weeks instead, which Grafana states in each panel's header. The donuts
+// are a single instant and need no range.
+
+/// How far back the GCS panels with history draw.
+const GCS_HISTORY: &str = "14d";
+
+/// One full-width panel each, so a tile per bucket has room for its name.
+fn gcs_stored(q: &Queries) -> Row {
+    Row::new("Stored Data").grid(
+        AutoGrid::new(1)
+            .row_height(RowHeight::Short)
+            .panel("gcs-live-bytes", gcs_live_bytes(q))
+            .panel("gcs-live-objects", gcs_live_objects(q))
+            .panel("gcs-object-size", gcs_object_size(q)),
+    )
+}
+
+fn gcs_growth(q: &Queries) -> Row {
+    Row::new("Growth").grid(
+        AutoGrid::new(2)
+            .column_width(ColumnWidth::Wide)
+            .panel("gcs-live-bytes-change", gcs_live_bytes_change(q))
+            .panel("gcs-live-objects-change", gcs_live_objects_change(q)),
+    )
+}
+
+fn gcs_reclaimable(q: &Queries) -> Row {
+    Row::new("Reclaimable Data").grid(
+        AutoGrid::new(2)
+            .column_width(ColumnWidth::Wide)
+            .panel("gcs-bytes-by-type", gcs_bytes_by_type(q))
+            .panel("gcs-objects-by-type", gcs_objects_by_type(q)),
+    )
+}
+
+/// A tile per bucket and one for the environment: the bucket whose live bytes
+/// read the same as the environment's is the environment's.
+fn gcs_live_bytes(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::stat("Live Data")
+        .query(
+            q.legended(
+                "infra.cloud.gcs.env.live_bytes",
+                &["{{bucket_name}}", "referenced by this environment"],
+            )
+            .time_from(GCS_HISTORY),
+        )
+        .shade(SHADE)
+        .text_mode(BigValueTextMode::ValueAndName)
+        .min_max_per_field()
+        .unit("bytes")
+        .min(0.0)
+        .no_value(not_pulled())
+        .build(0)
+}
+
+fn gcs_live_objects(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::stat("Live Objects")
+        .query(
+            q.get("infra.cloud.gcs.env.live_objects")
+                .legend("{{bucket_name}}")
+                .time_from(GCS_HISTORY),
+        )
+        .shade(SHADE)
+        .text_mode(BigValueTextMode::ValueAndName)
+        .min_max_per_field()
+        .unit("short")
+        .min(0.0)
+        .no_value(not_pulled())
+        .build(0)
+}
+
+fn gcs_object_size(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::stat("Average Object Size")
+        .query(
+            q.get("infra.cloud.gcs.env.object_size")
+                .legend("{{bucket_name}}")
+                .time_from(GCS_HISTORY),
+        )
+        .shade(SHADE)
+        .text_mode(BigValueTextMode::ValueAndName)
+        .min_max_per_field()
+        .unit("bytes")
+        .min(0.0)
+        .no_value(not_pulled())
+        .build(0)
+}
+
+/// One bar a day, stacked, so a day's bar is the selected buckets' total
+/// change and a shrinking bucket draws below the axis.
+fn daily_change(title: &str, query: PanelQuery, unit: &str) -> dashboardv2::PanelKind {
+    Panel::timeseries(title)
+        .query(
+            query
+                .legend("{{bucket_name}}")
+                .time_from(GCS_HISTORY)
+                .min_interval("1d"),
+        )
+        .custom(serde_json::json!({
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal", "group": "A" },
+        }))
+        .unit(unit)
+        .no_value(not_pulled())
+        .build(0)
+}
+
+fn gcs_live_bytes_change(q: &Queries) -> dashboardv2::PanelKind {
+    daily_change(
+        "Live Data Change per Day",
+        q.get("infra.cloud.gcs.env.live_bytes_change"),
+        "bytes",
+    )
+}
+
+fn gcs_live_objects_change(q: &Queries) -> dashboardv2::PanelKind {
+    daily_change(
+        "Live Objects Change per Day",
+        q.get("infra.cloud.gcs.env.live_objects_change"),
+        "short",
+    )
+}
+
+/// Google's state names end in `-object`, which the legend does not need.
+fn object_state_names() -> dashboardv2::TransformationKind {
+    transform::raw(
+        "renameByRegex",
+        serde_json::json!({ "regex": "(.*)-object", "renamePattern": "$1" }),
+    )
+}
+
+/// One colour per state on both donuts: live as healthy, and the two states
+/// billed without being read warmer.
+fn object_state_colors() -> Vec<dashboardv2::FieldConfigSourceOverridesItem> {
+    [
+        ("live", palette::tri_health::HEALTHY),
+        ("noncurrent", palette::tri_health::DEGRADED),
+        ("soft-deleted", palette::tri_health::UNHEALTHY),
+    ]
+    .into_iter()
+    .map(|(state, color)| {
+        field_override::by_name(state)
+            .property(
+                "color",
+                serde_json::json!({ "mode": "fixed", "fixedColor": color }),
+            )
+            .build()
+    })
+    .collect()
+}
+
+fn gcs_bytes_by_type(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::piechart("Billed Data by Object State")
+        .query(
+            q.get("infra.cloud.gcs.env.bytes_by_type")
+                .legend("{{type}}"),
+        )
+        .transformations(vec![object_state_names()])
+        .overrides(object_state_colors())
+        .legend_percent()
+        .unit("bytes")
+        .no_value(not_pulled())
+        .build(0)
+}
+
+fn gcs_objects_by_type(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::piechart("Objects by Object State")
+        .query(
+            q.get("infra.cloud.gcs.env.objects_by_type")
+                .legend("{{type}}"),
+        )
+        .transformations(vec![object_state_names()])
+        .overrides(object_state_colors())
+        .legend_percent()
+        .unit("short")
+        .no_value(not_pulled())
         .build(0)
 }

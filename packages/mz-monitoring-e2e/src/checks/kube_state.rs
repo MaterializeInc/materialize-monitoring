@@ -86,6 +86,8 @@ pub const REGISTRY_KUBE_METRICS: &[&str] = &[
     "kube_horizontalpodautoscaler_status_condition",
     "kube_horizontalpodautoscaler_status_current_replicas",
     "kube_horizontalpodautoscaler_status_desired_replicas",
+    "kube_mz_environment_active_generation",
+    "kube_mz_environment_info",
     "kube_networkpolicy_spec_egress_rules",
     "kube_networkpolicy_spec_ingress_rules",
     "kube_node_created",
@@ -426,6 +428,111 @@ pub async fn pod_labels_join_to_replicas(ctx: &Ctx) -> Result<()> {
                  `kube-state-metrics.metricLabelsAllowlist` names {CLUSTER_ID_POD_LABEL} and \
                  that `kube-state-metrics.prometheus.monitor.http.metricRelabelings` renames \
                  it. With only some missing, check those pods set a memory request",
+                got.len(),
+                want.len()
+            )
+        },
+    )
+    .await
+}
+
+/// The `Materialize` resource's group, version and kind, as the chart's
+/// `kube-state-metrics.customResourceState` reads it.
+pub const MATERIALIZE_GVK: (&str, &str, &str) = ("materialize.cloud", "v1alpha1", "Materialize");
+
+/// Each environment's active generation, kept only where its info series
+/// exists too, so one query answers for both bridged metrics.
+const ENVIRONMENT_GENERATION_QUERY: &str = r#"max by (cluster, environment_namespace, environment_name, environment_id, generation) (
+  kube_mz_environment_active_generation
+  and on (cluster, environment_namespace, environment_name, environment_id)
+  group by (cluster, environment_namespace, environment_name, environment_id) (kube_mz_environment_info)
+)"#;
+
+/// Every `Materialize` resource reaches Thanos as `kube_mz_environment_info` and
+/// `kube_mz_environment_active_generation`, with the resource's own values.
+///
+/// kube-state-metrics publishes nothing for a resource it cannot list or a
+/// config it cannot use, and fails nothing either. A missing grant on
+/// `materializes`, a version the CRD does not serve, or a scrape relabeling that
+/// empties `environment_id` all leave these series absent or unlabelled while
+/// every other `kube_*` family is healthy.
+///
+/// Compared against the resources themselves, read from the API server, so an
+/// environment that is missing reports by name. A resource the operator has not
+/// yet given an active generation is left out, since the bridge records nothing
+/// for it. Only runs where a `Materialize` resource exists; the kind tiers run
+/// none.
+pub async fn environments_are_bridged(ctx: &Ctx) -> Result<()> {
+    let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
+    let (group, version, kind) = MATERIALIZE_GVK;
+
+    retry_until(
+        "every Materialize resource is bridged into kube_mz_environment_*",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let resources = ctx
+                .cluster
+                .list_custom_everywhere(group, version, kind)
+                .await?
+                .unwrap_or_default();
+            // (namespace, name, environment id, generation label, value)
+            let want: BTreeSet<(String, String, String, String, String)> = resources
+                .iter()
+                .filter_map(|resource| {
+                    let generation = resource
+                        .data
+                        .pointer("/status/activeGeneration")?
+                        .as_u64()?;
+                    Some((
+                        resource.metadata.namespace.clone()?,
+                        resource.metadata.name.clone()?,
+                        resource
+                            .data
+                            .pointer("/spec/environmentId")?
+                            .as_str()?
+                            .to_string(),
+                        generation.to_string(),
+                        generation.to_string(),
+                    ))
+                })
+                .collect();
+            if want.is_empty() {
+                bail!("no {kind} resource has an active generation any more");
+            }
+
+            let series = instant_query(ctx, &target, ENVIRONMENT_GENERATION_QUERY).await?;
+            let got: BTreeSet<(String, String, String, String, String)> = series
+                .iter()
+                .filter_map(|s| {
+                    let label = |name: &str| {
+                        s.pointer(&format!("/metric/{name}"))
+                            .and_then(Value::as_str)
+                            .map(String::from)
+                    };
+                    Some((
+                        label("environment_namespace")?,
+                        label("environment_name")?,
+                        label("environment_id")?,
+                        label("generation")?,
+                        s.pointer("/value/1").and_then(Value::as_str)?.to_string(),
+                    ))
+                })
+                .collect();
+
+            if got == want {
+                return Ok(());
+            }
+            let missing: Vec<_> = want.difference(&got).collect();
+            let extra: Vec<_> = got.difference(&want).collect();
+            bail!(
+                "kube_mz_environment_* name {} environment(s), and the API server has {}. Missing \
+                 (namespace, name, environment_id, generation, value): {missing:?}; not on any \
+                 resource: {extra:?}. With every environment missing, check that \
+                 `kube-state-metrics.customResourceState` is enabled, that its ClusterRole \
+                 grants list and watch on `materializes`, and that the CRD serves {version}. \
+                 With `environment_id` missing, check that the `environment_id` copy in \
+                 `kube-state-metrics.prometheus.monitor.http.metricRelabelings` matches `(.+)`",
                 got.len(),
                 want.len()
             )
