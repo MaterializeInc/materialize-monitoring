@@ -2946,11 +2946,15 @@ spec:
                   spec:
                     expr: |
                       max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"})
+                      or on (service)
+                      max by (service) (kube_service_spec_type{namespace=~"$mzNamespaceList", type="LoadBalancer"})
                     format: table
                     instant: true
                     qryType: 2
                     query: |
                       max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{namespace=~"$mzNamespaceList"})
+                      or on (service)
+                      max by (service) (kube_service_spec_type{namespace=~"$mzNamespaceList", type="LoadBalancer"})
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -2973,6 +2977,8 @@ spec:
           **Nominal:** One for balancerd and one for the console, where the deployment exposes them through Kubernetes. The AWS Terraform wrappers make their Network Load Balancer in Terraform instead, so there are none on those installs.
 
           **Degraded:** A Service with no address has not been given a load balancer yet. That is normal for a minute after it is created, and a fault after several: subnets missing their tags, no free public addresses, or a controller without permission.
+
+          A Service without an address has no ingress series, so the query adds every LoadBalancer Service that lacks one, with its address columns empty.
         id: 1013
         links: []
         title: Load Balancer Addresses

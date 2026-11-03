@@ -1584,10 +1584,13 @@
   - materialize.ingress.lb.gcp.packets
   - materialize.ingress.lb.gcp.throughput
 - importance: recommended
-  labels: []
+  labels:
+  - namespace
+  - type
   name: kube_service_spec_type
   usage:
   - infra.net.k8s.services.by_type
+  - materialize.ingress.lb.addresses
 - importance: recommended
   labels:
   - namespace

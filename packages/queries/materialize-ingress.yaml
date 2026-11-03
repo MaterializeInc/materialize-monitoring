@@ -1025,12 +1025,17 @@ queries:
   #   `<prefix>-<instance>-<pgwire|http|console>`, and `<instance>` is the
   #   Materialize resource's name, which is the environment picker's value. A
   #   load balancer's own series are kept when one of those target groups is
-  #   pulled beside it.
+  #   pulled beside it. The prefix is unknown here, so an instance whose name
+  #   ends in another's after a dash (`prod` and `staging-prod`) also matches
+  #   the other's target groups when the pull names both.
   # * Google Cloud: GKE names a Service's forwarding rule `a` plus the first 31
   #   characters of the Service's UID without dashes, so `kube_service_info` in
   #   the environment's namespace maps each rule to its Service.
   # * Azure: each series names its frontend IP, which is the address
-  #   Kubernetes gave the environment's LoadBalancer Service.
+  #   Kubernetes gave the environment's LoadBalancer Service. The wrappers'
+  #   Services get public addresses, which are unique. Internal load
+  #   balancers can share a private address across clusters, so a pull that
+  #   names more than one AKS cluster can join another cluster's backends here.
 
   - id: materialize.ingress.lb.addresses
     stability: experimental
@@ -1049,8 +1054,14 @@ queries:
         That is normal for a minute after it is created, and a fault after
         several: subnets missing their tags, no free public addresses, or a
         controller without permission.
+      notes: |
+        A Service without an address has no ingress series, so the query
+        adds every LoadBalancer Service that lacks one, with its address
+        columns empty.
     promQL: |
       max by (service, ip, hostname) (kube_service_status_load_balancer_ingress{%%{mzEnvironmentNamespaceFilter}})
+      or on (service)
+      max by (service) (kube_service_spec_type{%%{mzEnvironmentNamespaceFilter}, type="LoadBalancer"})
 
   - id: materialize.ingress.lb.aws.healthy_targets
     stability: experimental
