@@ -40,8 +40,8 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.15.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.15.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.2.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.3.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 20.2.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.8.0 |
@@ -1198,6 +1198,54 @@ Materialize-specific configuration values.
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for the console
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect the console's request metrics (`mz_console_*`). Console pods before Materialize v26.49.0 declare no `internal-http` port and yield no target.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 []</pre>
@@ -5356,7 +5404,7 @@ Upstream reference:
 {
   "registry": "docker.io",
   "repository": "grafana/loki",
-  "tag": "3.7.8"
+  "tag": "3.7.9"
 }</pre>
 </td>
       <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -6426,7 +6474,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.8"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -6437,7 +6485,7 @@ unconditional so the two modes share one code path.
 {
   "registry": "docker.io",
   "repository": "grafana/loki-canary",
-  "tag": "3.7.8"
+  "tag": "3.7.9"
 }</pre>
 </td>
       <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
@@ -9117,6 +9165,132 @@ addition, and arrives as `label_<key>`.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.customResourceState</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "config": {
+    "kind": "CustomResourceStateMetrics",
+    "spec": {
+      "resources": [
+        {
+          "groupVersionKind": {
+            "group": "materialize.cloud",
+            "kind": "Materialize",
+            "version": "v1alpha1"
+          },
+          "labelsFromPath": {
+            "environment_id": [
+              "spec",
+              "environmentId"
+            ],
+            "environment_name": [
+              "metadata",
+              "name"
+            ],
+            "environment_namespace": [
+              "metadata",
+              "namespace"
+            ]
+          },
+          "metricNamePrefix": "kube_mz",
+          "metrics": [
+            {
+              "each": {
+                "info": {
+                  "labelsFromPath": {
+                    "environment_name": [
+                      "metadata",
+                      "name"
+                    ]
+                  }
+                },
+                "type": "Info"
+              },
+              "help": "1 for each Materialize environment, naming it.",
+              "name": "environment_info"
+            },
+            {
+              "each": {
+                "gauge": {
+                  "labelsFromPath": {
+                    "generation": [
+                      "activeGeneration"
+                    ]
+                  },
+                  "path": [
+                    "status"
+                  ],
+                  "valueFrom": [
+                    "activeGeneration"
+                  ]
+                },
+                "type": "Gauge"
+              },
+              "help": "The deployment generation the Materialize environment serves.",
+              "name": "environment_active_generation"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "enabled": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Environment facts that kube-state-metrics reads off each `Materialize` resource.
+
+kube-state-metrics publishes one series of each per `materializes.materialize.cloud` resource:
+
+| Metric | Value | Labels |
+| ------ | ----- | ------ |
+| `kube_mz_environment_info` | 1 | `environment_id` (`spec.environmentId`), `environment_name` (`metadata.name`) and `environment_namespace` (`metadata.namespace`) |
+| `kube_mz_environment_active_generation` | The deployment generation the environment serves, `status.activeGeneration` | The same, and `generation`, the same number as a label |
+
+The active generation is the one the operator last promoted.
+During a rollout it is the older generation, until the new one has caught up and been promoted.
+A rollout that never promotes leaves the older one serving,
+so the highest generation in the environment's pod names doesn't stand in for it.
+`generation` lets a query join the series to the generation in a pod's name.
+
+The environment's namespace is `environment_namespace`.
+`namespace` and `pod` on these series name the kube-state-metrics pod, as on every node-level `kube_*` series.
+kube-state-metrics also adds `customresource_group`, `customresource_kind` and `customresource_version`.
+Read `kube_mz_environment_info` through `group by (cluster, environment_id, environment_name, environment_namespace)`,
+which drops those labels.
+
+**Pinned to `v1alpha1`.** kube-state-metrics takes one entry per resource,
+and a wildcard version lists every resource once for each version the CRD serves.
+Every Materialize operator serves `v1alpha1`, and where the `v1` CRD is installed too,
+listing `v1alpha1` returns the resources created as `v1` as well.
+
+kube-state-metrics watches the cluster's CRDs, so it publishes nothing until the Materialize CRD exists, and picks it up when it does.
+`rbac.extraRules` grants it list and watch on `materializes`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.rbac<wbr>.extraRules</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "apiGroups": [
+      "materialize.cloud"
+    ],
+    "resources": [
+      "materializes"
+    ],
+    "verbs": [
+      "list",
+      "watch"
+    ]
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra ClusterRole rules for kube-state-metrics: list and watch on `Materialize` resources, for `customResourceState`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.networkPolicy</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -9212,24 +9386,28 @@ you know it.
   "honorLabels": true,
   "metricRelabelings": [
     {
+      "regex": "(.+)",
       "sourceLabels": [
         "label_cluster_environmentd_materialize_cloud_cluster_id"
       ],
       "targetLabel": "cluster_id"
     },
     {
+      "regex": "(.+)",
       "sourceLabels": [
         "label_cluster_environmentd_materialize_cloud_replica_id"
       ],
       "targetLabel": "replica_id"
     },
     {
+      "regex": "(.+)",
       "sourceLabels": [
         "label_cluster_environmentd_materialize_cloud_size"
       ],
       "targetLabel": "replica_size"
     },
     {
+      "regex": "(.+)",
       "sourceLabels": [
         "label_materialize_cloud_environment_id"
       ],
@@ -9273,24 +9451,28 @@ Asserted by the e2e suite: `kube_state::labels_are_honored`.
       <td class="helm-value-default"><pre>
 [
   {
+    "regex": "(.+)",
     "sourceLabels": [
       "label_cluster_environmentd_materialize_cloud_cluster_id"
     ],
     "targetLabel": "cluster_id"
   },
   {
+    "regex": "(.+)",
     "sourceLabels": [
       "label_cluster_environmentd_materialize_cloud_replica_id"
     ],
     "targetLabel": "replica_id"
   },
   {
+    "regex": "(.+)",
     "sourceLabels": [
       "label_cluster_environmentd_materialize_cloud_size"
     ],
     "targetLabel": "replica_size"
   },
   {
+    "regex": "(.+)",
     "sourceLabels": [
       "label_materialize_cloud_environment_id"
     ],
@@ -9319,9 +9501,12 @@ siblings. The `label_*` form is dropped rather than kept beside the
 canonical one, because nothing read it before these labels were
 allowlisted.
 
-A pod without the label is left alone: the copy writes an empty value,
-which is no label at all. Restate these rules when overriding the
-list, since Helm replaces it.
+Each copy matches `(.+)`, so it fires only where the pod label is
+present. With the default `(.*)` it would also fire where the label is
+absent and write an empty value, which removes the canonical label from
+a series that carries its own: `kube_mz_environment_info` would lose its
+`environment_id`. Restate these rules when overriding the list, since
+Helm replaces it.
 </td>
     </tr>
   </tbody>
