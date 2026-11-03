@@ -57,7 +57,7 @@ PROM_IMAGE=${PROM_IMAGE:-quay.io/prometheus/prometheus:${PROM_VERSION}}
 # Keep in step with the Loki the chart runs (`loki.loki.image.tag` in the
 # chart's values.yaml). Renovate groups the two.
 # renovate: datasource=docker packageName=grafana/logcli
-LOGCLI_VERSION=3.7.8
+LOGCLI_VERSION=3.7.9
 LOGCLI_IMAGE=${LOGCLI_IMAGE:-docker.io/grafana/logcli:${LOGCLI_VERSION}}
 CHART_DIR=${CHART_DIR:-charts/materialize-monitoring}
 SCENARIO_DIR="${CHART_DIR}/tests/rules"

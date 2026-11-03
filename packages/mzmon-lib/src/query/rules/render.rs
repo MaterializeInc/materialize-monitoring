@@ -46,8 +46,9 @@ use crate::query::rules::capability::{Capability, MetricSource, capability_for_m
 use crate::query::rules::context::{Placeholder, alerting_context};
 use crate::query::stability::Stability;
 
-/// Where an alert's `runbook_url` points until runbooks exist: its own entry on
-/// the generated Common Alerts page, whose headings are anchored by alert name.
+/// Where an alert's `runbook_url` points unless it names a runbook of its own:
+/// its entry on the generated Common Alerts page, whose headings are anchored
+/// by alert name.
 pub const COMMON_ALERTS_URL: &str =
     "https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/";
 

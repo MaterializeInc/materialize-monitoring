@@ -38,6 +38,9 @@ tests:
 
   # The allowlist and the rename are two halves of one change in two subchart
   # keys. With the allowlist alone the join keys are the long `label_*` names.
+  # Each copy matches `(.+)`: with the default `(.*)` it also fires where the pod
+  # label is absent, and its empty value removes `environment_id` from
+  # `kube_mz_environment_info`, which carries its own.
   - it: should publish the Materialize pod labels under their canonical names
     template: ../charts/kube-state-metrics/templates/servicemonitor.yaml
     asserts:
@@ -48,12 +51,16 @@ tests:
           path: spec.endpoints[0].metricRelabelings
           value:
             - sourceLabels: [label_cluster_environmentd_materialize_cloud_cluster_id]
+              regex: (.+)
               targetLabel: cluster_id
             - sourceLabels: [label_cluster_environmentd_materialize_cloud_replica_id]
+              regex: (.+)
               targetLabel: replica_id
             - sourceLabels: [label_cluster_environmentd_materialize_cloud_size]
+              regex: (.+)
               targetLabel: replica_size
             - sourceLabels: [label_materialize_cloud_environment_id]
+              regex: (.+)
               targetLabel: environment_id
             - action: labeldrop
               regex: label_cluster_environmentd_materialize_cloud_(cluster_id|replica_id|size)|label_materialize_cloud_environment_id

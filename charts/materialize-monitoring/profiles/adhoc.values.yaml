@@ -193,8 +193,6 @@ loki:
     enabled: false
   test:
     enabled: false
-  minio:
-    enabled: false
 
 # ---------------------------------------------------------------------------
 # Thanos: one of each, replication factor 1

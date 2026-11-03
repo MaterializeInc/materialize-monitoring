@@ -18,7 +18,7 @@ tests:
   - it: should ship every dashboard the default patterns select
     asserts:
       - hasDocuments:
-          count: 5
+          count: 6
       - containsDocument:
           any: true
           apiVersion: grafana.integreatly.org/v1beta1
@@ -44,6 +44,11 @@ tests:
           apiVersion: grafana.integreatly.org/v1beta1
           kind: GrafanaManifest
           name: mzmon-dashboards-env-consensus-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-env-ingress-dashboard
 
   # The resource names must NOT collide with the ones the umbrella chart used to
   # create (`mzmon-<stem>-dashboard`). Helm refuses an object owned by another
@@ -115,6 +120,12 @@ tests:
         documentSelector:
           path: metadata.name
           value: mzmon-dashboards-env-consensus-dashboard
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-materialize
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-env-ingress-dashboard
 
   # One `folderUids` map serves all three dashboards charts, so entries for the
   # other charts' folders have to be harmless here.
@@ -126,7 +137,7 @@ tests:
         meta-o11y: mzmon-meta-o11y
     asserts:
       - hasDocuments:
-          count: 5
+          count: 6
       - equal:
           path: spec.template.metadata.annotations["grafana.app/folder"]
           value: mzmon-materialize

@@ -109,7 +109,7 @@ dependencies:
       - pipeline
       - alloy-gateway
   - name: loki
-    version: "19.0.2"
+    version: "20.2.2"
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: loki.enabled
     tags:
@@ -125,7 +125,7 @@ dependencies:
       - bundled-backends
       - thanos
   - name: grafana
-    version: "14.2.0"
+    version: "14.3.0"
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: grafana.enabled
     tags:

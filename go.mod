@@ -103,7 +103,7 @@ require (
 	github.com/gohugoio/go-radix v1.2.0 // indirect
 	github.com/gohugoio/hashstructure v1.0.0 // indirect
 	github.com/gohugoio/httpcache v0.9.0 // indirect
-	github.com/gohugoio/hugo v0.168.0 // indirect
+	github.com/gohugoio/hugo v0.169.0 // indirect
 	github.com/gohugoio/hugo-goldmark-extensions/extras v0.7.0 // indirect
 	github.com/gohugoio/hugo-goldmark-extensions/passthrough v0.5.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect

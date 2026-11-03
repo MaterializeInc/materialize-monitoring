@@ -323,6 +323,10 @@ fn dataflow_elapsed_rate(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("none")
         .log_scale(10.0)
+        // Idle clusters sit near 0.001 cores. Left to guess, Grafana takes the
+        // tick decimals from the axis's linear spacing and labels those decades
+        // `0` whenever the busiest cluster stays under a few cores.
+        .decimals(4.0)
         .build(0)
 }
 
