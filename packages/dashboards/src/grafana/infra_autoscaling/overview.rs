@@ -15,24 +15,31 @@
 //! they differ in the way that matters: a pod can be Pending with a node,
 //! pulling its image, and only the second is an autoscaling question.
 //!
-//! Below the verdict, demand beside capacity: pods waiting against nodes by
+//! On EKS, Karpenter's own verdict follows: whether it can act at all
+//! (NodePools Ready, state synced), whether it is failing to place pods, and
+//! whether EC2 has refused it. GKE's and AKS's autoscalers publish nothing the
+//! cluster can read, so the row renders only where Karpenter does.
+//!
+//! Below the verdicts, demand beside capacity: pods waiting against nodes by
 //! pool, then how full the cluster is to the scheduler. A full cluster with
 //! nothing waiting is an autoscaler doing its job; nothing waiting is the
 //! reading that matters.
 
 use mzmon_lib::grafana::generated::dashboardv2;
+use mzmon_lib::grafana::generated::stat::BigValueTextMode;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
-use mzmon_lib::grafana::threshold;
+use mzmon_lib::grafana::{palette, threshold};
 
+use super::karpenter::{self, not_reported};
 use super::{no_pools, quiet, theme};
-use crate::grafana::dependency::zero_is_healthy;
+use crate::grafana::dependency::{value_map, zero_is_healthy};
 use crate::grafana::queries::Queries;
 
 const SHADE: &str = theme::OVERVIEW.shade;
 
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![verdict(q), demand(q), activity(q)]
+    vec![verdict(q), karpenter_verdict(q), demand(q), activity(q)]
 }
 
 /// Seven numbers: two about pods, four about nodes, one about workloads.
@@ -48,6 +55,21 @@ fn verdict(q: &Queries) -> Row {
             .panel("overview-added", added(q))
             .panel("overview-removed", removed(q))
             .panel("overview-hpa-at-max", hpa_at_max(q)),
+    )
+}
+
+/// Five numbers from Karpenter: can it act, is it placing pods, did EC2 refuse
+/// it, and which version.
+fn karpenter_verdict(q: &Queries) -> Row {
+    karpenter::row("Karpenter").grid(
+        AutoGrid::new(5)
+            .column_width(ColumnWidth::Narrow)
+            .row_height(RowHeight::Short)
+            .panel("overview-nodepools-not-ready", nodepools_not_ready(q))
+            .panel("overview-karpenter-synced", synced(q))
+            .panel("overview-karpenter-unplaceable", unplaceable(q))
+            .panel("overview-karpenter-launch-errors", launch_errors(q))
+            .panel("overview-karpenter-version", version(q)),
     )
 }
 
@@ -150,6 +172,74 @@ pub(crate) fn hpa_at_max(q: &Queries) -> dashboardv2::PanelKind {
         .unit("short")
         .decimals(0.0)
         .no_value(NoValue::Custom("No HorizontalPodAutoscalers".to_string()))
+        .build(0)
+}
+
+fn nodepools_not_ready(q: &Queries) -> dashboardv2::PanelKind {
+    zero_is_healthy("NodePools Not Ready")
+        .query(
+            q.get("infra.karpenter.health.nodepools_not_ready")
+                .legend("not ready"),
+        )
+        .thresholds(threshold::errors(1.0, 1.0).build())
+        .unit("short")
+        .decimals(0.0)
+        .no_value(not_reported())
+        .build(0)
+}
+
+fn synced(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::stat("Cluster State")
+        .query(q.get("infra.karpenter.health.synced").legend("state"))
+        .color_background()
+        .mappings(vec![
+            value_map(1.0, "Synced", palette::tri_health::HEALTHY, 1),
+            value_map(0.0, "Not Synced", palette::tri_health::UNHEALTHY, 2),
+        ])
+        .thresholds(
+            threshold::Ladder::new(palette::tri_health::UNHEALTHY)
+                .step(1.0, palette::tri_health::HEALTHY)
+                .build(),
+        )
+        .no_value(not_reported())
+        .build(0)
+}
+
+fn unplaceable(q: &Queries) -> dashboardv2::PanelKind {
+    zero_is_healthy("Pods Karpenter Cannot Place")
+        .query(
+            q.get("infra.karpenter.health.pods_unplaceable")
+                .legend("pods"),
+        )
+        .thresholds(threshold::errors(1.0, 5.0).build())
+        .unit("short")
+        .decimals(0.0)
+        .no_value(not_reported())
+        .build(0)
+}
+
+fn launch_errors(q: &Queries) -> dashboardv2::PanelKind {
+    zero_is_healthy("Launch Errors (Select Time Range)")
+        .query(
+            q.get("infra.karpenter.health.launch_errors")
+                .legend("errors"),
+        )
+        .thresholds(threshold::errors(1.0, 5.0).build())
+        .unit("short")
+        .decimals(0.0)
+        .no_value(not_reported())
+        .build(0)
+}
+
+fn version(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::stat("Karpenter Version")
+        .query(
+            q.get("infra.karpenter.health.version")
+                .legend("{{version}}"),
+        )
+        .shade(SHADE)
+        .text_mode(BigValueTextMode::Name)
+        .no_value(not_reported())
         .build(0)
 }
 

@@ -197,28 +197,34 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
 
 ### Infrastructure Autoscaling (`infra-autoscaling`)
 
-Whether the cluster's nodes are keeping up with its pods, on any cloud, across six tabs: Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, and Events.
-Open it when a Materialize cluster replica will not start, since that is usually a pod waiting for a node.
+Whether the cluster's nodes are keeping up with its pods, on any cloud.
+Its tabs are Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, Karpenter, and Events.
+Open it when a Materialize cluster replica won't start, because that's usually a pod waiting for a node.
 
-It is built from what every cluster has, so it reads the same whether Karpenter, GKE's or AKS's cluster autoscaler adds the nodes:
-- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it could not place, followed by what the autoscaler did about it.
-- **Nodes by pool, instance type and zone.** Also how full each pool is to the scheduler: requests against allocatable, which is what decides whether a pod fits, rather than usage.
-- **HorizontalPodAutoscalers.** Their current, desired, minimum and maximum replicas, and any that cannot read the metric they scale on.
+Most of it is built from what every cluster has, so it reads the same whether Karpenter or GKE's or AKS's cluster autoscaler adds the nodes:
+
+- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it couldn't place, followed by what the autoscaler did about it.
+- **Nodes by pool, instance type, and zone.** Also how full each pool is to the scheduler: requests against allocatable, which decides whether a pod fits, rather than usage.
+- **HorizontalPodAutoscalers.** Their current, desired, minimum, and maximum replicas, and any that can't read the metric they scale on.
 - **What the cloud says about capacity.** EC2 status checks and node group sizes, Compute Engine quota, and AKS's own autoscaler gauges, when [cloud provider metrics]({{< relref "../metrics/collecting/cloud-provider-metrics.md" >}}) are enabled for them.
 
-The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that they say so.
+The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that, they say so.
+
+On EKS, Karpenter's own metrics add a row to each tab where they answer the same question, and a Karpenter tab of their own:
+
+- **Overview:** whether Karpenter can act at all, the pods it can't place, and the launches EC2 refused.
+- **Node Pools:** each NodePool's CPU and memory against its limits, and any NodePool or EC2NodeClass condition that's False.
+- **Pending Pods:** how long each stage of a launch took, from EC2 accepting it to the node being ready.
+- **Cloud Capacity:** EC2's errors, and which zones offer each instance type, including the fewest at any point in the time range.
+- **Karpenter:** what Karpenter replaced and removed and why, what held nodes in place, draining, its controller, and its warning logs.
+  On a Materialize cluster, what holds nodes is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, because moving a replica means rehydrating it.
+  That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours isn't.
+
+Karpenter acts a few times a day, so most of these read as counts and percentiles over the selected time range; the Events tab says when each thing happened.
+The Karpenter rows need the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates.
+They don't render on a cluster without Karpenter, where the Karpenter tab explains why it's empty.
 
 {{< download-dashboards name="infra-autoscaling" >}}
-
-### Karpenter (`infra-karpenter`)
-
-How Karpenter adds, replaces and removes the cluster's nodes on EKS, across five tabs: Overview, Provisioning, Disruption, Controller, and Events and Logs.
-It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates, and renders nothing but an explanation on a cluster without Karpenter.
-
-- **Provisioning:** what Karpenter launched and what EC2 refused, and which instance types EC2 briefly stopped offering in a zone. Also how long each stage of a launch took, from EC2 accepting it to the node being ready.
-- **Disruption:** consolidation, drift and expiry, and what blocks them. On a Materialize cluster that is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, since moving a replica means rehydrating it. That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours is not.
-
-{{< download-dashboards name="infra-karpenter" >}}
 
 ## Meta monitoring (`infra-*`)
 

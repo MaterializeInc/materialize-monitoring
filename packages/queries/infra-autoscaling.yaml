@@ -20,8 +20,9 @@ description: |
     and on AKS the managed autoscaler's own gauges. It is opt-in, and its rows
     render only where a provider is pulled.
 
-  Karpenter's own metrics, which say far more on EKS, are the Karpenter
-  dashboard's (`infra-karpenter.yaml`).
+  Karpenter's own metrics, which say far more on EKS, are in
+  `infra-karpenter.yaml`; the same dashboard reads them on rows that render
+  only where Karpenter is scraped.
 
   ## Node pools
 
@@ -342,7 +343,8 @@ queries:
       degraded: |
         A pool near 1.0 with pods waiting for it. A pool that stays low is
         either sized for a workload that has gone, or held up by pods that
-        block consolidation; on EKS the Karpenter dashboard says which.
+        block consolidation; on EKS, _What Held Nodes in Place_ on the
+        Karpenter tab says which.
     promQL: |
       sum by (pool) (
         sum by (node) (
@@ -739,8 +741,8 @@ queries:
         EC2 is not supplying the instances, for capacity or quota. Desired at
         the maximum is a group that cannot grow.
       notes: |
-        Karpenter's pools have no Auto Scaling group; the Karpenter dashboard
-        covers them.
+        Karpenter's pools have no Auto Scaling group; the Karpenter rows on
+        this tab cover them.
     promQL:
       - |
         max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_desired_capacity_average[15m]))
@@ -965,8 +967,8 @@ queries:
         scheduler's placement failures. Karpenter's `DisruptionBlocked` and
         `Unconsolidatable` are left out: they repeat every few minutes for
         every node holding a pod that must not be moved, which on a
-        Materialize cluster is most of them, and the Karpenter dashboard
-        breaks them down.
+        Materialize cluster is most of them, and _What Held Nodes in Place_,
+        on the Karpenter tab, breaks them down.
     logQL: |
       sum by (reason) (
         count_over_time(

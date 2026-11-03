@@ -167,8 +167,8 @@ fn log_queries_bridge_to_loki() {
 fn every_query_renders_through_the_dashboard_context() {
     use mzmon_lib::grafana::context::{
         ALLOY_VARIABLES, DEPENDENCY_PICKER_VARIABLES, DashboardScope, GENERATION_VARIABLES,
-        INFRA_VARIABLES, KARPENTER_VARIABLES, LOKI_VARIABLES, NODE_VARIABLES, OPERATOR_VARIABLES,
-        REQUIRED_VARIABLES, THANOS_VARIABLES, dashboard_context,
+        INFRA_VARIABLES, LOKI_VARIABLES, NODE_VARIABLES, OPERATOR_VARIABLES, REQUIRED_VARIABLES,
+        THANOS_VARIABLES, dashboard_context,
     };
 
     let registry = registry();
@@ -214,7 +214,6 @@ fn every_query_renders_through_the_dashboard_context() {
                     && !LOKI_VARIABLES.contains(&reference.as_str())
                     && !ALLOY_VARIABLES.contains(&reference.as_str())
                     && !THANOS_VARIABLES.contains(&reference.as_str())
-                    && !KARPENTER_VARIABLES.contains(&reference.as_str())
                     && !DEPENDENCY_PICKER_VARIABLES.contains(&reference.as_str())
                 {
                     failures.push(format!("{}: references unknown ${reference}", query.id));

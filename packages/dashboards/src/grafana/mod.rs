@@ -27,7 +27,6 @@ pub mod field_override;
 pub mod infra_alloy;
 pub mod infra_autoscaling;
 pub mod infra_cloud;
-pub mod infra_karpenter;
 pub mod infra_logs;
 pub mod infra_loki;
 pub mod infra_networking;
@@ -136,11 +135,6 @@ pub const ALL: &[Renderable] = &[
         name: infra_autoscaling::NAME_STEM,
         summary: "Whether the cluster's nodes are keeping up with its pods, on any cloud",
         render: infra_autoscaling::render,
-    },
-    Renderable {
-        name: infra_karpenter::NAME_STEM,
-        summary: "How Karpenter adds, replaces and removes nodes on EKS",
-        render: infra_karpenter::render,
     },
     Renderable {
         name: env_ingress::NAME_STEM,

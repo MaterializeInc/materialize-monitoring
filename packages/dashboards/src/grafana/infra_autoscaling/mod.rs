@@ -21,8 +21,10 @@
 //! each pool, what did the autoscaler do about it, and could the cloud supply
 //! the node.
 //!
-//! Karpenter says far more about itself than the other two, and that is the
-//! Karpenter dashboard's (`infra-karpenter`).
+//! Karpenter says far more about itself than the other two. Where that answers
+//! one of those questions it is a row on the tab that asks it, and the rest is
+//! the Karpenter tab; every one of those rows renders only where Karpenter is
+//! scraped. `karpenter.rs` says how.
 //!
 //! # Node pools come from node labels
 //!
@@ -39,6 +41,7 @@
 
 pub mod cloud;
 pub mod events;
+pub mod karpenter;
 pub mod node_pools;
 pub mod overview;
 pub mod pending;
@@ -71,7 +74,8 @@ pub const MIN_MZ_VERSION: &str = "v26.24.0";
 pub const REC_MZ_VERSION: &str = "v26.24.0";
 
 /// The tabs, in order: the verdict, then capacity, then demand, then the
-/// workloads that scale themselves, then the cloud underneath, then the record.
+/// workloads that scale themselves, then the cloud underneath, then Karpenter's
+/// own account, then the record.
 fn tabs(q: &Queries) -> Vec<Tab> {
     vec![
         Tab::new(theme::OVERVIEW.title).rows(overview::rows(q)),
@@ -79,6 +83,7 @@ fn tabs(q: &Queries) -> Vec<Tab> {
         Tab::new(theme::PENDING_PODS.title).rows(pending::rows(q)),
         Tab::new(theme::WORKLOADS.title).rows(workloads::rows(q)),
         Tab::new(theme::CLOUD_CAPACITY.title).rows(cloud::rows(q)),
+        Tab::new(theme::KARPENTER.title).rows(karpenter::rows(q)),
         Tab::new(theme::EVENTS.title).rows(events::rows(q)),
     ]
 }
@@ -123,8 +128,8 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
         .description(
             "Whether the cluster's nodes are keeping up with its pods, on any cloud.\n\n\
              Pods waiting for a node, how full each node pool is, what the autoscaler \
-             did about it, and whether the cloud could supply the node. Karpenter's own \
-             view on EKS is the Karpenter dashboard.",
+             did about it, and whether the cloud could supply the node. On EKS, \
+             Karpenter's own account adds rows to each tab and a tab of its own.",
         )
         .tags([tags::INFRA, tags::MZMON])
         .folder(Folder::Infra)
@@ -231,7 +236,10 @@ mod tests {
 
     #[test]
     fn provider_rows_render_only_on_their_provider() {
-        let conditions = test_support::variable_conditioned_rows(&built());
+        let conditions: Vec<_> = test_support::variable_conditioned_rows(&built())
+            .into_iter()
+            .filter(|(_, _, value)| value != karpenter::DETECTED)
+            .collect();
         let when: Vec<_> = conditions
             .iter()
             .filter(|(_, op, _)| op == "matches")
@@ -274,9 +282,12 @@ mod tests {
     #[test]
     fn no_provider_counter_is_rated_over_the_dashboard_interval() {
         // See `infra-cloud`: `$__rate_interval` is far shorter than a pull.
+        // Karpenter's own AWS SDK counters are scraped, not pulled, so they are
+        // rated like any other.
         for expr in expressions() {
+            let pulled = expr.replace("aws_sdk_go_", "");
             for family in ["stackdriver_", "aws_", "azure_"] {
-                if expr.contains(family) {
+                if pulled.contains(family) {
                     assert!(!expr.contains("$__rate_interval"), "{expr}");
                 }
             }
@@ -287,8 +298,8 @@ mod tests {
     fn the_noisy_karpenter_reasons_stay_out_of_the_event_panels() {
         // Karpenter repeats `DisruptionBlocked` and `Unconsolidatable` for every
         // node holding a do-not-disrupt pod, which on a Materialize cluster
-        // outnumbers every other event here by thousands. The Karpenter
-        // dashboard breaks them down; here they would bury the rest.
+        // outnumbers every other event here by thousands. The Karpenter tab
+        // breaks them down; here they would bury the rest.
         let q = Queries::new(test_registry(), &DashboardScope::default());
         for id in [
             "infra.autoscaling.events.rate_by_reason",
@@ -301,5 +312,180 @@ mod tests {
             );
         }
         assert!(q.failures().is_empty(), "{:?}", q.failures());
+    }
+
+    /// Every row under one tab, as `(title, conditioned)`.
+    fn rows_of_tab(title: &str) -> Vec<(String, bool)> {
+        fn collect(value: &serde_json::Value, out: &mut Vec<(String, bool)>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    if map.get("kind").and_then(|k| k.as_str()) == Some("RowsLayoutRow") {
+                        let spec = &map["spec"];
+                        out.push((
+                            spec["title"].as_str().unwrap_or_default().to_string(),
+                            spec.get("conditionalRendering").is_some(),
+                        ));
+                    }
+                    for v in map.values() {
+                        collect(v, out);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    for v in items {
+                        collect(v, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let json = serde_json::to_value(&built().spec.layout).expect("serialize");
+        let tab = json["spec"]["tabs"]
+            .as_array()
+            .expect("tabs")
+            .iter()
+            .find(|tab| tab["spec"]["title"] == title)
+            .unwrap_or_else(|| panic!("no tab {title}"));
+        let mut out = Vec::new();
+        collect(tab, &mut out);
+        out
+    }
+
+    #[test]
+    fn karpenter_rows_render_on_karpenter_and_only_its_own_tab_has_a_fallback() {
+        let conditions = test_support::variable_conditioned_rows(&built());
+        let karpenter: Vec<_> = conditions
+            .iter()
+            .filter(|(_, _, value)| value == karpenter::DETECTED)
+            .collect();
+        let fallbacks: Vec<_> = karpenter
+            .iter()
+            .filter(|(_, op, _)| op == "notMatches")
+            .collect();
+        // The shared tabs keep answering their question without Karpenter, so a
+        // missing row needs no note. The Karpenter tab has nothing else.
+        assert_eq!(fallbacks.len(), 1, "{karpenter:?}");
+        assert!(
+            karpenter.len() > 1 + 4,
+            "a row on each shared tab and the tab's own: {karpenter:?}"
+        );
+        // Every row on the Karpenter tab is conditioned: a bare row would show
+        // empty panels on GKE and AKS beside the fallback that explains them.
+        for (title, conditioned) in rows_of_tab(theme::KARPENTER.title) {
+            assert!(conditioned, "{title} renders without Karpenter");
+        }
+    }
+
+    #[test]
+    fn karpenter_panels_sit_only_on_karpenter_rows() {
+        // A panel reading Karpenter's metrics on an unconditioned row would be
+        // empty on GKE and AKS with nothing to say why.
+        let json = serde_json::to_value(&built().spec.layout).expect("serialize");
+        let elements = serde_json::to_value(&built().spec.elements).expect("serialize");
+        // A family name starts an identifier; `%%{nodePools}` reads the node
+        // label `label_karpenter_sh_nodepool` on every cloud, which is not one.
+        fn reads_family(queries: &str, family: &str) -> bool {
+            queries.match_indices(family).any(|(i, _)| {
+                i == 0 || {
+                    let before = queries.as_bytes()[i - 1];
+                    !before.is_ascii_alphanumeric() && before != b'_'
+                }
+            })
+        }
+        let karpenter_panels: Vec<String> = elements
+            .as_object()
+            .expect("elements")
+            .iter()
+            .filter(|(_, panel)| {
+                let queries = panel["spec"]["data"].to_string();
+                reads_family(&queries, "karpenter_")
+                    || reads_family(&queries, "operator_")
+                    || queries.contains(r#"app=\"karpenter\""#)
+                    || queries.contains(r#"reportingcontroller=\"karpenter\""#)
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        assert!(!karpenter_panels.is_empty());
+
+        fn rows_holding(
+            value: &serde_json::Value,
+            conditioned: bool,
+            out: &mut Vec<(String, bool)>,
+        ) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    let conditioned = conditioned
+                        || (map.get("kind").and_then(|k| k.as_str()) == Some("RowsLayoutRow")
+                            && map["spec"].get("conditionalRendering").is_some());
+                    if map.get("kind").and_then(|k| k.as_str()) == Some("ElementReference")
+                        && let Some(name) = map["name"].as_str()
+                    {
+                        out.push((name.to_string(), conditioned));
+                    }
+                    for v in map.values() {
+                        rows_holding(v, conditioned, out);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    for v in items {
+                        rows_holding(v, conditioned, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut placed = Vec::new();
+        rows_holding(&json, false, &mut placed);
+        for name in karpenter_panels {
+            let (_, conditioned) = placed
+                .iter()
+                .find(|(placed, _)| *placed == name)
+                .unwrap_or_else(|| panic!("{name} is not placed"));
+            assert!(
+                conditioned,
+                "{name} reads Karpenter on an unconditioned row"
+            );
+        }
+    }
+
+    #[test]
+    fn the_detection_pattern_rejects_an_unset_variable() {
+        // The condition is a substring match, so the pattern must not occur in
+        // anything an unset variable can stringify to.
+        for unset in ["undefined", "", "$__all", "null", "[object Object]"] {
+            assert!(
+                !unset.contains(karpenter::DETECTED),
+                "{unset} would render the rows"
+            );
+        }
+        let discovery = serde_json::to_string(&mzmon_lib::grafana::variable::karpenter_detected())
+            .expect("serialize");
+        assert!(
+            discovery.contains(r#"up{app=\"karpenter\"}"#),
+            "{discovery}"
+        );
+    }
+
+    #[test]
+    fn karpenters_generic_families_are_scoped_to_karpenter() {
+        // `controller_runtime_*`, `workqueue_*`, `client_go_*` and
+        // `aws_sdk_go_*` are published by every controller-runtime process in
+        // the cluster, the EBS CSI driver and Load Balancer Controller among
+        // them.
+        let json = serde_json::to_string(&built().spec.elements).expect("serialize");
+        for family in [
+            "controller_runtime_",
+            "workqueue_",
+            "client_go_",
+            "aws_sdk_go_",
+        ] {
+            let selectors = test_support::selectors_of(&json, family);
+            assert!(!selectors.is_empty(), "{family} is not read at all");
+            for selector in selectors {
+                assert!(
+                    selector.contains(r#"app=\"karpenter\""#),
+                    "{family} is not scoped to Karpenter: {selector}"
+                );
+            }
+        }
     }
 }

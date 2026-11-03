@@ -938,28 +938,6 @@ pub fn balancerd_autoscaler() -> dashboardv2::VariableKind {
     .build()
 }
 
-/// Karpenter NodePools, discovered from what the controller reports about them.
-///
-/// Multi-select with an `.+` "All", which also keeps out the `nodepool=""`
-/// series Karpenter publishes for nodes it does not manage, such as an EKS
-/// managed node group's.
-pub fn karpenter_node_pools() -> dashboardv2::VariableKind {
-    QueryVariable {
-        name: variables::KARPENTER_NODE_POOL,
-        label: "NodePool",
-        description: "Which Karpenter NodePools to read",
-        expr: r#"label_values(karpenter_nodepools_usage, nodepool)"#.to_string(),
-        multi: true,
-        include_all: true,
-        all_value: Some(".+"),
-        hide: dashboardv2::VariableHide::DontHide,
-        sort: dashboardv2::VariableSort::AlphabeticalAsc,
-        skip_url_sync: false,
-        regex: String::new(),
-    }
-    .build()
-}
-
 /// Whether Karpenter's controller is scraped, which rows render on.
 ///
 /// Discovered from `up`, not from a Karpenter metric, so that a Karpenter being
@@ -1917,21 +1895,17 @@ pub fn cloud_scoped() -> Vec<dashboardv2::VariableKind> {
 
 /// Controls for the autoscaling dashboard.
 ///
-/// No namespace or node picker: autoscaling is a property of the whole cluster,
-/// and the panels that break it down do so by pool, zone or namespace in the
-/// legend. Both datasources, since what an autoscaler decided is only in its
-/// events, and the provider discovery for the Cloud Capacity rows.
+/// No namespace, node or NodePool picker: autoscaling is a property of the
+/// whole cluster, and the panels that break it down do so by pool, zone or
+/// namespace in the legend. Both datasources, since what an autoscaler decided
+/// is only in its events, the provider discovery for the Cloud Capacity rows,
+/// and the Karpenter discovery for the rows only EKS has.
 pub fn autoscaling_scoped() -> Vec<dashboardv2::VariableKind> {
-    vec![metrics_datasource(), logs_datasource(), cloud_providers()]
-}
-
-/// Controls for the Karpenter dashboard.
-pub fn karpenter_scoped() -> Vec<dashboardv2::VariableKind> {
     vec![
         metrics_datasource(),
         logs_datasource(),
+        cloud_providers(),
         karpenter_detected(),
-        karpenter_node_pools(),
     ]
 }
 

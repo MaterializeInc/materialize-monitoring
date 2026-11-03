@@ -50,6 +50,13 @@ pub const CLOUD_CAPACITY: Theme = Theme {
     shade: palette::THEME[4],
 };
 
+/// Karpenter's own account: what it replaced and removed, what held nodes in
+/// place, and the controller itself. Only EKS runs it.
+pub const KARPENTER: Theme = Theme {
+    title: "Karpenter",
+    shade: palette::THEME[6],
+};
+
 /// The autoscalers' and node lifecycle's events. Magenta, as every Events tab
 /// in this repository is.
 pub const EVENTS: Theme = Theme {
@@ -58,12 +65,13 @@ pub const EVENTS: Theme = Theme {
 };
 
 /// Every themed tab, in the order they appear.
-pub const THEMED: [Theme; 6] = [
+pub const THEMED: [Theme; 7] = [
     OVERVIEW,
     NODE_POOLS,
     PENDING_PODS,
     WORKLOADS,
     CLOUD_CAPACITY,
+    KARPENTER,
     EVENTS,
 ];
 
