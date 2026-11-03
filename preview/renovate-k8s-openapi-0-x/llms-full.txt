@@ -5572,6 +5572,32 @@ It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-consensus" >}}
 
+### Materialize Ingress (Balancer, Console) (`env-ingress`)
+
+How users reach a Materialize environment, across five tabs: Overview, Load Balancer, Balancer, Console, and SQL and HTTP API.
+Every SQL client, HTTP API call, and console session arrives through a cloud load balancer and enters balancerd, and the console's own API calls pass through the console's nginx first.
+Both forward to environmentd, which serves the SQL and HTTP APIs.
+Each tab measures one of those hops with its rate, errors, and latency, so you can tell which hop a complaint like "users can't connect" or "the console is slow" belongs to.
+
+The Overview tab's verdict row reads each hop's error ratio and latency, and whether every balancerd pod is taking new connections.
+Below it, balancerd and the console sit side by side for each signal: when both fail, look behind them at environmentd, and when one fails, look at that one.
+The Load Balancer tab shows the address Kubernetes gave each LoadBalancer Service, and what the cloud provider reports about the load balancer in front of this environment:
+target health and connection resets on AWS, health probes on Azure, and traffic on all three clouds.
+Its provider rows appear when the gateway pulls that load balancer's metrics, and otherwise the tab says how to turn the pull on;
+see [Cloud Provider Metrics](../../metrics/collecting/cloud-provider-metrics/).
+The Balancer tab adds each pod's connections against its limit and watermarks, the time spent reaching environmentd, and balancerd's warnings.
+It opens with sparkline stats for open connections, ready and unavailable pods, CPU against the pods' request, memory against their limit, and the time since the last restart, and drills into each pod's CPU, memory, and throttling further down.
+Where a HorizontalPodAutoscaler scales balancerd, an Autoscaling row shows its replicas, the metrics it scales on against their targets, the conditions that stop it, and its events.
+Without one, the tab says how balancerd's replica count is set and how to hand it to an autoscaler.
+The Console tab splits every request by what it asked for, the page itself or an API call, and carries nginx's server-error lines.
+The SQL and HTTP API tab is environmentd's side of the same traffic, including the SQL the console runs.
+
+balancerd's connection timings, its server-side error count, and every console panel need a Materialize version that publishes them.
+On older versions, those panels say so, and the SQL and HTTP API tab is unaffected.
+It needs both a metrics and a logs datasource.
+
+{{< download-dashboards name="env-ingress" >}}
+
 ## Infrastructure (`infra-*`)
 
 ### Infrastructure Node Detail (`infra-nodes`)
@@ -15312,6 +15338,54 @@ Materialize-specific configuration values.
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for the console
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect the console's request metrics (`mz_console_*`). Console pods before Materialize v26.49.0 declare no `internal-http` port and yield no target.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 []</pre>
@@ -27160,6 +27234,17 @@ For single-series sparklines, leave the default `VALUE` text mode — the panel 
 When the tiles differ by orders of magnitude, add `.min_max_per_field()`.
 Grafana scales every tile's sparkline against the largest series by default, which draws the small tiles flat at zero.
 
+### Log axes below 1
+
+Grafana labels every tick on a time series axis with one decimal count, which it guesses from the tick spacing of the
+axis's *linear* range.
+When the axis tops out at a few units or less, that guess is one or two decimals, so the 0.01 and 0.001 ticks read `0`.
+Units that rescale below 1, such as `s` (to `ms` and `µs`) and the byte units, label their small ticks correctly.
+For any other unit on a log axis, such as `cps`, `reqps`, `ops`, or `none`, set `.decimals(...)`, which stops the guess.
+`env-ingress` sets three for its per-second rates and `env-top` four for busy cores, and
+`test_support::assert_log_axes_label_ticks_below_one` holds the rule on both.
+Verified on Grafana 13.2.4.
+
 ### Timeseries legend
 
 Apply the shared timeseries legend builder to every multi-series timeseries panel:
@@ -28637,10 +28722,47 @@ It degrades rather than breaking on an older release, and not uniformly — the 
 | Events | The Kubernetes Activity row works — those events come from the kubelet and the scheduler. The Rollout and Operator Health rows are empty. |
 | Reconciliation | Empty, apart from Reconciling Replicas and Environments Needing Update, whose gauges predate the rest. |
 
+The **`env-ingress`** dashboard, Materialize Ingress (Balancer, Console), reads the console's request metrics, which
+Materialize publishes from `v26.49.0`, and balancerd's connection timings and server-side error count, which it
+publishes from `v26.50.0`.
+On versions without them, it degrades by tab:
+
+<!-- TODO: confirm both versions once they're tagged. v26.49.0-rc.1 carries MaterializeInc/materialize#40193, and #40192 merged after that rc was cut. -->
+
+| Tab | On a Materialize version without them |
+|---|---|
+| Overview | Open Connections works, and so do the balancerd rate and error panels. Their error count includes clients that hung up, and leaves out connections balancerd refused. The latency, Taking New Connections, and console panels are empty. |
+| Load Balancer | Unaffected. Its provider rows depend on the gateway pulling the load balancer's metrics, not on Materialize. |
+| Balancer | Connections, the connection limit, resources, autoscaling, and logs work. The watermarks, Taking New Connections by Pod, and Connection Timing are empty on versions that also predate balancerd's watermarks. |
+| Console | Only the logs row works. |
+| SQL and HTTP API | **Fully working.** Every panel reads environmentd. |
+
+The Balancer tab's Autoscaling row draws any HorizontalPodAutoscaler that targets balancerd's Deployment.
+For the autoscaler to keep the count it sets, the Materialize resource needs `balancerdExternallyScaled: true`, which
+Materialize supports from `v26.48.0`.
+Earlier versions reset balancerd's replica count to `balancerdReplicas`.
+
 Each dashboard also carries its floor as a `monitoring.materialize.cloud/min-mz-version` annotation, which the docsite's
 dashboard table shows.
 
-Scrapers (v0.1.1+) require `app.kubernetes.io/name` labels for environmentd introduced in `v26.24.0`.
+Scrapers (v0.1.1+) require the `app.kubernetes.io/name` label that Materialize sets on environmentd pods from `v26.24.0`.
+The balancerd and console monitors (v0.6.0+) select on the same label, which Materialize sets on those pods from the
+same version.
+
+The console monitor scrapes the console pod's `internal-http` port, which the Materialize operator declares from
+`v26.49.0`, the same version that publishes the console's metrics.
+What you see depends on which of the two you have upgraded:
+
+| Operator | Console image | What the console monitor does |
+|---|---|---|
+| Without the port | Any | Finds no target. Nothing fails, and the Console tab stays empty. |
+| With the port | Without the metrics | Scrapes a port that refuses connections, so `up` reads 0 for each console pod. |
+| With the port | With the metrics | Collects `mz_console_*`. |
+
+The operator picks the console image from the environment's Materialize version.
+Upgrading the operator before an environment therefore leaves that environment's console pods in the second row until
+you upgrade the environment too.
+To skip the failed scrapes for that window, set `materialize.console.serviceMonitor.enabled` to `false`.
 
 ## [Grafana](https://grafana.com/)
 
@@ -29571,11 +29693,6 @@ environmentd has to emit those families natively before that path can retire.
 | Native hydration and frontier / freshness signals | The Hydration and Freshness drilldowns | ⛓️ |
 | Label-family harmonization | Joins across families. Now carried by [Metric label standardization](#metric-label-standardization) | ⬜ |
 | Latency histograms for `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle, which publish only a mean | Tail latency on `env-persist` and `env-consensus` | ⬜ |
-| A latency histogram for `balancerd`, and any metrics at all from `console` | Duration panels for the two components users connect through | ⬜ |
-
-The chart scrapes `balancerd`'s connection metrics, but their `status` label can't carry an error rate until [CLO-282] lands.
-The console serves no metrics, and its nginx access log records no request time.
-Its rate and errors come from that log and from environmentd's `application_name="web_console"` series.
 
 ### Materialize-side emission
 
@@ -29583,7 +29700,6 @@ Its rate and errors come from that log and from environmentd's `application_name
 |---|---|
 | [CLO-55] Reconciliation timing, stalls, errors and successes for the k8s controllers, and an optional reconcile timeout | ⬜ |
 | [CLO-299] The controller crate logs every failed reconcile at error level, transient Kubernetes errors included | ⬜ |
-| [CLO-282] `mz_balancer_connection_status` counts a refused connection as `success` and a client's dropped connection as `error` | ⬜ |
 | [CLO-256] Reduce less-essential environmentd metrics on very large environments | ⬜ |
 | [CLO-255] Compress the metrics endpoint's responses | ⬜ |
 | [DEP-221] Move the scrapers into the `materialize-operator` chart, which should own them | ⬜ |
@@ -29804,7 +29920,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [CLO-255]: https://linear.app/materializeinc/issue/CLO-255
 [CLO-256]: https://linear.app/materializeinc/issue/CLO-256
 [CLO-266]: https://linear.app/materializeinc/issue/CLO-266
-[CLO-282]: https://linear.app/materializeinc/issue/CLO-282
 [CLO-296]: https://linear.app/materializeinc/issue/CLO-296
 [CLO-299]: https://linear.app/materializeinc/issue/CLO-299
 [DEP-111]: https://linear.app/materializeinc/issue/DEP-111
