@@ -144,7 +144,9 @@ A JSON line of 500KiB therefore still yields its level, timestamp, and fields, a
 The structured metadata budget later on this page still applies to those fields.
 
 The last-stage rules exist because Loki refuses an entry over its limits rather than shortening it, and `loki.write` doesn't retry the refusal.
-Measured on Loki 3.7.8, the version the chart deploys, with its default limits, Loki refuses the following:
+The figures in the following list come from measuring Loki 3.7.8.
+Loki 3.7.9, the version the chart deploys, has the same default limits.
+With those defaults, Loki refuses the following:
 
 - A line longer than 256KiB (262,144 bytes).
 - A label value longer than 2,048 bytes.
