@@ -353,7 +353,6 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 | [DEP-249] Trivy suppressions are per check, so they also mask our own templates | ⬜ |
 | [DEP-251] SARIF findings point at temporary render paths | ⬜ |
 | [DEP-370] Renovate bumps the `mzmon-alloy` tag and leaves its digest | ⬜ |
-| [DEP-371] Release PRs leave `Cargo.lock` stale | ⬜ |
 | [DEP-111] and [DEP-118] An ArgoCD and FluxCD CI matrix | ⬜ |
 
 ## Designs in flight
@@ -491,7 +490,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-406]: https://linear.app/materializeinc/issue/DEP-406
 [DEP-368]: https://linear.app/materializeinc/issue/DEP-368
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
-[DEP-371]: https://linear.app/materializeinc/issue/DEP-371
 [DEP-372]: https://linear.app/materializeinc/issue/DEP-372
 [DEP-373]: https://linear.app/materializeinc/issue/DEP-373
 [DEP-374]: https://linear.app/materializeinc/issue/DEP-374

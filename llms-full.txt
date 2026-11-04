@@ -29944,7 +29944,6 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 | [DEP-249] Trivy suppressions are per check, so they also mask our own templates | ⬜ |
 | [DEP-251] SARIF findings point at temporary render paths | ⬜ |
 | [DEP-370] Renovate bumps the `mzmon-alloy` tag and leaves its digest | ⬜ |
-| [DEP-371] Release PRs leave `Cargo.lock` stale | ⬜ |
 | [DEP-111] and [DEP-118] An ArgoCD and FluxCD CI matrix | ⬜ |
 
 ## Designs in flight
@@ -30082,7 +30081,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-406]: https://linear.app/materializeinc/issue/DEP-406
 [DEP-368]: https://linear.app/materializeinc/issue/DEP-368
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
-[DEP-371]: https://linear.app/materializeinc/issue/DEP-371
 [DEP-372]: https://linear.app/materializeinc/issue/DEP-372
 [DEP-373]: https://linear.app/materializeinc/issue/DEP-373
 [DEP-374]: https://linear.app/materializeinc/issue/DEP-374
@@ -30165,7 +30163,7 @@ For more information, see [Versioning](../versioning/).
 `mz-monitoring-build propose-bumps` is the command that maintains the version-update PRs. For each changelog-enabled component with changes since its last release tag, it:
 
 - recreates the `version-update/<component>` branch as a **single commit atop the base**,
-  applying that component's [`release`](../versioning/) changelog, version, chart README badge and `uv.lock` edits
+  applying that component's [`release`](../versioning/) changelog, version, chart README badge, and lockfile edits
   (the version is not in the branch name);
 - force-pushes the branch (stateless) and either opens the PR or refreshes the open one's title/body so the description tracks the new commit.
 
@@ -30324,12 +30322,14 @@ The generated output that follows a version is written by `propose-bumps` itself
 |---|---|---|
 | `Chart.yaml` | The version badge in the `README.md` beside it | `make helm-docs` |
 | `pyproject.toml` | That package's `version` in `uv.lock` | `uv lock` |
+| Workspace `Cargo.toml` | The `version` in `Cargo.lock` of each member with `version.workspace = true` | `cargo build` |
 
-Each is a single targeted line, so `propose-bumps` needs no toolchain to write it.
+Each is a single targeted line, so `propose-bumps` needs no generator to write it.
 Waiting on auto-format for it would leave every force-push of a version-update branch stale until the `style:` commit lands,
 and that commit re-runs the PR's checks.
 `every_versioned_chart_readme_has_a_rewritable_badge` in `versioning.rs` fails if a helm-docs upgrade changes the badge's format,
 so the rewrite cannot silently stop matching.
+The lint workflow runs `cargo clippy --locked`, so a version-update PR whose `Cargo.lock` disagrees with its manifests fails its checks.
 
 **Token requirement:** a label/PR event raised by the default `GITHUB_TOKEN` does **not** trigger other workflows (GitHub's loop-prevention).
 For `auto-format` to fire from `propose-bumps`, `propose-bumps` must authenticate with a **PAT or GitHub App token** (`MATERIALIZE_BOT_TOKEN`), not the default `GITHUB_TOKEN`.
@@ -30495,6 +30495,8 @@ A version-update PR populates the placeholder, promotes it to a released section
 and rewrites that component's `version_paths` to the released version.
 For more information, see [Releasing](../releasing/).
 Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
+Bumping the workspace `Cargo.toml` does the same in `Cargo.lock` for every crate that inherits the workspace version.
+That includes `mz-dashboards`, so its locked version follows `mzmon-lib` releases rather than the `dashboards` component.
 Bumping a `Chart.yaml` also rewrites the helm-docs version badge in the `README.md` beside it,
 so the PR does not wait on [auto-format](../releasing/#auto-format) for that line.
 The next version defaults to a minor bump.
