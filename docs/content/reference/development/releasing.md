@@ -68,7 +68,7 @@ For more information, see [Versioning](../versioning/).
 `mz-monitoring-build propose-bumps` is the command that maintains the version-update PRs. For each changelog-enabled component with changes since its last release tag, it:
 
 - recreates the `version-update/<component>` branch as a **single commit atop the base**,
-  applying that component's [`release`](../versioning/) changelog, version, chart README badge and `uv.lock` edits
+  applying that component's [`release`](../versioning/) changelog, version, chart README badge, and lockfile edits
   (the version is not in the branch name);
 - force-pushes the branch (stateless) and either opens the PR or refreshes the open one's title/body so the description tracks the new commit.
 
@@ -227,12 +227,14 @@ The generated output that follows a version is written by `propose-bumps` itself
 |---|---|---|
 | `Chart.yaml` | The version badge in the `README.md` beside it | `make helm-docs` |
 | `pyproject.toml` | That package's `version` in `uv.lock` | `uv lock` |
+| Workspace `Cargo.toml` | The `version` in `Cargo.lock` of each member with `version.workspace = true` | `cargo build` |
 
-Each is a single targeted line, so `propose-bumps` needs no toolchain to write it.
+Each is a single targeted line, so `propose-bumps` needs no generator to write it.
 Waiting on auto-format for it would leave every force-push of a version-update branch stale until the `style:` commit lands,
 and that commit re-runs the PR's checks.
 `every_versioned_chart_readme_has_a_rewritable_badge` in `versioning.rs` fails if a helm-docs upgrade changes the badge's format,
 so the rewrite cannot silently stop matching.
+The lint workflow runs `cargo clippy --locked`, so a version-update PR whose `Cargo.lock` disagrees with its manifests fails its checks.
 
 **Token requirement:** a label/PR event raised by the default `GITHUB_TOKEN` does **not** trigger other workflows (GitHub's loop-prevention).
 For `auto-format` to fire from `propose-bumps`, `propose-bumps` must authenticate with a **PAT or GitHub App token** (`MATERIALIZE_BOT_TOKEN`), not the default `GITHUB_TOKEN`.
