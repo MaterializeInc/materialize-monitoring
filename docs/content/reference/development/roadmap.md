@@ -358,7 +358,6 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 | [DEP-382] `security-gate` as a required check on `main` | ⬜ |
 | [DEP-249] Trivy suppressions are per check, so they also mask our own templates | ⬜ |
 | [DEP-251] SARIF findings point at temporary render paths | ⬜ |
-| [DEP-381] `tflint` in Terraform CI | ⬜ |
 | [DEP-370] Renovate bumps the `mzmon-alloy` tag and leaves its digest | ⬜ |
 | [DEP-371] Release PRs leave `Cargo.lock` stale | ⬜ |
 | [DEP-111] and [DEP-118] An ArgoCD and FluxCD CI matrix | ⬜ |
@@ -508,7 +507,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-378]: https://linear.app/materializeinc/issue/DEP-378
 [DEP-379]: https://linear.app/materializeinc/issue/DEP-379
 [DEP-380]: https://linear.app/materializeinc/issue/DEP-380
-[DEP-381]: https://linear.app/materializeinc/issue/DEP-381
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385

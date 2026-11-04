@@ -37,12 +37,6 @@ provider "helm" {
   }
 }
 
-variable "kubeconfig_path" {
-  description = "Path to a kubeconfig. Irrelevant for `terraform plan`, which is all this example is used for."
-  type        = string
-  default     = "~/.kube/config"
-}
-
 module "monitoring" {
   source = "../../"
 
@@ -70,8 +64,4 @@ module "monitoring" {
 
   object_storage_access_key_id     = "EXAMPLEACCESSKEYID"
   object_storage_secret_access_key = "EXAMPLEsecretaccesskeyEXAMPLEsecret12345"
-}
-
-output "grafana_url" {
-  value = module.monitoring.grafana_url
 }

@@ -25,6 +25,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `CONTRIBUTING.md` / `README.md` / `LICENSE`
   * `renovate.json`: automated dependency bumps
   * `.terraform-docs.yml` / `.terraform-docs.docsite.yml`: Terraform doc generation — the first injects into module READMEs, the second writes the docsite variable reference
+  * `.tflint.hcl`: `tflint` rules for every root under `terraform/` (`make terraform-lint`)
   * `.pre-commit-config.yaml`: contributor-experience hooks (see [Development](../contributing/))
   * `.gitattributes`: Git LFS for the subchart tarballs, plus `linguist-generated` on the docsite's duplicate artifacts (see [Two copies, one review](../dashboard/generating/#two-copies-one-review))
   * `bin/`: bash dev/CI entrypoints (flat; no subdirectories)
