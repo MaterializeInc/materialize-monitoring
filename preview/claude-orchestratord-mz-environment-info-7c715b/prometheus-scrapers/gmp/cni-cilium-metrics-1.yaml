@@ -1,0 +1,20 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: ClusterPodMonitoring
+metadata:
+  name: cni-cilium-metrics-1
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: cni-cilium
+spec:
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  endpoints:
+  - port: hubble-metrics
+    interval: 30s
+    path: /metrics
+    metricRelabeling:
+    - sourceLabels:
+      - __name__
+      regex: hubble_(port_distribution|tcp_flags)_total
+      action: drop
