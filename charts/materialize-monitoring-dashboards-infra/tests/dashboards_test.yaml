@@ -18,7 +18,7 @@ tests:
   - it: should ship every dashboard the default patterns select
     asserts:
       - hasDocuments:
-          count: 6
+          count: 5
       - containsDocument:
           any: true
           apiVersion: grafana.integreatly.org/v1beta1
@@ -44,11 +44,6 @@ tests:
           apiVersion: grafana.integreatly.org/v1beta1
           kind: GrafanaManifest
           name: mzmon-dashboards-infra-infra-autoscaling-dashboard
-      - containsDocument:
-          any: true
-          apiVersion: grafana.integreatly.org/v1beta1
-          kind: GrafanaManifest
-          name: mzmon-dashboards-infra-infra-karpenter-dashboard
 
   # The resource names must NOT collide with the ones the umbrella chart used to
   # create (`mzmon-<stem>-dashboard`), nor with the ones
@@ -128,12 +123,6 @@ tests:
         documentSelector:
           path: metadata.name
           value: mzmon-dashboards-infra-infra-autoscaling-dashboard
-      - equal:
-          path: spec.template.metadata.annotations["grafana.app/folder"]
-          value: mzmon-infra
-        documentSelector:
-          path: metadata.name
-          value: mzmon-dashboards-infra-infra-karpenter-dashboard
 
   # One `folderUids` map serves all three dashboards charts, so entries for the
   # other charts' folders have to be harmless here.
@@ -145,7 +134,7 @@ tests:
         meta-o11y: mzmon-meta-o11y
     asserts:
       - hasDocuments:
-          count: 6
+          count: 5
       - equal:
           path: spec.template.metadata.annotations["grafana.app/folder"]
           value: mzmon-infra

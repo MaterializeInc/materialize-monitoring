@@ -15,17 +15,32 @@
 //! `TriggeredScaleUp` or `NotTriggerScaleUp` — says whether a node is coming.
 //! The two feeds sit one above the other so a pod's name can be followed from
 //! the question to the answer.
+//!
+//! On EKS, Karpenter also says how long its answer took: how long each stage of
+//! a launch ran, and how long the pods it launched for waited to start. A
+//! launch is rare, so both are percentiles over the selected time range rather
+//! than lines that are empty but for the hour after one.
 
 use mzmon_lib::grafana::generated::dashboardv2;
+use mzmon_lib::grafana::generated::stat::BigValueTextMode;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
-use super::{overview, quiet};
+use super::karpenter;
+use super::{overview, quiet, theme};
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 
+const SHADE: &str = theme::PENDING_PODS.shade;
+
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![waiting(q), list(q), reasons(q), response(q)]
+    vec![
+        waiting(q),
+        list(q),
+        reasons(q),
+        response(q),
+        launch_times(q),
+    ]
 }
 
 fn waiting(q: &Queries) -> Row {
@@ -56,6 +71,43 @@ fn response(q: &Queries) -> Row {
             .row_height(RowHeight::Tall)
             .panel("pending-scale-up-decisions", scale_up_decisions(q)),
     )
+}
+
+fn launch_times(q: &Queries) -> Row {
+    karpenter::row("How Long Karpenter Took").grid(
+        AutoGrid::new(2)
+            .column_width(ColumnWidth::Wide)
+            .row_height(RowHeight::Short)
+            .panel("pending-karpenter-stages", launch_stages(q))
+            .panel("pending-karpenter-startup", startup(q)),
+    )
+}
+
+fn launch_stages(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::stat("Node Launch Stages (p99, Select Time Range)")
+        .query(q.legended(
+            "infra.karpenter.provisioning.stages",
+            &["Launched", "Registered", "Initialized"],
+        ))
+        .text_mode(BigValueTextMode::ValueAndName)
+        .shade(SHADE)
+        .unit("s")
+        .no_value(NoValue::Custom(
+            "Karpenter launched no nodes in this time range".to_string(),
+        ))
+        .build(0)
+}
+
+fn startup(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::stat("Time for a Pod to Start on a New Node (Select Time Range)")
+        .query(q.legended("infra.karpenter.provisioning.startup", &["p50", "p99"]))
+        .text_mode(BigValueTextMode::ValueAndName)
+        .shade(SHADE)
+        .unit("s")
+        .no_value(NoValue::Custom(
+            "No pods needed a new node in this time range".to_string(),
+        ))
+        .build(0)
 }
 
 fn pending_by_namespace(q: &Queries) -> dashboardv2::PanelKind {

@@ -4108,16 +4108,12 @@
   labels: []
   name: karpenter_build_info
   usage:
-  - infra.karpenter.health.disrupted
+  - infra.karpenter.disruption.evictions
   - infra.karpenter.health.launch_errors
   - infra.karpenter.health.version
 - importance: extended
-  labels: []
-  name: karpenter_cloudprovider_duration_seconds_bucket
-  usage:
-  - infra.karpenter.provisioning.cloud_latency
-- importance: extended
   labels:
+  - error
   - method
   name: karpenter_cloudprovider_errors_total
   usage:
@@ -4135,72 +4131,40 @@
   usage:
   - infra.karpenter.health.synced
 - importance: extended
-  labels:
-  - resource_type
-  name: karpenter_cluster_utilization_percent
-  usage:
-  - infra.karpenter.utilization
-- importance: extended
   labels: []
   name: karpenter_interruption_message_queue_duration_seconds_bucket
   usage:
   - infra.karpenter.interruption.queue_delay
 - importance: extended
   labels: []
-  name: karpenter_interruption_received_messages_total
-  usage:
-  - infra.karpenter.interruption.received
-- importance: extended
-  labels:
-  - nodepool
   name: karpenter_nodeclaims_created_total
   usage:
-  - infra.karpenter.provisioning.created
+  - infra.karpenter.nodeclaims.by_reason
 - importance: extended
-  labels:
-  - nodepool
+  labels: []
   name: karpenter_nodeclaims_disrupted_total
   usage:
-  - infra.karpenter.disruption.disrupted
-  - infra.karpenter.health.disrupted
+  - infra.karpenter.nodeclaims.by_reason
 - importance: extended
-  labels:
-  - nodepool
+  labels: []
   name: karpenter_nodepools_allowed_disruptions
   usage:
-  - infra.karpenter.disruption.budget
+  - infra.karpenter.nodepools
 - importance: extended
   labels:
-  - nodepool
   - resource_type
   name: karpenter_nodepools_limit
   usage:
-  - infra.karpenter.nodepools.cpu
-  - infra.karpenter.nodepools.memory
+  - infra.karpenter.nodepools
 - importance: extended
   labels:
-  - nodepool
   - resource_type
   name: karpenter_nodepools_usage
   usage:
-  - infra.karpenter.nodepools.cpu
-  - infra.karpenter.nodepools.memory
+  - infra.karpenter.nodepools
 - importance: extended
   labels:
-  - nodepool
-  - resource_type
-  name: karpenter_nodes_allocatable
-  usage:
-  - infra.karpenter.health.nodes
-  - infra.karpenter.nodes.by_nodepool
-- importance: extended
-  labels:
-  - nodepool
-  name: karpenter_nodes_current_lifetime_seconds
-  usage:
-  - infra.karpenter.nodes.age
-- importance: extended
-  labels: []
+  - code
   name: karpenter_nodes_eviction_requests_total
   usage:
   - infra.karpenter.disruption.evictions
@@ -4210,43 +4174,11 @@
   usage:
   - infra.karpenter.provisioning.startup
 - importance: extended
-  labels: []
-  name: karpenter_scheduler_queue_depth
-  usage:
-  - infra.karpenter.provisioning.pods_waiting
-- importance: extended
-  labels: []
-  name: karpenter_scheduler_scheduling_duration_seconds_bucket
-  usage:
-  - infra.karpenter.provisioning.scheduling_duration
-- importance: extended
   labels:
   - controller
   name: karpenter_scheduler_unschedulable_pods_count
   usage:
   - infra.karpenter.health.pods_unplaceable
-  - infra.karpenter.provisioning.pods_waiting
-- importance: extended
-  labels: []
-  name: karpenter_voluntary_disruption_consolidation_timeouts_total
-  usage:
-  - infra.karpenter.disruption.consolidation_timeouts
-- importance: extended
-  labels: []
-  name: karpenter_voluntary_disruption_decisions_total
-  usage:
-  - infra.karpenter.disruption.decisions
-- importance: extended
-  labels: []
-  name: karpenter_voluntary_disruption_eligible_nodes
-  usage:
-  - infra.karpenter.disruption.eligible
-- importance: extended
-  labels:
-  - app
-  name: leader_election_master_status
-  usage:
-  - infra.karpenter.controller.leader
 - importance: extended
   labels:
   - app_instance
@@ -4376,14 +4308,12 @@
   - materialize.persist.usage.held
 - importance: extended
   labels:
-  - karpenter_sh_nodepool
   - type
   name: operator_nodeclaim_status_condition_transition_seconds_bucket
   usage:
   - infra.karpenter.provisioning.stages
 - importance: extended
-  labels:
-  - karpenter_sh_nodepool
+  labels: []
   name: operator_nodeclaim_termination_duration_seconds_bucket
   usage:
   - infra.karpenter.disruption.termination
@@ -4397,6 +4327,7 @@
 - importance: extended
   labels:
   - kind
+  - status
   name: operator_status_condition_count
   usage:
   - infra.karpenter.conditions

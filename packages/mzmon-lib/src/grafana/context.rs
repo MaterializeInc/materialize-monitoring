@@ -155,11 +155,6 @@ pub mod variables {
     /// Matched against `container` on a metric and `component` on a log line,
     /// which are the same name, as with [`LOKI_COMPONENT`].
     pub const THANOS_COMPONENT: &str = "thanosComponent";
-    /// Which Karpenter NodePools a panel reads.
-    ///
-    /// Written literally by `infra-karpenter.yaml`, on the same precedent as
-    /// [`LOKI_NAMESPACE`], and matched against Karpenter's own `nodepool` label.
-    pub const KARPENTER_NODE_POOL: &str = "karpenterNodePool";
     /// Which CloudNativePG clusters a metadata-database panel reads, by name.
     ///
     /// Written literally by `infra-cnpg.yaml`, on the same precedent as
@@ -274,12 +269,6 @@ pub const ALLOY_VARIABLES: &[&str] = &[
 /// Written literally by `infra-thanos.yaml`, for the reason [`LOKI_VARIABLES`]
 /// gives. `thanosComponent` reaches both engines, as `lokiComponent` does.
 pub const THANOS_VARIABLES: &[&str] = &[variables::THANOS_NAMESPACE, variables::THANOS_COMPONENT];
-
-/// Variables required only by the Karpenter dashboard.
-///
-/// Written literally by `infra-karpenter.yaml`, for the reason [`LOKI_VARIABLES`]
-/// gives.
-pub const KARPENTER_VARIABLES: &[&str] = &[variables::KARPENTER_NODE_POOL];
 
 /// Variables required only by the dependency's-own-account rows of the
 /// client-side dependency dashboards.

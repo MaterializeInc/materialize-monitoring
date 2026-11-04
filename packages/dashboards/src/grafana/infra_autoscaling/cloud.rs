@@ -20,26 +20,32 @@
 //! | Node group short of its size | managed node groups | — | the autoscaler's own gauges |
 //! | Quota | vCPUs in use, account-wide | CPU and local SSD per family, with refusals | — |
 //!
-//! No provider publishes capacity refusals; those are Karpenter's and the
-//! autoscalers' to report, on the Karpenter dashboard and the Pending Pods tab.
+//! No provider publishes capacity refusals; those are the autoscalers' to
+//! report. On EKS that is Karpenter, whose row leads the tab because it needs
+//! no provider pull: what EC2 refused it, and which instance types EC2
+//! stopped offering in a zone. GKE's and AKS's autoscalers report theirs as
+//! events, on the Pending Pods tab.
 //!
-//! Rows render on `$cloudProviderList`, as on `infra-cloud`, which is discovered
-//! from the pull's `up` and cannot say *what* a provider is pulled for: its
-//! `instance` is a resource name. A provider pulled only for its database and
-//! buckets therefore renders its row here with every panel empty. Each empty
-//! state says so rather than implying nothing is pulled at all, and names the
-//! value that fills it.
+//! Provider rows render on `$cloudProviderList`, as on `infra-cloud`, which is
+//! discovered from the pull's `up` and cannot say *what* a provider is pulled
+//! for: its `instance` is a resource name. A provider pulled only for its
+//! database and buckets therefore renders its row here with every panel empty.
+//! Each empty state says so rather than implying nothing is pulled at all, and
+//! names the value that fills it. The Karpenter row renders on
+//! `$karpenterDetected` instead, and the fallback ignores it.
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 
+use super::karpenter;
 use crate::grafana::infra_cloud::{AWS, AZURE, GCP, PROVIDERS, known_providers, ratio_ladder};
 use crate::grafana::queries::Queries;
+use crate::grafana::transform;
 
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![ec2(q), gce(q), aks(q), fallback()]
+    vec![karpenter_ec2(q), ec2(q), gce(q), aks(q), fallback()]
 }
 
 /// What an EC2 panel shows when the pull lists no EKS cluster.
@@ -82,6 +88,89 @@ fn no_aks() -> NoValue {
          pipeline.metrics.provider.azure.aks.clusters."
             .to_string(),
     )
+}
+
+// --- Karpenter ---------------------------------------------------------------
+
+fn karpenter_ec2(q: &Queries) -> Row {
+    karpenter::row("EC2, as Karpenter Sees It").grid(
+        AutoGrid::new(2)
+            .column_width(ColumnWidth::Wide)
+            .panel("karpenter-ec2-errors", ec2_errors(q))
+            .panel("karpenter-offerings", offerings(q)),
+    )
+}
+
+fn ec2_errors(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::table("EC2 Errors (Select Time Range)")
+        .query(q.get("infra.karpenter.provisioning.errors").table_format())
+        .unit("short")
+        .decimals(0.0)
+        // Empty is the healthy reading, so it has to say so.
+        .no_value(NoValue::Custom(
+            "EC2 refused Karpenter nothing in this time range.".to_string(),
+        ))
+        .transformations(vec![
+            transform::organize_full(
+                &["Time"],
+                &["method", "error", "Value"],
+                &[
+                    ("method", "Operation"),
+                    ("error", "Error"),
+                    ("Value", "Errors"),
+                ],
+            ),
+            transform::sort_by("Errors", true),
+        ])
+        .build(0)
+}
+
+const ZONES_NOW: &str = "Zones Now";
+const ZONES_FEWEST: &str = "Fewest Zones";
+
+/// One row per instance type and capacity type, now beside the fewest.
+///
+/// A refusal takes a zone out for a few minutes, which a line over a week
+/// draws narrower than a pixel. The fewest over the range keeps it.
+fn offerings(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::table("Zones Offering Each Instance Type")
+        .query(
+            q.legended(
+                "infra.karpenter.provisioning.offerings",
+                &[ZONES_NOW, ZONES_FEWEST],
+            )
+            .table_format(),
+        )
+        .unit("short")
+        .decimals(0.0)
+        .no_value(NoValue::Custom(
+            "No availability data. The Terraform karpenter module keeps it only for service_monitor_instance_types."
+                .to_string(),
+        ))
+        .transformations(vec![
+            transform::merge(),
+            transform::organize_full(
+                &["Time"],
+                &[
+                    "instance_type",
+                    "capacity_type",
+                    ZONES_NOW,
+                    ZONES_FEWEST,
+                    "Value #query-0",
+                    "Value #query-1",
+                ],
+                &[
+                    ("instance_type", "Instance Type"),
+                    ("capacity_type", "Capacity"),
+                    ("Value #query-0", ZONES_NOW),
+                    ("Value #query-1", ZONES_FEWEST),
+                ],
+            ),
+        ])
+        // A type that left the scrape during the range has a fewest and no
+        // now, and the panel's own empty-state text would fill the gap.
+        .overrides(vec![karpenter::empty_when_missing(ZONES_NOW, "—")])
+        .build(0)
 }
 
 // --- EC2 ---------------------------------------------------------------------
@@ -277,7 +366,7 @@ pub(crate) const NO_PROVIDER: &str = "**No cloud provider metrics are being coll
        availability. The identity needs Monitoring Reader on the cluster and its node \
        resource group.\n\n\
      Without them, the other tabs still answer whether pods are waiting and what the \
-     autoscaler did; this one says whether the cloud was the reason.";
+     autoscaler did, and on EKS Karpenter's own row on this tab says what EC2 refused it.";
 
 fn fallback() -> Row {
     Row::new("No Provider Metrics")

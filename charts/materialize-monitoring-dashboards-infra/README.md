@@ -235,8 +235,9 @@ installs all of them. See the
 [dashboard reference](https://materializeinc.github.io/materialize-monitoring/dashboards/)
 for what each stem is.
 
-Narrowing this is the supported way to hold a dashboard back — `infra-karpenter`
-has nothing to show on a cluster without Karpenter, for instance.
+Narrowing this is the supported way to hold a dashboard back — `infra-cloud`
+shows only an explanation on an install that pulls no cloud provider metrics,
+for instance.
 To hold back every dashboard this chart carries, set `grafana.enabled: false`
 or do not install the chart; a selection that matches nothing is refused as a
 likely typo.
