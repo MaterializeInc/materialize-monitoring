@@ -142,15 +142,17 @@ queries:
         CPU or memory at its limit: the NodePool launches nothing more, and
         pods that need it wait. Raise the limit in the NodePool's `limits`.
       notes: |
-        A NodePool that sets no limit, as the Terraform examples' do not, has
-        no limit to draw. The disruption budget is per reason, and the column
-        is the fewest any reason allows; zero is a budget that allows none at
-        the moment, by design or because nodes are already being disrupted.
+        Every column but the limits and the budget is the NodePool's own
+        `status.resources`, which Karpenter publishes for every NodePool from a
+        base of zero, so a pool with no nodes reads 0 rather than going
+        missing. A NodePool that sets no limit, as the Terraform examples' do
+        not, has no limit to draw. The disruption budget is per reason, and the
+        column is the fewest any reason allows; zero is a budget that allows
+        none at the moment, by design or because nodes are already being
+        disrupted.
     promQL:
       - |
-        count by (nodepool) (
-          max by (node_name, nodepool) (karpenter_nodes_allocatable{resource_type="cpu", nodepool!=""})
-        )
+        max by (nodepool) (karpenter_nodepools_usage{resource_type="nodes"})
       - |
         max by (nodepool) (karpenter_nodepools_usage{resource_type="cpu"})
       - |
@@ -163,10 +165,7 @@ queries:
         min by (nodepool) (karpenter_nodepools_allowed_disruptions)
     datadogQuery:
       - |
-        count(
-          max:karpenter_nodes_allocatable{resource_type:cpu AND nodepool:*} by {node_name,nodepool},
-          {nodepool}
-        )
+        max:karpenter_nodepools_usage{resource_type:nodes} by {nodepool}
       - |
         max:karpenter_nodepools_usage{resource_type:cpu} by {nodepool}
       - |
@@ -327,8 +326,12 @@ queries:
             )
           )[%%{rangeWindow}:1m]
         )
-    # The query value's own aggregator takes the fewest over the dashboard's
-    # window, as the subquery does.
+    # Datadog rolls each series up in time before it sums across them, so the
+    # fewest cannot be taken after the sum inside the query. The widget's own
+    # aggregator takes it instead, over the summed series; the one-minute
+    # rollup keeps each zone's bucket at the subquery's step, so dips in two
+    # zones at different times are not added together. Over a window long
+    # enough that Datadog widens the bucket, they can be.
     datadogQuery:
       - |
         sum(
@@ -339,7 +342,7 @@ queries:
       - |
         sum(
           max:karpenter_cloudprovider_instance_type_offering_available{NOT capacity_type:reserved}
-            by {instance_type,capacity_type,zone}.rollup(min),
+            by {instance_type,capacity_type,zone}.rollup(min, 60),
           {instance_type,capacity_type}
         )
     instant: true

@@ -2068,7 +2068,32 @@
                   },
                   "noValue": "Karpenter reported no node held in place in this time range."
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Why"
+                    },
+                    "properties": [
+                      {
+                        "id": "noValue",
+                        "value": "—"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Held By"
+                    },
+                    "properties": [
+                      {
+                        "id": "noValue",
+                        "value": "—"
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "cellHeight": "sm",
@@ -2547,7 +2572,20 @@
                   "noValue": "No availability data. The Terraform karpenter module keeps it only for service_monitor_instance_types.",
                   "unit": "short"
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Zones Now"
+                    },
+                    "properties": [
+                      {
+                        "id": "noValue",
+                        "value": "—"
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "cellHeight": "sm",
@@ -5293,12 +5331,12 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "count by (nodepool) (\n  max by (node_name, nodepool) (karpenter_nodes_allocatable{resource_type=\"cpu\", nodepool!=\"\"})\n)\n",
+                        "expr": "max by (nodepool) (karpenter_nodepools_usage{resource_type=\"nodes\"})\n",
                         "format": "table",
                         "instant": true,
                         "legendFormat": "Nodes",
                         "qryType": 2,
-                        "query": "count by (nodepool) (\n  max by (node_name, nodepool) (karpenter_nodes_allocatable{resource_type=\"cpu\", nodepool!=\"\"})\n)\n"
+                        "query": "max by (nodepool) (karpenter_nodepools_usage{resource_type=\"nodes\"})\n"
                       },
                       "version": "v0"
                     },
@@ -5468,7 +5506,7 @@
               ]
             }
           },
-          "description": "**Each NodePool's nodes, the CPU and memory they provide against the NodePool's limits, and how many nodes its disruption budget allows removing right now.**\n\n**Degraded:** CPU or memory at its limit: the NodePool launches nothing more, and pods that need it wait. Raise the limit in the NodePool's `limits`.\n\nA NodePool that sets no limit, as the Terraform examples' do not, has no limit to draw. The disruption budget is per reason, and the column is the fewest any reason allows; zero is a budget that allows none at the moment, by design or because nodes are already being disrupted.",
+          "description": "**Each NodePool's nodes, the CPU and memory they provide against the NodePool's limits, and how many nodes its disruption budget allows removing right now.**\n\n**Degraded:** CPU or memory at its limit: the NodePool launches nothing more, and pods that need it wait. Raise the limit in the NodePool's `limits`.\n\nEvery column but the limits and the budget is the NodePool's own `status.resources`, which Karpenter publishes for every NodePool from a base of zero, so a pool with no nodes reads 0 rather than going missing. A NodePool that sets no limit, as the Terraform examples' do not, has no limit to draw. The disruption budget is per reason, and the column is the fewest any reason allows; zero is a budget that allows none at the moment, by design or because nodes are already being disrupted.",
           "id": 1022,
           "links": [],
           "title": "NodePools",
@@ -5540,6 +5578,18 @@
                       {
                         "id": "noValue",
                         "value": "No limit"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Disruptions Allowed"
+                    },
+                    "properties": [
+                      {
+                        "id": "noValue",
+                        "value": "—"
                       }
                     ]
                   }

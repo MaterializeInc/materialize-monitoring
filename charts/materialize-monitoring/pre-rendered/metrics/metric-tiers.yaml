@@ -559,7 +559,6 @@ extended:
 - karpenter_nodepools_allowed_disruptions
 - karpenter_nodepools_limit
 - karpenter_nodepools_usage
-- karpenter_nodes_allocatable
 - karpenter_nodes_eviction_requests_total
 - karpenter_pods_provisioning_startup_duration_seconds_bucket
 - karpenter_scheduler_unschedulable_pods_count

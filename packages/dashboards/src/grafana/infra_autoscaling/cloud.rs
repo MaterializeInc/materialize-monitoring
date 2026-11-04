@@ -167,6 +167,9 @@ fn offerings(q: &Queries) -> dashboardv2::PanelKind {
                 ],
             ),
         ])
+        // A type that left the scrape during the range has a fewest and no
+        // now, and the panel's own empty-state text would fill the gap.
+        .overrides(vec![karpenter::empty_when_missing(ZONES_NOW, "—")])
         .build(0)
 }
 

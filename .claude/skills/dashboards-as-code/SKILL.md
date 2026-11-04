@@ -63,6 +63,17 @@ Frequently needed deep links into the Style Guidelines:
 - [PromQL recipes](../../../docs/content/reference/development/dashboard/style-guidelines.md#promql-recipes)
 - [Shared constants and helpers](../../../docs/content/reference/development/dashboard/style-guidelines.md#shared-constants-and-helpers)
 
+> [!WARNING]
+> **A table's `noValue` fills every empty cell, not only an empty panel.**
+> Grafana treats a missing value and an empty string alike, so the panel's "nothing here" sentence lands beside rows
+> that have data.
+> It bites wherever a cell can be blank: a joined query with no series for a row's key, a label some series lack, a
+> Loki `regexp` capture that matched nothing, or a column that's sparse by design.
+> Before you finish a table that sets one, which `test_support::assert_every_panel_has_no_value` requires on the
+> dashboards that call it, check each column for a way to be empty, and fix the query or give the column its own
+> override.
+> See [`noValue` fills empty cells](../../../docs/content/reference/development/dashboard/style-guidelines.md#novalue-fills-empty-cells-not-just-empty-panels).
+
 And into Generating:
 
 - [PUT body shape](../../../docs/content/reference/development/dashboard/generating.md#put-body-shape) — required

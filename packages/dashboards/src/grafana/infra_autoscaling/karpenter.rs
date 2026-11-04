@@ -167,7 +167,10 @@ fn nodeclaims(q: &Queries) -> dashboardv2::PanelKind {
         ])
         // A reason with nodes created and none disrupted leaves a gap, which the
         // panel's own empty-state text would otherwise fill.
-        .overrides(vec![zero_when_empty(CREATED), zero_when_empty(DISRUPTED)])
+        .overrides(vec![
+            empty_when_missing(CREATED, "0"),
+            empty_when_missing(DISRUPTED, "0"),
+        ])
         .build(0)
 }
 
@@ -191,12 +194,25 @@ fn held(q: &Queries) -> dashboardv2::PanelKind {
             ),
             transform::sort_by("Node", false),
         ])
+        // Only a pod or PodDisruptionBudget holds a node by name; a NodePool's
+        // consolidation policy has no holder, and an unrecognised message no
+        // reason. Loki extracts an empty string for each, which the panel's own
+        // empty-state text would otherwise fill.
+        .overrides(vec![
+            empty_when_missing("Why", "—"),
+            empty_when_missing("Held By", "—"),
+        ])
         .build(0)
 }
 
-fn zero_when_empty(field: &str) -> dashboardv2::FieldConfigSourceOverridesItem {
+/// What one column shows in an empty cell, instead of the panel's empty-state
+/// text, which Grafana applies to every empty cell as well as to an empty panel.
+pub(crate) fn empty_when_missing(
+    field: &str,
+    text: &str,
+) -> dashboardv2::FieldConfigSourceOverridesItem {
     field_override::by_name(field)
-        .property("noValue", serde_json::Value::String("0".to_string()))
+        .property("noValue", serde_json::Value::String(text.to_string()))
         .build()
 }
 

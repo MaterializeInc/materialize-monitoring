@@ -4164,13 +4164,6 @@
   - infra.karpenter.nodepools
 - importance: extended
   labels:
-  - nodepool
-  - resource_type
-  name: karpenter_nodes_allocatable
-  usage:
-  - infra.karpenter.nodepools
-- importance: extended
-  labels:
   - code
   name: karpenter_nodes_eviction_requests_total
   usage:

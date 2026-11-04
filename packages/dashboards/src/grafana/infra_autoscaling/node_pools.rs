@@ -234,14 +234,15 @@ fn nodepools(q: &Queries) -> dashboardv2::PanelKind {
                 ],
             ),
         ])
-        // Mixed units in one table, and a NodePool without a limit leaves its
-        // limit cells empty, which the panel's own empty-state text would
-        // otherwise fill.
+        // Mixed units in one table. A NodePool without a limit leaves its limit
+        // cells empty, and the budget comes from another controller than the
+        // rest; the panel's own empty-state text would fill either gap.
         .overrides(vec![
             column(CPU, "cores", None),
             column(CPU_LIMIT, "cores", Some("No limit")),
             column(MEMORY, "bytes", None),
             column(MEMORY_LIMIT, "bytes", Some("No limit")),
+            karpenter::empty_when_missing(DISRUPTIONS, "—"),
         ])
         .build(0)
 }
