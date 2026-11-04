@@ -571,7 +571,7 @@ They don't render on a cluster without Karpenter, where the Karpenter tab explai
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-merge-karpenter-autoscaling-dashboard-41efdc/dashboards/grafana/infra-autoscaling.json?xxhash=66a5df491dbca963" download="mz-mon-infra-autoscaling.json"><code>infra-autoscaling.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-merge-karpenter-autoscaling-dashboard-41efdc/dashboards/grafana/infra-autoscaling.json?xxhash=6632a552d5ea6200" download="mz-mon-infra-autoscaling.json"><code>infra-autoscaling.json</code></a>
         <br /><small>UID <code>mz-mon-infra-autoscaling</code></small>
       </td>
       <td>

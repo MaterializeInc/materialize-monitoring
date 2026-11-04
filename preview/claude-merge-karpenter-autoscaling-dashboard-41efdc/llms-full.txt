@@ -27288,6 +27288,7 @@ self-explanatory reason. Reach for the closest existing `NoValue` variant rather
 - `NoValue::Custom(...)` — anything panel-specific, where empty is not an error ("Hydration Queue is empty").
 
 This way a blank panel tells the operator *why* it is blank.
+On a table, the same text also fills every empty cell; see [`noValue` fills empty cells](#novalue-fills-empty-cells-not-just-empty-panels).
 
 ### Color-mode default
 
@@ -28186,21 +28187,36 @@ Mixed units in one table cannot be a panel default; give each column its own
 
 ### `noValue` fills empty *cells*, not just empty panels
 
-Grafana applies `noValue` per field, so on a table whose columns are legitimately
-sparse it lands in every gap rather than standing in for a panel with no data.
-On `infra-nodes` that put "kube-state-metrics is required" into the majority of
-the limit cells — a collection-failure message for pods that simply set no limit,
-and long enough to overflow the column.
+Grafana applies `noValue` per field, so on a table it lands in every empty cell, not only in place of a panel with no
+rows.
+A cell holding an empty string counts as empty too; Grafana 13.2.4 renders both the same way.
+The panel's sentence then sits beside a row that plainly has data, saying the opposite.
 
-Leave it unset on any table that joins several queries.
-Blank is the honest rendering of "this row has none", and a genuinely empty panel
-still falls back to Grafana's own "No data".
-A single-query table is unaffected only when every series carries every label it shows.
-Then its columns come from one result, a row exists in full or not at all, and `noValue` only fires when the whole
-panel is empty, which is what it is for.
-A label some series lack is a sparse column all the same: `ThanosCompactHasNotRun` carries no `pod`, so on
-`infra-thanos`'s alert table the cell beside it read "No Thanos alert is firing or pending" next to a firing alert.
-Keep the panel's `noValue` and override it on the sparse columns with a dash.
+A cell can be empty in any of the following ways:
+
+- **A column that's legitimately sparse.**
+  On `infra-nodes`, "kube-state-metrics is required" filled most of the limit cells, for pods that set no limit.
+- **A joined query with no series for a row's key.**
+  `count by (nodepool)` over node series returns nothing for a NodePool with no nodes, so the Nodes cell of that
+  pool's row would read "Karpenter has not reported this yet".
+- **A label some series lack.**
+  `ThanosCompactHasNotRun` carries no `pod`, so on `infra-thanos`'s alert table the cell beside it read "No Thanos
+  alert is firing or pending" next to a firing alert.
+- **A label whose value is empty.**
+  A Loki `regexp` capture that matches nothing extracts an empty string, so a node held by its NodePool's
+  consolidation policy, which names no pod, would read "Karpenter reported no node held in place" in its Held By
+  cell.
+
+First, fix the query where the gap is an artifact of it.
+Read a count from a series every key publishes, as NodePools reads `karpenter_nodepools_usage{resource_type="nodes"}`,
+or add an `or 0 * …` arm keyed the same way.
+
+Then keep the panel's `noValue` for an empty panel, and override `noValue` on every column that can still be empty.
+Use `0` where blank means none, words where it means something specific, such as "No limit", and `—` where it means
+unknown.
+Dashboards that hold every panel to `test_support::assert_every_panel_has_no_value` need the panel-level text anyway.
+On one that doesn't, leaving a joined table's `noValue` unset is the alternative: blank cells, and Grafana's own "No
+data" for an empty panel.
 
 ## Shade single-series panels, never graphs with several lines
 
