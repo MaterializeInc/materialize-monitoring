@@ -239,6 +239,7 @@ self-explanatory reason. Reach for the closest existing `NoValue` variant rather
 - `NoValue::Custom(...)` — anything panel-specific, where empty is not an error ("Hydration Queue is empty").
 
 This way a blank panel tells the operator *why* it is blank.
+On a table, the same text also fills every empty cell; see [`noValue` fills empty cells](#novalue-fills-empty-cells-not-just-empty-panels).
 
 ### Color-mode default
 
@@ -763,7 +764,15 @@ Things that have surprised us during development; worth knowing before touching 
   same way on a ServiceMonitor that does not honor labels.
 - **`karpenter_cloudprovider_instance_type_offering_available` is 0 for about half its series at rest**: every
   instance type not sold in a zone, and every reserved-capacity offering. A capacity refusal is a drop over time, which
-  is why `infra-karpenter` draws the zones offering each type rather than a table of zeros.
+  is why `infra-autoscaling` sums the zones offering each type, now and at their fewest over the selected range,
+  rather than tabulating every offering.
+- **`karpenter_interruption_received_messages_total` counts every message in the queue, whoever owns the instance.**
+  The queue receives every EC2 event in the account and region, and the counter's `message_type` is the event's kind,
+  not whether Karpenter acted on it. On the shared AWS test account it read 706 `instance_terminated` in a week in which
+  Karpenter replaced 8 nodes. The interruptions Karpenter acts on are its `interrupted` disruptions.
+- **A NodePool's `NodeRegistrationHealthy` is `Unknown` until its first node joins after the pool last changed.** A
+  pool that rarely launches, such as the Terraform examples' Materialize pool, sits there for weeks, so a "not True"
+  filter on Karpenter's conditions shows a healthy pool. Filter on `status="False"`.
 - **`RegisteredNode` does not mean a node joined.** The node controller emits it for every node whenever it starts,
   which on a managed control plane happens without notice. Count joins from `kube_node_info` instead.
 
@@ -883,7 +892,7 @@ Two things worth keeping if this pattern spreads:
 ## Rendering a row on a discovered variable
 
 **New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows,
-`infra-autoscaling`'s Cloud Capacity tab, every row of `infra-karpenter`, and `infra-net`'s Cloud Networking rows.**
+`infra-autoscaling`'s Cloud Capacity tab and Karpenter rows, and `infra-net`'s Cloud Networking rows.**
 `Row::only_when_variable` and `Row::only_unless_variable` own it, beside the time-range pair.
 
 A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
@@ -896,8 +905,8 @@ cannot be told apart at render time.
 A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
 once.
 
-Six rules, the first four learned from `infra-net`, the fifth from its first shipped bug, and the sixth from
-`infra-karpenter`:
+Six rules, the first four learned from `infra-net`, the fifth from its first shipped bug, and the sixth from the
+Karpenter rows:
 
 - **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
   every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
@@ -909,6 +918,8 @@ Six rules, the first four learned from `infra-net`, the fifth from its first shi
   broken one. One row carries `only_unless_variable` over the alternation of every pattern its siblings match, so
   exactly one thing is always on screen. Derive the alternation from the same constants the sibling rows use, or a
   vendor added later renders its panels *and* a note saying nothing was detected.
+  A row that adds to a tab whose other rows still answer its question needs no fallback, because the tab is never
+  empty: `infra-autoscaling`'s Karpenter rows on its shared tabs have none, and its Karpenter tab has one.
 - **The fallback's job is the reason, not the absence.** "Nothing detected" leaves the reader hunting for a scrape to
   fix. It has to say which case applies, because the most common one is not a fault — GKE Dataplane V2 disables the
   Cilium agent's Prometheus endpoint, and no amount of configuration here changes that.
@@ -922,8 +933,8 @@ Six rules, the first four learned from `infra-net`, the fifth from its first shi
   query reads has no use for a custom value in the first place.
 - **Match what the detection returns, never `.+`.** A single-value variable whose query found nothing can reach a row
   condition as the word `undefined`, which `.+` matches, so the rows render on a cluster without the thing they need
-  and the fallback hides. `infra-karpenter` matches the literal `karpenter` that `up{app="karpenter"}` discovers, and a
-  test asserts that no string an unset variable stringifies to contains it.
+  and the fallback hides. `infra-autoscaling`'s Karpenter rows match the literal `karpenter` that
+  `up{app="karpenter"}` discovers, and a test asserts that no string an unset variable stringifies to contains it.
 
 The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
 for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
@@ -1076,6 +1087,24 @@ panel title says so.
 Ask which of the two a table is before choosing: *what is true now* takes
 `instant`, *what was true anywhere in this window* takes the collapse.
 
+## Read a rare event over the range, not as a rate
+
+A counter that moves a few times a day draws as a flat zero with a spike a few pixels wide.
+A histogram read over a trailing window is empty except for the window after each event.
+Over a week, Grafana's step can be wider than the spike, so the panel can show nothing even when something happened.
+
+Read such a family over the picker's window instead, as an `instant: true` query over `%%{range}`.
+Take an `increase` for a count, and `histogram_quantile` over the `increase` of the buckets for a percentile.
+Wrap the percentile in `>= 0`, which drops the `NaN` an empty histogram returns, so the panel shows its empty state.
+For a gauge that dips only during an event, put its current value beside its `min_over_time` over the range.
+Title the panel "(Select Time Range)", and leave *when* to an event feed, which says it better than a spike does.
+
+`infra-autoscaling`'s Karpenter rows are the reference.
+Over a week on the AWS test install, every Karpenter rate panel read zero apart from two drift events of a few minutes
+each.
+Read over the week instead, the eviction counter says in one number that a PodDisruptionBudget refused 8 evictions
+during one of them.
+
 ## Several queries in one table need `table_format`
 
 A Table panel fed by more than one query renders **one column of values**, not one
@@ -1109,21 +1138,36 @@ Mixed units in one table cannot be a panel default; give each column its own
 
 ### `noValue` fills empty *cells*, not just empty panels
 
-Grafana applies `noValue` per field, so on a table whose columns are legitimately
-sparse it lands in every gap rather than standing in for a panel with no data.
-On `infra-nodes` that put "kube-state-metrics is required" into the majority of
-the limit cells — a collection-failure message for pods that simply set no limit,
-and long enough to overflow the column.
+Grafana applies `noValue` per field, so on a table it lands in every empty cell, not only in place of a panel with no
+rows.
+A cell holding an empty string counts as empty too; Grafana 13.2.4 renders both the same way.
+The panel's sentence then sits beside a row that plainly has data, saying the opposite.
 
-Leave it unset on any table that joins several queries.
-Blank is the honest rendering of "this row has none", and a genuinely empty panel
-still falls back to Grafana's own "No data".
-A single-query table is unaffected only when every series carries every label it shows.
-Then its columns come from one result, a row exists in full or not at all, and `noValue` only fires when the whole
-panel is empty, which is what it is for.
-A label some series lack is a sparse column all the same: `ThanosCompactHasNotRun` carries no `pod`, so on
-`infra-thanos`'s alert table the cell beside it read "No Thanos alert is firing or pending" next to a firing alert.
-Keep the panel's `noValue` and override it on the sparse columns with a dash.
+A cell can be empty in any of the following ways:
+
+- **A column that's legitimately sparse.**
+  On `infra-nodes`, "kube-state-metrics is required" filled most of the limit cells, for pods that set no limit.
+- **A joined query with no series for a row's key.**
+  `count by (nodepool)` over node series returns nothing for a NodePool with no nodes, so the Nodes cell of that
+  pool's row would read "Karpenter has not reported this yet".
+- **A label some series lack.**
+  `ThanosCompactHasNotRun` carries no `pod`, so on `infra-thanos`'s alert table the cell beside it read "No Thanos
+  alert is firing or pending" next to a firing alert.
+- **A label whose value is empty.**
+  A Loki `regexp` capture that matches nothing extracts an empty string, so a node held by its NodePool's
+  consolidation policy, which names no pod, would read "Karpenter reported no node held in place" in its Held By
+  cell.
+
+First, fix the query where the gap is an artifact of it.
+Read a count from a series every key publishes, as NodePools reads `karpenter_nodepools_usage{resource_type="nodes"}`,
+or add an `or 0 * …` arm keyed the same way.
+
+Then keep the panel's `noValue` for an empty panel, and override `noValue` on every column that can still be empty.
+Use `0` where blank means none, words where it means something specific, such as "No limit", and `—` where it means
+unknown.
+Dashboards that hold every panel to `test_support::assert_every_panel_has_no_value` need the panel-level text anyway.
+On one that doesn't, leaving a joined table's `noValue` unset is the alternative: blank cells, and Grafana's own "No
+data" for an empty panel.
 
 ## Shade single-series panels, never graphs with several lines
 
