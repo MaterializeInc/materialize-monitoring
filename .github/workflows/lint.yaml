@@ -99,8 +99,13 @@ jobs:
       # -D warnings is a policy gate (CI/pre-push only); we don't want
       # local `cargo build` to fail on every WIP warning, so it stays on
       # the invocation rather than going into [workspace.lints.rust].
+      #
+      # --locked fails a PR whose Cargo.lock disagrees with its manifests,
+      # rather than letting cargo rewrite it here and leaving the fix to
+      # whichever PR next builds locally. This is the job that holds it
+      # because it also runs on version-update PRs, which `cargo test` skips.
       - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   shell:
     name: shell (shellcheck + shfmt)

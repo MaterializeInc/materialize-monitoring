@@ -15,8 +15,9 @@
 //! - `release` — generates a `version-update/<component>` PR's changelog: it
 //!   promotes that component's `_Changes Pending_` placeholder in place into a
 //!   released section populated with its changes, inserts a fresh placeholder
-//!   at the top, and bumps the component's `version_paths` (and the helm-docs
-//!   version badge in a bumped chart's README).
+//!   at the top, and bumps the component's `version_paths` (with the helm-docs
+//!   version badge in a bumped chart's README, and the lockfile entries that
+//!   record a bumped version).
 //!
 //! Merged PRs in a commit range are attributed to a component by longest-prefix
 //! match against `content_paths` (minus `content_exclude`). Attribution works
@@ -869,9 +870,105 @@ fn pyproject_name(text: &str) -> Option<String> {
     })
 }
 
-/// Bump the `version` of a `[[package]]` in a `uv.lock`, matched by package
-/// name, returning the old version and the new contents. The version line is
-/// the first `version = "..."` after the matching `name = "..."` line.
+/// Whether a crate manifest takes its `[package].version` from the workspace,
+/// as `version.workspace = true` or `version = { workspace = true }`.
+fn inherits_workspace_version(manifest: &str) -> bool {
+    let mut in_package = false;
+    for line in manifest.lines() {
+        let code = line.split('#').next().unwrap_or_default().trim();
+        if code.starts_with('[') {
+            in_package = code == "[package]";
+            continue;
+        }
+        let compact: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+        if in_package
+            && (compact == "version.workspace=true" || compact == "version={workspace=true}")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// The workspace members of `workspace_manifest` that inherit
+/// `[workspace.package].version`, by package name. These are the `Cargo.lock`
+/// entries that move when a release bumps the workspace version.
+///
+/// Membership comes from `cargo metadata`, which resolves `members` globs and
+/// `exclude`. `--no-deps` keeps it to the manifests, so it neither resolves nor
+/// writes the lockfile.
+fn workspace_version_inheritors(workspace_manifest: &Path) -> anyhow::Result<Vec<String>> {
+    #[derive(Deserialize)]
+    struct Metadata {
+        packages: Vec<MetadataPackage>,
+    }
+    #[derive(Deserialize)]
+    struct MetadataPackage {
+        name: String,
+        manifest_path: PathBuf,
+    }
+
+    // `CARGO` is set when this runs under `cargo run` or `cargo test`.
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let out = Command::new(cargo)
+        .args([
+            "metadata",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--manifest-path",
+        ])
+        .arg(workspace_manifest)
+        .output()
+        .context("running cargo metadata")?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "cargo metadata failed for {}: {}",
+            workspace_manifest.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    let meta: Metadata =
+        serde_json::from_slice(&out.stdout).context("parsing cargo metadata output")?;
+
+    let mut names = Vec::new();
+    for pkg in meta.packages {
+        let manifest = std::fs::read_to_string(&pkg.manifest_path)
+            .with_context(|| format!("reading {}", pkg.manifest_path.display()))?;
+        if inherits_workspace_version(&manifest) {
+            names.push(pkg.name);
+        }
+    }
+    Ok(names)
+}
+
+/// Bump each of `packages` to `new` in the lockfile at `path`, recording each
+/// edit in `summary`. Returns the rewritten lockfile, or `None` when there is
+/// nothing to bump or no lockfile.
+fn bump_lockfile(
+    path: &Path,
+    packages: &[String],
+    new: &str,
+    summary: &mut Vec<String>,
+) -> anyhow::Result<Option<(PathBuf, String)>> {
+    if packages.is_empty() || !path.exists() {
+        return Ok(None);
+    }
+    let mut lock =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    for name in packages {
+        let (old, updated) = rewrite_lock_version(&lock, name, new)
+            .with_context(|| format!("in {}", path.display()))?;
+        summary.push(format!("{} [{name}: {old} -> {new}]", path.display()));
+        lock = updated;
+    }
+    Ok(Some((path.to_path_buf(), lock)))
+}
+
+/// Bump the `version` of a `[[package]]` in a `uv.lock` or `Cargo.lock`,
+/// matched by package name, returning the old version and the new contents. The
+/// version line is the first `version = "..."` after the matching
+/// `name = "..."` line.
 fn rewrite_lock_version(lock: &str, package: &str, new: &str) -> anyhow::Result<(String, String)> {
     let needle = format!("name = \"{package}\"");
     let mut in_target = false;
@@ -958,14 +1055,14 @@ pub fn changelog(args: ChangelogArgs) -> anyhow::Result<()> {
 }
 
 /// The complete set of file changes for releasing one component: the rewritten
-/// changelog plus its version-file (and uv.lock) bumps.
+/// changelog plus its version-file (and lockfile) bumps.
 pub(crate) struct ReleasePlan {
     pub(crate) released: SemVer,
     pub(crate) changelog_path: PathBuf,
     pub(crate) changelog_content: String,
     /// Just the released component's section (heading + body), for PR bodies.
     pub(crate) section: String,
-    /// Version-file / chart README / uv.lock edits as (path, new content).
+    /// Version-file / chart README / lockfile edits as (path, new content).
     pub(crate) version_files: Vec<(PathBuf, String)>,
     /// Human-readable per-edit lines for dry-run output.
     pub(crate) summary: Vec<String>,
@@ -1029,13 +1126,16 @@ pub(crate) fn plan_release(
         &format!("## {} {}", comps[target].title, released.changelog()),
     );
 
-    // Version-file edits bump only the released component. Bumping a pyproject
-    // also bumps that package's entry in uv.lock, so the lockfile does not drift
-    // out of date behind the version files. Bumping a Chart.yaml also bumps the
+    // Version-file edits bump only the released component. Each version file
+    // that a lockfile records is matched by a lockfile edit, so the PR passes a
+    // `--locked` build as committed: a pyproject bumps its package in uv.lock,
+    // and a workspace Cargo.toml bumps every member inheriting the workspace
+    // version in the Cargo.lock beside it. Bumping a Chart.yaml also bumps the
     // version badge in the README helm-docs renders beside it.
     let mut version_files: Vec<(PathBuf, String)> = Vec::new();
     let mut summary: Vec<String> = Vec::new();
     let mut lock_packages: Vec<String> = Vec::new();
+    let mut cargo_locks: Vec<(PathBuf, Vec<String>)> = Vec::new();
     for vp in &comps[target].version_paths {
         let path = PathBuf::from(vp);
         let (old, content) = rewrite_version(&path, &released_plain)?;
@@ -1044,6 +1144,14 @@ pub(crate) fn plan_release(
             && let Some(name) = pyproject_name(&content)
         {
             lock_packages.push(name);
+        }
+        if file_name == Some("Cargo.toml")
+            && content.lines().any(|l| l.trim() == "[workspace.package]")
+        {
+            cargo_locks.push((
+                path.with_file_name("Cargo.lock"),
+                workspace_version_inheritors(&path)?,
+            ));
         }
         let readme = if file_name == Some("Chart.yaml") {
             rewrite_chart_readme(&path, &old, &released_plain)?
@@ -1061,19 +1169,14 @@ pub(crate) fn plan_release(
         }
     }
 
-    if !lock_packages.is_empty() && uv_lock_path.exists() {
-        let mut lock = std::fs::read_to_string(uv_lock_path)
-            .with_context(|| format!("reading {}", uv_lock_path.display()))?;
-        for name in &lock_packages {
-            let (old, updated) = rewrite_lock_version(&lock, name, &released_plain)
-                .with_context(|| format!("in {}", uv_lock_path.display()))?;
-            summary.push(format!(
-                "{} [{name}: {old} -> {released_plain}]",
-                uv_lock_path.display()
-            ));
-            lock = updated;
+    if let Some(lock) = bump_lockfile(uv_lock_path, &lock_packages, &released_plain, &mut summary)?
+    {
+        version_files.push(lock);
+    }
+    for (path, packages) in &cargo_locks {
+        if let Some(lock) = bump_lockfile(path, packages, &released_plain, &mut summary)? {
+            version_files.push(lock);
         }
-        version_files.push((uv_lock_path.to_path_buf(), lock));
     }
 
     Ok(Some(ReleasePlan {
@@ -2003,5 +2106,57 @@ mod tests {
 
         // Unknown package -> error.
         assert!(rewrite_lock_version(lock, "missing", "1.0.0").is_err());
+    }
+
+    #[test]
+    fn rewrite_lock_version_bumps_a_cargo_lock_member_not_its_dependents() {
+        let lock = "[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\n \"sample-crate\",\n]\n\n[[package]]\nname = \"sample-crate\"\nversion = \"0.6.0\"\n";
+        let (old, new) = rewrite_lock_version(lock, "sample-crate", "0.7.0").unwrap();
+        assert_eq!(old, "0.6.0");
+        assert!(new.contains("name = \"sample-crate\"\nversion = \"0.7.0\""));
+        assert!(new.contains("name = \"app\"\nversion = \"0.1.0\"")); // untouched
+    }
+
+    // ---- workspace version inheritance -----------------------------------
+
+    #[test]
+    fn inherits_workspace_version_variants() {
+        for manifest in [
+            "[package]\nname = \"c\"\nversion.workspace = true\n",
+            "[package]\nname = \"c\"\nversion = { workspace = true }\n",
+            "[package]\nname = \"c\"\nversion.workspace = true # from the root\n",
+        ] {
+            assert!(inherits_workspace_version(manifest), "{manifest:?}");
+        }
+        for manifest in [
+            "[package]\nname = \"c\"\nversion = \"0.1.0\"\n",
+            // Inheriting something else is not inheriting the version.
+            "[package]\nname = \"c\"\nversion = \"0.1.0\"\nedition.workspace = true\n",
+            // Only `[package]` counts, not a dependency's table.
+            "[package]\nname = \"c\"\nversion = \"0.1.0\"\n\n[dependencies.d]\nversion.workspace = true\n",
+            "[package]\nname = \"c\"\n# version.workspace = true\nversion = \"0.1.0\"\n",
+        ] {
+            assert!(!inherits_workspace_version(manifest), "{manifest:?}");
+        }
+    }
+
+    /// The mzmon-lib release bumps the root `Cargo.toml`, and the members that
+    /// inherit its version have to be found and present in `Cargo.lock`, or the
+    /// release PR's lockfile disagrees with its manifests.
+    #[test]
+    fn workspace_version_inheritors_are_all_in_cargo_lock() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let inheritors = workspace_version_inheritors(&root.join("Cargo.toml")).unwrap();
+        assert!(
+            inheritors.iter().any(|n| n == "mz-dashboards"),
+            "mz-dashboards inherits the workspace version, found only {inheritors:?}"
+        );
+        // mzmon-lib pins its own version.
+        assert!(!inheritors.iter().any(|n| n == "mzmon-lib"));
+
+        let lock = std::fs::read_to_string(root.join("Cargo.lock")).unwrap();
+        for name in &inheritors {
+            rewrite_lock_version(&lock, name, "99.0.0").unwrap();
+        }
     }
 }
