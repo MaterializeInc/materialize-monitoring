@@ -3286,8 +3286,9 @@ asked for: EC2 status checks and node-group sizes, Compute Engine quota,
 and on AKS the managed autoscaler&rsquo;s own gauges. It is opt-in, and its rows
 render only where a provider is pulled.</li>
 </ul>
-<p>Karpenter&rsquo;s own metrics, which say far more on EKS, are the Karpenter
-dashboard&rsquo;s (<code>infra-karpenter.yaml</code>).</p>
+<p>Karpenter&rsquo;s own metrics, which say far more on EKS, are in
+<code>infra-karpenter.yaml</code>; the same dashboard reads them on rows that render
+only where Karpenter is scraped.</p>
 <h2 id="node-pools">Node pools<a class="anchor" href="#node-pools">#</a></h2>
 <p><code>%%{nodePools}</code> gives every node its pool, instance type and zone, from
 <code>kube_node_labels</code>. The pool is whichever label the node&rsquo;s provisioner
@@ -6534,7 +6535,9 @@ WAL segments that failed to archive, per second.
 ## infra-karpenter
 
 <p>Karpenter&rsquo;s own account of provisioning and disruption, from the metrics its
-controller publishes and the events it records.</p>
+controller publishes and the events it records. Infrastructure Autoscaling
+reads these on its Karpenter rows and its Karpenter tab, beside the
+cloud-agnostic queries in <code>infra-autoscaling.yaml</code>.</p>
 <p>Karpenter adds nodes on EKS in the self-managed Terraform: it watches for
 pods the scheduler cannot place, launches an EC2 instance that fits them,
 and later removes or replaces nodes that are empty, underused, drifted from
@@ -6556,9 +6559,13 @@ scoped by <code>app=&quot;karpenter&quot;</code>, which the gateway sets from th
 <code>operator_*_status_condition_count</code> families are gauges, not the counts of a
 histogram.</p>
 <h2 id="rare-events">Rare events<a class="anchor" href="#rare-events">#</a></h2>
-<p>NodeClaims are created and removed a few times a day, so their duration
-histograms are read over an hour rather than <code>$__rate_interval</code>, which would
-leave the panel mostly empty.</p>
+<p>Karpenter launches and removes nodes a few times a day at most, and between
+those its counters and histograms stand still. So what it did is read over
+the selected time range, as a count or a percentile, rather than as a rate
+that is zero but for a spike. When it happened is in the events, which
+<code>infra-autoscaling.yaml</code> reads. Percentiles are wrapped in <code>&gt;= 0</code>, which
+drops the <code>NaN</code> a histogram with nothing in it returns, so the panel shows
+its empty state instead.</p>
 
 <h4 id="infra.karpenter.health.nodepools_not_ready">infra.karpenter.health.nodepools_not_ready
   <a class="anchor" href="#infra.karpenter.health.nodepools_not_ready">#</a>
@@ -6583,31 +6590,6 @@ NodePools that are not Ready.
 </span></span><span style="display:flex;"><span>  count_nonzero<span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>operator_nodepool_status_condition_count{<span style="color:#960050;background-color:#1e0010">type:ready</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">status:true</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">name</span>}
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.health.nodes">infra.karpenter.health.nodes
-  <a class="anchor" href="#infra.karpenter.health.nodes">#</a>
-</h4>
-Nodes Karpenter manages, in the selected NodePools.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.health.nodes-tabs" id="infra.karpenter.health.nodes-tab-0" checked>
-  <label for="infra.karpenter.health.nodes-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodes_allocatable{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, nodepool<span style="color:#f92672">!=</span>&#34;&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.health.nodes-tabs" id="infra.karpenter.health.nodes-tab-1">
-  <label for="infra.karpenter.health.nodes-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>count_not_null<span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodes_allocatable{<span style="color:#960050;background-color:#1e0010">resource_type:cpu</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">nodepool:*</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>}
-</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">node_name</span>}
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -6654,28 +6636,6 @@ Instance launches EC2 refused in the selected time range.
 </span></span></code></pre></div>
   </div>
 </div>
-<h4 id="infra.karpenter.health.disrupted">infra.karpenter.health.disrupted
-  <a class="anchor" href="#infra.karpenter.health.disrupted">#</a>
-</h4>
-NodeClaims Karpenter removed or replaced in the selected time range, in
-the selected NodePools.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.health.disrupted-tabs" id="infra.karpenter.health.disrupted-tab-0" checked>
-  <label for="infra.karpenter.health.disrupted-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_nodeclaims_disrupted_total{nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>karpenter_build_info<span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.health.disrupted-tabs" id="infra.karpenter.health.disrupted-tab-1">
-  <label for="infra.karpenter.health.disrupted-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>default_zero<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodeclaims_disrupted_total{<span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">())</span>
-</span></span></code></pre></div>
-  </div>
-</div>
 <h4 id="infra.karpenter.health.synced">infra.karpenter.health.synced
   <a class="anchor" href="#infra.karpenter.health.synced">#</a>
 </h4>
@@ -6717,119 +6677,70 @@ The Karpenter version running.
 </span></span></code></pre></div>
   </div>
 </div>
-<h4 id="infra.karpenter.nodes.by_nodepool">infra.karpenter.nodes.by_nodepool
-  <a class="anchor" href="#infra.karpenter.nodes.by_nodepool">#</a>
+<h4 id="infra.karpenter.nodepools">infra.karpenter.nodepools
+  <a class="anchor" href="#infra.karpenter.nodepools">#</a>
 </h4>
-Karpenter&rsquo;s nodes in each NodePool over time.
+Each NodePool&rsquo;s nodes, the CPU and memory they provide against the
+NodePool&rsquo;s limits, and how many nodes its disruption budget allows
+removing right now.
 <div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.nodes.by_nodepool-tabs" id="infra.karpenter.nodes.by_nodepool-tab-0" checked>
-  <label for="infra.karpenter.nodes.by_nodepool-tab-0">PromQL</label>
+  <input type="radio" class="toggle" name="infra.karpenter.nodepools-tabs" id="infra.karpenter.nodepools-tab-0" checked>
+  <label for="infra.karpenter.nodepools-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_name, nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodes_allocatable{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, nodepool<span style="color:#f92672">!=</span>&#34;&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.nodes.by_nodepool-tabs" id="infra.karpenter.nodes.by_nodepool-tab-1">
-  <label for="infra.karpenter.nodes.by_nodepool-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodes_allocatable{<span style="color:#960050;background-color:#1e0010">resource_type:cpu</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">nodepool:*</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>}
-</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">node_name</span>,<span style="color:#960050;background-color:#1e0010">nodepool</span>},
-</span></span><span style="display:flex;"><span>  {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.nodepools.cpu">infra.karpenter.nodepools.cpu
-  <a class="anchor" href="#infra.karpenter.nodepools.cpu">#</a>
-</h4>
-CPU each NodePool&rsquo;s nodes provide, against the limit the NodePool sets.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.nodepools.cpu-tabs" id="infra.karpenter.nodepools.cpu-tab-0" checked>
-  <label for="infra.karpenter.nodepools.cpu-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_usage{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_usage{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">nodes</span>&#34;}<span style="color:#f92672">)</span>
 </span></span></code></pre></div>
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_limit{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.nodepools.cpu-tabs" id="infra.karpenter.nodepools.cpu-tab-1">
-  <label for="infra.karpenter.nodepools.cpu-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_usage{<span style="color:#960050;background-color:#1e0010">resource_type:cpu</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
-</span></span></code></pre></div>
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_limit{<span style="color:#960050;background-color:#1e0010">resource_type:cpu</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.nodepools.memory">infra.karpenter.nodepools.memory
-  <a class="anchor" href="#infra.karpenter.nodepools.memory">#</a>
-</h4>
-Memory each NodePool&rsquo;s nodes provide, against the limit the NodePool
-sets.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.nodepools.memory-tabs" id="infra.karpenter.nodepools.memory-tab-0" checked>
-  <label for="infra.karpenter.nodepools.memory-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_usage{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_usage{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;}<span style="color:#f92672">)</span>
 </span></span></code></pre></div>
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_limit{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_limit{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;}<span style="color:#f92672">)</span>
 </span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.nodepools.memory-tabs" id="infra.karpenter.nodepools.memory-tab-1">
-  <label for="infra.karpenter.nodepools.memory-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_usage{<span style="color:#960050;background-color:#1e0010">resource_type:memory</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
-</span></span></code></pre></div>
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_limit{<span style="color:#960050;background-color:#1e0010">resource_type:memory</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.utilization">infra.karpenter.utilization
-  <a class="anchor" href="#infra.karpenter.utilization">#</a>
-</h4>
-The share of Karpenter&rsquo;s nodes&rsquo; allocatable CPU, memory and pod slots
-that pods have requested.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.utilization-tabs" id="infra.karpenter.utilization-tab-0" checked>
-  <label for="infra.karpenter.utilization-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resource_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_cluster_utilization_percent{resource_type<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cpu|memory|pods</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">100</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_usage{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_limit{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_allowed_disruptions<span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
-  <input type="radio" class="toggle" name="infra.karpenter.utilization-tabs" id="infra.karpenter.utilization-tab-1">
-  <label for="infra.karpenter.utilization-tab-1">Datadog</label>
+  <input type="radio" class="toggle" name="infra.karpenter.nodepools-tabs" id="infra.karpenter.nodepools-tab-1">
+  <label for="infra.karpenter.nodepools-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_cluster_utilization_percent{<span style="color:#960050;background-color:#1e0010">resource_type</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(cpu</span>,<span style="color:#960050;background-color:#1e0010">memory</span>,<span style="color:#960050;background-color:#1e0010">pods)</span>}
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">resource_type</span>} <span style="color:#f92672">/</span> <span style="color:#ae81ff">100</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_usage{<span style="color:#960050;background-color:#1e0010">resource_type:nodes</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_usage{<span style="color:#960050;background-color:#1e0010">resource_type:cpu</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_limit{<span style="color:#960050;background-color:#1e0010">resource_type:cpu</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_usage{<span style="color:#960050;background-color:#1e0010">resource_type:memory</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_limit{<span style="color:#960050;background-color:#1e0010">resource_type:memory</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_allowed_disruptions{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>}
 </span></span></code></pre></div>
   </div>
 </div>
 <h4 id="infra.karpenter.conditions">infra.karpenter.conditions
   <a class="anchor" href="#infra.karpenter.conditions">#</a>
 </h4>
-Every condition on each NodePool and EC2NodeClass, and its current
-status.
+Every NodePool and EC2NodeClass condition that is False, and its
+reason.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.karpenter.conditions-tabs" id="infra.karpenter.conditions-tab-0" checked>
   <label for="infra.karpenter.conditions-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>kind, name, type, status, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  operator_status_condition_count{kind<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">NodePool|EC2NodeClass</span>&#34;}
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>kind, name, type, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  operator_status_condition_count{kind<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">NodePool|EC2NodeClass</span>&#34;, status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">False</span>&#34;}
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span>
 </span></span></code></pre></div>
   </div>
@@ -6838,63 +6749,112 @@ status.
   <div class="book-tabs-content markdown-inner">
             
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>cutoff_min<span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>operator_status_condition_count{<span style="color:#960050;background-color:#1e0010">kind</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(nodepool</span>,<span style="color:#960050;background-color:#1e0010">ec2nodeclass)</span>}
-</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">kind</span>,<span style="color:#960050;background-color:#1e0010">name</span>,<span style="color:#960050;background-color:#1e0010">type</span>,<span style="color:#960050;background-color:#1e0010">status</span>,<span style="color:#960050;background-color:#1e0010">reason</span>},
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>operator_status_condition_count{<span style="color:#960050;background-color:#1e0010">kind</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(nodepool</span>,<span style="color:#960050;background-color:#1e0010">ec2nodeclass)</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">status:false</span>}
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">kind</span>,<span style="color:#960050;background-color:#1e0010">name</span>,<span style="color:#960050;background-color:#1e0010">type</span>,<span style="color:#960050;background-color:#1e0010">reason</span>},
 </span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>
-<h4 id="infra.karpenter.provisioning.created">infra.karpenter.provisioning.created
-  <a class="anchor" href="#infra.karpenter.provisioning.created">#</a>
+<h4 id="infra.karpenter.provisioning.stages">infra.karpenter.provisioning.stages
+  <a class="anchor" href="#infra.karpenter.provisioning.stages">#</a>
 </h4>
-NodeClaims created per hour, by NodePool and reason.
+How long NodeClaims took to reach each stage of launching, at the 99th
+percentile over the selected time range.
 <div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.created-tabs" id="infra.karpenter.provisioning.created-tab-0" checked>
-  <label for="infra.karpenter.provisioning.created-tab-0">PromQL</label>
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.stages-tabs" id="infra.karpenter.provisioning.stages-tab-0" checked>
+  <label for="infra.karpenter.provisioning.stages-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_nodeclaims_created_total{nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>operator_nodeclaim_status_condition_transition_seconds_bucket{type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Launched</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>operator_nodeclaim_status_condition_transition_seconds_bucket{type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Registered</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>operator_nodeclaim_status_condition_transition_seconds_bucket{type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Initialized</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
   </div>
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.created-tabs" id="infra.karpenter.provisioning.created-tab-1">
-  <label for="infra.karpenter.provisioning.created-tab-1">Datadog</label>
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.stages-tabs" id="infra.karpenter.provisioning.stages-tab-1">
+  <label for="infra.karpenter.provisioning.stages-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodeclaims_created_total{<span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>}
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>,<span style="color:#960050;background-color:#1e0010">reason</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>operator_nodeclaim_status_condition_transition_seconds{<span style="color:#960050;background-color:#1e0010">type:launched</span>}
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>operator_nodeclaim_status_condition_transition_seconds{<span style="color:#960050;background-color:#1e0010">type:registered</span>}
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>operator_nodeclaim_status_condition_transition_seconds{<span style="color:#960050;background-color:#1e0010">type:initialized</span>}
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.provisioning.startup">infra.karpenter.provisioning.startup
+  <a class="anchor" href="#infra.karpenter.provisioning.startup">#</a>
+</h4>
+How long pods that needed a new node took to start running, from when
+the scheduler gave up on existing nodes, over the selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.startup-tabs" id="infra.karpenter.provisioning.startup-tab-0" checked>
+  <label for="infra.karpenter.provisioning.startup-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.5</span>, <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_pods_provisioning_startup_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>, <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_pods_provisioning_startup_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.startup-tabs" id="infra.karpenter.provisioning.startup-tab-1">
+  <label for="infra.karpenter.provisioning.startup-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p50<span style="color:#960050;background-color:#1e0010">:</span>karpenter_pods_provisioning_startup_duration_seconds{<span style="color:#960050;background-color:#1e0010">*</span>}
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>karpenter_pods_provisioning_startup_duration_seconds{<span style="color:#960050;background-color:#1e0010">*</span>}
 </span></span></code></pre></div>
   </div>
 </div>
 <h4 id="infra.karpenter.provisioning.errors">infra.karpenter.provisioning.errors
   <a class="anchor" href="#infra.karpenter.provisioning.errors">#</a>
 </h4>
-Errors from EC2 per hour, by error type and operation.
+Errors from EC2 in the selected time range, by operation and error
+type.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.karpenter.provisioning.errors-tabs" id="infra.karpenter.provisioning.errors-tab-0" checked>
   <label for="infra.karpenter.provisioning.errors-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>error, method<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_cloudprovider_errors_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>method, error<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_cloudprovider_errors_total{error<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">NodeClaimNotFoundError</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
   </div>
   <input type="radio" class="toggle" name="infra.karpenter.provisioning.errors-tabs" id="infra.karpenter.provisioning.errors-tab-1">
   <label for="infra.karpenter.provisioning.errors-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_cloudprovider_errors_total{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">error</span>,<span style="color:#960050;background-color:#1e0010">method</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>cutoff_min<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_cloudprovider_errors_total{<span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">error:nodeclaimnotfounderror</span>}
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">method</span>,<span style="color:#960050;background-color:#1e0010">error</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">()</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">e</span><span style="color:#ae81ff">-9</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>
 <h4 id="infra.karpenter.provisioning.offerings">infra.karpenter.provisioning.offerings
   <a class="anchor" href="#infra.karpenter.provisioning.offerings">#</a>
 </h4>
-Zones where each of the node pools&rsquo; instance types can be launched, by
-capacity type.
+Zones where each of the node pools&rsquo; instance types can be launched,
+by capacity type: now, and the fewest at any point in the selected
+time range.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.karpenter.provisioning.offerings-tabs" id="infra.karpenter.provisioning.offerings-tab-0" checked>
   <label for="infra.karpenter.provisioning.offerings-tab-0">PromQL</label>
@@ -6902,6 +6862,15 @@ capacity type.
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance_type, capacity_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance_type, capacity_type, zone<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_cloudprovider_instance_type_offering_available{capacity_type<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">reserved</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance_type, capacity_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance_type, capacity_type, zone<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_cloudprovider_instance_type_offering_available{capacity_type<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">reserved</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>[<span style="color:#960050;background-color:#1e0010">${rangeWindow}:</span><span style="color:#e6db74">1m</span>]
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -6915,224 +6884,48 @@ capacity type.
 </span></span><span style="display:flex;"><span>  {<span style="color:#960050;background-color:#1e0010">instance_type</span>,<span style="color:#960050;background-color:#1e0010">capacity_type</span>}
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.provisioning.pods_waiting">infra.karpenter.provisioning.pods_waiting
-  <a class="anchor" href="#infra.karpenter.provisioning.pods_waiting">#</a>
-</h4>
-Pods waiting for Karpenter: the ones it cannot place, and the queue for
-its next scheduling pass.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.pods_waiting-tabs" id="infra.karpenter.provisioning.pods_waiting-tab-0" checked>
-  <label for="infra.karpenter.provisioning.pods_waiting-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>karpenter_scheduler_unschedulable_pods_count{controller<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">provisioner</span>&#34;}<span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>controller<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_scheduler_queue_depth<span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.pods_waiting-tabs" id="infra.karpenter.provisioning.pods_waiting-tab-1">
-  <label for="infra.karpenter.provisioning.pods_waiting-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_scheduler_unschedulable_pods_count{<span style="color:#960050;background-color:#1e0010">controller:provisioner</span>}
-</span></span></code></pre></div>
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_scheduler_queue_depth{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">controller</span>}
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.provisioning.startup">infra.karpenter.provisioning.startup
-  <a class="anchor" href="#infra.karpenter.provisioning.startup">#</a>
-</h4>
-How long pods that needed a new node took to start running, from when
-the scheduler gave up on existing nodes.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.startup-tabs" id="infra.karpenter.provisioning.startup-tab-0" checked>
-  <label for="infra.karpenter.provisioning.startup-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.5</span>, <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_pods_provisioning_startup_duration_seconds_bucket[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)))</span>
-</span></span></code></pre></div>
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>, <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_pods_provisioning_startup_duration_seconds_bucket[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)))</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.startup-tabs" id="infra.karpenter.provisioning.startup-tab-1">
-  <label for="infra.karpenter.provisioning.startup-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p50<span style="color:#960050;background-color:#1e0010">:</span>karpenter_pods_provisioning_startup_duration_seconds{<span style="color:#960050;background-color:#1e0010">*</span>}<span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#ae81ff">3600</span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>karpenter_pods_provisioning_startup_duration_seconds{<span style="color:#960050;background-color:#1e0010">*</span>}<span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#ae81ff">3600</span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.provisioning.stages">infra.karpenter.provisioning.stages
-  <a class="anchor" href="#infra.karpenter.provisioning.stages">#</a>
-</h4>
-How long NodeClaims took to reach each stage of launching, at the 99th
-percentile over the last hour.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.stages-tabs" id="infra.karpenter.provisioning.stages-tab-0" checked>
-  <label for="infra.karpenter.provisioning.stages-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>type, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>operator_nodeclaim_status_condition_transition_seconds_bucket{type<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Launched|Registered|Initialized</span>&#34;, karpenter_sh_nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_cloudprovider_instance_type_offering_available{<span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">capacity_type:reserved</span>}
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">instance_type</span>,<span style="color:#960050;background-color:#1e0010">capacity_type</span>,<span style="color:#960050;background-color:#1e0010">zone</span>}<span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">min</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>  {<span style="color:#960050;background-color:#1e0010">instance_type</span>,<span style="color:#960050;background-color:#1e0010">capacity_type</span>}
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.stages-tabs" id="infra.karpenter.provisioning.stages-tab-1">
-  <label for="infra.karpenter.provisioning.stages-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>operator_nodeclaim_status_condition_transition_seconds{<span style="color:#960050;background-color:#1e0010">type</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(launched</span>,<span style="color:#960050;background-color:#1e0010">registered</span>,<span style="color:#960050;background-color:#1e0010">initialized)</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">karpenter_sh_nodepool:$karpenterNodePool.value</span>}
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">type</span>}<span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#ae81ff">3600</span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
 </div>
-<h4 id="infra.karpenter.provisioning.scheduling_duration">infra.karpenter.provisioning.scheduling_duration
-  <a class="anchor" href="#infra.karpenter.provisioning.scheduling_duration">#</a>
+<h4 id="infra.karpenter.nodeclaims.by_reason">infra.karpenter.nodeclaims.by_reason
+  <a class="anchor" href="#infra.karpenter.nodeclaims.by_reason">#</a>
 </h4>
-How long each of Karpenter&rsquo;s scheduling passes takes, at the 99th percentile.
+NodeClaims created and disrupted in the selected time range, by
+NodePool and reason.
 <div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.scheduling_duration-tabs" id="infra.karpenter.provisioning.scheduling_duration-tab-0" checked>
-  <label for="infra.karpenter.provisioning.scheduling_duration-tab-0">PromQL</label>
+  <input type="radio" class="toggle" name="infra.karpenter.nodeclaims.by_reason-tabs" id="infra.karpenter.nodeclaims.by_reason-tab-0" checked>
+  <label for="infra.karpenter.nodeclaims.by_reason-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>controller, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_scheduler_scheduling_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_nodeclaims_created_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.scheduling_duration-tabs" id="infra.karpenter.provisioning.scheduling_duration-tab-1">
-  <label for="infra.karpenter.provisioning.scheduling_duration-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>karpenter_scheduler_scheduling_duration_seconds{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">controller</span>}
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.provisioning.cloud_latency">infra.karpenter.provisioning.cloud_latency
-  <a class="anchor" href="#infra.karpenter.provisioning.cloud_latency">#</a>
-</h4>
-How long Karpenter&rsquo;s calls to AWS take, by operation, at the 99th percentile.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.cloud_latency-tabs" id="infra.karpenter.provisioning.cloud_latency-tab-0" checked>
-  <label for="infra.karpenter.provisioning.cloud_latency-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>method, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_cloudprovider_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_nodeclaims_disrupted_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
   </div>
-  <input type="radio" class="toggle" name="infra.karpenter.provisioning.cloud_latency-tabs" id="infra.karpenter.provisioning.cloud_latency-tab-1">
-  <label for="infra.karpenter.provisioning.cloud_latency-tab-1">Datadog</label>
+  <input type="radio" class="toggle" name="infra.karpenter.nodeclaims.by_reason-tabs" id="infra.karpenter.nodeclaims.by_reason-tab-1">
+  <label for="infra.karpenter.nodeclaims.by_reason-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>karpenter_cloudprovider_duration_seconds{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">method</span>}
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>cutoff_min<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodeclaims_created_total{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>,<span style="color:#960050;background-color:#1e0010">reason</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">()</span>, <span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">e</span><span style="color:#ae81ff">-9</span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.disruption.disrupted">infra.karpenter.disruption.disrupted
-  <a class="anchor" href="#infra.karpenter.disruption.disrupted">#</a>
-</h4>
-NodeClaims removed or replaced per hour, by NodePool and reason.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.disrupted-tabs" id="infra.karpenter.disruption.disrupted-tab-0" checked>
-  <label for="infra.karpenter.disruption.disrupted-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_nodeclaims_disrupted_total{nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.disrupted-tabs" id="infra.karpenter.disruption.disrupted-tab-1">
-  <label for="infra.karpenter.disruption.disrupted-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodeclaims_disrupted_total{<span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>}
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>,<span style="color:#960050;background-color:#1e0010">reason</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.disruption.decisions">infra.karpenter.disruption.decisions
-  <a class="anchor" href="#infra.karpenter.disruption.decisions">#</a>
-</h4>
-Disruptions Karpenter decided on per hour, by reason and action.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.decisions-tabs" id="infra.karpenter.disruption.decisions-tab-0" checked>
-  <label for="infra.karpenter.disruption.decisions-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>reason, decision<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_voluntary_disruption_decisions_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.decisions-tabs" id="infra.karpenter.disruption.decisions-tab-1">
-  <label for="infra.karpenter.disruption.decisions-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_voluntary_disruption_decisions_total{<span style="color:#960050;background-color:#1e0010">*</span>}
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">reason</span>,<span style="color:#960050;background-color:#1e0010">decision</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.disruption.eligible">infra.karpenter.disruption.eligible
-  <a class="anchor" href="#infra.karpenter.disruption.eligible">#</a>
-</h4>
-Nodes Karpenter considers candidates for disruption, by reason.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.eligible-tabs" id="infra.karpenter.disruption.eligible-tab-0" checked>
-  <label for="infra.karpenter.disruption.eligible-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_voluntary_disruption_eligible_nodes<span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.eligible-tabs" id="infra.karpenter.disruption.eligible-tab-1">
-  <label for="infra.karpenter.disruption.eligible-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_voluntary_disruption_eligible_nodes{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">reason</span>}
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.disruption.budget">infra.karpenter.disruption.budget
-  <a class="anchor" href="#infra.karpenter.disruption.budget">#</a>
-</h4>
-Nodes each NodePool&rsquo;s disruption budget allows removing right now, by
-reason.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.budget-tabs" id="infra.karpenter.disruption.budget-tab-0" checked>
-  <label for="infra.karpenter.disruption.budget-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_allowed_disruptions{nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.budget-tabs" id="infra.karpenter.disruption.budget-tab-1">
-  <label for="infra.karpenter.disruption.budget-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodepools_allowed_disruptions{<span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>,<span style="color:#960050;background-color:#1e0010">reason</span>}
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>cutoff_min<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodeclaims_disrupted_total{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">nodepool</span>,<span style="color:#960050;background-color:#1e0010">reason</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">()</span>, <span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">e</span><span style="color:#ae81ff">-9</span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>
 <h4 id="infra.karpenter.disruption.blocked">infra.karpenter.disruption.blocked
   <a class="anchor" href="#infra.karpenter.disruption.blocked">#</a>
 </h4>
-Why Karpenter is leaving nodes in place, from its <code>DisruptionBlocked</code>
-and <code>Unconsolidatable</code> events per five minutes.
+What kept each node in place in the selected time range, from
+Karpenter&rsquo;s <code>DisruptionBlocked</code> and <code>Unconsolidatable</code> events: the
+reason, and the pod or PodDisruptionBudget responsible.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.karpenter.disruption.blocked-tabs" id="infra.karpenter.disruption.blocked-tab-0" checked>
   <label for="infra.karpenter.disruption.blocked-tab-0">PromQL</label>
@@ -7141,35 +6934,32 @@ and <code>Unconsolidatable</code> events per five minutes.
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
   </div>
 </div>
-<h4 id="infra.karpenter.disruption.blocked_stream">infra.karpenter.disruption.blocked_stream
-  <a class="anchor" href="#infra.karpenter.disruption.blocked_stream">#</a>
-</h4>
-Karpenter&rsquo;s blocked-disruption events, newest first.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.blocked_stream-tabs" id="infra.karpenter.disruption.blocked_stream-tab-0" checked>
-  <label for="infra.karpenter.disruption.blocked_stream-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
-  </div>
-</div>
 <h4 id="infra.karpenter.disruption.evictions">infra.karpenter.disruption.evictions
   <a class="anchor" href="#infra.karpenter.disruption.evictions">#</a>
 </h4>
-Pod evictions Karpenter requested per minute, by response.
+Pod evictions Karpenter requested in the selected time range: those
+allowed, and those a PodDisruptionBudget refused.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.karpenter.disruption.evictions-tabs" id="infra.karpenter.disruption.evictions-tab-0" checked>
   <label for="infra.karpenter.disruption.evictions-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_nodes_eviction_requests_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_nodes_eviction_requests_total{code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">2..</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>karpenter_build_info<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_nodes_eviction_requests_total{code<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">429</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>karpenter_build_info<span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
   <input type="radio" class="toggle" name="infra.karpenter.disruption.evictions-tabs" id="infra.karpenter.disruption.evictions-tab-1">
   <label for="infra.karpenter.disruption.evictions-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodes_eviction_requests_total{<span style="color:#960050;background-color:#1e0010">*</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">code</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>default_zero<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodes_eviction_requests_total{<span style="color:#960050;background-color:#1e0010">code:2*</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">())</span>
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>default_zero<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodes_eviction_requests_total{<span style="color:#960050;background-color:#1e0010">code:429</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">())</span>
 </span></span></code></pre></div>
   </div>
 </div>
@@ -7177,92 +6967,22 @@ Pod evictions Karpenter requested per minute, by response.
   <a class="anchor" href="#infra.karpenter.disruption.termination">#</a>
 </h4>
 How long NodeClaims took to terminate, from the decision to the
-instance gone, at the 99th percentile over the last hour.
+instance gone, at the 99th percentile over the selected time range.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.karpenter.disruption.termination-tabs" id="infra.karpenter.disruption.termination-tab-0" checked>
   <label for="infra.karpenter.disruption.termination-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>operator_nodeclaim_termination_duration_seconds_bucket{karpenter_sh_nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">))</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>operator_nodeclaim_termination_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
   </div>
   <input type="radio" class="toggle" name="infra.karpenter.disruption.termination-tabs" id="infra.karpenter.disruption.termination-tab-1">
   <label for="infra.karpenter.disruption.termination-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>operator_nodeclaim_termination_duration_seconds{<span style="color:#960050;background-color:#1e0010">karpenter_sh_nodepool:$karpenterNodePool.value</span>}<span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#ae81ff">3600</span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.disruption.consolidation_timeouts">infra.karpenter.disruption.consolidation_timeouts
-  <a class="anchor" href="#infra.karpenter.disruption.consolidation_timeouts">#</a>
-</h4>
-Consolidation searches that ran out of time, per hour.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.consolidation_timeouts-tabs" id="infra.karpenter.disruption.consolidation_timeouts-tab-0" checked>
-  <label for="infra.karpenter.disruption.consolidation_timeouts-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>consolidation_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_voluntary_disruption_consolidation_timeouts_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.disruption.consolidation_timeouts-tabs" id="infra.karpenter.disruption.consolidation_timeouts-tab-1">
-  <label for="infra.karpenter.disruption.consolidation_timeouts-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_voluntary_disruption_consolidation_timeouts_total{<span style="color:#960050;background-color:#1e0010">*</span>}
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">consolidation_type</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.nodes.age">infra.karpenter.nodes.age
-  <a class="anchor" href="#infra.karpenter.nodes.age">#</a>
-</h4>
-Each of Karpenter&rsquo;s nodes, with its NodePool, instance type, zone and
-age.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.nodes.age-tabs" id="infra.karpenter.nodes.age-tab-0" checked>
-  <label for="infra.karpenter.nodes.age-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_name, nodepool, instance_type, zone<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  karpenter_nodes_current_lifetime_seconds{nodepool<span style="color:#f92672">!=</span>&#34;&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.nodes.age-tabs" id="infra.karpenter.nodes.age-tab-1">
-  <label for="infra.karpenter.nodes.age-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_nodes_current_lifetime_seconds{<span style="color:#960050;background-color:#1e0010">nodepool:*</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$karpenterNodePool</span>}
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">node_name</span>,<span style="color:#960050;background-color:#1e0010">nodepool</span>,<span style="color:#960050;background-color:#1e0010">instance_type</span>,<span style="color:#960050;background-color:#1e0010">zone</span>}
-</span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.interruption.received">infra.karpenter.interruption.received
-  <a class="anchor" href="#infra.karpenter.interruption.received">#</a>
-</h4>
-Notices Karpenter read from its interruption queue per hour, by type.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.interruption.received-tabs" id="infra.karpenter.interruption.received-tab-0" checked>
-  <label for="infra.karpenter.interruption.received-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>message_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_interruption_received_messages_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.interruption.received-tabs" id="infra.karpenter.interruption.received-tab-1">
-  <label for="infra.karpenter.interruption.received-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>karpenter_interruption_received_messages_total{<span style="color:#960050;background-color:#1e0010">*</span>}
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">message_type</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>operator_nodeclaim_termination_duration_seconds{<span style="color:#960050;background-color:#1e0010">*</span>}
 </span></span></code></pre></div>
   </div>
 </div>
@@ -7270,22 +6990,22 @@ Notices Karpenter read from its interruption queue per hour, by type.
   <a class="anchor" href="#infra.karpenter.interruption.queue_delay">#</a>
 </h4>
 How long notices waited in the interruption queue before Karpenter read
-them, at the 99th percentile over the last hour.
+them, at the 99th percentile over the selected time range.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.karpenter.interruption.queue_delay-tabs" id="infra.karpenter.interruption.queue_delay-tab-0" checked>
   <label for="infra.karpenter.interruption.queue_delay-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_interruption_message_queue_duration_seconds_bucket[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">))</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_interruption_message_queue_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
   </div>
   <input type="radio" class="toggle" name="infra.karpenter.interruption.queue_delay-tabs" id="infra.karpenter.interruption.queue_delay-tab-1">
   <label for="infra.karpenter.interruption.queue_delay-tab-1">Datadog</label>
   <div class="book-tabs-content markdown-inner">
             
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>karpenter_interruption_message_queue_duration_seconds{<span style="color:#960050;background-color:#1e0010">*</span>}<span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#ae81ff">3600</span><span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>p99<span style="color:#960050;background-color:#1e0010">:</span>karpenter_interruption_message_queue_duration_seconds{<span style="color:#960050;background-color:#1e0010">*</span>}
 </span></span></code></pre></div>
   </div>
 </div>
@@ -7387,26 +7107,6 @@ Kubernetes API calls that did not succeed per minute, by method and status.
 </span></span></code></pre></div>
   </div>
 </div>
-<h4 id="infra.karpenter.controller.leader">infra.karpenter.controller.leader
-  <a class="anchor" href="#infra.karpenter.controller.leader">#</a>
-</h4>
-Which Karpenter replica holds the leader lease.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.controller.leader-tabs" id="infra.karpenter.controller.leader-tab-0" checked>
-  <label for="infra.karpenter.controller.leader-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>leader_election_master_status{app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">karpenter</span>&#34;}<span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-  </div>
-  <input type="radio" class="toggle" name="infra.karpenter.controller.leader-tabs" id="infra.karpenter.controller.leader-tab-1">
-  <label for="infra.karpenter.controller.leader-tab-1">Datadog</label>
-  <div class="book-tabs-content markdown-inner">
-            
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>leader_election_master_status{<span style="color:#960050;background-color:#1e0010">app:karpenter</span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">pod</span>}
-</span></span></code></pre></div>
-  </div>
-</div>
 <h4 id="infra.karpenter.controller.cpu">infra.karpenter.controller.cpu
   <a class="anchor" href="#infra.karpenter.controller.cpu">#</a>
 </h4>
@@ -7455,42 +7155,6 @@ Memory each Karpenter replica holds, against its limit.
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>kube_pod_container_resource_limits{<span style="color:#960050;background-color:#1e0010">container:controller</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">pod:karpenter-*</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">resource:memory</span>}
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">pod</span>}
 </span></span></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.events.rate_by_reason">infra.karpenter.events.rate_by_reason
-  <a class="anchor" href="#infra.karpenter.events.rate_by_reason">#</a>
-</h4>
-Karpenter&rsquo;s events per minute, by reason.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.events.rate_by_reason-tabs" id="infra.karpenter.events.rate_by_reason-tab-0" checked>
-  <label for="infra.karpenter.events.rate_by_reason-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.events.stream">infra.karpenter.events.stream
-  <a class="anchor" href="#infra.karpenter.events.stream">#</a>
-</h4>
-Karpenter&rsquo;s events, newest first.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.events.stream-tabs" id="infra.karpenter.events.stream-tab-0" checked>
-  <label for="infra.karpenter.events.stream-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
-  </div>
-</div>
-<h4 id="infra.karpenter.logs.rate">infra.karpenter.logs.rate
-  <a class="anchor" href="#infra.karpenter.logs.rate">#</a>
-</h4>
-Karpenter&rsquo;s log lines per minute, by level.
-<div class="book-tabs">
-  <input type="radio" class="toggle" name="infra.karpenter.logs.rate-tabs" id="infra.karpenter.logs.rate-tab-0" checked>
-  <label for="infra.karpenter.logs.rate-tab-0">PromQL</label>
-  <div class="book-tabs-content markdown-inner">
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
   </div>
 </div>
 <h4 id="infra.karpenter.logs.problems">infra.karpenter.logs.problems

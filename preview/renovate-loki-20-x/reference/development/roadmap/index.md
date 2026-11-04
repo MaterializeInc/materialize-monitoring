@@ -96,7 +96,6 @@ The `v2_` prefix comes from one relabel rule in Cloud's scrape config, which pre
 Dropping that rule sends canonical `mz_*` to AMP and Thanos alike, so the fan-out needs no per-destination name split.
 Before the rule goes, Cloud's dashboards and AMP rules move to queries that match either name, tracked in [DEP-383].
 Cloud's install then runs the chart's rules with `materialize.deploymentMode: self-managed`.
-A destination below the `all` tier drops every recorded series and `ALERTS` until [DEP-368] gives them a tier.
 
 ## Metrics for Cloud
 
@@ -273,7 +272,6 @@ That contract keeps seven database flavors and five object stores from multiplyi
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
 | [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus`. The module's `metadata_databases` input is the way in; the wrappers remain | 🔨 |
 | [DEP-406] The Terraform module runs the postgres-exporter, for Grafana's database and any other target, and creates its credentials Secret. The wrappers remain | 🔨 |
-| [DEP-368] A metric tier for recorded series, so a filtered destination keeps `ext:*` and `ALERTS` | ⬜ |
 | [DEP-304] An `AbortIncompleteMultipartUpload` lifecycle rule on the persist bucket, in `materialize-terraform-self-managed` | ⬜ |
 
 No adapter flavor is the one that waits.
@@ -352,9 +350,7 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 | [DEP-382] `security-gate` as a required check on `main` | ⬜ |
 | [DEP-249] Trivy suppressions are per check, so they also mask our own templates | ⬜ |
 | [DEP-251] SARIF findings point at temporary render paths | ⬜ |
-| [DEP-381] `tflint` in Terraform CI | ⬜ |
 | [DEP-370] Renovate bumps the `mzmon-alloy` tag and leaves its digest | ⬜ |
-| [DEP-371] Release PRs leave `Cargo.lock` stale | ⬜ |
 | [DEP-111] and [DEP-118] An ArgoCD and FluxCD CI matrix | ⬜ |
 
 ## Designs in flight
@@ -490,9 +486,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-365]: https://linear.app/materializeinc/issue/DEP-365
 [DEP-366]: https://linear.app/materializeinc/issue/DEP-366
 [DEP-406]: https://linear.app/materializeinc/issue/DEP-406
-[DEP-368]: https://linear.app/materializeinc/issue/DEP-368
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
-[DEP-371]: https://linear.app/materializeinc/issue/DEP-371
 [DEP-372]: https://linear.app/materializeinc/issue/DEP-372
 [DEP-373]: https://linear.app/materializeinc/issue/DEP-373
 [DEP-374]: https://linear.app/materializeinc/issue/DEP-374
@@ -502,7 +496,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-378]: https://linear.app/materializeinc/issue/DEP-378
 [DEP-379]: https://linear.app/materializeinc/issue/DEP-379
 [DEP-380]: https://linear.app/materializeinc/issue/DEP-380
-[DEP-381]: https://linear.app/materializeinc/issue/DEP-381
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385
