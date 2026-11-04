@@ -22,7 +22,7 @@ dependencies:
   version: 1.43.3
 - name: kube-state-metrics
   repository: oci://ghcr.io/prometheus-community/charts
-  version: 8.8.0
+  version: 9.0.0
 - name: prometheus-node-exporter
   repository: oci://ghcr.io/prometheus-community/charts
   version: 4.60.1
@@ -32,5 +32,5 @@ dependencies:
 - name: prometheus-postgres-exporter
   repository: oci://ghcr.io/prometheus-community/charts
   version: 8.2.0
-digest: sha256:721b859dd330df717545e42d39e192d3d20411524f59a6c8800f183e02f68317
-generated: "2026-11-03T15:08:41.435550363Z"
+digest: sha256:59d2414bbbf1d3d63c4e733dc1c8979600b16677244c6fa910c54643b108aea1
+generated: "2026-11-04T13:04:03.46334775Z"
