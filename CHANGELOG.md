@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Prometheus Scrapers v0.7.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.16.0 (Unreleased)
 
 _Changes Pending_
@@ -84,9 +88,98 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Prometheus Scrapers v0.6.0 (Unreleased)
+## Prometheus Scrapers v0.6.0
 
-_Changes Pending_
+* Add the Materialize Ingress dashboard, and scrape the console
+    * [materialize-monitoring#607](https://github.com/MaterializeInc/materialize-monitoring/pull/607)
+    * Add the **Materialize Ingress (Balancer, Console)** dashboard (`env-ingress`)
+        * Rate, errors, and latency for each hop users take into an environment: the cloud load balancer, balancerd, the console, and environmentd's SQL and HTTP APIs. Installed by default with `materialize-monitoring-dashboards`.
+        * The Load Balancer tab draws what AWS, Google Cloud, or Azure reports about the load balancer in front of the environment, when `pipeline.metrics.provider` pulls it. Without a pull, the tab says how to add one.
+        * The Balancer tab also shows balancerd's CPU and memory and, where a HorizontalPodAutoscaler scales it, the autoscaler's replicas, targets, and events.
+        * balancerd's latency and server-side error panels need Materialize v26.50.0, and every console panel needs v26.49.0. On older versions they say so, and the SQL and HTTP API tab is unaffected. See [Compatibility](https://materializeinc.github.io/materialize-monitoring/reference/compatibility/#materialize-product).
+    * Scrape the console's request metrics (`mz_console_*`)
+        * A new PodMonitor collects them from each console pod's `internal-http` port. Configure it under `materialize.console.serviceMonitor`, the same shape as `materialize.balancerd.serviceMonitor`.
+        * If you upgrade the Materialize operator before an environment, that environment's console scrape fails (`up` is 0) until the environment is upgraded too. Set `materialize.console.serviceMonitor.enabled` to `false` to skip it for that window.
+        * The classic and Google Cloud Managed Prometheus downloads include a matching `console` scrape config.
+* Scrape balancerd with a PodMonitor
+    * [materialize-monitoring#604](https://github.com/MaterializeInc/materialize-monitoring/pull/604)
+    * Scrape balancerd's connection metrics (`mz_balancer_*`)
+        * A new PodMonitor collects `mz_balancer_*` from each balancerd pod's `internal-http` port. It needs Materialize v26.24.0 or later, which labels balancerd pods `app.kubernetes.io/name: balancerd`.
+        * Configure it under `materialize.balancerd.serviceMonitor`, the same shape as `materialize.clusterd.serviceMonitor`. It's on by default; set `enabled: false` to turn it off.
+        * The classic and Google Cloud Managed Prometheus downloads include a matching `balancerd` scrape config.
+
+### Dependencies
+
+* <details><summary>Included mzmon-lib (shared library) @ v0.15.0..v0.16.0</summary>
+
+    * Release mzmon-lib (shared library) v0.15.0
+        * [materialize-monitoring#654](https://github.com/MaterializeInc/materialize-monitoring/pull/654)
+    * Give recorded series and ALERTS a metric tier of their own
+        * [materialize-monitoring#665](https://github.com/MaterializeInc/materialize-monitoring/pull/665)
+        * Recorded series and `ALERTS` have metric tiers, so a destination below `minMetricImportance: all` receives them: `ALERTS` and `ext:consensus_up` at `essential`, and the other `ext:consensus_*` series at `recommended`.
+            * The metrics a recording rule reads keep their own tier. The Thanos ruler reads them from the bundled Thanos, so keep the `thanos` destination at a tier that includes them. The render warns when it doesn't.
+    * Keep Cargo.lock in step with workspace version bumps
+        * [materialize-monitoring#664](https://github.com/MaterializeInc/materialize-monitoring/pull/664)
+    * Fold the Karpenter dashboard into Infrastructure Autoscaling
+        * [materialize-monitoring#660](https://github.com/MaterializeInc/materialize-monitoring/pull/660)
+        * **Breaking:** **Removed:** the Karpenter dashboard, `infra-karpenter` (`mz-mon-infra-karpenter`). Its panels are on Infrastructure Autoscaling (`mz-mon-infra-autoscaling`), as a Karpenter row on Overview, Node Pools, Pending Pods, and Cloud Capacity, and a new Karpenter tab.
+            * No deprecation cycle: the dashboards component is pre-1.0, and no environment uses this dashboard yet.
+            * A `selected` that names only `infra-karpenter` now matches nothing, which the chart refuses as a likely typo. Listed beside other stems, it is ignored.
+            * Unchanged: `mz-mon-infra-autoscaling` keeps its name and folder, and every panel it already had.
+        * Karpenter's counters and histograms read over the selected time range, as counts and percentiles, rather than as rates; the Events tab says when each thing happened.
+        * Ten Karpenter metrics leave the `extended` metric tier because no panel reads them: `karpenter_cloudprovider_duration_seconds_bucket`, `karpenter_cluster_utilization_percent`, `karpenter_nodes_allocatable`, `karpenter_nodes_current_lifetime_seconds`, `karpenter_scheduler_queue_depth`, `karpenter_scheduler_scheduling_duration_seconds_bucket`, `karpenter_voluntary_disruption_consolidation_timeouts_total`, `karpenter_voluntary_disruption_decisions_total`, `karpenter_voluntary_disruption_eligible_nodes`, and `leader_election_master_status`.
+            * A destination filtered at `extended` stops receiving them. The bundled Thanos receives every metric and is unaffected.
+    * Update Rust crate zip to v9.2.0
+        * [materialize-monitoring#659](https://github.com/MaterializeInc/materialize-monitoring/pull/659)
+        * [`v9.2.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#920---2026-10-31)
+    * Alert on draining nodes, graded by what runs on them, with a runbook
+        * [materialize-monitoring#640](https://github.com/MaterializeInc/materialize-monitoring/pull/640)
+        * New alerts in the default set for draining nodes, meaning nodes that are cordoned or marked for removal by the cluster autoscaler or Karpenter:
+            * `materialize-node-draining` (notice, after 10m), `materialize-node-drain-slow` (warning, after 2h), and `materialize-node-drain-stuck` (critical, after 24h), for each environmentd and clusterd pod on a draining node.
+            * `node-drain-stuck` (warning, after 24h), for draining nodes that run no environmentd or clusterd. It fires a day into a GKE blue-green upgrade's wait on a node pool that runs no Materialize.
+        * A Node drains runbook under Operating > Runbooks covers diagnosing a drain, moving Materialize off a node with a rollout, the GKE, EKS, and AKS node pools, and when to escalate to the node pool's owner. The new alerts link to it.
+    * Regenerate locks
+        * [materialize-monitoring#652](https://github.com/MaterializeInc/materialize-monitoring/pull/652)
+    * Release mzmon-lib (shared library) v0.14.0
+        * [materialize-monitoring#532](https://github.com/MaterializeInc/materialize-monitoring/pull/532)
+    * Name the Datadog dashboard files datadog-<stem>.json, unblocking the dashboards release
+        * [materialize-monitoring#633](https://github.com/MaterializeInc/materialize-monitoring/pull/633)
+        * The Datadog dashboard downloads are named `datadog-<stem>.json`, such as `datadog-env-top.json`, so they no longer share a file name with the Grafana render of the same dashboard.
+    * Datadog dashboards: port every env-top panel, with a parity ledger
+        * [materialize-monitoring#630](https://github.com/MaterializeInc/materialize-monitoring/pull/630)
+        * Datadog: `env-top`, the Materialize Environment Overview, holds the Grafana dashboard's panels, downloadable as JSON from the Available Dashboards page
+            * Environment, namespace, cluster, and replica template variables. Pick one environment and the namespace it runs in: environments reuse cluster and replica ids, and the Kubernetes panels read the namespace.
+            * The peek and Iceberg commit latency panels need percentiles enabled for their metrics in Datadog.
+            * The Datadog dashboards page lists the panels it draws differently from Grafana or leaves out, such as the alert panels.
+    * Build dev dependencies without debug info
+        * [materialize-monitoring#632](https://github.com/MaterializeInc/materialize-monitoring/pull/632)
+    * Update Rust crate jsonschema to 0.60.0
+        * [materialize-monitoring#627](https://github.com/MaterializeInc/materialize-monitoring/pull/627)
+        * [`v0.60.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0601---2026-10-23)
+        * [`v0.60.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0600---2026-10-22)
+    * Update Rust crate zip to v9 [SECURITY]
+        * [materialize-monitoring#620](https://github.com/MaterializeInc/materialize-monitoring/pull/620)
+        * [`v9.0.5`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#905---2026-10-17)
+        * [`v9.0.4`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#904---2026-10-16)
+        * [`v9.0.3`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#903---2026-10-13)
+        * [`v9.0.2`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#902---2026-10-11)
+        * [`v9.0.1`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#901---2026-10-10)
+        * [`v9.0.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#900---2026-10-08)
+    * Add a GCS section to the persist dashboard, and drop its always-zero storage series
+        * [materialize-monitoring#625](https://github.com/MaterializeInc/materialize-monitoring/pull/625)
+        * The Materialize Persist dashboard's Object Store Internals tab has a GCS section when the GCS Cloud Monitoring pull is on
+            * Live data, objects, and average object size per bucket, their daily change, and the live, noncurrent, and soft-deleted split
+        * The Materialize Persist dashboard's Storage tab no longer shows orphaned data or uploads in flight, which Materialize always reported as zero
+            * `mz_persist_shard_usage_leaked_bytes` and `mz_persist_shard_usage_not_leaked_not_referenced_bytes` leave the extended metric tier
+    * Datadog dashboards: split widget queries into bare queries and formulas
+        * [materialize-monitoring#624](https://github.com/MaterializeInc/materialize-monitoring/pull/624)
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#603](https://github.com/MaterializeInc/materialize-monitoring/pull/603)
+    * Datadog dashboards: the build machinery and an env-top preview
+        * [materialize-monitoring#587](https://github.com/MaterializeInc/materialize-monitoring/pull/587)
+        * Datadog: a preview of the Materialize Environment Overview (`env-top`), with its cluster and replica counts, downloadable as JSON from the Available Dashboards page. Import it through Datadog's API or Terraform's `datadog_dashboard_json`, and pick one environment, because the counts merge environments when several are selected.
+
+  </details>
 
 ## Dashboards (Helm chart) v0.21.0
 
