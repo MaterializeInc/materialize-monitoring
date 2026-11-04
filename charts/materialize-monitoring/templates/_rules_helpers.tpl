@@ -674,9 +674,9 @@ Validation for the rules surface.
         {{- end }}
       {{- end }}
     {{- end }}
-    {{- /* The ruler writes what it records back through the gateway, and the
-           tier filter keeps a recorded name only if a registry query names it,
-           which an alert reading it does. */}}
+    {{- /* The ruler writes what it records back through the gateway, where a
+           recorded name has a tier of its own, `recommended` unless an alert
+           reading it raises it. Alerts and panels read it from Thanos. */}}
     {{- if and $installedRecords ( hasKey $rank $floor ) ( ne $floor "all" ) }}
       {{- $tiers := $.Files.Get "pre-rendered/metrics/metric-tiers.yaml" | fromYaml }}
       {{- $kept := list }}
@@ -693,7 +693,7 @@ Validation for the rules surface.
         {{- end }}
       {{- end }}
       {{- with $dropped | uniq | sortAlpha }}
-        {{- $warnings = append $warnings ( printf "The thanos destination keeps only %q metrics and above, and the recorded series %s have no tier at that level, so the gateway drops them before they reach Thanos." $floor ( join ", " . ) ) }}
+        {{- $warnings = append $warnings ( printf "The thanos destination keeps only %q metrics and above, and the recorded series %s are in a less important tier, so the gateway drops them before they reach Thanos." $floor ( join ", " . ) ) }}
       {{- end }}
     {{- end }}
 

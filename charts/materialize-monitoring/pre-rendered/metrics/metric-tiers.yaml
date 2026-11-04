@@ -9,6 +9,14 @@
 # self-managed and `v2_mz_` on Cloud. `v2_` is not a version — it is the prefix
 # one part of the Cloud platform uses, and it does not exist on self-managed.
 # Other names are literal.
+#
+# The series the Thanos ruler writes are listed too: each recorded name, such as
+# `ext:consensus_up`, at `recommended` unless a query reading it is more
+# important, and `ALERTS` at `essential`. A recorded name's tier says nothing
+# about the metrics its rule reads, which keep their own. The ruler reads those
+# from Thanos, so they must reach the `thanos` destination for the series to be
+# recorded at all, even where another destination receives only the recorded
+# series.
 essential:
 - (?:v2_)?mz_can_connect
 - (?:v2_)?mz_envd_up
@@ -196,6 +204,12 @@ recommended:
 - cluster_transport_stream_tx_packets_failed_total
 - cluster_transport_tx_packets_failed_total
 - environmentd_needs_update
+- ext:consensus_commit_latency_seconds:p99
+- ext:consensus_connections_used_ratio
+- ext:consensus_database_bytes
+- ext:consensus_storage_used_ratio
+- ext:consensus_version_info
+- ext:consensus_xid_used_ratio
 - hubble_flows_processed_total
 - kube_daemonset_status_desired_number_scheduled
 - kube_endpointslice_endpoints

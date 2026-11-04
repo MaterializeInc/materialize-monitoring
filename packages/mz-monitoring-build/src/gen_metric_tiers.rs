@@ -7,8 +7,9 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! `gen-metric-tiers`: emit `metric-tiers.yaml` — registry metrics grouped by
-//! importance — for the Helm gateway's per-destination allowlists.
+//! `gen-metric-tiers`: emit `metric-tiers.yaml` — registry metrics, and the
+//! series its rules produce, grouped by importance — for the Helm gateway's
+//! per-destination allowlists.
 //!
 //! Shares the extraction/roll-up with `extract-metrics` (so importance reflects
 //! the same file hints + overrides), but renders through the prefix-agnostic
@@ -37,6 +38,14 @@ const HEADER: &str = "\
 # self-managed and `v2_mz_` on Cloud. `v2_` is not a version — it is the prefix
 # one part of the Cloud platform uses, and it does not exist on self-managed.
 # Other names are literal.
+#
+# The series the Thanos ruler writes are listed too: each recorded name, such as
+# `ext:consensus_up`, at `recommended` unless a query reading it is more
+# important, and `ALERTS` at `essential`. A recorded name's tier says nothing
+# about the metrics its rule reads, which keep their own. The ruler reads those
+# from Thanos, so they must reach the `thanos` destination for the series to be
+# recorded at all, even where another destination receives only the recorded
+# series.
 ";
 
 /// Arguments for the `gen-metric-tiers` command.

@@ -114,8 +114,10 @@ The following table gives the `resourceId` each flavor takes:
 
 An alert can read a recorded series: `consensus-unreachable` reads `ext:consensus_up`, so it installs wherever any adapter recording that series does.
 
-A recorded series that no bundled alert reads has no metric tier.
-A metric destination filtering by `minMetricImportance` therefore drops it, and the render warns when that destination is the bundled Thanos.
+A recorded series has a [metric tier](../../metrics/storing/#the-importance-tiers) of its own: at least `recommended`, and `essential` when a bundled alert reads it.
+A destination that filters by `minMetricImportance` keeps a recorded series at that tier, whether or not it keeps the metrics the series is recorded from.
+The Thanos ruler records each series from metrics it reads out of Thanos, so those metrics have to reach the bundled `thanos` destination, even when another destination receives only the recorded series.
+The render warns when the `thanos` destination drops a metric that an installed recording rule reads, and when it drops a recorded series.
 
 ## Two evaluators, one notifier
 

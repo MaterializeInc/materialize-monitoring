@@ -1482,6 +1482,30 @@
   - materialize.operator.environments.needing_update
 - importance: recommended
   labels: []
+  name: ext:consensus_commit_latency_seconds:p99
+  usage: []
+- importance: recommended
+  labels: []
+  name: ext:consensus_connections_used_ratio
+  usage: []
+- importance: recommended
+  labels: []
+  name: ext:consensus_database_bytes
+  usage: []
+- importance: recommended
+  labels: []
+  name: ext:consensus_storage_used_ratio
+  usage: []
+- importance: recommended
+  labels: []
+  name: ext:consensus_version_info
+  usage: []
+- importance: recommended
+  labels: []
+  name: ext:consensus_xid_used_ratio
+  usage: []
+- importance: recommended
+  labels: []
   name: hubble_flows_processed_total
   usage:
   - infra.net.cni.cilium.hubble_flows

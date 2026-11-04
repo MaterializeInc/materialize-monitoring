@@ -2,7 +2,8 @@
   list-metrics: renders a list of available metrics.
 
   Reads metrics from assets/metrics/metrics.yaml and displays them
-  based on the filtered importance.
+  based on the filtered importance. A recorded name (one with a `:`) links to
+  its entry on the Recorded Series page, using the anchor list-records gives it.
 
   Params (optional):
     importance    The importance level of metrics to display.
@@ -19,14 +20,20 @@
         <details>
         {{- if .labels }}
             Used labels: {{ delimit .labels ", " }}
-        {{- end }}
             <br />
+        {{- end }}
+        {{- if strings.Contains .name ":" }}
+            Written by the chart's recording rules: see <a href="../recorded-series/#{{ .name | replaceRE "[^a-zA-Z0-9_-]" "-" }}">Recorded Series</a>.
+            <br />
+        {{- end }}
+        {{- if .usage }}
             Example queries:
             <ul>
-        {{- range .usage }}
+          {{- range .usage }}
                 <li><a href="../common-queries#{{ . }}">{{ . }}</a></li>
-        {{- end }}
+          {{- end }}
             </ul>
+        {{- end }}
         </details>
     </li>
   {{- end }}

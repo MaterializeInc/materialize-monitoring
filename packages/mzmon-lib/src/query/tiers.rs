@@ -21,7 +21,8 @@
 //! and rewritten here to `(?:v2_)?mz_foo`, so it matches under either the
 //! converged (`mz_`) or legacy (`v2_mz_`) prefix. Literal `mz_…` and infra
 //! (`kube_…`, `container_…`, `up`) names pass through verbatim (and remain valid
-//! one-element alternations).
+//! one-element alternations), as do the series the rules produce: recorded names
+//! such as `ext:consensus_up`, and `ALERTS`.
 
 use serde::Serialize;
 
@@ -150,6 +151,20 @@ mod tests {
                 "up".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn recorded_names_stay_literal() {
+        // `:` is literal outside `(?:`, so a recorded name needs no escaping.
+        let tiers = MetricTiers::from_docs(&[
+            doc("ext:consensus_commit_latency_seconds:p99", "recommended"),
+            doc("ALERTS", "essential"),
+        ]);
+        assert_eq!(
+            tiers.recommended,
+            vec!["ext:consensus_commit_latency_seconds:p99".to_string()]
+        );
+        assert_eq!(tiers.essential, vec!["ALERTS".to_string()]);
     }
 
     #[test]
