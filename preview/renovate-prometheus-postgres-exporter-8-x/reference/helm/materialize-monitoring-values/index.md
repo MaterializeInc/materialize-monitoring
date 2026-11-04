@@ -37,14 +37,14 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.14.3 |
-| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.14.3 |
+| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.15.0 |
+| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.15.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.3.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 20.2.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.8.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.2 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
@@ -1198,6 +1198,54 @@ Materialize-specific configuration values.
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for the console
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect the console's request metrics (`mz_console_*`). Console pods before Materialize v26.49.0 declare no `internal-http` port and yield no target.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 []</pre>
@@ -5356,7 +5404,7 @@ Upstream reference:
 {
   "registry": "docker.io",
   "repository": "grafana/loki",
-  "tag": "3.7.8"
+  "tag": "3.7.9"
 }</pre>
 </td>
       <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -5786,7 +5834,7 @@ that holds Loki's own HTTP port at phase 2.
   "pullPolicy": "IfNotPresent",
   "registry": "ghcr.io",
   "repository": "jkroepke/access-log-exporter",
-  "tag": "0.4.22"
+  "tag": "1.0.1"
 }</pre>
 </td>
       <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
@@ -6426,7 +6474,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.8"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -6437,7 +6485,7 @@ unconditional so the two modes share one code path.
 {
   "registry": "docker.io",
   "repository": "grafana/loki-canary",
-  "tag": "3.7.8"
+  "tag": "3.7.9"
 }</pre>
 </td>
       <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.

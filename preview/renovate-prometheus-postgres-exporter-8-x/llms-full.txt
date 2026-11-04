@@ -3225,10 +3225,11 @@ pipeline:
             minMetricImportance: essential   # ship only alerting metrics to Datadog
 ```
 
-> [!NOTE]
->   The **extended** and **diagnostic** tiers are still being populated — today they are empty.
->   Until they fill in, `extended` and `diagnostic` resolve to the same set as `recommended`.
->   If you want *everything* that is scraped, use `all`, not `diagnostic`.
+The series the chart's recording rules write, such as the `ext:*` series for the metadata database, have tiers too.
+A destination on `recommended` receives them without the metrics they're recorded from.
+The Thanos ruler reads those metrics from the bundled Thanos, so they have to reach the `thanos` destination.
+The render warns when the `thanos` destination's tier drops a metric that an installed recording rule reads.
+For more information, see [Recorded series](../../alerting/configuring/#recorded-series).
 
 For a worked example that keeps full fidelity in Thanos while sending a smaller, cheaper slice to Google Cloud Monitoring and Datadog, see the annotated [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile.
 The remote-write equivalent — Thanos on `all`, Amazon Managed Prometheus on `essential` — is [`aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml).
@@ -5572,6 +5573,32 @@ It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-consensus" >}}
 
+### Materialize Ingress (Balancer, Console) (`env-ingress`)
+
+How users reach a Materialize environment, across five tabs: Overview, Load Balancer, Balancer, Console, and SQL and HTTP API.
+Every SQL client, HTTP API call, and console session arrives through a cloud load balancer and enters balancerd, and the console's own API calls pass through the console's nginx first.
+Both forward to environmentd, which serves the SQL and HTTP APIs.
+Each tab measures one of those hops with its rate, errors, and latency, so you can tell which hop a complaint like "users can't connect" or "the console is slow" belongs to.
+
+The Overview tab's verdict row reads each hop's error ratio and latency, and whether every balancerd pod is taking new connections.
+Below it, balancerd and the console sit side by side for each signal: when both fail, look behind them at environmentd, and when one fails, look at that one.
+The Load Balancer tab shows the address Kubernetes gave each LoadBalancer Service, and what the cloud provider reports about the load balancer in front of this environment:
+target health and connection resets on AWS, health probes on Azure, and traffic on all three clouds.
+Its provider rows appear when the gateway pulls that load balancer's metrics, and otherwise the tab says how to turn the pull on;
+see [Cloud Provider Metrics](../../metrics/collecting/cloud-provider-metrics/).
+The Balancer tab adds each pod's connections against its limit and watermarks, the time spent reaching environmentd, and balancerd's warnings.
+It opens with sparkline stats for open connections, ready and unavailable pods, CPU against the pods' request, memory against their limit, and the time since the last restart, and drills into each pod's CPU, memory, and throttling further down.
+Where a HorizontalPodAutoscaler scales balancerd, an Autoscaling row shows its replicas, the metrics it scales on against their targets, the conditions that stop it, and its events.
+Without one, the tab says how balancerd's replica count is set and how to hand it to an autoscaler.
+The Console tab splits every request by what it asked for, the page itself or an API call, and carries nginx's server-error lines.
+The SQL and HTTP API tab is environmentd's side of the same traffic, including the SQL the console runs.
+
+balancerd's connection timings, its server-side error count, and every console panel need a Materialize version that publishes them.
+On older versions, those panels say so, and the SQL and HTTP API tab is unaffected.
+It needs both a metrics and a logs datasource.
+
+{{< download-dashboards name="env-ingress" >}}
+
 ## Infrastructure (`infra-*`)
 
 ### Infrastructure Node Detail (`infra-nodes`)
@@ -5629,28 +5656,34 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
 
 ### Infrastructure Autoscaling (`infra-autoscaling`)
 
-Whether the cluster's nodes are keeping up with its pods, on any cloud, across six tabs: Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, and Events.
-Open it when a Materialize cluster replica will not start, since that is usually a pod waiting for a node.
+Whether the cluster's nodes are keeping up with its pods, on any cloud.
+Its tabs are Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, Karpenter, and Events.
+Open it when a Materialize cluster replica won't start, because that's usually a pod waiting for a node.
 
-It is built from what every cluster has, so it reads the same whether Karpenter, GKE's or AKS's cluster autoscaler adds the nodes:
-- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it could not place, followed by what the autoscaler did about it.
-- **Nodes by pool, instance type and zone.** Also how full each pool is to the scheduler: requests against allocatable, which is what decides whether a pod fits, rather than usage.
-- **HorizontalPodAutoscalers.** Their current, desired, minimum and maximum replicas, and any that cannot read the metric they scale on.
+Most of it is built from what every cluster has, so it reads the same whether Karpenter or GKE's or AKS's cluster autoscaler adds the nodes:
+
+- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it couldn't place, followed by what the autoscaler did about it.
+- **Nodes by pool, instance type, and zone.** Also how full each pool is to the scheduler: requests against allocatable, which decides whether a pod fits, rather than usage.
+- **HorizontalPodAutoscalers.** Their current, desired, minimum, and maximum replicas, and any that can't read the metric they scale on.
 - **What the cloud says about capacity.** EC2 status checks and node group sizes, Compute Engine quota, and AKS's own autoscaler gauges, when [cloud provider metrics]({{< relref "../metrics/collecting/cloud-provider-metrics.md" >}}) are enabled for them.
 
-The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that they say so.
+The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that, they say so.
+
+On EKS, Karpenter's own metrics add a row to each tab where they answer the same question, and a Karpenter tab of their own:
+
+- **Overview:** whether Karpenter can act at all, the pods it can't place, and the launches EC2 refused.
+- **Node Pools:** each NodePool's CPU and memory against its limits, and any NodePool or EC2NodeClass condition that's False.
+- **Pending Pods:** how long each stage of a launch took, from EC2 accepting it to the node being ready.
+- **Cloud Capacity:** EC2's errors, and which zones offer each instance type, including the fewest at any point in the time range.
+- **Karpenter:** what Karpenter replaced and removed and why, what held nodes in place, draining, its controller, and its warning logs.
+  On a Materialize cluster, what holds nodes is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, because moving a replica means rehydrating it.
+  That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours isn't.
+
+Karpenter acts a few times a day, so most of these read as counts and percentiles over the selected time range; the Events tab says when each thing happened.
+The Karpenter rows need the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates.
+They don't render on a cluster without Karpenter, where the Karpenter tab explains why it's empty.
 
 {{< download-dashboards name="infra-autoscaling" >}}
-
-### Karpenter (`infra-karpenter`)
-
-How Karpenter adds, replaces and removes the cluster's nodes on EKS, across five tabs: Overview, Provisioning, Disruption, Controller, and Events and Logs.
-It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates, and renders nothing but an explanation on a cluster without Karpenter.
-
-- **Provisioning:** what Karpenter launched and what EC2 refused, and which instance types EC2 briefly stopped offering in a zone. Also how long each stage of a launch took, from EC2 accepting it to the node being ready.
-- **Disruption:** consolidation, drift and expiry, and what blocks them. On a Materialize cluster that is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, since moving a replica means rehydrating it. That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours is not.
-
-{{< download-dashboards name="infra-karpenter" >}}
 
 ## Meta monitoring (`infra-*`)
 
@@ -6073,10 +6106,9 @@ These are the ones with something to know before narrowing it:
   `metricLabelsAllowlist` names them.
   The bundled kube-state-metrics names them; an install that brings its own needs the same allowlist, or that tab
   reads empty.
-- **Karpenter** (`infra-karpenter` → `mz-mon-infra-karpenter`), in `materialize-monitoring-dashboards-infra`.
-  It has data only on EKS, and only where Karpenter's ServiceMonitor is applied; everywhere else each tab shows one
-  row saying why it is empty.
-  Leave it out of `selected` on GKE and AKS if that row is noise.
+  Its Karpenter rows and Karpenter tab render only where Karpenter's ServiceMonitor is applied, which on the
+  self-managed Terraform means EKS.
+  Elsewhere the rows don't render, and the Karpenter tab shows one row saying why it's empty.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), in `materialize-monitoring-dashboards`.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
@@ -7560,8 +7592,10 @@ The following table gives the `resourceId` each flavor takes:
 
 An alert can read a recorded series: `consensus-unreachable` reads `ext:consensus_up`, so it installs wherever any adapter recording that series does.
 
-A recorded series that no bundled alert reads has no metric tier.
-A metric destination filtering by `minMetricImportance` therefore drops it, and the render warns when that destination is the bundled Thanos.
+A recorded series has a [metric tier](../../metrics/storing/#the-importance-tiers) of its own: at least `recommended`, and `essential` when a bundled alert reads it.
+A destination that filters by `minMetricImportance` keeps a recorded series at that tier, whether or not it keeps the metrics the series is recorded from.
+The Thanos ruler records each series from metrics it reads out of Thanos, so those metrics have to reach the bundled `thanos` destination, even when another destination receives only the recorded series.
+The render warns when the `thanos` destination drops a metric that an installed recording rule reads, and when it drops a recorded series.
 
 ## Two evaluators, one notifier
 
@@ -11419,7 +11453,7 @@ Logs are the most detailed and least structured evidence you have, and without a
 | What did the platform underneath say | Infrastructure Logs and Events |
 | Is the machine the problem | Infrastructure Node Detail |
 | Is a replica waiting for a node, and can the cluster grow | Infrastructure Autoscaling |
-| Is Karpenter launching nodes, and what keeps it from removing them | Karpenter |
+| Is Karpenter launching nodes, and what keeps it from removing them | Infrastructure Autoscaling, Karpenter tab |
 | Is the metadata database failing or slow for Materialize | Materialize Consensus (Metadata) |
 | Is object storage failing or slow for Materialize, and what is the stored data for | Materialize Persist (Storage) |
 | Why is the database or the bucket struggling: CPU, storage, connections, burst credits, reclaimable waste | Infrastructure Cloud Provider |
@@ -12925,6 +12959,7 @@ Install the toolchain once:
 | Helm | 3.x / 4.x | `brew install helm` |
 | Git LFS | latest | `brew install git-lfs` |
 | [Terraform](https://developer.hashicorp.com/terraform) | 1.3+ | `brew install terraform` — needed for `make terraform-check`; `terraform-docs` (`brew install terraform-docs`) regenerates the module reference |
+| [TFLint](https://github.com/terraform-linters/tflint) | latest | `brew install tflint` — needed for `make terraform-lint` and its pre-commit hook; CI pins its version in `lint.yaml` |
 
 Optional but commonly useful: the [`helm-unittest`](https://github.com/helm-unittest/helm-unittest) plugin (`make helm-unittest-install`), `yq`, `jq`.
 The plugin renders through a Helm library of its own, so `make helm-unittest-install` pins the version CI uses rather than taking the latest.
@@ -12968,6 +13003,7 @@ make dashboards       # regenerate the Grafana and Datadog dashboards
 make helm-docs        # regenerate chart README + docsite values reference
 make serve-docs       # serve this Hugo docsite locally
 make terraform-check  # fmt + validate + the tier-0 render check (no cluster)
+make terraform-lint   # tflint over every root under terraform/
 make terraform-docs   # regenerate the module README + docsite variable reference
 ```
 
@@ -12977,7 +13013,13 @@ The cloud-agnostic module lives in [`terraform/modules/materialize-monitoring`](
 
 `make terraform-check` is the gate, and the part worth understanding is what it adds over `terraform validate`. Validate accepts **any** well-formed HCL, including a value written to a path the chart never reads — that renders perfectly and is silently ignored. So the check also plans each example, extracts the composed Helm values from the plan, and renders the chart against them. It needs no cluster: the examples plan against a kubeconfig that does not exist, and every resource is a create, so the providers are never asked to connect.
 
-Two examples are rendered, `aws` and `gcp`, and that is not redundancy — the chart's storage defaults are S3-shaped, so an AWS-only example agrees with every default it fails to set.
+Every directory under `examples/` is rendered, and the overlap between them is not redundancy.
+The chart's storage defaults are S3-shaped, so an AWS-only example agrees with every default it fails to set.
+
+`make terraform-lint` runs `tflint` with every rule in the Terraform ruleset on, and a finding at any severity fails it.
+Fix the finding rather than disabling the rule.
+If a suppression is genuinely right, put a `# tflint-ignore: <rule>` annotation on the line above the finding, with the reason in a comment beside it.
+In CI, `lint.yaml` runs it only when a change touches `terraform/`, `.tflint.hcl`, the `Makefile`, or `lint.yaml` itself.
 
 ### E2E (kind)
 
@@ -13078,7 +13120,7 @@ A single `uv run pre-commit install` wires both `pre-commit` and `pre-push` stag
 - `yamllint` (YAML and KYAML)
 - `cargo fmt`
 - `helm-docs` regeneration (only when chart sources change)
-- `terraform fmt` and `terraform-docs` regeneration (only when `terraform/` changes)
+- `terraform fmt`, `terraform-docs` regeneration, and `tflint` (only when `terraform/` changes)
 
 **Runs additionally on `pre-push` (slower, before publishing):**
 
@@ -13346,13 +13388,16 @@ Adding or changing a query has effects beyond the query itself:
 - **Metric extraction** (`mz-monitoring-build extract-metrics`) parses the PromQL to derive the metric set, which lands
   in `docs/assets/metrics/metrics.yaml` and backs
   [Reference Metrics]({{< relref "../../list-metrics.md" >}}).
-- **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's `stability` and importance up into the
+- **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's importance up into the
   per-destination allowlists in `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml`.
+  The series the rules produce, each recorded name and `ALERTS`, get a tier of their own; see
+  [Authoring Recording Rules]({{< relref "recording-rules.md" >}}#capabilities-and-tiers).
   This is why a new query can change what a deployment ships to a metered backend.
 
-  **A query is the only way a metric reaches a tier.** The tiers are built by walking the registry's queries, so
-  `metricOverrides` re-weights a metric some query already references and cannot introduce one — however many
-  patterns match it. A family worth keeping therefore has to be *named* by a query even when no dashboard draws it.
+  **A query is the only way a collected metric reaches a tier.** The tiers are built by walking the registry's queries
+  and the series its rules produce, so `metricOverrides` re-weights a metric the registry already names and cannot
+  introduce one, however many patterns match it.
+  A family worth keeping therefore has to be *named* by a query even when no dashboard draws it.
   `infra-loki.yaml` once carried six such queries for the Alloy-side `loki_*` components; they moved to
   `infra-alloy.yaml` when a dashboard came to draw them.
 
@@ -14151,14 +14196,14 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.14.3 |
-| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.14.3 |
+| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.15.0 |
+| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.15.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.3.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 20.2.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.8.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.2 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
@@ -15312,6 +15357,54 @@ Materialize-specific configuration values.
     </tr>
     <tr>
       <td class="helm-value-key">materialize<wbr>.balancerd<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default metric endpoints
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "metricEndpoints": [],
+  "selector": {},
+  "targetLabels": []
+}</pre>
+</td>
+      <td class="helm-value-desc">ServiceMonitor/PodMonitor configuration for the console
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Deploy a PodMonitor to collect the console's request metrics (`mz_console_*`). Console pods before Materialize v26.49.0 declare no `internal-http` port and yield no target.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.selector</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Override for default selector
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.targetLabels</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Override for default labels to copy from the pod into metrics
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">materialize<wbr>.console<wbr>.serviceMonitor<wbr>.metricEndpoints</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 []</pre>
@@ -19470,7 +19563,7 @@ Upstream reference:
 {
   "registry": "docker.io",
   "repository": "grafana/loki",
-  "tag": "3.7.8"
+  "tag": "3.7.9"
 }</pre>
 </td>
       <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -19900,7 +19993,7 @@ that holds Loki's own HTTP port at phase 2.
   "pullPolicy": "IfNotPresent",
   "registry": "ghcr.io",
   "repository": "jkroepke/access-log-exporter",
-  "tag": "0.4.22"
+  "tag": "1.0.1"
 }</pre>
 </td>
       <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
@@ -20540,7 +20633,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.8"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -20551,7 +20644,7 @@ unconditional so the two modes share one code path.
 {
   "registry": "docker.io",
   "repository": "grafana/loki-canary",
-  "tag": "3.7.8"
+  "tag": "3.7.9"
 }</pre>
 </td>
       <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
@@ -24424,6 +24517,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `CONTRIBUTING.md` / `README.md` / `LICENSE`
   * `renovate.json`: automated dependency bumps
   * `.terraform-docs.yml` / `.terraform-docs.docsite.yml`: Terraform doc generation — the first injects into module READMEs, the second writes the docsite variable reference
+  * `.tflint.hcl`: `tflint` rules for every root under `terraform/` (`make terraform-lint`)
   * `.pre-commit-config.yaml`: contributor-experience hooks (see [Development](../contributing/))
   * `.gitattributes`: Git LFS for the subchart tarballs, plus `linguist-generated` on the docsite's duplicate artifacts (see [Two copies, one review](../dashboard/generating/#two-copies-one-review))
   * `bin/`: bash dev/CI entrypoints (flat; no subdirectories)
@@ -26243,10 +26337,17 @@ A recording rule that reads only `up` MUST declare what it is about with `requir
 A registry file of recording rules SHOULD set `metricImportanceHint: diagnostic`.
 A file's hint rolls up to every metric its queries read, and a recording rule is no reason to send a metric to more destinations.
 
-A recorded series has a metric tier only when a registry query names it, which an alert reading it does: `ext:consensus_up` takes the tier of `materialize-alerts.yaml`.
-A destination filtering by `minMetricImportance` drops the others.
-The bundled `thanos` destination keeps everything by default, and the chart warns, naming them, when it does not.
-Giving every recorded series a tier is [DEP-368](https://linear.app/materializeinc/issue/DEP-368).
+A recorded series has a metric tier of its own, which `gen-metric-tiers` writes into `metric-tiers.yaml` beside the metrics the registry reads.
+The tier is `recommended`, the tier of the metrics dashboards draw, unless a query reading the series is in a more important one.
+`ext:consensus_up` is `essential`, because `consensus-unreachable` in `materialize-alerts.yaml` reads it.
+A `metricOverrides` entry that matches a recorded name sets its tier outright, as it does for any other metric.
+`ALERTS` is `essential` in any registry that defines an alert.
+`ALERTS_FOR_STATE` is the ruler's own bookkeeping, and has no tier.
+
+A destination can therefore receive a recorded series without the metrics it's recorded from.
+The Thanos ruler still reads those metrics from Thanos, so they have to reach the bundled `thanos` destination for the series to be recorded at all.
+For example, a Datadog destination on `recommended` receives the `rds` adapter's `ext:consensus_xid_used_ratio` only while the `thanos` destination keeps the CloudWatch family that the adapter reads.
+The chart warns when the `thanos` destination filters out a metric that an installed recording rule reads, and when it filters out a recorded series.
 
 ## What `gen-rules` rejects
 
@@ -26804,7 +26905,9 @@ A JSON line of 500KiB therefore still yields its level, timestamp, and fields, a
 The structured metadata budget later on this page still applies to those fields.
 
 The last-stage rules exist because Loki refuses an entry over its limits rather than shortening it, and `loki.write` doesn't retry the refusal.
-Measured on Loki 3.7.8, the version the chart deploys, with its default limits, Loki refuses the following:
+The figures in the following list come from measuring Loki 3.7.8.
+Loki 3.7.9, the version the chart deploys, has the same default limits.
+With those defaults, Loki refuses the following:
 
 - A line longer than 256KiB (262,144 bytes).
 - A label value longer than 2,048 bytes.
@@ -27158,6 +27261,17 @@ For single-series sparklines, leave the default `VALUE` text mode — the panel 
 When the tiles differ by orders of magnitude, add `.min_max_per_field()`.
 Grafana scales every tile's sparkline against the largest series by default, which draws the small tiles flat at zero.
 
+### Log axes below 1
+
+Grafana labels every tick on a time series axis with one decimal count, which it guesses from the tick spacing of the
+axis's *linear* range.
+When the axis tops out at a few units or less, that guess is one or two decimals, so the 0.01 and 0.001 ticks read `0`.
+Units that rescale below 1, such as `s` (to `ms` and `µs`) and the byte units, label their small ticks correctly.
+For any other unit on a log axis, such as `cps`, `reqps`, `ops`, or `none`, set `.decimals(...)`, which stops the guess.
+`env-ingress` sets three for its per-second rates and `env-top` four for busy cores, and
+`test_support::assert_log_axes_label_ticks_below_one` holds the rule on both.
+Verified on Grafana 13.2.4.
+
 ### Timeseries legend
 
 Apply the shared timeseries legend builder to every multi-series timeseries panel:
@@ -27196,6 +27310,7 @@ self-explanatory reason. Reach for the closest existing `NoValue` variant rather
 - `NoValue::Custom(...)` — anything panel-specific, where empty is not an error ("Hydration Queue is empty").
 
 This way a blank panel tells the operator *why* it is blank.
+On a table, the same text also fills every empty cell; see [`noValue` fills empty cells](#novalue-fills-empty-cells-not-just-empty-panels).
 
 ### Color-mode default
 
@@ -27720,7 +27835,15 @@ Things that have surprised us during development; worth knowing before touching 
   same way on a ServiceMonitor that does not honor labels.
 - **`karpenter_cloudprovider_instance_type_offering_available` is 0 for about half its series at rest**: every
   instance type not sold in a zone, and every reserved-capacity offering. A capacity refusal is a drop over time, which
-  is why `infra-karpenter` draws the zones offering each type rather than a table of zeros.
+  is why `infra-autoscaling` sums the zones offering each type, now and at their fewest over the selected range,
+  rather than tabulating every offering.
+- **`karpenter_interruption_received_messages_total` counts every message in the queue, whoever owns the instance.**
+  The queue receives every EC2 event in the account and region, and the counter's `message_type` is the event's kind,
+  not whether Karpenter acted on it. On the shared AWS test account it read 706 `instance_terminated` in a week in which
+  Karpenter replaced 8 nodes. The interruptions Karpenter acts on are its `interrupted` disruptions.
+- **A NodePool's `NodeRegistrationHealthy` is `Unknown` until its first node joins after the pool last changed.** A
+  pool that rarely launches, such as the Terraform examples' Materialize pool, sits there for weeks, so a "not True"
+  filter on Karpenter's conditions shows a healthy pool. Filter on `status="False"`.
 - **`RegisteredNode` does not mean a node joined.** The node controller emits it for every node whenever it starts,
   which on a managed control plane happens without notice. Count joins from `kube_node_info` instead.
 
@@ -27840,7 +27963,7 @@ Two things worth keeping if this pattern spreads:
 ## Rendering a row on a discovered variable
 
 **New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows,
-`infra-autoscaling`'s Cloud Capacity tab, every row of `infra-karpenter`, and `infra-net`'s Cloud Networking rows.**
+`infra-autoscaling`'s Cloud Capacity tab and Karpenter rows, and `infra-net`'s Cloud Networking rows.**
 `Row::only_when_variable` and `Row::only_unless_variable` own it, beside the time-range pair.
 
 A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
@@ -27853,8 +27976,8 @@ cannot be told apart at render time.
 A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
 once.
 
-Six rules, the first four learned from `infra-net`, the fifth from its first shipped bug, and the sixth from
-`infra-karpenter`:
+Six rules, the first four learned from `infra-net`, the fifth from its first shipped bug, and the sixth from the
+Karpenter rows:
 
 - **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
   every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
@@ -27866,6 +27989,8 @@ Six rules, the first four learned from `infra-net`, the fifth from its first shi
   broken one. One row carries `only_unless_variable` over the alternation of every pattern its siblings match, so
   exactly one thing is always on screen. Derive the alternation from the same constants the sibling rows use, or a
   vendor added later renders its panels *and* a note saying nothing was detected.
+  A row that adds to a tab whose other rows still answer its question needs no fallback, because the tab is never
+  empty: `infra-autoscaling`'s Karpenter rows on its shared tabs have none, and its Karpenter tab has one.
 - **The fallback's job is the reason, not the absence.** "Nothing detected" leaves the reader hunting for a scrape to
   fix. It has to say which case applies, because the most common one is not a fault — GKE Dataplane V2 disables the
   Cilium agent's Prometheus endpoint, and no amount of configuration here changes that.
@@ -27879,8 +28004,8 @@ Six rules, the first four learned from `infra-net`, the fifth from its first shi
   query reads has no use for a custom value in the first place.
 - **Match what the detection returns, never `.+`.** A single-value variable whose query found nothing can reach a row
   condition as the word `undefined`, which `.+` matches, so the rows render on a cluster without the thing they need
-  and the fallback hides. `infra-karpenter` matches the literal `karpenter` that `up{app="karpenter"}` discovers, and a
-  test asserts that no string an unset variable stringifies to contains it.
+  and the fallback hides. `infra-autoscaling`'s Karpenter rows match the literal `karpenter` that
+  `up{app="karpenter"}` discovers, and a test asserts that no string an unset variable stringifies to contains it.
 
 The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
 for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
@@ -28033,6 +28158,24 @@ panel title says so.
 Ask which of the two a table is before choosing: *what is true now* takes
 `instant`, *what was true anywhere in this window* takes the collapse.
 
+## Read a rare event over the range, not as a rate
+
+A counter that moves a few times a day draws as a flat zero with a spike a few pixels wide.
+A histogram read over a trailing window is empty except for the window after each event.
+Over a week, Grafana's step can be wider than the spike, so the panel can show nothing even when something happened.
+
+Read such a family over the picker's window instead, as an `instant: true` query over `%%{range}`.
+Take an `increase` for a count, and `histogram_quantile` over the `increase` of the buckets for a percentile.
+Wrap the percentile in `>= 0`, which drops the `NaN` an empty histogram returns, so the panel shows its empty state.
+For a gauge that dips only during an event, put its current value beside its `min_over_time` over the range.
+Title the panel "(Select Time Range)", and leave *when* to an event feed, which says it better than a spike does.
+
+`infra-autoscaling`'s Karpenter rows are the reference.
+Over a week on the AWS test install, every Karpenter rate panel read zero apart from two drift events of a few minutes
+each.
+Read over the week instead, the eviction counter says in one number that a PodDisruptionBudget refused 8 evictions
+during one of them.
+
 ## Several queries in one table need `table_format`
 
 A Table panel fed by more than one query renders **one column of values**, not one
@@ -28066,21 +28209,36 @@ Mixed units in one table cannot be a panel default; give each column its own
 
 ### `noValue` fills empty *cells*, not just empty panels
 
-Grafana applies `noValue` per field, so on a table whose columns are legitimately
-sparse it lands in every gap rather than standing in for a panel with no data.
-On `infra-nodes` that put "kube-state-metrics is required" into the majority of
-the limit cells — a collection-failure message for pods that simply set no limit,
-and long enough to overflow the column.
+Grafana applies `noValue` per field, so on a table it lands in every empty cell, not only in place of a panel with no
+rows.
+A cell holding an empty string counts as empty too; Grafana 13.2.4 renders both the same way.
+The panel's sentence then sits beside a row that plainly has data, saying the opposite.
 
-Leave it unset on any table that joins several queries.
-Blank is the honest rendering of "this row has none", and a genuinely empty panel
-still falls back to Grafana's own "No data".
-A single-query table is unaffected only when every series carries every label it shows.
-Then its columns come from one result, a row exists in full or not at all, and `noValue` only fires when the whole
-panel is empty, which is what it is for.
-A label some series lack is a sparse column all the same: `ThanosCompactHasNotRun` carries no `pod`, so on
-`infra-thanos`'s alert table the cell beside it read "No Thanos alert is firing or pending" next to a firing alert.
-Keep the panel's `noValue` and override it on the sparse columns with a dash.
+A cell can be empty in any of the following ways:
+
+- **A column that's legitimately sparse.**
+  On `infra-nodes`, "kube-state-metrics is required" filled most of the limit cells, for pods that set no limit.
+- **A joined query with no series for a row's key.**
+  `count by (nodepool)` over node series returns nothing for a NodePool with no nodes, so the Nodes cell of that
+  pool's row would read "Karpenter has not reported this yet".
+- **A label some series lack.**
+  `ThanosCompactHasNotRun` carries no `pod`, so on `infra-thanos`'s alert table the cell beside it read "No Thanos
+  alert is firing or pending" next to a firing alert.
+- **A label whose value is empty.**
+  A Loki `regexp` capture that matches nothing extracts an empty string, so a node held by its NodePool's
+  consolidation policy, which names no pod, would read "Karpenter reported no node held in place" in its Held By
+  cell.
+
+First, fix the query where the gap is an artifact of it.
+Read a count from a series every key publishes, as NodePools reads `karpenter_nodepools_usage{resource_type="nodes"}`,
+or add an `or 0 * …` arm keyed the same way.
+
+Then keep the panel's `noValue` for an empty panel, and override `noValue` on every column that can still be empty.
+Use `0` where blank means none, words where it means something specific, such as "No limit", and `—` where it means
+unknown.
+Dashboards that hold every panel to `test_support::assert_every_panel_has_no_value` need the panel-level text anyway.
+On one that doesn't, leaving a joined table's `noValue` unset is the alternative: blank cells, and Grafana's own "No
+data" for an empty panel.
 
 ## Shade single-series panels, never graphs with several lines
 
@@ -28635,10 +28793,47 @@ It degrades rather than breaking on an older release, and not uniformly — the 
 | Events | The Kubernetes Activity row works — those events come from the kubelet and the scheduler. The Rollout and Operator Health rows are empty. |
 | Reconciliation | Empty, apart from Reconciling Replicas and Environments Needing Update, whose gauges predate the rest. |
 
+The **`env-ingress`** dashboard, Materialize Ingress (Balancer, Console), reads the console's request metrics, which
+Materialize publishes from `v26.49.0`, and balancerd's connection timings and server-side error count, which it
+publishes from `v26.50.0`.
+On versions without them, it degrades by tab:
+
+<!-- TODO: confirm both versions once they're tagged. v26.49.0-rc.1 carries MaterializeInc/materialize#40193, and #40192 merged after that rc was cut. -->
+
+| Tab | On a Materialize version without them |
+|---|---|
+| Overview | Open Connections works, and so do the balancerd rate and error panels. Their error count includes clients that hung up, and leaves out connections balancerd refused. The latency, Taking New Connections, and console panels are empty. |
+| Load Balancer | Unaffected. Its provider rows depend on the gateway pulling the load balancer's metrics, not on Materialize. |
+| Balancer | Connections, the connection limit, resources, autoscaling, and logs work. The watermarks, Taking New Connections by Pod, and Connection Timing are empty on versions that also predate balancerd's watermarks. |
+| Console | Only the logs row works. |
+| SQL and HTTP API | **Fully working.** Every panel reads environmentd. |
+
+The Balancer tab's Autoscaling row draws any HorizontalPodAutoscaler that targets balancerd's Deployment.
+For the autoscaler to keep the count it sets, the Materialize resource needs `balancerdExternallyScaled: true`, which
+Materialize supports from `v26.48.0`.
+Earlier versions reset balancerd's replica count to `balancerdReplicas`.
+
 Each dashboard also carries its floor as a `monitoring.materialize.cloud/min-mz-version` annotation, which the docsite's
 dashboard table shows.
 
-Scrapers (v0.1.1+) require `app.kubernetes.io/name` labels for environmentd introduced in `v26.24.0`.
+Scrapers (v0.1.1+) require the `app.kubernetes.io/name` label that Materialize sets on environmentd pods from `v26.24.0`.
+The balancerd and console monitors (v0.6.0+) select on the same label, which Materialize sets on those pods from the
+same version.
+
+The console monitor scrapes the console pod's `internal-http` port, which the Materialize operator declares from
+`v26.49.0`, the same version that publishes the console's metrics.
+What you see depends on which of the two you have upgraded:
+
+| Operator | Console image | What the console monitor does |
+|---|---|---|
+| Without the port | Any | Finds no target. Nothing fails, and the Console tab stays empty. |
+| With the port | Without the metrics | Scrapes a port that refuses connections, so `up` reads 0 for each console pod. |
+| With the port | With the metrics | Collects `mz_console_*`. |
+
+The operator picks the console image from the environment's Materialize version.
+Upgrading the operator before an environment therefore leaves that environment's console pods in the second row until
+you upgrade the environment too.
+To skip the failed scrapes for that window, set `materialize.console.serviceMonitor.enabled` to `false`.
 
 ## [Grafana](https://grafana.com/)
 
@@ -29505,7 +29700,6 @@ The `v2_` prefix comes from one relabel rule in Cloud's scrape config, which pre
 Dropping that rule sends canonical `mz_*` to AMP and Thanos alike, so the fan-out needs no per-destination name split.
 Before the rule goes, Cloud's dashboards and AMP rules move to queries that match either name, tracked in [DEP-383].
 Cloud's install then runs the chart's rules with `materialize.deploymentMode: self-managed`.
-A destination below the `all` tier drops every recorded series and `ALERTS` until [DEP-368] gives them a tier.
 
 ## Metrics for Cloud
 
@@ -29569,11 +29763,6 @@ environmentd has to emit those families natively before that path can retire.
 | Native hydration and frontier / freshness signals | The Hydration and Freshness drilldowns | ⛓️ |
 | Label-family harmonization | Joins across families. Now carried by [Metric label standardization](#metric-label-standardization) | ⬜ |
 | Latency histograms for `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle, which publish only a mean | Tail latency on `env-persist` and `env-consensus` | ⬜ |
-| A latency histogram for `balancerd`, and any metrics at all from `console` | Duration panels for the two components users connect through | ⬜ |
-
-The chart scrapes `balancerd`'s connection metrics, but their `status` label can't carry an error rate until [CLO-282] lands.
-The console serves no metrics, and its nginx access log records no request time.
-Its rate and errors come from that log and from environmentd's `application_name="web_console"` series.
 
 ### Materialize-side emission
 
@@ -29581,7 +29770,6 @@ Its rate and errors come from that log and from environmentd's `application_name
 |---|---|
 | [CLO-55] Reconciliation timing, stalls, errors and successes for the k8s controllers, and an optional reconcile timeout | ⬜ |
 | [CLO-299] The controller crate logs every failed reconcile at error level, transient Kubernetes errors included | ⬜ |
-| [CLO-282] `mz_balancer_connection_status` counts a refused connection as `success` and a client's dropped connection as `error` | ⬜ |
 | [CLO-256] Reduce less-essential environmentd metrics on very large environments | ⬜ |
 | [CLO-255] Compress the metrics endpoint's responses | ⬜ |
 | [DEP-221] Move the scrapers into the `materialize-operator` chart, which should own them | ⬜ |
@@ -29688,7 +29876,6 @@ That contract keeps seven database flavors and five object stores from multiplyi
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
 | [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus`. The module's `metadata_databases` input is the way in; the wrappers remain | 🔨 |
 | [DEP-406] The Terraform module runs the postgres-exporter, for Grafana's database and any other target, and creates its credentials Secret. The wrappers remain | 🔨 |
-| [DEP-368] A metric tier for recorded series, so a filtered destination keeps `ext:*` and `ALERTS` | ⬜ |
 | [DEP-304] An `AbortIncompleteMultipartUpload` lifecycle rule on the persist bucket, in `materialize-terraform-self-managed` | ⬜ |
 
 No adapter flavor is the one that waits.
@@ -29767,9 +29954,7 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 | [DEP-382] `security-gate` as a required check on `main` | ⬜ |
 | [DEP-249] Trivy suppressions are per check, so they also mask our own templates | ⬜ |
 | [DEP-251] SARIF findings point at temporary render paths | ⬜ |
-| [DEP-381] `tflint` in Terraform CI | ⬜ |
 | [DEP-370] Renovate bumps the `mzmon-alloy` tag and leaves its digest | ⬜ |
-| [DEP-371] Release PRs leave `Cargo.lock` stale | ⬜ |
 | [DEP-111] and [DEP-118] An ArgoCD and FluxCD CI matrix | ⬜ |
 
 ## Designs in flight
@@ -29802,7 +29987,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [CLO-255]: https://linear.app/materializeinc/issue/CLO-255
 [CLO-256]: https://linear.app/materializeinc/issue/CLO-256
 [CLO-266]: https://linear.app/materializeinc/issue/CLO-266
-[CLO-282]: https://linear.app/materializeinc/issue/CLO-282
 [CLO-296]: https://linear.app/materializeinc/issue/CLO-296
 [CLO-299]: https://linear.app/materializeinc/issue/CLO-299
 [DEP-111]: https://linear.app/materializeinc/issue/DEP-111
@@ -29906,9 +30090,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-365]: https://linear.app/materializeinc/issue/DEP-365
 [DEP-366]: https://linear.app/materializeinc/issue/DEP-366
 [DEP-406]: https://linear.app/materializeinc/issue/DEP-406
-[DEP-368]: https://linear.app/materializeinc/issue/DEP-368
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
-[DEP-371]: https://linear.app/materializeinc/issue/DEP-371
 [DEP-372]: https://linear.app/materializeinc/issue/DEP-372
 [DEP-373]: https://linear.app/materializeinc/issue/DEP-373
 [DEP-374]: https://linear.app/materializeinc/issue/DEP-374
@@ -29918,7 +30100,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-378]: https://linear.app/materializeinc/issue/DEP-378
 [DEP-379]: https://linear.app/materializeinc/issue/DEP-379
 [DEP-380]: https://linear.app/materializeinc/issue/DEP-380
-[DEP-381]: https://linear.app/materializeinc/issue/DEP-381
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385
@@ -29992,7 +30173,7 @@ For more information, see [Versioning](../versioning/).
 `mz-monitoring-build propose-bumps` is the command that maintains the version-update PRs. For each changelog-enabled component with changes since its last release tag, it:
 
 - recreates the `version-update/<component>` branch as a **single commit atop the base**,
-  applying that component's [`release`](../versioning/) changelog, version, chart README badge and `uv.lock` edits
+  applying that component's [`release`](../versioning/) changelog, version, chart README badge, and lockfile edits
   (the version is not in the branch name);
 - force-pushes the branch (stateless) and either opens the PR or refreshes the open one's title/body so the description tracks the new commit.
 
@@ -30151,12 +30332,14 @@ The generated output that follows a version is written by `propose-bumps` itself
 |---|---|---|
 | `Chart.yaml` | The version badge in the `README.md` beside it | `make helm-docs` |
 | `pyproject.toml` | That package's `version` in `uv.lock` | `uv lock` |
+| Workspace `Cargo.toml` | The `version` in `Cargo.lock` of each member with `version.workspace = true` | `cargo build` |
 
-Each is a single targeted line, so `propose-bumps` needs no toolchain to write it.
+Each is a single targeted line, so `propose-bumps` needs no generator to write it.
 Waiting on auto-format for it would leave every force-push of a version-update branch stale until the `style:` commit lands,
 and that commit re-runs the PR's checks.
 `every_versioned_chart_readme_has_a_rewritable_badge` in `versioning.rs` fails if a helm-docs upgrade changes the badge's format,
 so the rewrite cannot silently stop matching.
+The lint workflow runs `cargo clippy --locked`, so a version-update PR whose `Cargo.lock` disagrees with its manifests fails its checks.
 
 **Token requirement:** a label/PR event raised by the default `GITHUB_TOKEN` does **not** trigger other workflows (GitHub's loop-prevention).
 For `auto-format` to fire from `propose-bumps`, `propose-bumps` must authenticate with a **PAT or GitHub App token** (`MATERIALIZE_BOT_TOKEN`), not the default `GITHUB_TOKEN`.
@@ -30322,6 +30505,8 @@ A version-update PR populates the placeholder, promotes it to a released section
 and rewrites that component's `version_paths` to the released version.
 For more information, see [Releasing](../releasing/).
 Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
+Bumping the workspace `Cargo.toml` does the same in `Cargo.lock` for every crate that inherits the workspace version.
+That includes `mz-dashboards`, so its locked version follows `mzmon-lib` releases rather than the `dashboards` component.
 Bumping a `Chart.yaml` also rewrites the helm-docs version badge in the `README.md` beside it,
 so the PR does not wait on [auto-format](../releasing/#auto-format) for that line.
 The next version defaults to a minor bump.
@@ -38615,7 +38800,6 @@ Reference tables become worth their cost if too many panels fall back to ids for
 The Thanos Ruler remote-writes its results to the gateway, and every install has Thanos, so a recording rule that joins names onto series would reach Datadog with no new component.
 This design doesn't use it for the dashboards, for the following reasons:
 
-- A destination below the `all` tier drops recorded series until [DEP-368](https://linear.app/materializeinc/issue/DEP-368) gives them a tier.
 - Both ruler replicas send every result. Datadog doesn't deduplicate on `ruler_replica`, so each copy is a custom metric of its own.
 - A name on a series is part of the series' identity. A rename ends one series and starts another, which is why the label-vocabulary design keeps names on `_info` metrics only.
 

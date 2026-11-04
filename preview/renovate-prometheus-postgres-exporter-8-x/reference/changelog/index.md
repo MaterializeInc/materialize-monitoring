@@ -15,13 +15,53 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.16.0 (Unreleased)
+
+_Changes Pending_
+
 ## Container Images v0.10.0 (Unreleased)
 
 _Changes Pending_
 
-## mzmon-lib (shared library) v0.15.0 (Unreleased)
+## mzmon-lib (shared library) v0.15.0
 
-_Changes Pending_
+* Give recorded series and ALERTS a metric tier of their own
+    * [materialize-monitoring#665](https://github.com/MaterializeInc/materialize-monitoring/pull/665)
+    * Recorded series and `ALERTS` have metric tiers, so a destination below `minMetricImportance: all` receives them: `ALERTS` and `ext:consensus_up` at `essential`, and the other `ext:consensus_*` series at `recommended`.
+        * The metrics a recording rule reads keep their own tier. The Thanos ruler reads them from the bundled Thanos, so keep the `thanos` destination at a tier that includes them. The render warns when it doesn't.
+* Keep Cargo.lock in step with workspace version bumps
+    * [materialize-monitoring#664](https://github.com/MaterializeInc/materialize-monitoring/pull/664)
+* Fold the Karpenter dashboard into Infrastructure Autoscaling
+    * [materialize-monitoring#660](https://github.com/MaterializeInc/materialize-monitoring/pull/660)
+    * **Breaking:** **Removed:** the Karpenter dashboard, `infra-karpenter` (`mz-mon-infra-karpenter`). Its panels are on Infrastructure Autoscaling (`mz-mon-infra-autoscaling`), as a Karpenter row on Overview, Node Pools, Pending Pods, and Cloud Capacity, and a new Karpenter tab.
+        * No deprecation cycle: the dashboards component is pre-1.0, and no environment uses this dashboard yet.
+        * A `selected` that names only `infra-karpenter` now matches nothing, which the chart refuses as a likely typo. Listed beside other stems, it is ignored.
+        * Unchanged: `mz-mon-infra-autoscaling` keeps its name and folder, and every panel it already had.
+    * Karpenter's counters and histograms read over the selected time range, as counts and percentiles, rather than as rates; the Events tab says when each thing happened.
+    * Ten Karpenter metrics leave the `extended` metric tier because no panel reads them: `karpenter_cloudprovider_duration_seconds_bucket`, `karpenter_cluster_utilization_percent`, `karpenter_nodes_allocatable`, `karpenter_nodes_current_lifetime_seconds`, `karpenter_scheduler_queue_depth`, `karpenter_scheduler_scheduling_duration_seconds_bucket`, `karpenter_voluntary_disruption_consolidation_timeouts_total`, `karpenter_voluntary_disruption_decisions_total`, `karpenter_voluntary_disruption_eligible_nodes`, and `leader_election_master_status`.
+        * A destination filtered at `extended` stops receiving them. The bundled Thanos receives every metric and is unaffected.
+* Update Rust crate zip to v9.2.0
+    * [materialize-monitoring#659](https://github.com/MaterializeInc/materialize-monitoring/pull/659)
+    * [`v9.2.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#920---2026-10-31)
+* Add the Materialize Ingress dashboard, and scrape the console
+    * [materialize-monitoring#607](https://github.com/MaterializeInc/materialize-monitoring/pull/607)
+    * Add the **Materialize Ingress (Balancer, Console)** dashboard (`env-ingress`)
+        * Rate, errors, and latency for each hop users take into an environment: the cloud load balancer, balancerd, the console, and environmentd's SQL and HTTP APIs. Installed by default with `materialize-monitoring-dashboards`.
+        * The Load Balancer tab draws what AWS, Google Cloud, or Azure reports about the load balancer in front of the environment, when `pipeline.metrics.provider` pulls it. Without a pull, the tab says how to add one.
+        * The Balancer tab also shows balancerd's CPU and memory and, where a HorizontalPodAutoscaler scales it, the autoscaler's replicas, targets, and events.
+        * balancerd's latency and server-side error panels need Materialize v26.50.0, and every console panel needs v26.49.0. On older versions they say so, and the SQL and HTTP API tab is unaffected. See [Compatibility](https://materializeinc.github.io/materialize-monitoring/reference/compatibility/#materialize-product).
+    * Scrape the console's request metrics (`mz_console_*`)
+        * A new PodMonitor collects them from each console pod's `internal-http` port. Configure it under `materialize.console.serviceMonitor`, the same shape as `materialize.balancerd.serviceMonitor`.
+        * If you upgrade the Materialize operator before an environment, that environment's console scrape fails (`up` is 0) until the environment is upgraded too. Set `materialize.console.serviceMonitor.enabled` to `false` to skip it for that window.
+        * The classic and Google Cloud Managed Prometheus downloads include a matching `console` scrape config.
+* Alert on draining nodes, graded by what runs on them, with a runbook
+    * [materialize-monitoring#640](https://github.com/MaterializeInc/materialize-monitoring/pull/640)
+    * New alerts in the default set for draining nodes, meaning nodes that are cordoned or marked for removal by the cluster autoscaler or Karpenter:
+        * `materialize-node-draining` (notice, after 10m), `materialize-node-drain-slow` (warning, after 2h), and `materialize-node-drain-stuck` (critical, after 24h), for each environmentd and clusterd pod on a draining node.
+        * `node-drain-stuck` (warning, after 24h), for draining nodes that run no environmentd or clusterd. It fires a day into a GKE blue-green upgrade's wait on a node pool that runs no Materialize.
+    * A Node drains runbook under Operating > Runbooks covers diagnosing a drain, moving Materialize off a node with a rollout, the GKE, EKS, and AKS node pools, and when to escalate to the node pool's owner. The new alerts link to it.
+* Regenerate locks
+    * [materialize-monitoring#652](https://github.com/MaterializeInc/materialize-monitoring/pull/652)
 
 ## Dashboards (Helm chart) v0.22.0 (Unreleased)
 
