@@ -175,6 +175,16 @@ repos:
         pass_filenames: false
         files: ^(terraform/.*\.tf|\.terraform-docs\.yml)$
 
+      - id: terraform-lint
+        name: tflint
+        # The same `make terraform-lint` the lint workflow runs. Lints every
+        # root, not just the changed files, because a rule like
+        # terraform_unused_declarations spans a whole module.
+        entry: make terraform-lint
+        language: system
+        pass_filenames: false
+        files: ^(terraform/.*\.tf|\.tflint\.hcl)$
+
       - id: terraform-render
         name: Render the chart against the module's composed values
         # pre-push only: plans every example and renders the chart. Triggered by

@@ -24,6 +24,7 @@ Install the toolchain once:
 | Helm | 3.x / 4.x | `brew install helm` |
 | Git LFS | latest | `brew install git-lfs` |
 | [Terraform](https://developer.hashicorp.com/terraform) | 1.3+ | `brew install terraform` — needed for `make terraform-check`; `terraform-docs` (`brew install terraform-docs`) regenerates the module reference |
+| [TFLint](https://github.com/terraform-linters/tflint) | latest | `brew install tflint` — needed for `make terraform-lint` and its pre-commit hook; CI pins its version in `lint.yaml` |
 
 Optional but commonly useful: the [`helm-unittest`](https://github.com/helm-unittest/helm-unittest) plugin (`make helm-unittest-install`), `yq`, `jq`.
 The plugin renders through a Helm library of its own, so `make helm-unittest-install` pins the version CI uses rather than taking the latest.
@@ -67,6 +68,7 @@ make dashboards       # regenerate the Grafana and Datadog dashboards
 make helm-docs        # regenerate chart README + docsite values reference
 make serve-docs       # serve this Hugo docsite locally
 make terraform-check  # fmt + validate + the tier-0 render check (no cluster)
+make terraform-lint   # tflint over every root under terraform/
 make terraform-docs   # regenerate the module README + docsite variable reference
 ```
 
@@ -76,7 +78,13 @@ The cloud-agnostic module lives in [`terraform/modules/materialize-monitoring`](
 
 `make terraform-check` is the gate, and the part worth understanding is what it adds over `terraform validate`. Validate accepts **any** well-formed HCL, including a value written to a path the chart never reads — that renders perfectly and is silently ignored. So the check also plans each example, extracts the composed Helm values from the plan, and renders the chart against them. It needs no cluster: the examples plan against a kubeconfig that does not exist, and every resource is a create, so the providers are never asked to connect.
 
-Two examples are rendered, `aws` and `gcp`, and that is not redundancy — the chart's storage defaults are S3-shaped, so an AWS-only example agrees with every default it fails to set.
+Every directory under `examples/` is rendered, and the overlap between them is not redundancy.
+The chart's storage defaults are S3-shaped, so an AWS-only example agrees with every default it fails to set.
+
+`make terraform-lint` runs `tflint` with every rule in the Terraform ruleset on, and a finding at any severity fails it.
+Fix the finding rather than disabling the rule.
+If a suppression is genuinely right, put a `# tflint-ignore: <rule>` annotation on the line above the finding, with the reason in a comment beside it.
+In CI, `lint.yaml` runs it only when a change touches `terraform/`, `.tflint.hcl`, the `Makefile`, or `lint.yaml` itself.
 
 ### E2E (kind)
 
@@ -177,7 +185,7 @@ A single `uv run pre-commit install` wires both `pre-commit` and `pre-push` stag
 - `yamllint` (YAML and KYAML)
 - `cargo fmt`
 - `helm-docs` regeneration (only when chart sources change)
-- `terraform fmt` and `terraform-docs` regeneration (only when `terraform/` changes)
+- `terraform fmt`, `terraform-docs` regeneration, and `tflint` (only when `terraform/` changes)
 
 **Runs additionally on `pre-push` (slower, before publishing):**
 

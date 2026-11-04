@@ -39,12 +39,6 @@ provider "helm" {
   }
 }
 
-variable "kubeconfig_path" {
-  description = "Path to a kubeconfig. Irrelevant for `terraform plan`, which is all this example is used for."
-  type        = string
-  default     = "~/.kube/config"
-}
-
 module "monitoring" {
   source = "../../"
 
@@ -208,16 +202,4 @@ module "monitoring" {
       effect   = "NoSchedule"
     },
   ]
-}
-
-output "grafana_url" {
-  value = module.monitoring.grafana_url
-}
-
-output "metrics_url" {
-  value = module.monitoring.metrics_url
-}
-
-output "workload_identity_subjects" {
-  value = module.monitoring.workload_identity_subjects
 }

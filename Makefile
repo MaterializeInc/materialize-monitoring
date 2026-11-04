@@ -52,10 +52,11 @@ HUGO_BIN ?= $(GO) run -tags extended github.com/gohugoio/hugo
 # Invoke helm-docs as a tool (set HELM_DOCS=helm-docs to use brew)
 HELM_DOCS ?= $(GO) tool helm-docs
 
-# Terraform tooling. Not pinned via go.mod (neither publishes a Go tool
-# module), so these expect the binaries on PATH.
+# Terraform tooling. Not pinned via go.mod like helm-docs, so these expect the
+# binaries on PATH. CI pins its tflint in lint.yaml.
 TERRAFORM ?= terraform
 TERRAFORM_DOCS ?= terraform-docs
+TFLINT ?= tflint
 
 # Trivy. Also not a Go tool module, so this expects the binary on PATH.
 TRIVY ?= trivy
@@ -570,6 +571,14 @@ terraform-check: terraform-render
 		( cd "$$d" && $(TERRAFORM) init -backend=false -input=false >/dev/null && $(TERRAFORM) validate ); \
 	done
 .PHONY: terraform-check
+
+# Lint every Terraform root under terraform/ against .tflint.hcl. Separate from
+# terraform-check because it needs no Terraform, init, or Rust build, so CI runs
+# it on its own path filter. The config path is absolute because --recursive
+# would otherwise resolve it inside each linted directory.
+terraform-lint:
+	$(TFLINT) --chdir=terraform --recursive --config="$(CURDIR)/.tflint.hcl"
+.PHONY: terraform-lint
 
 # Plan each example and render the chart against the values it composes. This is
 # the only check that proves a module value reached the setting it was aimed at —

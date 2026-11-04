@@ -5,6 +5,12 @@ name: lint
 # itself: each tool reads its canonical config (.editorconfig, .yamllint.yaml,
 # rustfmt defaults, pyproject.toml, .shellcheckrc, etc.) so behavior is the
 # same regardless of how the tool is invoked.
+#
+# Most jobs here are fast enough to run on every PR. The terraform job runs only
+# when its inputs change, and its path filter lives at the JOB level (the
+# `changes` job), not on the trigger, for the same reason as pipelines.yaml:
+# `lint-gate` is a required check, and a workflow skipped by a trigger-level
+# `paths:` filter never reports, leaving the required check pending.
 
 on:
   push:
@@ -13,8 +19,30 @@ on:
 
 permissions:
   contents: read
+  # dorny/paths-filter lists a PR's changed files via the API.
+  pull-requests: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-26.04
+    outputs:
+      terraform: ${{ steps.filter.outputs.terraform }}
+    steps:
+      # Checkout is needed for push events (paths-filter diffs against the base
+      # commit); pull_request events resolve changed files via the API.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            terraform:
+              - terraform/**
+              - .tflint.hcl
+              - Makefile
+              - .github/workflows/lint.yaml
+
   editorconfig:
     name: editorconfig
     runs-on: ubuntu-26.04
@@ -173,14 +201,46 @@ jobs:
             exit 1
           fi
 
+  terraform:
+    name: terraform (tflint)
+    needs: changes
+    if: ${{ needs.changes.outputs.terraform == 'true' }}
+    runs-on: ubuntu-26.04
+    env:
+      # renovate: datasource=github-releases packageName=terraform-linters/tflint
+      TFLINT_VERSION: v0.65.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install tflint
+        # The release binary has the Terraform ruleset .tflint.hcl uses built in,
+        # so this pin is the ruleset's pin too, and no `tflint --init` is needed.
+        # The runner is linux/amd64.
+        run: |
+          base="https://github.com/terraform-linters/tflint/releases/download/${TFLINT_VERSION}"
+          cd /tmp
+          curl -sSLO "$base/tflint_linux_amd64.zip"
+          curl -sSLO "$base/checksums.txt"
+          sha256sum --check --ignore-missing checksums.txt
+          unzip -q tflint_linux_amd64.zip
+          sudo install -m 0755 tflint /usr/local/bin/tflint
+          tflint --version
+      # Lints every root under terraform/ against .tflint.hcl. Needs no Terraform
+      # and no `terraform init`: the only module calls are local paths.
+      - name: tflint
+        run: make terraform-lint
+
   # Rollup gate — the single check to require in branch protection for this
   # workflow. Passes iff every job above finished `success` or `skipped`, so
   # requiring just this one check stays correct as jobs are added or removed.
   # `!cancelled()` lets it run even when some needs skipped; any failure or
   # cancellation fails it. (test/pipelines/dashboards carry the same gate.)
+  # `changes` is listed so a failed path filter fails the gate rather than
+  # passing as a skipped terraform job.
   lint-gate:
     name: lint-gate
-    needs: [editorconfig, python, rust, shell, yaml, helm]
+    needs: [changes, editorconfig, python, rust, shell, yaml, helm, terraform]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     steps:
