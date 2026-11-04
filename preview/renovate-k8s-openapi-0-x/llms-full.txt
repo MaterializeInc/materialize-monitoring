@@ -3225,10 +3225,11 @@ pipeline:
             minMetricImportance: essential   # ship only alerting metrics to Datadog
 ```
 
-> [!NOTE]
->   The **extended** and **diagnostic** tiers are still being populated — today they are empty.
->   Until they fill in, `extended` and `diagnostic` resolve to the same set as `recommended`.
->   If you want *everything* that is scraped, use `all`, not `diagnostic`.
+The series the chart's recording rules write, such as the `ext:*` series for the metadata database, have tiers too.
+A destination on `recommended` receives them without the metrics they're recorded from.
+The Thanos ruler reads those metrics from the bundled Thanos, so they have to reach the `thanos` destination.
+The render warns when the `thanos` destination's tier drops a metric that an installed recording rule reads.
+For more information, see [Recorded series](../../alerting/configuring/#recorded-series).
 
 For a worked example that keeps full fidelity in Thanos while sending a smaller, cheaper slice to Google Cloud Monitoring and Datadog, see the annotated [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile.
 The remote-write equivalent — Thanos on `all`, Amazon Managed Prometheus on `essential` — is [`aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml).
@@ -7591,8 +7592,10 @@ The following table gives the `resourceId` each flavor takes:
 
 An alert can read a recorded series: `consensus-unreachable` reads `ext:consensus_up`, so it installs wherever any adapter recording that series does.
 
-A recorded series that no bundled alert reads has no metric tier.
-A metric destination filtering by `minMetricImportance` therefore drops it, and the render warns when that destination is the bundled Thanos.
+A recorded series has a [metric tier](../../metrics/storing/#the-importance-tiers) of its own: at least `recommended`, and `essential` when a bundled alert reads it.
+A destination that filters by `minMetricImportance` keeps a recorded series at that tier, whether or not it keeps the metrics the series is recorded from.
+The Thanos ruler records each series from metrics it reads out of Thanos, so those metrics have to reach the bundled `thanos` destination, even when another destination receives only the recorded series.
+The render warns when the `thanos` destination drops a metric that an installed recording rule reads, and when it drops a recorded series.
 
 ## Two evaluators, one notifier
 
@@ -13385,13 +13388,16 @@ Adding or changing a query has effects beyond the query itself:
 - **Metric extraction** (`mz-monitoring-build extract-metrics`) parses the PromQL to derive the metric set, which lands
   in `docs/assets/metrics/metrics.yaml` and backs
   [Reference Metrics]({{< relref "../../list-metrics.md" >}}).
-- **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's `stability` and importance up into the
+- **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's importance up into the
   per-destination allowlists in `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml`.
+  The series the rules produce, each recorded name and `ALERTS`, get a tier of their own; see
+  [Authoring Recording Rules]({{< relref "recording-rules.md" >}}#capabilities-and-tiers).
   This is why a new query can change what a deployment ships to a metered backend.
 
-  **A query is the only way a metric reaches a tier.** The tiers are built by walking the registry's queries, so
-  `metricOverrides` re-weights a metric some query already references and cannot introduce one — however many
-  patterns match it. A family worth keeping therefore has to be *named* by a query even when no dashboard draws it.
+  **A query is the only way a collected metric reaches a tier.** The tiers are built by walking the registry's queries
+  and the series its rules produce, so `metricOverrides` re-weights a metric the registry already names and cannot
+  introduce one, however many patterns match it.
+  A family worth keeping therefore has to be *named* by a query even when no dashboard draws it.
   `infra-loki.yaml` once carried six such queries for the Alloy-side `loki_*` components; they moved to
   `infra-alloy.yaml` when a dashboard came to draw them.
 
@@ -26331,10 +26337,17 @@ A recording rule that reads only `up` MUST declare what it is about with `requir
 A registry file of recording rules SHOULD set `metricImportanceHint: diagnostic`.
 A file's hint rolls up to every metric its queries read, and a recording rule is no reason to send a metric to more destinations.
 
-A recorded series has a metric tier only when a registry query names it, which an alert reading it does: `ext:consensus_up` takes the tier of `materialize-alerts.yaml`.
-A destination filtering by `minMetricImportance` drops the others.
-The bundled `thanos` destination keeps everything by default, and the chart warns, naming them, when it does not.
-Giving every recorded series a tier is [DEP-368](https://linear.app/materializeinc/issue/DEP-368).
+A recorded series has a metric tier of its own, which `gen-metric-tiers` writes into `metric-tiers.yaml` beside the metrics the registry reads.
+The tier is `recommended`, the tier of the metrics dashboards draw, unless a query reading the series is in a more important one.
+`ext:consensus_up` is `essential`, because `consensus-unreachable` in `materialize-alerts.yaml` reads it.
+A `metricOverrides` entry that matches a recorded name sets its tier outright, as it does for any other metric.
+`ALERTS` is `essential` in any registry that defines an alert.
+`ALERTS_FOR_STATE` is the ruler's own bookkeeping, and has no tier.
+
+A destination can therefore receive a recorded series without the metrics it's recorded from.
+The Thanos ruler still reads those metrics from Thanos, so they have to reach the bundled `thanos` destination for the series to be recorded at all.
+For example, a Datadog destination on `recommended` receives the `rds` adapter's `ext:consensus_xid_used_ratio` only while the `thanos` destination keeps the CloudWatch family that the adapter reads.
+The chart warns when the `thanos` destination filters out a metric that an installed recording rule reads, and when it filters out a recorded series.
 
 ## What `gen-rules` rejects
 
@@ -29687,7 +29700,6 @@ The `v2_` prefix comes from one relabel rule in Cloud's scrape config, which pre
 Dropping that rule sends canonical `mz_*` to AMP and Thanos alike, so the fan-out needs no per-destination name split.
 Before the rule goes, Cloud's dashboards and AMP rules move to queries that match either name, tracked in [DEP-383].
 Cloud's install then runs the chart's rules with `materialize.deploymentMode: self-managed`.
-A destination below the `all` tier drops every recorded series and `ALERTS` until [DEP-368] gives them a tier.
 
 ## Metrics for Cloud
 
@@ -29864,7 +29876,6 @@ That contract keeps seven database flavors and five object stores from multiplyi
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
 | [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus`. The module's `metadata_databases` input is the way in; the wrappers remain | 🔨 |
 | [DEP-406] The Terraform module runs the postgres-exporter, for Grafana's database and any other target, and creates its credentials Secret. The wrappers remain | 🔨 |
-| [DEP-368] A metric tier for recorded series, so a filtered destination keeps `ext:*` and `ALERTS` | ⬜ |
 | [DEP-304] An `AbortIncompleteMultipartUpload` lifecycle rule on the persist bucket, in `materialize-terraform-self-managed` | ⬜ |
 
 No adapter flavor is the one that waits.
@@ -30079,7 +30090,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-365]: https://linear.app/materializeinc/issue/DEP-365
 [DEP-366]: https://linear.app/materializeinc/issue/DEP-366
 [DEP-406]: https://linear.app/materializeinc/issue/DEP-406
-[DEP-368]: https://linear.app/materializeinc/issue/DEP-368
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
 [DEP-372]: https://linear.app/materializeinc/issue/DEP-372
 [DEP-373]: https://linear.app/materializeinc/issue/DEP-373
@@ -38790,7 +38800,6 @@ Reference tables become worth their cost if too many panels fall back to ids for
 The Thanos Ruler remote-writes its results to the gateway, and every install has Thanos, so a recording rule that joins names onto series would reach Datadog with no new component.
 This design doesn't use it for the dashboards, for the following reasons:
 
-- A destination below the `all` tier drops recorded series until [DEP-368](https://linear.app/materializeinc/issue/DEP-368) gives them a tier.
 - Both ruler replicas send every result. Datadog doesn't deduplicate on `ruler_replica`, so each copy is a custom metric of its own.
 - A name on a series is part of the series' identity. A rename ends one series and starts another, which is why the label-vocabulary design keeps names on `_info` metrics only.
 
