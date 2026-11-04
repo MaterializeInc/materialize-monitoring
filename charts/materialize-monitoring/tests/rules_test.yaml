@@ -543,15 +543,25 @@ tests:
       - notMatchRegexRaw:
           pattern: "externalDependencies"
 
-  # An alert reading a recorded series gives it the alert's tier; the others
-  # have none.
-  - it: warns that a tiered thanos destination drops recorded series no alert reads
+  # `consensus-unreachable` raises ext:consensus_up to essential; the other
+  # recorded series stay recommended.
+  - it: warns that an essential thanos destination drops recorded series no alert reads
+    template: templates/NOTES.txt
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: essential
+    asserts:
+      - matchRegexRaw:
+          pattern: 'the recorded series ext:consensus_commit_latency_seconds:p99 are in a less important tier'
+      - notMatchRegexRaw:
+          pattern: 'the recorded series [^\n]*ext:consensus_up[,\s]'
+
+  - it: keeps every recorded series in a recommended thanos destination
     template: templates/NOTES.txt
     set:
       pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: recommended
     asserts:
-      - matchRegexRaw:
-          pattern: 'the recorded series ext:consensus_commit_latency_seconds:p99 have no tier at that level'
+      - notMatchRegexRaw:
+          pattern: 'are in a less important tier'
 
   # --- alerts reading recorded series ----------------------------------------
 

@@ -111,10 +111,17 @@ A recording rule that reads only `up` MUST declare what it is about with `requir
 A registry file of recording rules SHOULD set `metricImportanceHint: diagnostic`.
 A file's hint rolls up to every metric its queries read, and a recording rule is no reason to send a metric to more destinations.
 
-A recorded series has a metric tier only when a registry query names it, which an alert reading it does: `ext:consensus_up` takes the tier of `materialize-alerts.yaml`.
-A destination filtering by `minMetricImportance` drops the others.
-The bundled `thanos` destination keeps everything by default, and the chart warns, naming them, when it does not.
-Giving every recorded series a tier is [DEP-368](https://linear.app/materializeinc/issue/DEP-368).
+A recorded series has a metric tier of its own, which `gen-metric-tiers` writes into `metric-tiers.yaml` beside the metrics the registry reads.
+The tier is `recommended`, the tier of the metrics dashboards draw, unless a query reading the series is in a more important one.
+`ext:consensus_up` is `essential`, because `consensus-unreachable` in `materialize-alerts.yaml` reads it.
+A `metricOverrides` entry that matches a recorded name sets its tier outright, as it does for any other metric.
+`ALERTS` is `essential` in any registry that defines an alert.
+`ALERTS_FOR_STATE` is the ruler's own bookkeeping, and has no tier.
+
+A destination can therefore receive a recorded series without the metrics it's recorded from.
+The Thanos ruler still reads those metrics from Thanos, so they have to reach the bundled `thanos` destination for the series to be recorded at all.
+For example, a Datadog destination on `recommended` receives the `rds` adapter's `ext:consensus_xid_used_ratio` only while the `thanos` destination keeps the CloudWatch family that the adapter reads.
+The chart warns when the `thanos` destination filters out a metric that an installed recording rule reads, and when it filters out a recorded series.
 
 ## What `gen-rules` rejects
 

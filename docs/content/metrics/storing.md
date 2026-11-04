@@ -250,10 +250,11 @@ pipeline:
             minMetricImportance: essential   # ship only alerting metrics to Datadog
 ```
 
-> [!NOTE]
->   The **extended** and **diagnostic** tiers are still being populated — today they are empty.
->   Until they fill in, `extended` and `diagnostic` resolve to the same set as `recommended`.
->   If you want *everything* that is scraped, use `all`, not `diagnostic`.
+The series the chart's recording rules write, such as the `ext:*` series for the metadata database, have tiers too.
+A destination on `recommended` receives them without the metrics they're recorded from.
+The Thanos ruler reads those metrics from the bundled Thanos, so they have to reach the `thanos` destination.
+The render warns when the `thanos` destination's tier drops a metric that an installed recording rule reads.
+For more information, see [Recorded series](../../alerting/configuring/#recorded-series).
 
 For a worked example that keeps full fidelity in Thanos while sending a smaller, cheaper slice to Google Cloud Monitoring and Datadog, see the annotated [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile.
 The remote-write equivalent — Thanos on `all`, Amazon Managed Prometheus on `essential` — is [`aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml).

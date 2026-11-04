@@ -585,6 +585,11 @@ $defs:
       normalized `ext:*` layer is a group, and every adapter that can measure a
       series records it under the same name, with its own `flavor` label. A
       group records a given name once.
+
+      The recorded name has a metric tier of its own: `recommended`, unless a
+      query reading it is more important, or a `metricOverrides` entry sets it.
+      The file's `metricImportanceHint` applies only to the metrics the rule's
+      query reads.
     type: object
     properties:
       record:

@@ -17,6 +17,13 @@
 //! importance outright. The result is sorted most-important-then-name (the order
 //! the docs metrics list uses) and serialized to YAML.
 //!
+//! The rules produce series of their own, which need no query naming them to
+//! have a tier: each recording rule's `record`, and `ALERTS` once the registry
+//! defines an alert. They join the roll-up at [`RECORDED_SERIES_IMPORTANCE`] and
+//! [`ALERTS_IMPORTANCE`], a query reading one can still raise it, and overrides
+//! apply to them as to any metric. The metrics a rule reads keep their own
+//! roll-up, because a destination can take a rule's output without its inputs.
+//!
 //! Importance is the axis Python's `docgen` does not have, so this output
 //! intentionally diverges from it — the Rust tool is authoritative. Extraction
 //! (metric names, labels, usage) is unchanged and still matches Python.
@@ -35,6 +42,19 @@ use crate::query::error::{Error, Result};
 use crate::query::importance::Importance;
 use crate::query::registry::QueryRegistry;
 use crate::query::render::TemplateContext;
+
+/// The tier of a recorded series that no more important query reads. A
+/// recorded series exists for alerts and summary panels to read, so it goes
+/// where dashboards' metrics go, and it costs only a few series wherever it goes.
+pub const RECORDED_SERIES_IMPORTANCE: Importance = Importance::Recommended;
+
+/// The series the ruler writes for every alert it evaluates.
+/// `ALERTS_FOR_STATE` is the ruler's own bookkeeping, not a series to forward,
+/// so it has no tier.
+pub const ALERTS_SERIES: &str = "ALERTS";
+
+/// The tier of [`ALERTS_SERIES`]: alert state is what the alerting tier is for.
+pub const ALERTS_IMPORTANCE: Importance = Importance::Essential;
 
 /// Documentation for a single metric. Field order is alphabetical (`importance`,
 /// `labels`, `name`, `usage`) so the serialized YAML keys stay sorted.
@@ -76,7 +96,7 @@ struct Aggregate {
 }
 
 /// Extract and aggregate the documented metrics for every metric query in
-/// `registry`, rendered through `ctx`.
+/// `registry`, rendered through `ctx`, plus the series its rules produce.
 pub fn extract_metric_docs(registry: &QueryRegistry, ctx: &TemplateContext) -> DocgenOutcome {
     let mut aggregates: IndexMap<String, Aggregate> = IndexMap::new();
     let mut errors = Vec::new();
@@ -102,6 +122,28 @@ pub fn extract_metric_docs(registry: &QueryRegistry, ctx: &TemplateContext) -> D
             // referencing query.
             entry.importance = entry.importance.max(query.importance);
         }
+    }
+
+    // One name has a rule per adapter, each writing its own series under that
+    // name, and a tier is the name's.
+    let produced = registry
+        .rules()
+        .map(|rule| (rule.record.as_str(), RECORDED_SERIES_IMPORTANCE))
+        .chain(
+            registry
+                .alerts()
+                .next()
+                .map(|_| (ALERTS_SERIES, ALERTS_IMPORTANCE)),
+        );
+    for (name, importance) in produced {
+        let entry = aggregates
+            .entry(name.to_string())
+            .or_insert_with(|| Aggregate {
+                labels: BTreeSet::new(),
+                usage: BTreeSet::new(),
+                importance,
+            });
+        entry.importance = entry.importance.max(importance);
     }
 
     let mut docs: Vec<MetricDoc> = aggregates
@@ -321,6 +363,102 @@ queries:
                 "diagnostic_metric",
             ]
         );
+    }
+
+    /// A recording-rules file, hinted diagnostic as one should be, whose two
+    /// adapters record `ext:thing_ratio` from `input_metric`.
+    const RULES: &str = r#"
+description: rules
+metricImportanceHint: diagnostic
+rules:
+  - record: ext:thing_ratio
+    group: ext_thing_a
+    stability: best-effort
+    labels: {flavor: a}
+    description: {summary: s}
+    query:
+      id: ext.thing.a
+      stability: experimental
+      description: {summary: s}
+      promQL: 'input_metric{a="1"}'
+  - record: ext:thing_ratio
+    group: ext_thing_b
+    stability: best-effort
+    labels: {flavor: b}
+    description: {summary: s}
+    query:
+      id: ext.thing.b
+      stability: experimental
+      description: {summary: s}
+      promQL: 'input_metric{b="2"}'
+"#;
+
+    #[test]
+    fn a_recorded_series_has_a_tier_of_its_own() {
+        let docs = run(&load_docs(&[RULES]));
+        let record = by_name(&docs, "ext:thing_ratio");
+        assert_eq!(record.importance, "recommended");
+        assert!(record.usage.is_empty(), "{:?}", record.usage);
+        assert_eq!(by_name(&docs, "input_metric").importance, "diagnostic");
+        assert_eq!(docs.len(), 2, "one entry per recorded name: {docs:?}");
+        assert!(
+            docs.iter().all(|d| d.name != "ALERTS"),
+            "no alert, so no ALERTS: {docs:?}"
+        );
+    }
+
+    #[test]
+    fn an_alert_reading_a_recorded_series_raises_it_and_adds_alerts() {
+        let docs = run(&load_docs(&[
+            RULES,
+            r#"
+description: alerts
+metricImportanceHint: essential
+alerts:
+  - alert: thing-high
+    group: thing
+    stability: best-effort
+    for: 5m
+    description: {summary: s}
+    query:
+      id: thing.alerts.high
+      stability: best-effort
+      description: {summary: s}
+      promQL: 'ext:thing_ratio > 0.9'
+"#,
+        ]));
+        let record = by_name(&docs, "ext:thing_ratio");
+        assert_eq!(record.importance, "essential");
+        assert_eq!(record.usage, vec!["thing.alerts.high".to_string()]);
+        assert_eq!(by_name(&docs, "input_metric").importance, "diagnostic");
+        assert_eq!(by_name(&docs, "ALERTS").importance, "essential");
+    }
+
+    #[test]
+    fn a_reader_below_the_floor_does_not_lower_a_recorded_series() {
+        let docs = run(&load_docs(&[
+            RULES,
+            r#"
+description: panels
+metricImportanceHint: diagnostic
+queries:
+  - id: thing.panel
+    stability: best-effort
+    description: {summary: s}
+    promQL: 'ext:thing_ratio'
+"#,
+        ]));
+        assert_eq!(by_name(&docs, "ext:thing_ratio").importance, "recommended");
+    }
+
+    #[test]
+    fn an_override_sets_a_recorded_series_tier() {
+        let overridden = format!(
+            "{RULES}metricOverrides:\n  - metricPattern: \"ext:thing_.*\"\n    importance: essential\n"
+        );
+        let docs = run(&load_docs(&[&overridden]));
+        assert_eq!(by_name(&docs, "ext:thing_ratio").importance, "essential");
+        assert_eq!(by_name(&docs, "input_metric").importance, "diagnostic");
     }
 
     #[test]
