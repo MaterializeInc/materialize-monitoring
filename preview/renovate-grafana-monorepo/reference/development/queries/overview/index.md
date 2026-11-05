@@ -88,13 +88,16 @@ Adding or changing a query has effects beyond the query itself:
 - **Metric extraction** (`mz-monitoring-build extract-metrics`) parses the PromQL to derive the metric set, which lands
   in `docs/assets/metrics/metrics.yaml` and backs
   [Reference Metrics](/materialize-monitoring/preview/renovate-grafana-monorepo/reference/list-metrics/).
-- **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's `stability` and importance up into the
+- **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's importance up into the
   per-destination allowlists in `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml`.
+  The series the rules produce, each recorded name and `ALERTS`, get a tier of their own; see
+  [Authoring Recording Rules](/materialize-monitoring/preview/renovate-grafana-monorepo/reference/development/queries/recording-rules/#capabilities-and-tiers).
   This is why a new query can change what a deployment ships to a metered backend.
 
-  **A query is the only way a metric reaches a tier.** The tiers are built by walking the registry's queries, so
-  `metricOverrides` re-weights a metric some query already references and cannot introduce one — however many
-  patterns match it. A family worth keeping therefore has to be *named* by a query even when no dashboard draws it.
+  **A query is the only way a collected metric reaches a tier.** The tiers are built by walking the registry's queries
+  and the series its rules produce, so `metricOverrides` re-weights a metric the registry already names and cannot
+  introduce one, however many patterns match it.
+  A family worth keeping therefore has to be *named* by a query even when no dashboard draws it.
   `infra-loki.yaml` once carried six such queries for the Alloy-side `loki_*` components; they moved to
   `infra-alloy.yaml` when a dashboard came to draw them.
 

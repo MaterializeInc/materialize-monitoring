@@ -316,10 +316,9 @@ These are the ones with something to know before narrowing it:
   `metricLabelsAllowlist` names them.
   The bundled kube-state-metrics names them; an install that brings its own needs the same allowlist, or that tab
   reads empty.
-- **Karpenter** (`infra-karpenter` → `mz-mon-infra-karpenter`), in `materialize-monitoring-dashboards-infra`.
-  It has data only on EKS, and only where Karpenter's ServiceMonitor is applied; everywhere else each tab shows one
-  row saying why it is empty.
-  Leave it out of `selected` on GKE and AKS if that row is noise.
+  Its Karpenter rows and Karpenter tab render only where Karpenter's ServiceMonitor is applied, which on the
+  self-managed Terraform means EKS.
+  Elsewhere the rows don't render, and the Karpenter tab shows one row saying why it's empty.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), in `materialize-monitoring-dashboards`.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
