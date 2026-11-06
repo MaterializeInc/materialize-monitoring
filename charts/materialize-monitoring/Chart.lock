@@ -31,6 +31,6 @@ dependencies:
   version: 3.14.0
 - name: prometheus-postgres-exporter
   repository: oci://ghcr.io/prometheus-community/charts
-  version: 8.2.0
-digest: sha256:59d2414bbbf1d3d63c4e733dc1c8979600b16677244c6fa910c54643b108aea1
-generated: "2026-11-04T13:04:03.46334775Z"
+  version: 8.2.3
+digest: sha256:f9d39dd53b7efef77e8c7e5fb7b96e2567f4098cc078fb97f4610f1a8e6b0053
+generated: "2026-11-06T02:45:42.926531074Z"
