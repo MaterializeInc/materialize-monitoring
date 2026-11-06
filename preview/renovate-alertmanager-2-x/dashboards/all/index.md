@@ -55,7 +55,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/env-top.json?xxhash=49ca0f374a896929" download="mz-mon-env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/env-top.json?xxhash=c8da3e14108409b2" download="mz-mon-env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>mz-mon-env-top</code></small>
       </td>
       <td>
@@ -284,6 +284,65 @@ It needs both a metrics and a logs datasource.
 </table>
 
 
+### Materialize Ingress (Balancer, Console) (`env-ingress`)
+
+How users reach a Materialize environment, across five tabs: Overview, Load Balancer, Balancer, Console, and SQL and HTTP API.
+Every SQL client, HTTP API call, and console session arrives through a cloud load balancer and enters balancerd, and the console's own API calls pass through the console's nginx first.
+Both forward to environmentd, which serves the SQL and HTTP APIs.
+Each tab measures one of those hops with its rate, errors, and latency, so you can tell which hop a complaint like "users can't connect" or "the console is slow" belongs to.
+
+The Overview tab's verdict row reads each hop's error ratio and latency, and whether every balancerd pod is taking new connections.
+Below it, balancerd and the console sit side by side for each signal: when both fail, look behind them at environmentd, and when one fails, look at that one.
+The Load Balancer tab shows the address Kubernetes gave each LoadBalancer Service, and what the cloud provider reports about the load balancer in front of this environment:
+target health and connection resets on AWS, health probes on Azure, and traffic on all three clouds.
+Its provider rows appear when the gateway pulls that load balancer's metrics, and otherwise the tab says how to turn the pull on;
+see [Cloud Provider Metrics](../../metrics/collecting/cloud-provider-metrics/).
+The Balancer tab adds each pod's connections against its limit and watermarks, the time spent reaching environmentd, and balancerd's warnings.
+It opens with sparkline stats for open connections, ready and unavailable pods, CPU against the pods' request, memory against their limit, and the time since the last restart, and drills into each pod's CPU, memory, and throttling further down.
+Where a HorizontalPodAutoscaler scales balancerd, an Autoscaling row shows its replicas, the metrics it scales on against their targets, the conditions that stop it, and its events.
+Without one, the tab says how balancerd's replica count is set and how to hand it to an autoscaler.
+The Console tab splits every request by what it asked for, the page itself or an API call, and carries nginx's server-error lines.
+The SQL and HTTP API tab is environmentd's side of the same traffic, including the SQL the console runs.
+
+balancerd's connection timings, its server-side error count, and every console panel need a Materialize version that publishes them.
+On older versions, those panels say so, and the SQL and HTTP API tab is unaffected.
+It needs both a metrics and a logs datasource.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/env-ingress.json?xxhash=62f1cb208f3d0243" download="mz-mon-env-ingress.json"><code>env-ingress.json</code></a>
+        <br /><small>UID <code>mz-mon-env-ingress</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>materialize</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.50.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
 ## Infrastructure (`infra-*`)
 
 ### Infrastructure Node Detail (`infra-nodes`)
@@ -473,16 +532,32 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
 
 ### Infrastructure Autoscaling (`infra-autoscaling`)
 
-Whether the cluster's nodes are keeping up with its pods, on any cloud, across six tabs: Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, and Events.
-Open it when a Materialize cluster replica will not start, since that is usually a pod waiting for a node.
+Whether the cluster's nodes are keeping up with its pods, on any cloud.
+Its tabs are Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, Karpenter, and Events.
+Open it when a Materialize cluster replica won't start, because that's usually a pod waiting for a node.
 
-It is built from what every cluster has, so it reads the same whether Karpenter, GKE's or AKS's cluster autoscaler adds the nodes:
-- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it could not place, followed by what the autoscaler did about it.
-- **Nodes by pool, instance type and zone.** Also how full each pool is to the scheduler: requests against allocatable, which is what decides whether a pod fits, rather than usage.
-- **HorizontalPodAutoscalers.** Their current, desired, minimum and maximum replicas, and any that cannot read the metric they scale on.
+Most of it is built from what every cluster has, so it reads the same whether Karpenter or GKE's or AKS's cluster autoscaler adds the nodes:
+
+- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it couldn't place, followed by what the autoscaler did about it.
+- **Nodes by pool, instance type, and zone.** Also how full each pool is to the scheduler: requests against allocatable, which decides whether a pod fits, rather than usage.
+- **HorizontalPodAutoscalers.** Their current, desired, minimum, and maximum replicas, and any that can't read the metric they scale on.
 - **What the cloud says about capacity.** EC2 status checks and node group sizes, Compute Engine quota, and AKS's own autoscaler gauges, when [cloud provider metrics](/materialize-monitoring/preview/renovate-alertmanager-2-x/metrics/collecting/cloud-provider-metrics/) are enabled for them.
 
-The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that they say so.
+The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that, they say so.
+
+On EKS, Karpenter's own metrics add a row to each tab where they answer the same question, and a Karpenter tab of their own:
+
+- **Overview:** whether Karpenter can act at all, the pods it can't place, and the launches EC2 refused.
+- **Node Pools:** each NodePool's CPU and memory against its limits, and any NodePool or EC2NodeClass condition that's False.
+- **Pending Pods:** how long each stage of a launch took, from EC2 accepting it to the node being ready.
+- **Cloud Capacity:** EC2's errors, and which zones offer each instance type, including the fewest at any point in the time range.
+- **Karpenter:** what Karpenter replaced and removed and why, what held nodes in place, draining, its controller, and its warning logs.
+  On a Materialize cluster, what holds nodes is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, because moving a replica means rehydrating it.
+  That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours isn't.
+
+Karpenter acts a few times a day, so most of these read as counts and percentiles over the selected time range; the Events tab says when each thing happened.
+The Karpenter rows need the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates.
+They don't render on a cluster without Karpenter, where the Karpenter tab explains why it's empty.
 
 <table class="download-dashboards">
   <thead>
@@ -496,51 +571,8 @@ The per-pool panels need kube-state-metrics to publish node labels, which the ch
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/infra-autoscaling.json?xxhash=a0d6ff29eb206fc2" download="mz-mon-infra-autoscaling.json"><code>infra-autoscaling.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/infra-autoscaling.json?xxhash=6632a552d5ea6200" download="mz-mon-infra-autoscaling.json"><code>infra-autoscaling.json</code></a>
         <br /><small>UID <code>mz-mon-infra-autoscaling</code></small>
-      </td>
-      <td>
-          <strong>Grafana folder</strong>: <code>infra</code><br />
-          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
-          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
-          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
-          <strong>Export target</strong>: <code>generic</code><br />
-      </td>
-    </tr>
-    <tr>
-      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
-    </tr>
-    <tr>
-      <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
-    </tr>
-  </tbody>
-</table>
-
-
-### Karpenter (`infra-karpenter`)
-
-How Karpenter adds, replaces and removes the cluster's nodes on EKS, across five tabs: Overview, Provisioning, Disruption, Controller, and Events and Logs.
-It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates, and renders nothing but an explanation on a cluster without Karpenter.
-
-- **Provisioning:** what Karpenter launched and what EC2 refused, and which instance types EC2 briefly stopped offering in a zone. Also how long each stage of a launch took, from EC2 accepting it to the node being ready.
-- **Disruption:** consolidation, drift and expiry, and what blocks them. On a Materialize cluster that is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, since moving a replica means rehydrating it. That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours is not.
-
-<table class="download-dashboards">
-  <thead>
-    <tr>
-      <th>Format</th>
-      <th>Download</th>
-      <th>Annotations</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
-      <td>
-        <a href="/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/infra-karpenter.json?xxhash=305c39452d44f821" download="mz-mon-infra-karpenter.json"><code>infra-karpenter.json</code></a>
-        <br /><small>UID <code>mz-mon-infra-karpenter</code></small>
       </td>
       <td>
           <strong>Grafana folder</strong>: <code>infra</code><br />
