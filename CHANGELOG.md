@@ -8,9 +8,26 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## Prometheus Scrapers v0.7.0 (Unreleased)
+## Prometheus Scrapers v0.8.0 (Unreleased)
 
 _Changes Pending_
+
+## Prometheus Scrapers v0.7.0
+
+### Dependencies
+
+* <details><summary>Included mzmon-lib (shared library) @ v0.15.0..v0.16.0</summary>
+
+    * Update Rust crate zip to v9.3.0
+        * [materialize-monitoring#671](https://github.com/MaterializeInc/materialize-monitoring/pull/671)
+        * [`v9.3.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#930---2026-11-03)
+        * [`v9.2.3`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#923---2026-11-03)
+        * [`v9.2.2`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#922---2026-11-01)
+    * Update Rust crate zip to v9.2.1
+        * [materialize-monitoring#661](https://github.com/MaterializeInc/materialize-monitoring/pull/661)
+        * [`v9.2.1`](https://redirect.github.com/zip-rs/zip2/releases/tag/v9.2.1)
+
+  </details>
 
 ## mzmon-lib (shared library) v0.16.0 (Unreleased)
 
