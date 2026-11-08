@@ -54,6 +54,10 @@ pipeline:
 An `otlp` entry with a `metrics` block also receives metrics, filtered to its own `metrics.minMetricImportance`, over the same connection and credentials.
 Over gRPC, set `protocol: grpc` and write `url` as `host:port`; gRPC serves every signal on one endpoint.
 
+To authenticate to a destination with a client certificate, put the certificate and key in a Secret named `mzmon-alloy-gateway-destination-tls` in the gateway's namespace.
+The gateway mounts it at `/etc/mzmon/destination-tls`, so set the destination's `tls.certFile` and `tls.keyFile` to files there.
+Until the Secret exists, the mount is empty and a destination that names a file in it fails to load.
+
 To stop writing to the bundled Loki, set `pipeline.destinations.loki.enabled` to `false`.
 For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
 

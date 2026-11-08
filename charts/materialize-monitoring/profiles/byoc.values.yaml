@@ -1,0 +1,58 @@
+# Profile: Bring Your Own Cloud. Sends a reduced copy of telemetry to
+# Materialize's control plane, alongside the full copy the install keeps.
+#
+# Compose it with the cloud and sizing profiles the install already uses; it
+# adds one destination and touches nothing else. The design is
+# docs/content/reference/development/design-docs/20260813-byoc-observability.md.
+#
+# What crosses, and what stays:
+#
+#   * Logs at WARN and above, plus UNKNOWN, which is where panics land, at most
+#     500 lines per second per gateway replica. The bundled Loki keeps every
+#     line. Set `pipeline.destinations.controlPlane.logs.enabled: false` to send
+#     no logs at all.
+#   * Metrics at the `essential` tier. The bundled Thanos keeps every tier.
+#
+# When the control plane is unreachable, its copy drops entries at a full queue
+# and the local copies keep receiving: an OTLP destination never blocks the
+# others. The drops are counted in
+# `otelcol_exporter_enqueue_failed_{log_records,metric_points}_total`.
+#
+# Before installing, the stack deployer creates the Secret
+# `mzmon-alloy-gateway-destination-tls` in the gateway's namespace: a
+# `kubernetes.io/tls` Secret holding the client certificate Materialize issued
+# for this stack. Its URI SAN is the stack's identity,
+# `spiffe://c.materialize.cloud/stack/<clientStack>`, where `<clientStack>` is
+# usually `byoc-<uuid>`. The control plane's load balancer reads the identity
+# from the certificate, so the gateway sends none of its own. The chart mounts
+# the Secret at /etc/mzmon/destination-tls. Without it, the gateway fails to
+# load its configuration, naming the missing file.
+#
+# Redaction of log bodies before they cross is a separate filter (DEP-317), not
+# part of this profile.
+pipeline:
+  destinations:
+    controlPlane:
+      type: otlp
+      # telemetry.c.<appHost>. Override for another stack:
+      #   staging:         https://telemetry.c.staging.cloud.materialize.com
+      #   personal stack:  https://telemetry.c.<personalStack>.dev.cloud.materialize.com
+      url: https://telemetry.c.cloud.materialize.com
+      protocol: http
+      tls:
+        enabled: true
+        # The load balancer presents a public certificate, so the system roots
+        # verify it and no caFile is needed.
+        certFile: /etc/mzmon/destination-tls/tls.crt
+        keyFile: /etc/mzmon/destination-tls/tls.key
+        # Re-read the files so a renewed certificate is used without a restart.
+        reloadInterval: 5m
+      logs:
+        minLevel: WARN
+        # A starting point, per gateway replica. Tune it from what the control
+        # plane receives.
+        rateLimit:
+          rate: 500
+          burst: 5000
+      metrics:
+        minMetricImportance: essential

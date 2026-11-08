@@ -1589,6 +1589,9 @@ The following table lists each field, the types it applies to, and its default:
 | `basicAuth` / `bearer` | all | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
 | `tls` | all | off | `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
 
+**A client certificate for a destination** goes in the Secret `mzmon-alloy-gateway-destination-tls`, which you create.
+The gateway mounts it at `/etc/mzmon/destination-tls`, so set `tls.certFile` and `tls.keyFile` to files there.
+
 **The `logs` reduction fields apply to one destination's copy only**, in a `loki.process "dest_<name>"` in front of its writer.
 They run in table order, and each drop is counted in `loki_process_dropped_lines_total` under its own `reason`.
 `minLevel` never drops `UNKNOWN`, because a panic arrives without a level the gateway can parse.
@@ -5007,6 +5010,11 @@ arguments against it.
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/destination-tls",
+      "name": "mzmon-destination-tls",
+      "readOnly": true
     }
   ],
   "varlog": false
@@ -5044,6 +5052,26 @@ there is no Secret to wait for and the pod would never start.
 
 The kubelet refreshes the contents in place on renewal, which is why
 the `tls.*File` carriers are preferred over the inline PEMs.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.mounts<wbr>.extra[2]</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "mountPath": "/etc/mzmon/destination-tls",
+  "name": "mzmon-destination-tls",
+  "readOnly": true
+}</pre>
+</td>
+      <td class="helm-value-desc">A client certificate for a `pipeline.destinations` entry.
+The Secret named in the paired volume, `mzmon-alloy-gateway-destination-tls`,
+is yours to create, for a destination that authenticates with a
+client certificate, such as the BYOC control plane
+(`profiles/byoc.values.yaml`). Point the destination's
+`tls.certFile` and `tls.keyFile` at files under this path. It is
+optional for the same reason as `mzmon-tls`: an install with no such
+destination starts with the mount empty.
 </td>
     </tr>
     <tr>

@@ -604,3 +604,8 @@ alloy-gateway:
           secret:
             secretName: mzmon-alloy-gateway-tls
             optional: false
+        # Restated from the chart's defaults, because this list replaces them.
+        - name: mzmon-destination-tls
+          secret:
+            secretName: mzmon-alloy-gateway-destination-tls
+            optional: true

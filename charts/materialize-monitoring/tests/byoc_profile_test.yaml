@@ -1,0 +1,104 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# profiles/byoc.values.yaml: the control-plane destination (DEP-124).
+#
+# The profile is the contract with the stack deployer: a Secret at a fixed name,
+# an endpoint, and what crosses. These tests pin each part, because a drift in
+# any of them installs cleanly and sends nothing, or sends more than it should.
+suite: byoc profile
+release:
+  name: test-mon
+  namespace: monitoring
+values:
+  - ../profiles/byoc.values.yaml
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
+tests:
+  - it: should send to the production control plane by default
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.GATEWAY_CONTROLPLANE_DEST
+          value: https://telemetry.c.cloud.materialize.com
+
+  - it: should present the client certificate from the destination mount
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "dest_controlPlane" \{[\s\S]*?cert_file = "/etc/mzmon/destination-tls/tls\.crt"\s*key_file = "/etc/mzmon/destination-tls/tls\.key"'
+      # Public load balancer certificate: the system roots verify it.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "dest_controlPlane" \{[^}]*ca_file'
+
+  - it: should mount the Secret the stack deployer creates at that path
+    template: charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-destination-tls
+            secret:
+              secretName: mzmon-alloy-gateway-destination-tls
+              optional: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: mzmon-destination-tls
+            mountPath: /etc/mzmon/destination-tls
+            readOnly: true
+
+  - it: should send logs at WARN and above, rate limited, and essential metrics
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_controlPlane" \{[\s\S]*?selector = "\{level=~\\"TRACE\|DEBUG\|INFO\\"\}"\s*action = "drop"[\s\S]*?stage\.limit \{\s*rate = 500\s*burst = 5000\s*drop = true'
+        template: templates/pipelines/cm-alloy-gateway.yaml
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "egress" \{\s*output \{\s*metrics = \[[^\]]*otelcol\.processor\.transform\.dest_controlPlane\.input'
+        template: templates/pipelines/cm-alloy-gateway.yaml
+      - notEqual:
+          path: data.GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST
+          value: ".*"
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+
+  # The control plane's copy must never hold back the install's own.
+  - it: should keep the bundled Loki the only blocking destination
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "block when their queue fills"
+        not: true
+
+  - it: should stop sending logs when log egress is turned off
+    set:
+      pipeline.destinations.controlPlane.logs.enabled: false
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.receiver\.loki "dest_controlPlane"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.transform "dest_controlPlane"'
+
+  # The mTLS profile replaces the gateway's volume list. The destination mount
+  # has to survive that, in either order.
+  - it: should keep the destination mount when composed with the mTLS profile
+    values:
+      - ../profiles/byoc.values.yaml
+      - ../profiles/mtls.values.yaml
+    template: charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-destination-tls
+            secret:
+              secretName: mzmon-alloy-gateway-destination-tls
+              optional: true
