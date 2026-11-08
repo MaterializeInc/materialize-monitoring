@@ -4764,7 +4764,8 @@ Because it is a DaemonSet, collection scales with the number of nodes, and no ap
 The **`alloy-gateway`** is a Grafana Alloy Deployment that does the central log processing and forwarding.
 It receives logs from the agents (and optionally other sources — see [Ingestion interfaces](#ingestion)), collects Kubernetes events, normalizes log levels, moves high-cardinality fields into [structured metadata](#storage), enforces drop and rate-limit policies, and then writes the result to Loki.
 It is the single place where the [cardinality](../../o11y-glossary/#observability-foundations) and label-family decisions are made, which is what keeps the log store stable and cheap.
-Its ingress port (`ALLOY_LOKI_PORT`, default `3100`) and its write destination (`GATEWAY_LOKI_DEST`) are configurable — see [Collecting > Tuning collection](../collecting/#tuning-collection).
+Its ingress port is `ALLOY_LOKI_PORT`, default `3100`, and you can change it; see [Collecting > Tuning collection](../collecting/#tuning-collection).
+It writes to every destination in `pipeline.destinations`; see [Where the gateway writes logs](../storing/#destinations).
 
 The gateway is also the egress point for the [remote-only topology](#alternative-topologies) and the conduit the [Loki Ruler](#ruler) uses to remote-write recording-rule samples to the long-term metric store.
 
@@ -5069,7 +5070,9 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
   Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
   For every rule, see the [logging pipeline reference](../../reference/development/pipelines/logging/#size-limits).
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
-- **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
+- **Gateway destinations.** The gateway writes processed logs to each entry in `pipeline.destinations`, which by default holds the bundled Loki.
+  For the [remote-only topology](../architecture/#alternative-topologies), point `pipeline.destinations.loki.url` at an external Loki.
+  For more information, see [Where the gateway writes logs](../storing/#destinations).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.
 
 > [!WARNING]
@@ -5093,8 +5096,48 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/dep-308-ing
 # Storing Logs
 
 Loki keeps all durable log data in a single [object storage](../architecture/#storage) backend, maintained by the [Loki Compactor](../architecture/#backend).
-This page covers the storage layout, the index, retention, and disaster recovery.
+This page covers where the gateway writes logs, the storage layout, the index, retention, and disaster recovery.
 See the [logging architecture](../architecture/) for how storage relates to the ingesters that write it and the queriers that read it.
+
+## Where the gateway writes logs {#destinations}
+
+The gateway writes processed logs to each destination in `pipeline.destinations`.
+The map holds one entry by default, `loki`, which writes to the bundled Loki.
+Each entry gets its own `loki.write` component, labeled with the entry's name, and its own queue.
+
+To write logs somewhere else as well, add an entry.
+The following example adds an external Loki that never slows down delivery to the bundled one:
+
+```yaml
+pipeline:
+  destinations:
+    archive:
+      type: loki
+      url: https://logs.example.com/loki/api/v1/push
+      authType: bearer
+      queue:
+        capacity: 64MiB
+        blockOnOverflow: false
+```
+
+To stop writing to the bundled Loki, set `pipeline.destinations.loki.enabled` to `false`.
+For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
+
+### Keep one destination from holding back another {#destination-isolation}
+
+The gateway hands every log entry to each destination in turn.
+By default, a destination whose queue is full makes the gateway wait for room, which is `queue.blockOnOverflow: true`.
+While that destination is stalled, no other destination receives anything either.
+
+Set `queue.blockOnOverflow: false` on every destination except the one whose copy must be complete.
+A destination set that way drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
+`queue.capacity` sets how far it can fall behind before it drops.
+The render warns when more than one log destination blocks.
+
+> [!NOTE]
+>   `pipeline.logging.gateway.destination.loki` is deprecated.
+>   Keys you still set there apply to `pipeline.destinations.loki`, and the render warns.
+>   Move each key across, so `pipeline.logging.gateway.destination.loki.url` becomes `pipeline.destinations.loki.url`.
 
 ## Object storage
 
@@ -7697,7 +7740,8 @@ It removes the ones whose `PrometheusRule` is gone and leaves every other namesp
 
 Every gateway replica runs the sync; the writes set whole rule groups, so the replicas converge on the same set.
 The gateway addresses the Service that serves the ruler in Loki's deployment mode: `loki-ruler` when distributed, `loki-backend` when simple-scalable, and `loki` for a single binary.
-It uses the scheme and TLS settings of its Loki destination, `pipeline.logging.gateway.destination.loki.tls`, and the chart's Loki certificate names `loki-ruler`.
+It uses the scheme and TLS settings of the gateway's destination that writes to the bundled Loki, `pipeline.destinations.loki.tls` by default.
+The chart's Loki certificate names `loki-ruler`.
 
 A log-derived rule installs only where the release runs the Loki ruler and the gateway, and where the ruler's rule store accepts writes.
 A `local` store does not; that is what a filesystem-only Loki gets, such as the `loki-test` profile.
@@ -9760,9 +9804,10 @@ To add others, use the Terraform module's `tolerations`, which appends rather th
 
 ## Delivery to Loki {#delivery}
 
-The gateway's write endpoint is set with `GATEWAY_LOKI_DEST`, and its ingress port with `ALLOY_LOKI_PORT`.
-To authenticate to a secured or remote destination, set `pipeline.logging.gateway.destination.loki.authType` to
-`basicAuth`, `bearer`, `oauth2`, or `sigv4`, with the matching credentials block.
+The gateway writes to each destination in `pipeline.destinations`, and its ingress port is `ALLOY_LOKI_PORT`.
+To authenticate to a secured or remote destination, set the destination's `authType` to `basicAuth` or `bearer`, with the matching credentials block.
+When the gateway writes to more than one destination, set `queue.blockOnOverflow: false` on every destination except the one whose copy must be complete.
+For more information, see [Where the gateway writes logs](../../../logs-and-events/storing/#destinations).
 
 To send your own logs, target the gateway's OTLP ports, `:4317` for gRPC or `:4318` for HTTP.
 To chain gateways, point the upstream writer at the downstream gateway's `:3100`.
@@ -15683,6 +15728,63 @@ release instances.
   </tbody>
 </table>
 
+#### Destinations
+
+The gateway's named destinations, as a map of name to destination.
+
+**One entry is one wire**: an endpoint, its credentials, and its queue.
+The signals an entry carries are switched on in their own blocks.
+A backend that takes only logs needs nothing switched off,
+and one that takes several signals has one entry and one credential.
+Only log destinations of type `loki` live here so far.
+Metric destinations are still under `pipeline.metrics.gateway.destination`.
+
+The default map holds one entry, `loki`, pointing at the bundled in-cluster Loki.
+Add an entry to write logs somewhere else as well; set `loki.enabled: false` to stop writing to the bundled Loki.
+
+**Each destination is its own failure domain.**
+Every log entry is handed to each destination in turn,
+so a destination that blocks when its queue fills holds back the others while it is stalled.
+Leave one destination blocking (the copy that must be complete), and set `queue.blockOnOverflow: false` on the rest.
+They then drop entries when they fall behind, and count them in `loki_write_dropped_entries_total`.
+The render warns when more than one log destination blocks.
+
+**Names are Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
+`egress` and `destination` are reserved.
+A name that breaks either rule fails at render.
+
+**Fields are optional.** Anything an entry omits falls back to the defaults below.
+Environment variable names derive from the name,
+such as `GATEWAY_CONTROLPLANE_DEST` and `GATEWAY_CONTROLPLANE_DEST_PASSWORD`.
+You can name them yourself where a caller wants to choose them.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `type` | — | `loki`. Required. |
+| `enabled` | `true` | Write to this destination. |
+| `url` | — | Push endpoint. Required when enabled. Supports `tpl`. |
+| `urlEnv` | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint URL. |
+| `logs.enabled` | `true` for `loki` | Send logs to this destination. |
+| `retries` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
+| `queue` | Alloy's defaults | `loki.write`'s `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
+| `authType` | `none` | `none`, `basicAuth`, or `bearer`. |
+| `basicAuth` / `bearer` | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
+| `tls` | off | Client TLS: `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`. |
+
+For example, a second, external Loki that must never slow the bundled one down:
+
+```yaml
+pipeline:
+  destinations:
+    archive:
+      type: loki
+      url: https://logs.example.com/loki/api/v1/push
+      authType: bearer
+      queue:
+        capacity: 64MiB
+        blockOnOverflow: false
+```
+
 #### Log configuration
 
 Configuration for log behavior
@@ -15904,151 +16006,15 @@ established it.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable writing to a loki destination. By default, we use the in-cluster loki
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.url</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://loki-distributor.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
-      <td class="helm-value-desc">Loki push endpoint URL.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.retries</td>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-{
-  "maxBackoffPeriod": "5m",
-  "maxBackoffRetries": 10,
-  "minBackoffPeriod": "1s",
-  "retryOnHttp429": true
-}</pre>
+{}</pre>
 </td>
-      <td class="helm-value-desc">Retry configuration.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.authType</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"none"</code></td>
-      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.basicAuth</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "password": "",
-  "passwordEnv": "GATEWAY_LOKI_DEST_PASSWORD",
-  "username": "",
-  "usernameEnv": "GATEWAY_LOKI_DEST_USERNAME"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth You will need to provide alloy-gateway.alloy.agent.extraEnv TODO: add a check for this
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.bearer</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "token": "",
-  "tokenEnv": "GATEWAY_LOKI_DEST_BEARER_TOKEN"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.oauth2</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "clientId": "",
-  "clientIdEnv": "GATEWAY_LOKI_DEST_OAUTH2_CLIENT_ID",
-  "clientSecret": "",
-  "clientSecretEnv": "GATEWAY_LOKI_DEST_OAUTH2_CLIENT_SECRET",
-  "scopes": [],
-  "tokenUrl": "",
-  "tokenUrlEnv": "GATEWAY_LOKI_DEST_OAUTH2_TOKEN_URL"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Whether to enable TLS for the loki destination.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.verify</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Whether to verify the TLS certificate for the loki destination.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.ca</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.cert</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client certificate PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.key</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client private key PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.caFile</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Paths to certificate material on disk, and the preferred carrier for anything cert-manager renews.
-The inline `ca`/`cert`/`key` above travel through **environment
-variables**, which are captured once at process start. cert-manager
-renews by rewriting the Secret in place, so an env-carried PEM works
-for exactly one certificate lifetime and then fails on every hop at
-once, months after the change that caused it and with no deploy
-nearby to blame.
+      <td class="helm-value-desc">Deprecated. Use `pipeline.destinations.loki` instead.
 
-A mounted file does not have that problem: the kubelet refreshes
-Secret contents atomically, and Alloy's client paths pick up the new
-material on the next connection. Set these to paths under
-`/etc/mzmon/tls`, which is where the chart mounts the
-certificate it issues for this component.
-
-Inline PEM stays supported as the bring-your-own-PKI escape hatch.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.serverName</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.minVersion</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"TLS13"</code></td>
-      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.
+Keys set here still apply: the chart folds them onto `pipeline.destinations.loki` and warns at render.
+Move each one across, so `pipeline.logging.gateway.destination.loki.url` becomes `pipeline.destinations.loki.url`.
 </td>
     </tr>
     <tr>
@@ -26990,7 +26956,10 @@ The `oversized-log-lines` alert in `dev-alerts.yaml` fires on line cuts, for the
 
 `inputProcessor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
 
-- **Logs → Loki.** The default stub wires `loki.process "egress"` → `loki.write "destination"` to the bundled Loki distributor; the endpoint is configurable via `GATEWAY_LOKI_DEST` (falling back to an in-cluster default). Auth (`basic_auth`) is deferred. In the [remote-only topology](../../../../logs-and-events/architecture/#alternative-topologies), point `GATEWAY_LOKI_DEST` at an external OTLP/Loki destination.
+- **Logs → Loki.** The chart renders one `loki.write` per log destination in `pipeline.destinations`, labeled with the destination's name, and lists each one in `loki.process "egress"`'s `forward_to`.
+  The helpers are in `charts/materialize-monitoring/templates/_destination_helpers.tpl`.
+  The stub wires `loki.process "egress"` to `loki.write "loki"`, the default destination's label, reading `GATEWAY_LOKI_DEST` with an in-cluster fallback, and leaves auth out.
+  Each destination reads its URL from `GATEWAY_<NAME>_DEST`, so the default `loki` destination keeps `GATEWAY_LOKI_DEST`.
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
 - **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/architecture/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
 
@@ -29820,7 +29789,7 @@ Designed in [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byo
 
 | Item | Status |
 |---|---|
-| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane | ⬜ |
+| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane. `pipeline.destinations` ships, with a queue and drop policy per destination. Still to come: the `otlp` type, per-destination log reduction, and a `byoc` profile | 🔨 |
 | [DEP-220] Sanitize telemetry before control-plane egress | ⬜ |
 | [DEP-236] A trust bundle for a private CA: the roots a corporate proxy or an on-premise object store needs, merged with the internal issuer's | ⬜ |
 | [DEP-287] `oauth2.tls` on the destination schema: certificate-authenticated token exchange, shared with call-home | ⬜ |
@@ -31849,7 +31818,7 @@ The pieces below are shipped and in use, and the design deliberately builds on t
 | Auth types on destinations | ✅ Shipped | `none` / `basicAuth` / `bearer` / `oauth2` / `sigv4` |
 | Multi-tenancy for logs | ✅ Shipped | `pipeline.logging.tenancy.tenantMap` — `static` / `byEnvironment` / `byNamespace` / `byLabel` / `none` |
 | Redaction primitives | ✅ In schema, unused | `stage.replace`, `stage.drop`, `stage.limit`, `stage.sampling`, `stage.label_drop`, `stage.structured_metadata_drop`, `stage.match` |
-| **Logs to more than one destination** | ❌ **Missing** | One `loki.write "destination"`, one `egress` seam |
+| Logs to more than one destination | ✅ Shipped | `pipeline.destinations`: one `loki.write` and one queue per destination, each free to drop when full ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
 | **Per-destination log processing** | ❌ **Missing** | `inputProcessor` is global; everything downstream of it is identical |
 | **Receiver-side (server) TLS / mTLS** | ⚠️ `raw` only | `grpc` / `http` nested blocks accept only the `raw` escape hatch in the schema |
 | **Certificate issuance** | ⬜ Planned | cert-manager integration, [DEP-195](https://linear.app/materializeinc/issue/DEP-195), OO-M1 |
@@ -32177,9 +32146,9 @@ Work in **this** repo. Ordered roughly by dependency.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **Map-shaped log destinations** — `pipeline.logging.gateway.destination.loki` becomes a named map, rendered as N `loki.process` → `loki.write` pairs off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | **Blocking** — nothing dual-destination ships without it |
+| **Map-shaped log destinations** — a named map of destinations, rendered as one writer per destination off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | ✅ Shipped as `pipeline.destinations` ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). The map is signal-agnostic: one entry is one wire, and each signal it carries has its own block, so the control plane is one entry with one credential. Only the `loki` type exists so far |
 | **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | **Blocking** |
-| **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | **Blocking** |
+| **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | ✅ Bounded and droppable: `queue.capacity` and `queue.blockOnOverflow: false` on each destination, measured to keep the local copy whole while another destination is unreachable. The per-destination `wal` is not wired |
 | **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | **Blocking** for the control-plane gateway |
 | **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | **Blocking** |
 | **`otelcol.processor.transform` before the log bridge** ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) | Label ↔ resource-attribute fidelity across the OTLP round trip. Already an open TODO in `gateway.yaml`; shared with the agent OTLP work | **Blocking** — silent label loss is worse than delivery failure |
@@ -35040,7 +35009,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | Alert **definitions** | ✅ Shipped as documentation | `packages/queries/materialize-alerts.yaml`, `infra-alerts.yaml`, rendered to [Common Alerts](../../../common-alerts/) |
 | **Alert rule evaluation** | ❌ **Absent** | `templates/alerts/` is empty, nothing reads `config.rules.prometheus.enabled`, `pre-rendered/rules/prometheus/` holds only a `.gitkeep`, and `thanos.ruler.enabled` is `false` |
 | **Alertmanager** | ⚠️ Bundled, off | `tags.alertmanager: false`; routing is [DEP-216](https://linear.app/materializeinc/issue/DEP-216), unstarted |
-| **Logs to more than one destination** | ❌ Missing | One `loki.write "destination"`, one `egress` seam — [BYOC's blocking row](../20260813-byoc-observability/#chart-side-prerequisites) |
+| Logs to more than one destination | ✅ Shipped | `pipeline.destinations`, one writer and one queue per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
 | **Per-destination log processing and redaction** | ❌ Missing | `inputProcessor` is global — same row |
 | **A trust bundle for non-public CAs** | ❌ Not shipped | [DEP-236](https://linear.app/materializeinc/issue/DEP-236). Needed for any customer whose egress proxy presents a corporate certificate |
 | **`oauth2.tls` on destinations** | ❌ Missing | Named by the [query-API doc](../20260916-tenant-query-api/#the-blocker-stated-precisely); blocks exchanging a certificate for a token |
