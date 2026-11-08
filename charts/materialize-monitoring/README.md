@@ -1581,6 +1581,10 @@ The following table lists each field, the types it applies to, and its default:
 | `urlEnv` | all | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint. |
 | `logs.enabled` | all | on for `loki`; on when `logs` is present for `otlp` | Send logs here. |
 | `logs.url` / `metrics.url` | `otlp`, HTTP | the base URL plus `/v1/logs` or `/v1/metrics` | One signal's own endpoint. |
+| `logs.selector` | all | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
+| `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. `UNKNOWN` is kept. |
+| `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
+| `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (defaults to `rate`). Entries over the limit are dropped. |
 | `metrics.enabled` | `otlp` | on when `metrics` is present | Send metrics here. |
 | `metrics.minMetricImportance` | `otlp` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
@@ -1591,6 +1595,10 @@ The following table lists each field, the types it applies to, and its default:
 | `authType` | all | `none` | `none`, `basicAuth`, or `bearer`. |
 | `basicAuth` / `bearer` | all | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
 | `tls` | all | off | `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
+
+**The `logs` reduction fields apply to one destination's copy only**, in a `loki.process "dest_<name>"` in front of its writer.
+They run in table order, and each drop is counted in `loki_process_dropped_lines_total` under its own `reason`.
+`minLevel` never drops `UNKNOWN`, because a panic arrives without a level the gateway can parse.
 
 For example, a second, external Loki that must never slow the bundled one down:
 

@@ -293,7 +293,13 @@ Usage:
     "logs" ( dict
       "enabled" $logsEnabled
       "url" ( dig "url" "" $logs | toString )
-      "urlEnv" ( dig "urlEnv" ( printf "%s_LOGS" $prefix ) $logs | toString ) )
+      "urlEnv" ( dig "urlEnv" ( printf "%s_LOGS" $prefix ) $logs | toString )
+      "selector" ( dig "selector" "" $logs | toString )
+      "minLevel" ( dig "minLevel" "" $logs | toString | upper )
+      "sampleRate" ( dig "sampleRate" 1 $logs )
+      "rateLimit" ( dict
+        "rate" ( dig "rateLimit" "rate" 0 $logs )
+        "burst" ( dig "rateLimit" "burst" ( dig "rateLimit" "rate" 0 $logs ) $logs ) ) )
     "metrics" ( dict
       "enabled" $metricsEnabled
       "minMetricImportance" ( dig "minMetricImportance" "all" $metrics | toString )
@@ -406,6 +412,42 @@ Usage:
     {{- end }}
   {{- end }}
   {{- $out | toYaml }}
+{{- end }}
+
+
+{{- /*
+The levels a log destination's `minLevel` can name, lowest first, and the
+levels it drops for each.
+
+`UNKNOWN` is not on the ladder and is never dropped by a level floor: a Rust
+panic arrives with no level the gateway can parse, so it is `UNKNOWN`, and a
+floor that dropped it would drop the one line an escalation needs most.
+
+Usage:
+  {{- $below := index ( include "mzmon.destinations.levelsBelow" $ | fromYaml ) "WARN" }}
+*/}}
+{{- define "mzmon.destinations.levelsBelow" }}
+  {{- $ladder := list "TRACE" "DEBUG" "INFO" "WARN" "ERROR" "CRITICAL" }}
+  {{- $out := dict }}
+  {{- range $i, $level := $ladder }}
+    {{- $_ := set $out $level ( slice $ladder 0 $i ) }}
+  {{- end }}
+  {{- $out | toYaml }}
+{{- end }}
+
+
+{{- /*
+Whether a log destination reduces what it receives, which is when the gateway
+renders its `loki.process "dest_<name>"`.
+
+Usage:
+  {{- if ( include "mzmon.destinations.reducesLogs" $dest ) }}
+*/}}
+{{- define "mzmon.destinations.reducesLogs" }}
+  {{- $logs := .logs }}
+  {{- if or $logs.selector $logs.minLevel ( lt ( $logs.sampleRate | float64 ) 1.0 ) ( gt ( $logs.rateLimit.rate | float64 ) 0.0 ) }}
+    {{- "true" }}
+  {{- end }}
 {{- end }}
 
 
@@ -557,6 +599,23 @@ Usage:
 
     {{- if not ( has $dest.authType ( list "none" "basicAuth" "bearer" ) ) }}
       {{- $errors = append $errors ( printf "%s.%s.authType is %q. Supported values are: none, basicAuth, bearer." $path $name $dest.authType ) }}
+    {{- end }}
+
+    {{- if $dest.logs.enabled }}
+      {{- $levels := include "mzmon.destinations.levelsBelow" $ | fromYaml }}
+      {{- if and $dest.logs.minLevel ( not ( hasKey $levels $dest.logs.minLevel ) ) }}
+        {{- $errors = append $errors ( printf "%s.%s.logs.minLevel is %q. Supported values are: TRACE, DEBUG, INFO, WARN, ERROR, CRITICAL." $path $name $dest.logs.minLevel ) }}
+      {{- end }}
+      {{- if and $dest.logs.selector ( not ( hasPrefix "{" ( $dest.logs.selector | trim ) ) ) }}
+        {{- $errors = append $errors ( printf "%s.%s.logs.selector is %q, which is not a LogQL stream selector. Write it as {label=\"value\"}, optionally followed by line filters." $path $name $dest.logs.selector ) }}
+      {{- end }}
+      {{- $rate := $dest.logs.sampleRate | float64 }}
+      {{- if or ( le $rate 0.0 ) ( gt $rate 1.0 ) }}
+        {{- $errors = append $errors ( printf "%s.%s.logs.sampleRate is %v. It is the fraction of entries kept, so it must be greater than 0 and at most 1. To send no logs, set logs.enabled: false." $path $name $dest.logs.sampleRate ) }}
+      {{- end }}
+      {{- if and ( gt ( $dest.logs.rateLimit.rate | float64 ) 0.0 ) ( lt ( $dest.logs.rateLimit.burst | float64 ) ( $dest.logs.rateLimit.rate | float64 ) ) }}
+        {{- $errors = append $errors ( printf "%s.%s.logs.rateLimit.burst (%v) is below its rate (%v), so the limit could never pass a full second of traffic at the rate. Leave burst unset to match the rate, or raise it." $path $name $dest.logs.rateLimit.burst $dest.logs.rateLimit.rate ) }}
+      {{- end }}
     {{- end }}
 
     {{- if eq $dest.type "otlp" }}

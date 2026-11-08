@@ -412,12 +412,21 @@ Usage:
   {{- /* Each log destination hangs off the shared loki.process "egress" seam
          by its own writer, so each has its own queue and its own drop policy. */}}
   {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
+    {{- $writer := "" }}
     {{- if eq $dest.type "loki" }}
-      {{- $logForward = append $logForward ( printf "loki.write.%s.receiver" $dest.label ) }}
+      {{- $writer = printf "loki.write.%s.receiver" $dest.label }}
       {{- include "mzmon.alloyGateway.pipeline.loki.dest" ( dict "context" $ "dest" $dest ) }}
     {{- else if eq $dest.type "otlp" }}
-      {{- $logForward = append $logForward ( printf "otelcol.receiver.loki.%s.receiver" $dest.label ) }}
+      {{- $writer = printf "otelcol.receiver.loki.%s.receiver" $dest.label }}
     {{- end }}
+    {{- /* A destination that reduces its logs gets a loki.process of its own
+           between the seam and its writer, so the reduction applies to its
+           copy and no other. */}}
+    {{- if ( include "mzmon.destinations.reducesLogs" $dest ) }}
+      {{- include "mzmon.alloyGateway.pipeline.logReduction" ( dict "context" $ "dest" $dest "forwardTo" $writer ) }}
+      {{- $writer = printf "loki.process.dest_%s.receiver" $dest.name }}
+    {{- end }}
+    {{- $logForward = append $logForward $writer }}
   {{- end }}
   {{- /* An otlp destination's metrics hang off the otelcol.processor.filter
          "egress" seam by their own tier filter, the way the older OTLP
@@ -545,6 +554,97 @@ loki.write {{ $dest.label | quote }} {
       {{- end }}
       {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $dest.tls "indent" 8 ) }}
     }
+}
+{{- end }}
+
+
+{{/*
+Generate the `loki.process "dest_<name>"` that reduces one destination's logs.
+
+Rendered only for a destination that sets a reduction field, between the
+`egress` seam and the destination's writer, so the customer's own copy keeps
+everything. The stages run cheapest first, and each drop is counted in
+`loki_process_dropped_lines_total` under its own reason:
+
+  1. **selector**, an allowlist. LogQL cannot negate a stream selector, so every
+     entry is marked `__dest_keep="false"`, entries the selector matches are
+     re-marked `"true"`, and the rest are dropped. The marker is removed before
+     the entry leaves.
+  2. **minLevel**, dropping the levels below it. `UNKNOWN` is never dropped;
+     see `mzmon.destinations.levelsBelow`.
+  3. **sampleRate**, through `stage.sampling`.
+  4. **rateLimit**, through `stage.limit` with `drop = true`. Without `drop` the
+     stage backpressures, which would hold back every other destination.
+
+Args:
+  context: the root context.
+  dest: a destination resolved by `mzmon.destinations.resolve`.
+  forwardTo: the destination writer's receiver.
+
+Usage:
+  {{- include "mzmon.alloyGateway.pipeline.logReduction" ( dict "context" $ "dest" $dest "forwardTo" $writer ) }}
+*/}}
+{{- define "mzmon.alloyGateway.pipeline.logReduction" }}
+  {{- $root := .context }}
+  {{- $dest := .dest }}
+  {{- $logs := $dest.logs }}
+
+loki.process {{ printf "dest_%s" $dest.name | quote }} {
+    forward_to = [{{ .forwardTo }}]
+  {{- with $logs.selector }}
+
+    stage.static_labels {
+        values = {
+            "__dest_keep" = "false",
+        }
+    }
+
+    stage.match {
+        selector = {{ . | quote }}
+
+        stage.static_labels {
+            values = {
+                "__dest_keep" = "true",
+            }
+        }
+    }
+
+    stage.match {
+        selector = "{__dest_keep=\"false\"}"
+        action = "drop"
+        drop_counter_reason = "destination_selector"
+    }
+
+    stage.label_drop {
+        values = ["__dest_keep"]
+    }
+  {{- end }}
+  {{- with $logs.minLevel }}
+    {{- $below := index ( include "mzmon.destinations.levelsBelow" $root | fromYaml ) . }}
+    {{- if $below }}
+
+    stage.match {
+        selector = {{ printf "{level=~%q}" ( join "|" $below ) | quote }}
+        action = "drop"
+        drop_counter_reason = "destination_level"
+    }
+    {{- end }}
+  {{- end }}
+  {{- if lt ( $logs.sampleRate | float64 ) 1.0 }}
+
+    stage.sampling {
+        rate = {{ $logs.sampleRate }}
+        drop_counter_reason = "destination_sampling"
+    }
+  {{- end }}
+  {{- if gt ( $logs.rateLimit.rate | float64 ) 0.0 }}
+
+    stage.limit {
+        rate = {{ $logs.rateLimit.rate }}
+        burst = {{ $logs.rateLimit.burst }}
+        drop = true
+    }
+  {{- end }}
 }
 {{- end }}
 
