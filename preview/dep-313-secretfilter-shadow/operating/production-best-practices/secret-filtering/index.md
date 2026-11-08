@@ -85,17 +85,17 @@ Shadow mode shows what the rules match on your own logs without changing what's 
 The gateway scans a copy of every line and stores only the lines the filter would have redacted, already redacted, with the label `secretfilter="shadow"`.
 Use it to find the values the rules would replace by mistake before you turn the filter on.
 
-To turn shadow mode on, set the following value:
+To turn shadow mode on, set the mode to `shadow`:
 
 ```yaml
 pipeline:
   logging:
     secretFilter:
-      shadow:
-        enabled: true
+      mode: shadow
 ```
 
-The value changes the gateway's config, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+If you install with the [Terraform module](../../../getting-started/terraform/), set `secret_filter = "shadow"` instead.
+The mode changes the gateway's config, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
 Shadow mode costs the same CPU as turning the filter on, because it scans every line.
 Off, the chart doesn't wire it, so it costs nothing.
 
@@ -118,27 +118,30 @@ The filter ships off.
 Each false positive permanently replaces a value in your own logs, so the defaults wait on measurement against real logs.
 <!-- TODO(DEP-313): rewrite this section once shadow mode has run and the filter is on by default. -->
 
-To turn it on, set both rates to `1` in `pipeline.env`:
+To turn it on, set the mode to `on`:
 
 ```yaml
 pipeline:
-  env:
-    GATEWAY_SECRETFILTER_RATE: "1"
-    GATEWAY_SECRETFILTER_BULK_RATE: "1"
+  logging:
+    secretFilter:
+      mode: "on"
 ```
 
-The filter runs as two instances.
-`GATEWAY_SECRETFILTER_RATE` sets the fraction of lines the main instance scans, and `GATEWAY_SECRETFILTER_BULK_RATE` sets it for `DEBUG` and `TRACE` lines, the levels most able to outrun the filter.
+If you install with the Terraform module, set `secret_filter = "on"` instead.
+The gateway has to restart to pick the mode up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+
+The filter runs as two instances, and `on` sets both of their scan rates to `1`.
+`GATEWAY_SECRETFILTER_RATE` is the fraction of lines the main instance scans, and `GATEWAY_SECRETFILTER_BULK_RATE` is the fraction of `DEBUG` and `TRACE` lines, the levels most able to outrun the filter.
 At `0`, an instance forwards every line unscanned.
-The change is an environment variable, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+A rate you set in `pipeline.env` takes precedence over the mode.
 
 The following settings change what the filter costs:
 
-`GATEWAY_SECRETFILTER_BULK_RATE`
+`pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE`
 : Below `1`, the bulk instance scans that fraction of `DEBUG` and `TRACE` lines and stores the rest unscanned.
   Lower it only when the gateway can't keep up with its input at `1`.
 
-`GATEWAY_SECRETFILTER_TIMEOUT`
+`pipeline.env.GATEWAY_SECRETFILTER_TIMEOUT`
 : The most time the filter spends on one line, such as `50ms`.
   The default, `0s`, sets no limit.
   A line that runs past it is stored with whatever the filter redacted in time, and with the label `secretfilter="timed-out"`.
