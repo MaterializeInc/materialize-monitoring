@@ -17,7 +17,7 @@ This page is for the operator of a `materialize-monitoring` install who decides 
 <!-- more -->
 
 Call-home is one profile, `profiles/call-home.values.yaml`.
-It adds a single destination, `controlPlane`, to [`pipeline.destinations`](../../logs-and-events/storing/#destinations), and changes nothing else.
+It adds a single destination, `controlPlane`, to [`pipeline.destinations`](../../logs-and-events/storing/#destinations), turns the gateway's [secret filter](#secret-filter) on, and changes nothing else.
 Bring Your Own Cloud stacks apply the same profile.
 The only difference between the two is how the client certificate is issued, which happens outside this chart.
 
@@ -78,6 +78,17 @@ The control plane reads your identity from the certificate, so the gateway sends
    for `component_id="otelcol.exporter.otlphttp.dest_controlPlane"`.
 
 The certificate is re-read every five minutes, so a renewed certificate in the Secret is picked up without a restart.
+
+## Credentials are redacted before anything is sent {#secret-filter}
+
+The profile sets `pipeline.logging.secretFilter.mode` to `on`.
+The gateway then replaces each credential it finds in a log line with `<redacted:RULE_ID>`, before it copies anything out of the line or sends it anywhere.
+Neither your own Loki nor the control plane's copy holds a credential the filter caught.
+
+Keep the filter on while logs are sent.
+The render warns if `controlPlane` sends logs with the mode set to anything else; shadow mode doesn't count, because it redacts only the copies it stores.
+The filter is an extra layer of protection, not the control: configure your components not to log credentials in the first place.
+For what the filter catches and what it costs, see [Secret filtering](../production-best-practices/secret-filtering/).
 
 ## Choose how much to send {#levels}
 

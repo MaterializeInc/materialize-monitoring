@@ -114,3 +114,49 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'selector = "\{level=~\\"TRACE\|DEBUG\|INFO\\"\}"'
+
+  # --- the secret filter ------------------------------------------------------
+  # Logs leave the install, so the profile turns the filter on: a credential is
+  # replaced before any copy of the line is made, the control plane's included.
+  - it: should turn the secret filter on
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.GATEWAY_SECRETFILTER_RATE
+          value: "1"
+      - equal:
+          path: data.GATEWAY_SECRETFILTER_BULK_RATE
+          value: "1"
+
+  - it: should not warn about the secret filter as written
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "crosses unredacted"
+
+  - it: should warn when logs cross with the filter turned back off
+    set:
+      pipeline.logging.secretFilter.mode: "off"
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'pipeline\.destinations\.controlPlane sends logs to Materialize, but pipeline\.logging\.secretFilter\.mode is "off"'
+
+  # Shadow mode redacts only the copies it stores, so the lines that cross are
+  # still raw.
+  - it: should warn when logs cross in shadow mode
+    set:
+      pipeline.logging.secretFilter.mode: shadow
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'secretFilter\.mode is "shadow", so a credential a component logs crosses unredacted'
+
+  - it: should not warn about the filter when only metrics cross
+    set:
+      pipeline.logging.secretFilter.mode: "off"
+      pipeline.destinations.controlPlane.logs.enabled: false
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "crosses unredacted"

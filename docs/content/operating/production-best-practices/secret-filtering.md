@@ -125,6 +125,7 @@ pipeline:
 ```
 
 If you install with the Terraform module, set `secret_filter = "on"` instead.
+The [call-home profile](../../call-home/#secret-filter) turns the filter on for you, because it sends logs to Materialize.
 The gateway has to restart to pick the mode up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
 
 The filter runs as two instances, and `on` sets both of their scan rates to `1`.

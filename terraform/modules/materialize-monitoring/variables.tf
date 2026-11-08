@@ -1226,6 +1226,10 @@ variable "secret_filter" {
     Run `shadow` first, to see what the rules would replace in your logs. The
     filter is an extra layer of protection, not the control: configure each
     component not to log credentials in the first place.
+
+    The call-home profile sets the mode to `on`, because it sends logs to
+    Materialize. Passed through `additional_values`, which comes after this,
+    it turns the filter on whatever this input says.
   EOT
   # TODO(DEP-313): default to `on` alongside the chart, once shadow mode has run on real logs.
   type     = string

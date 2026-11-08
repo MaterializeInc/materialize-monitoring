@@ -784,6 +784,16 @@ Usage:
     {{- end }}
   {{- end }}
 
+  {{- /* The call-home profile's destination sends logs to Materialize. A
+         credential the secret filter didn't replace crosses with them, so the
+         filter has to be on while it does. */}}
+  {{- $secretFilterMode := include "mzmon.secretFilter.mode" $ }}
+  {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
+    {{- if and ( eq $dest.name "controlPlane" ) ( ne $secretFilterMode "on" ) }}
+      {{- $warnings = append $warnings ( printf "%s.controlPlane sends logs to Materialize, but pipeline.logging.secretFilter.mode is %q, so a credential a component logs crosses unredacted. Set the mode to \"on\", as the call-home profile does, or set %s.controlPlane.logs.enabled to false." $path $secretFilterMode $path ) }}
+    {{- end }}
+  {{- end }}
+
   {{- if gt ( len $blocking ) 1 }}
     {{- $warnings = append $warnings ( printf "Log destinations %s all block when their queue fills (the default for a loki destination). Every log entry goes to each destination in turn, so any one of them stalling holds back the others. Set queue.blockOnOverflow: false on every destination but the one whose copy must be complete, so the rest drop instead of stalling it." ( join ", " $blocking ) ) }}
   {{- end }}

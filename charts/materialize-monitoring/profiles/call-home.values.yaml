@@ -2,11 +2,11 @@
 # control plane, alongside the full copy the install keeps.
 #
 # Nothing is sent unless you apply this profile. It adds one destination,
-# `controlPlane`, and touches nothing else, so compose it with the cloud and
-# sizing profiles the install already uses. Bring Your Own Cloud stacks apply
-# the same profile; the only difference is how the client certificate is
-# issued, which happens outside this chart. The operator page is
-# docs/content/operating/call-home.md.
+# `controlPlane`, turns the gateway's secret filter on, and touches nothing
+# else, so compose it with the cloud and sizing profiles the install already
+# uses. Bring Your Own Cloud stacks apply the same profile; the only difference
+# is how the client certificate is issued, which happens outside this chart.
+# The operator page is docs/content/operating/call-home.md.
 #
 # Choose how much crosses with the settings under
 # `pipeline.destinations.controlPlane`. As written, the profile sends:
@@ -32,6 +32,15 @@
 # /etc/mzmon/destination-tls. Without it, the gateway fails to load its
 # configuration, naming the missing file.
 pipeline:
+  logging:
+    secretFilter:
+      # Replace credentials in every log line before it is stored or sent. The
+      # filter runs before the gateway copies anything out of the line, so
+      # neither the install's own Loki nor the control plane's copy holds a
+      # credential a component logged. Keep it on while logs cross; the render
+      # warns otherwise. It's a backstop: configure components not to log
+      # credentials in the first place.
+      mode: "on"
   destinations:
     controlPlane:
       type: otlp
