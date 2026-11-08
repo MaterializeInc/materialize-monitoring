@@ -5162,7 +5162,7 @@ Set any of the following fields in the destination's `logs` block:
 | `selector` | Keeps only entries matching a LogQL stream selector, such as `{namespace=~"environment-.+"}`. Line filters are allowed after it. |
 | `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. Entries with an `UNKNOWN` level are kept, because a panic arrives without a level the gateway can parse. |
 | `sampleRate` | Keeps a fraction of entries, above 0 and at most 1. |
-| `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst`, which defaults to `rate`. |
+| `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst` whole lines. `burst` defaults to `rate`, rounded up, and can be lower than it. |
 
 The gateway applies them in that order, in a `loki.process` component of the destination's own, `loki.process "dest_<name>"`.
 Each drop is counted in `loki_process_dropped_lines_total`, with `reason` set to `destination_selector`, `destination_level`, `destination_sampling`, or `ratelimit_drop_stage`.
@@ -15845,7 +15845,7 @@ The following table lists each field, the types it applies to, and its default:
 | `logs.selector` | all | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
 | `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. `UNKNOWN` is kept. |
 | `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
-| `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (defaults to `rate`). Entries over the limit are dropped. |
+| `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
 | `metrics.enabled` | `otlp` | on when `metrics` is present | Send metrics here. |
 | `metrics.minMetricImportance` | `otlp` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
