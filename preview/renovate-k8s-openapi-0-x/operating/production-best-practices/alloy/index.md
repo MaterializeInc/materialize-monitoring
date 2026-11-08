@@ -107,9 +107,10 @@ To add others, use the Terraform module's `tolerations`, which appends rather th
 
 ## Delivery to Loki {#delivery}
 
-The gateway's write endpoint is set with `GATEWAY_LOKI_DEST`, and its ingress port with `ALLOY_LOKI_PORT`.
-To authenticate to a secured or remote destination, set `pipeline.logging.gateway.destination.loki.authType` to
-`basicAuth`, `bearer`, `oauth2`, or `sigv4`, with the matching credentials block.
+The gateway writes to each destination in `pipeline.destinations`, and its ingress port is `ALLOY_LOKI_PORT`.
+To authenticate to a secured or remote destination, set the destination's `authType` to `basicAuth` or `bearer`, with the matching credentials block.
+When the gateway writes to more than one destination, set `queue.blockOnOverflow: false` on every destination except the one whose copy must be complete.
+For more information, see [Where the gateway writes logs](../../../logs-and-events/storing/#destinations).
 
 To send your own logs, target the gateway's OTLP ports, `:4317` for gRPC or `:4318` for HTTP.
 To chain gateways, point the upstream writer at the downstream gateway's `:3100`.

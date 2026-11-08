@@ -113,7 +113,7 @@ The pieces below are shipped and in use, and the design deliberately builds on t
 | Auth types on destinations | ✅ Shipped | `none` / `basicAuth` / `bearer` / `oauth2` / `sigv4` |
 | Multi-tenancy for logs | ✅ Shipped | `pipeline.logging.tenancy.tenantMap` — `static` / `byEnvironment` / `byNamespace` / `byLabel` / `none` |
 | Redaction primitives | ✅ In schema, unused | `stage.replace`, `stage.drop`, `stage.limit`, `stage.sampling`, `stage.label_drop`, `stage.structured_metadata_drop`, `stage.match` |
-| **Logs to more than one destination** | ❌ **Missing** | One `loki.write "destination"`, one `egress` seam |
+| Logs to more than one destination | ✅ Shipped | `pipeline.destinations`: one `loki.write` and one queue per destination, each free to drop when full ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
 | **Per-destination log processing** | ❌ **Missing** | `inputProcessor` is global; everything downstream of it is identical |
 | **Receiver-side (server) TLS / mTLS** | ⚠️ `raw` only | `grpc` / `http` nested blocks accept only the `raw` escape hatch in the schema |
 | **Certificate issuance** | ⬜ Planned | cert-manager integration, [DEP-195](https://linear.app/materializeinc/issue/DEP-195), OO-M1 |
@@ -441,9 +441,9 @@ Work in **this** repo. Ordered roughly by dependency.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **Map-shaped log destinations** — `pipeline.logging.gateway.destination.loki` becomes a named map, rendered as N `loki.process` → `loki.write` pairs off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | **Blocking** — nothing dual-destination ships without it |
+| **Map-shaped log destinations** — a named map of destinations, rendered as one writer per destination off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | ✅ Shipped as `pipeline.destinations` ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). The map is signal-agnostic: one entry is one wire, and each signal it carries has its own block, so the control plane is one entry with one credential. Only the `loki` type exists so far |
 | **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | **Blocking** |
-| **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | **Blocking** |
+| **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | ✅ Bounded and droppable: `queue.capacity` and `queue.blockOnOverflow: false` on each destination, measured to keep the local copy whole while another destination is unreachable. The per-destination `wal` is not wired |
 | **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | **Blocking** for the control-plane gateway |
 | **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | **Blocking** |
 | **`otelcol.processor.transform` before the log bridge** ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) | Label ↔ resource-attribute fidelity across the OTLP round trip. Already an open TODO in `gateway.yaml`; shared with the agent OTLP work | **Blocking** — silent label loss is worse than delivery failure |
