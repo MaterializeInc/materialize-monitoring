@@ -342,7 +342,16 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'loki\.process "dest_archive" \{\s*forward_to = \[loki\.write\.archive\.receiver\]'
-      # The allowlist: mark everything, re-mark what matches, drop the rest.
+      # The allowlist: mark everything, re-mark what matches, drop the rest,
+      # then remove the marker. Without the first mark, unmatched entries carry
+      # no marker and pass the drop; without the last, the marker leaves with
+      # the entry.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_archive" \{\s*forward_to = \[[^\]]*\]\s*stage\.static_labels \{\s*values = \{\s*"__dest_keep" = "false",'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'action = "drop"\s*drop_counter_reason = "destination_selector"\s*\}\s*stage\.label_drop \{\s*values = \["__dest_keep"\]'
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'stage\.match \{\s*selector = "\{namespace=~\\"environment-\.\+\\"\}"\s*stage\.static_labels \{\s*values = \{\s*"__dest_keep" = "true",'
@@ -423,15 +432,67 @@ tests:
       - failedTemplate:
           errorPattern: "pipeline.destinations.loki.logs.sampleRate is 0"
 
-  - it: should refuse a burst below the rate
+  # A token bucket with a burst below its rate still passes the rate, evenly
+  # spaced, so the two are checked independently.
+  - it: should accept a burst below the rate
     set:
       pipeline.destinations.loki.logs.rateLimit:
         rate: 100
         burst: 10
     template: templates/validate.yaml
     asserts:
+      - notFailedTemplate: {}
+
+  # Alloy takes the burst as an integer, so a fractional rate's default burst
+  # is rounded up rather than copied.
+  - it: should round a fractional rate's default burst up to a whole line
+    set:
+      pipeline.destinations.loki.logs.rateLimit:
+        rate: 0.5
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'stage\.limit \{\s*rate = 0\.5\s*burst = 1\s*drop = true'
+
+  # `null` is how Helm records a cleared key; it means no limit.
+  - it: should treat a null rate limit as no limit
+    set:
+      pipeline.destinations.loki.logs.rateLimit: null
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_loki"'
+
+  # A limit with no rate would otherwise render nothing and limit nothing.
+  - it: should refuse a rate limit with no rate
+    set:
+      pipeline.destinations.loki.logs.rateLimit:
+        burst: 100
+    template: templates/validate.yaml
+    asserts:
       - failedTemplate:
-          errorPattern: "pipeline.destinations.loki.logs.rateLimit.burst \\(10\\) is below its rate \\(100\\)"
+          errorPattern: "pipeline.destinations.loki.logs.rateLimit.rate is missing"
+
+  - it: should refuse a negative rate
+    set:
+      pipeline.destinations.loki.logs.rateLimit:
+        rate: -5
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.logs.rateLimit.rate is -5"
+
+  - it: should refuse a fractional burst
+    set:
+      pipeline.destinations.loki.logs.rateLimit:
+        rate: 5
+        burst: 2.5
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.logs.rateLimit.burst is 2.5"
 
   - it: should drop UNKNOWN only when keepUnknown is false
     set:

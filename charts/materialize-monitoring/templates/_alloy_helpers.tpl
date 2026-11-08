@@ -641,11 +641,11 @@ loki.process {{ printf "dest_%s" $dest.name | quote }} {
         drop_counter_reason = "destination_sampling"
     }
   {{- end }}
-  {{- if gt ( $logs.rateLimit.rate | float64 ) 0.0 }}
+  {{- if $logs.rateLimit.configured }}
 
     stage.limit {
         rate = {{ $logs.rateLimit.rate }}
-        burst = {{ $logs.rateLimit.burst }}
+        burst = {{ $logs.rateLimit.burst | int }}
         drop = true
     }
   {{- end }}
