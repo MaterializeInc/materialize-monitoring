@@ -10,13 +10,13 @@
 //! The tests skip when `alloy` is not on `PATH`, unless `MZMON_REQUIRE_ALLOY`
 //! is set, as it is in the CI job that pins the binary.
 
+mod common;
+
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use common::alloy::{Alloy, alloy_available, http, logfmt_fields};
 use regex::Regex;
 use serde::Deserialize;
 
@@ -155,112 +155,8 @@ fn corpus() -> Vec<Fixture> {
 
 // --- running Alloy -----------------------------------------------------------
 
-/// Whether to run; panics instead of skipping where `MZMON_REQUIRE_ALLOY` is set.
-fn alloy_available() -> bool {
-    let found = Command::new("alloy")
-        .arg("--version")
-        .output()
-        .is_ok_and(|o| o.status.success());
-    if !found {
-        assert!(
-            std::env::var_os("MZMON_REQUIRE_ALLOY").is_none(),
-            "MZMON_REQUIRE_ALLOY is set and `alloy` is not on PATH"
-        );
-        eprintln!("skipping: `alloy` is not on PATH");
-    }
-    found
-}
-
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .expect("bind a free port")
-        .port()
-}
-
-/// One HTTP/1.0 exchange, so Go answers without chunked encoding.
-fn http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, String)> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(10)))
-        .ok()?;
-    write!(
-        stream,
-        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-        body.len()
-    )
-    .ok()?;
-    let mut response = String::new();
-    stream.read_to_string(&mut response).ok()?;
-    let status = response.split(' ').nth(1)?.parse().ok()?;
-    let body = response
-        .split_once("\r\n\r\n")
-        .map(|(_, b)| b.to_string())?;
-    Some((status, body))
-}
-
-/// An `alloy run` that is killed when dropped.
-struct Alloy {
-    child: Child,
-    server_port: u16,
-    log: PathBuf,
-    _dir: tempfile::TempDir,
-}
-
+/// What this test reads back from a running Alloy.
 impl Alloy {
-    /// Starts `config`, in which `LOKI_PORT` stands for the push listener.
-    fn start(config: &str) -> (Self, u16) {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let loki_port = free_port();
-        let server_port = free_port();
-        let config_path = dir.path().join("config.alloy");
-        std::fs::write(
-            &config_path,
-            config.replace("LOKI_PORT", &loki_port.to_string()),
-        )
-        .expect("write the config");
-        let log = dir.path().join("alloy.log");
-        let child = Command::new("alloy")
-            .arg("run")
-            .arg("--disable-reporting")
-            .arg(format!(
-                "--storage.path={}",
-                dir.path().join("data").display()
-            ))
-            .arg(format!("--server.http.listen-addr=127.0.0.1:{server_port}"))
-            .arg(&config_path)
-            .stdout(Stdio::null())
-            .stderr(std::fs::File::create(&log).expect("create the log"))
-            .spawn()
-            .expect("spawn alloy");
-        let mut alloy = Alloy {
-            child,
-            server_port,
-            log,
-            _dir: dir,
-        };
-        let deadline = Instant::now() + Duration::from_secs(60);
-        loop {
-            if let Some(status) = alloy.child.try_wait().expect("poll alloy") {
-                panic!("alloy exited with {status}:\n{}", alloy.log_text());
-            }
-            if http(server_port, "GET", "/-/ready", "").is_some_and(|(s, _)| s == 200) {
-                break;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "alloy was not ready:\n{}",
-                alloy.log_text()
-            );
-            std::thread::sleep(Duration::from_millis(250));
-        }
-        (alloy, loki_port)
-    }
-
-    fn log_text(&self) -> String {
-        std::fs::read_to_string(&self.log).unwrap_or_default()
-    }
-
     /// Pushes one stream per fixture, labelled `fixture`.
     fn push(&self, loki_port: u16, lines: &[(&str, &str)]) {
         let now = SystemTime::now()
@@ -286,25 +182,12 @@ impl Alloy {
     /// What each `loki.echo` printed, by echo label and then fixture, once
     /// every echo in `expected` has printed that many entries.
     fn echoed(&self, expected: &[(&str, usize)]) -> BTreeMap<String, BTreeMap<String, Echoed>> {
-        let pair = Regex::new(r#"(\w+)=("(?:[^"\\]|\\.)*"|\S+)"#).unwrap();
         let fixture = Regex::new(r#"fixture="([^"]*)""#).unwrap();
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             let mut out: BTreeMap<String, BTreeMap<String, Echoed>> = BTreeMap::new();
             for line in self.log_text().lines() {
-                let fields: BTreeMap<&str, String> = pair
-                    .captures_iter(line)
-                    .map(|c| {
-                        let raw = c.get(2).unwrap().as_str();
-                        // Alloy's logfmt quoting is a JSON string.
-                        let value = if raw.starts_with('"') {
-                            serde_json::from_str(raw).expect("a quoted logfmt value")
-                        } else {
-                            raw.to_string()
-                        };
-                        (c.get(1).unwrap().as_str(), value)
-                    })
-                    .collect();
+                let fields = logfmt_fields(line);
                 let Some(echo) = fields
                     .get("component_id")
                     .and_then(|c| c.strip_prefix("loki.echo."))
@@ -367,13 +250,6 @@ impl Alloy {
             .filter(|l| l.contains(&format!("component_id=\"loki.secretfilter.{component}\"")))
             .filter_map(|l| l.rsplit(' ').next()?.parse::<f64>().ok())
             .sum()
-    }
-}
-
-impl Drop for Alloy {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
     }
 }
 

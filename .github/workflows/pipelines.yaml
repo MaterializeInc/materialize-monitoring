@@ -113,15 +113,21 @@ jobs:
             git status --porcelain -- "$@"
             exit 1
           fi
-      # Runs the secret filter's rule files through this job's pinned alloy,
-      # against packages/alloy-pipelines/secretfilter/ingest.corpus.yaml. The
-      # default Gitleaks rules change between Alloy releases, so a Renovate bump
-      # of ALLOY_VERSION runs this too. MZMON_REQUIRE_ALLOY turns the test's
-      # skip-without-alloy into a failure.
-      - name: secret-filter corpus
+      # Runs pipeline behavior that only a real Alloy can check, on this job's
+      # pinned binary. MZMON_REQUIRE_ALLOY turns each test's skip-without-alloy
+      # into a failure.
+      #   * secretfilter_corpus: the secret filter's rule files against
+      #     packages/alloy-pipelines/secretfilter/ingest.corpus.yaml. The default
+      #     Gitleaks rules change between Alloy releases, so a Renovate bump of
+      #     ALLOY_VERSION runs this too.
+      #   * gateway_level_corpus: the gateway's inputProcessor against
+      #     packages/alloy-pipelines/levels.corpus.yaml. Each line must leave with
+      #     its level and the detector that set it; a detector whose escaping is
+      #     wrong still validates and never matches, so only a run catches it.
+      - name: alloy corpora
         env:
           MZMON_REQUIRE_ALLOY: "1"
-        run: cargo test -p mzmon-lib --test secretfilter_corpus
+        run: cargo test -p mzmon-lib --test secretfilter_corpus --test gateway_level_corpus
       # metric-tiers.yaml is generated from the query registry and checked in, the
       # same freshness contract as the pipelines above.
       - name: make metrics

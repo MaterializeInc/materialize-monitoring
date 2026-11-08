@@ -1774,27 +1774,293 @@ loki.process "inputProcessor" {
 	}
 
 	stage.match {
-		selector = "{level=\"UNKNOWN\"}"
+		selector = "{level=\"UNKNOWN\", app=\"loki\", container=\"canary\"} |~ \"^[0-9]{19} p+$\""
 
-		stage.regex {
-			expression         = "(?i)\"?(?:level|severity)\"?\\s*[:=]\\s*\"?(?P<level>(?:info|warn|warning|err|error|debug|crit|critical|fatal))\"?"
-			labels_from_groups = true
+		stage.template {
+			source   = "level"
+			template = "TRACE"
 		}
 
 		stage.template {
 			source   = "levelheuristic"
-			template = "{{ if eq .level \"UNKNOWN\" }}failed{{ else }}success{{ end }}"
+			template = "canary"
 		}
 
-		stage.structured_metadata {
+		stage.labels {
 			values = {
-				levelheuristic = "",
+				level = "level",
 			}
 		}
 	}
 
+	stage.match {
+		selector = "{level=\"UNKNOWN\", app=\"loki\", container=\"canary\"} |~ \"^(websocket missing entry|failed to receive entry|failed to find entry|Querying loki for logs|Connecting to loki)\""
+
+		stage.template {
+			source   = "level"
+			template = "DEBUG"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "canary"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"^[IWEF][0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}\\\\.[0-9]+ +[0-9]+ [^ ]+\\\\]\""
+
+		stage.regex {
+			expression = "^(?P<level>[IWEF])[0-9]{4} "
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "klog"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"^(panic: |fatal error: |goroutine [0-9]+ \\\\[)|panicked at \""
+
+		stage.template {
+			source   = "level"
+			template = "CRITICAL"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "panic"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"(?i)^(\\\\[?[0-9]{4}[-/][0-9]{2}[-/][0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}[^ \\\\t\\\\]]*\\\\]?[ \\\\t]+)?\\\\[? *(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic) *\\\\]?[ \\\\t:]\""
+
+		stage.regex {
+			expression = "(?i)^(?:\\[?[0-9]{4}[-/][0-9]{2}[-/][0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}[^ \\t\\]]*\\]?[ \\t]+)?\\[? *(?P<level>trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic) *\\]?[ \\t:]"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "level_prefix"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"^[^ ]+ [^ ]+ [^ ]+ \\\\[[^\\\\]]+\\\\] +(\\\"[^\\\"]*\\\" )?[1-5][0-9]{2} \""
+
+		stage.regex {
+			expression = "^\\S+ \\S+ \\S+ \\[[^\\]]+\\] +(?:\"[^\"]*\" )?(?P<http_status>[1-5][0-9]{2}) "
+		}
+
+		stage.template {
+			source   = "level"
+			template = "{{ if hasPrefix \"5\" .http_status }}ERROR{{ else if hasPrefix \"4\" .http_status }}WARN{{ else }}INFO{{ end }}"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "access_log"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"(?i)\\\"?(level|severity)\\\"?[ ]*[:=]\""
+
+		stage.regex {
+			expression = "(?i)\"?(?:level|severity)\"?\\s*[:=]\\s*\"?(?P<level>(?:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))\"?"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+
+		stage.match {
+			selector = "{level!=\"UNKNOWN\"}"
+
+			stage.template {
+				source   = "levelheuristic"
+				template = "keyvalue"
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\", journal_priority=~\".+\"}"
+
+		stage.template {
+			source   = "level"
+			template = "{{ .journal_priority }}"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "journal_priority"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"^\\\\t[^ ]+\\\\.go:[0-9]+|^[a-zA-Z0-9_.-]+/[^ \\\\t]*\\\\.[a-zA-Z_*(][^ \\\\t/]*$|^[a-zA-Z0-9_]+\\\\.[a-zA-Z_][^ \\\\t]*\\\\(.*\\\\)$|^\\\\s+at [a-zA-Z0-9_.$]+\\\\(|^  File \\\"[^\\\"]+\\\", line [0-9]+\""
+
+		stage.template {
+			source   = "level"
+			template = "ERROR"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "stacktrace"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"(?i)\\\\b(error|errors|failed|failure|fatal|exception)\\\\b\""
+
+		stage.template {
+			source   = "level"
+			template = "ERROR"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "keyword"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"(?i)\\\\b(warn|warning|deprecated)\\\\b\""
+
+		stage.template {
+			source   = "level"
+			template = "WARN"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "keyword"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\""
+
+		stage.template {
+			source   = "level"
+			template = "INFO"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "go_log"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"} |~ \"^\\\\[flb-[a-z0-9_-]+\\\\] \""
+
+		stage.template {
+			source   = "level"
+			template = "DEBUG"
+		}
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "fluent_bit_plugin"
+		}
+
+		stage.labels {
+			values = {
+				level = "level",
+			}
+		}
+	}
+
+	stage.match {
+		selector = "{level=\"UNKNOWN\"}"
+
+		stage.template {
+			source   = "levelheuristic"
+			template = "none"
+		}
+	}
+
+	stage.structured_metadata {
+		values = {
+			levelheuristic = "",
+		}
+	}
+
+	stage.label_drop {
+		values = [
+			"journal_priority",
+		]
+	}
+
 	stage.replace {
-		expression = "(?i)^(fatal|critical|crit|f)$"
+		expression = "(?i)^(fatal|critical|crit|f|panic|emerg|alert)$"
 		source     = "level"
 		replace    = "CRITICAL"
 	}

@@ -54,7 +54,9 @@ The `raw:` escape (see [Authoring](../authoring/)) remains available and is curr
 
 These are the conventions a contributor must preserve when editing the gateway `loki.process` pipeline:
 
-- **Level normalization.** A per-application `stage.match` extracts the level, then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. A heuristic regex backfills `UNKNOWN` levels, and the success/failure of that heuristic is recorded as structured metadata.
+- **Level normalization.** A per-application `stage.match` extracts the level,
+  then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`.
+  A line no parser leveled is `UNKNOWN` until the [level detectors](#level-detectors) try it.
 - **Drops and limits.** Lines older than the ingestion backlog window are dropped.
   Oversized lines are cut rather than dropped, as [Size limits](#size-limits) describes.
   Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
@@ -65,6 +67,42 @@ These are the conventions a contributor must preserve when editing the gateway `
 > [!WARNING]
 >   The label-vs-structured-metadata split is the dominant cost-and-stability lever.
 >   Adding a new Loki label multiplies [cardinality](../../../../o11y-glossary/#observability-foundations) — default to structured metadata and promote to a label only when it is low-cardinality and used as a selector.
+
+### Level detectors {#level-detectors}
+
+A line that no per-application parser leveled reaches a sequence of detectors as `UNKNOWN`.
+Each detector recognizes one shape of line and sets its level, and the first one to match wins.
+The `levelheuristic` structured metadata names the detector that leveled the line, or `none`.
+With it, you can group what remains `UNKNOWN`, and audit a leveled line by where its level came from.
+
+The following table lists the detectors in the order they run:
+
+| `levelheuristic` | Matches | Level |
+|---|---|---|
+| `canary` | The Loki canary's payloads and its per-entry reports | `TRACE` for payloads, `DEBUG` for reports |
+| `klog` | `I1108 19:59:31.736880  1 file.go:314] ...`, from any component | `I`, `W`, `E`, or `F` |
+| `panic` | `panic: `, `fatal error: `, or `goroutine N [` opening the line, or `panicked at ` anywhere | `CRITICAL` |
+| `level_prefix` | A level word opening the line, bare or bracketed, after an optional timestamp and a space or tab | The word |
+| `access_log` | An HTTP access log line: common or combined format, or the status first | `ERROR` for 5xx, `WARN` for 4xx, otherwise `INFO` |
+| `keyvalue` | A `level=` or `"severity":` pair anywhere in the line | The value |
+| `journal_priority` | A journal entry, which carries journald's priority as `journal_priority` | The priority |
+| `stacktrace` | A Go, Java, or Python stack-trace frame | `ERROR` |
+| `keyword` | `error`, `failed`, `failure`, `fatal`, or `exception` as a word, or else `warn`, `warning`, or `deprecated` | `ERROR`, or else `WARN` |
+| `go_log` | Go's standard `log` format, `2026/11/08 20:07:09 ...` | `INFO` |
+| `fluent_bit_plugin` | A fluent-bit output plugin's trace, `[flb-<plugin>] ...` | `DEBUG` |
+
+The detectors that read a level the line carries run first.
+The ones that read severity from the content run next, and the defaults for formats known to carry no level run last.
+A line in no recognized format stays `UNKNOWN` rather than being guessed `INFO`.
+
+The agent copies journald's priority keyword to the `journal_priority` label, because a label starting with `__` never leaves the agent.
+The gateway drops `journal_priority` after the detectors, so it never becomes a stream label.
+
+Every selector carries a line filter, rendered through YAML, Alloy, and LogQL escaping.
+A detector with an escaping mistake still validates and never matches,
+so `packages/alloy-pipelines/levels.corpus.yaml` holds a line for every detector.
+`packages/mzmon-lib/tests/gateway_level_corpus.rs` runs `inputProcessor` on the pinned Alloy against it, in the `pipelines` CI job.
+Add a fixture when you add or change a detector.
 
 ### Multi-line records
 
