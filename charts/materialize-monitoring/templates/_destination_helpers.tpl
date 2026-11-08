@@ -3,14 +3,21 @@ Helpers for `pipeline.destinations`: the gateway's named destinations, shared by
 every signal.
 
 One entry is one wire: an endpoint, its credentials, and its queue. Each signal
-the entry carries is switched on and shaped in its own block (`logs` today), so
-a backend that takes only logs needs no metrics block to switch off, and a
-backend that takes both — the BYOC control plane — has one credential and one
-entry.
+the entry carries is switched on and shaped in its own block (`logs`,
+`metrics`), so a backend that takes only logs needs no metrics block to switch
+off, and a backend that takes both — the BYOC control plane — has one
+credential and one entry.
 
-Only the `loki` type exists so far. The other signals' destinations still live
-under `pipeline.logging.gateway.destination.otel` and
-`pipeline.metrics.gateway.destination.*`.
+Two types exist: `loki` (logs, through `loki.write`) and `otlp` (logs and
+metrics, through `otelcol.exporter.otlphttp` or `otelcol.exporter.otlp`). The
+older destinations still live under `pipeline.logging.gateway.destination.otel`
+and `pipeline.metrics.gateway.destination.*`.
+
+**Component labels.** A `loki` destination's `loki.write` is labeled with the
+bare name. An `otlp` destination's components are labeled `dest_<name>`: the
+gateway already runs dozens of `otelcol.*` components (the metric pipeline, the
+Google Cloud chain, the egress filters), and the prefix keeps a destination name
+from ever colliding with one of them.
 */}}
 
 
@@ -22,7 +29,39 @@ Usage:
   {{- $signals := index $types "loki" }}
 */}}
 {{- define "mzmon.destinations.types" }}
-  {{- dict "loki" ( list "logs" ) | toYaml }}
+  {{- dict
+      "loki" ( list "logs" )
+      "otlp" ( list "logs" "metrics" )
+    | toYaml }}
+{{- end }}
+
+
+{{- /*
+The `queue` fields each type accepts. Each maps onto a different block —
+`loki.write`'s `queue_config`, the OTLP exporter's `sending_queue` — and only
+`blockOnOverflow` means the same thing in both.
+
+Usage:
+  {{- $fields := index ( include "mzmon.destinations.queueFields" $ | fromYaml ) "otlp" }}
+*/}}
+{{- define "mzmon.destinations.queueFields" }}
+  {{- dict
+      "loki" ( list "capacity" "minShards" "blockOnOverflow" "drainTimeout" )
+      "otlp" ( list "queueSize" "numConsumers" "blockOnOverflow" )
+    | toYaml }}
+{{- end }}
+
+
+{{- /*
+Whether a destination of this type blocks the fan-out when its queue is full,
+when `queue.blockOnOverflow` is unset. These are the components' own defaults:
+`loki.write` waits for room, and the OTLP exporters drop.
+
+Usage:
+  {{- $blocks := index ( include "mzmon.destinations.blocksByDefault" $ | fromYaml ) $type }}
+*/}}
+{{- define "mzmon.destinations.blocksByDefault" }}
+  {{- dict "loki" true "otlp" false | toYaml }}
 {{- end }}
 
 
@@ -122,6 +161,11 @@ through this helper, so a default written here cannot disagree between them.
 carries at least one signal. A destination that is off, or carries nothing,
 needs no URL or credentials.
 
+**A signal is on** when its block is present, or when the type carries only
+that signal (so a `loki` destination needs no `logs` block), unless the block
+says `enabled: false`. An `otlp` destination carries nothing until it names a
+signal.
+
 Booleans whose default is `true` are resolved by hand rather than with `dig`:
 `dig` returns empty for an explicit `null`, which is how Helm records a cleared
 key, so `enabled: null` would read as `false`. Absent and `null` both mean "use
@@ -131,6 +175,13 @@ Environment variable names derive from the name as `GATEWAY_<NAME>_DEST*`, which
 gives the `loki` destination exactly the names the single Loki destination used
 (`GATEWAY_LOKI_DEST`, `GATEWAY_LOKI_DEST_PASSWORD`, …). A credential an install
 already supplies through `extraEnv` keeps reaching it.
+
+Every derived name is `GATEWAY_<NAME>_DEST` plus a suffix, and no suffix
+contains `_DEST`, so two destinations whose names differ by more than case
+cannot derive the same variable. Keep new names under that prefix: a name
+outside it (`GATEWAY_UNFILTERED_<NAME>_…`) can equal another destination's
+derived name. `mzmon.destinations.validate` catches the collisions that are
+left, from explicit `*Env` overrides and case-only differences.
 
 Args:
   name: the destination's key in the map, and its Alloy component label.
@@ -158,10 +209,22 @@ Usage:
   {{- if not ( kindIs "map" $queue ) }}
     {{- $queue = dict }}
   {{- end }}
-  {{- $logs := dig "logs" dict $raw }}
-  {{- if not ( kindIs "map" $logs ) }}
-    {{- $logs = dict }}
+  {{- $signalBlocks := dict }}
+  {{- $signalOn := dict }}
+  {{- range $signal := list "logs" "metrics" }}
+    {{- $block := index $raw $signal }}
+    {{- $on := or ( kindIs "map" $block ) ( and ( eq ( len $signals ) 1 ) ( has $signal $signals ) ) }}
+    {{- if not ( kindIs "map" $block ) }}
+      {{- $block = dict }}
+    {{- end }}
+    {{- if and ( hasKey $block "enabled" ) ( not ( kindIs "invalid" ( index $block "enabled" ) ) ) }}
+      {{- $on = index $block "enabled" }}
+    {{- end }}
+    {{- $_ := set $signalBlocks $signal $block }}
+    {{- $_ := set $signalOn $signal $on }}
   {{- end }}
+  {{- $logs := index $signalBlocks "logs" }}
+  {{- $metrics := index $signalBlocks "metrics" }}
 
   {{- $enabled := true }}
   {{- if and ( hasKey $raw "enabled" ) ( not ( kindIs "invalid" ( index $raw "enabled" ) ) ) }}
@@ -175,16 +238,15 @@ Usage:
   {{- if and ( hasKey $tls "verify" ) ( not ( kindIs "invalid" ( index $tls "verify" ) ) ) }}
     {{- $tlsVerify = index $tls "verify" }}
   {{- end }}
-  {{- /* A type that carries only logs carries them without being asked. */}}
-  {{- $logsEnabled := has "logs" $signals }}
-  {{- if and ( hasKey $logs "enabled" ) ( not ( kindIs "invalid" ( index $logs "enabled" ) ) ) }}
-    {{- $logsEnabled = index $logs "enabled" }}
-  {{- end }}
+  {{- $logsEnabled := index $signalOn "logs" }}
+  {{- $metricsEnabled := index $signalOn "metrics" }}
 
   {{- /* Only the queue settings the destination names are kept, so a
-         destination that sets none renders no `queue_config` block. */}}
+         destination that sets none renders no queue block. Every known field
+         is kept whatever the type, so the validator can name a field the type
+         does not take. */}}
   {{- $resolvedQueue := dict }}
-  {{- range $key := list "capacity" "minShards" "blockOnOverflow" "drainTimeout" }}
+  {{- range $key := list "capacity" "minShards" "blockOnOverflow" "drainTimeout" "queueSize" "numConsumers" }}
     {{- if and ( hasKey $queue $key ) ( not ( kindIs "invalid" ( index $queue $key ) ) ) }}
       {{- $_ := set $resolvedQueue $key ( index $queue $key ) }}
     {{- end }}
@@ -223,10 +285,23 @@ Usage:
       "certFile" ( dig "certFile" "" $tls | toString )
       "keyFile" ( dig "keyFile" "" $tls | toString )
       "serverName" ( dig "serverName" "" $tls | toString )
-      "minVersion" ( dig "minVersion" "TLS13" $tls | toString ) )
+      "minVersion" ( dig "minVersion" "TLS13" $tls | toString )
+      "reloadInterval" ( dig "reloadInterval" "" $tls | toString ) )
+    "protocol" ( dig "protocol" "http" $raw | toString )
+    "compression" ( dig "compression" "gzip" $raw | toString )
     "queue" $resolvedQueue
-    "logs" ( dict "enabled" $logsEnabled )
-    "active" ( and $enabled $logsEnabled )
+    "logs" ( dict
+      "enabled" $logsEnabled
+      "url" ( dig "url" "" $logs | toString )
+      "urlEnv" ( dig "urlEnv" ( printf "%s_LOGS" $prefix ) $logs | toString ) )
+    "metrics" ( dict
+      "enabled" $metricsEnabled
+      "minMetricImportance" ( dig "minMetricImportance" "all" $metrics | toString )
+      "url" ( dig "url" "" $metrics | toString )
+      "urlEnv" ( dig "urlEnv" ( printf "%s_METRICS" $prefix ) $metrics | toString )
+      "unfilteredMetricsEnv" ( dig "unfilteredMetricsEnv" ( printf "%s_METRICS_ALLOWLIST" $prefix ) $metrics | toString ) )
+    "label" ( ternary $name ( printf "dest_%s" $name ) ( eq $type "loki" ) )
+    "active" ( and $enabled ( or $logsEnabled $metricsEnabled ) )
     | toYaml }}
 {{- end }}
 
@@ -271,6 +346,41 @@ Usage:
 
 
 {{- /*
+The enabled destinations that carry metrics.
+
+Usage:
+  {{- range $dest := ( include "mzmon.destinations.metrics" $ | fromYamlArray ) }}
+*/}}
+{{- define "mzmon.destinations.metrics" }}
+  {{- $out := list }}
+  {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
+    {{- if and $dest.enabled $dest.metrics.enabled }}
+      {{- $out = append $out $dest }}
+    {{- end }}
+  {{- end }}
+  {{- $out | toYaml }}
+{{- end }}
+
+
+{{- /*
+The enabled destinations that carry any signal, which is everything the
+pipeline and the env ConfigMap render a destination for.
+
+Usage:
+  {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
+*/}}
+{{- define "mzmon.destinations.active" }}
+  {{- $out := list }}
+  {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
+    {{- if $dest.active }}
+      {{- $out = append $out $dest }}
+    {{- end }}
+  {{- end }}
+  {{- $out | toYaml }}
+{{- end }}
+
+
+{{- /*
 The enabled log destinations that write to the bundled in-cluster Loki.
 
 The ruler sync, the TLS pairing, and the client-auth handshake are about this
@@ -300,6 +410,61 @@ Usage:
 
 
 {{- /*
+Every variable the env ConfigMap writes for a destination, in the order it
+writes them, as a list of `{key, value, owner}`.
+
+The ConfigMap renders from this list and the validator checks it for duplicate
+keys, so the two cannot disagree about what is written. `owner` is the values
+path of the field that names the key, for the error message.
+
+A credential variable is written only when its value is inline. One supplied
+through `envFrom` or `extraEnv` is not written, which is what lets two
+destinations share it.
+
+Usage:
+  {{- range $entry := ( include "mzmon.destinations.envEntries" $ | fromYamlArray ) }}
+*/}}
+{{- define "mzmon.destinations.envEntries" }}
+  {{- $out := list }}
+  {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
+    {{- $at := printf "pipeline.destinations.%s" $dest.name }}
+    {{- $out = append $out ( dict
+          "key" $dest.urlEnv
+          "value" ( include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.url $ ) "tls" $dest.tls ) )
+          "owner" ( printf "%s.urlEnv" $at ) ) }}
+    {{- if and $dest.logs.enabled $dest.logs.url }}
+      {{- $out = append $out ( dict
+            "key" $dest.logs.urlEnv
+            "value" ( include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.logs.url $ ) "tls" $dest.tls ) )
+            "owner" ( printf "%s.logs.urlEnv" $at ) ) }}
+    {{- end }}
+    {{- if and $dest.metrics.enabled $dest.metrics.url }}
+      {{- $out = append $out ( dict
+            "key" $dest.metrics.urlEnv
+            "value" ( include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.metrics.url $ ) "tls" $dest.tls ) )
+            "owner" ( printf "%s.metrics.urlEnv" $at ) ) }}
+    {{- end }}
+    {{- if $dest.metrics.enabled }}
+      {{- $out = append $out ( dict
+            "key" $dest.metrics.unfilteredMetricsEnv
+            "value" ( include "mzmon.alloyGateway.metricFilter" ( dict "context" $ "minMetricImportance" $dest.metrics.minMetricImportance ) )
+            "owner" ( printf "%s.metrics.unfilteredMetricsEnv" $at ) ) }}
+    {{- end }}
+    {{- if and ( eq $dest.authType "basicAuth" ) $dest.basicAuth.username }}
+      {{- $out = append $out ( dict "key" $dest.basicAuth.usernameEnv "value" ( tpl $dest.basicAuth.username $ ) "owner" ( printf "%s.basicAuth.usernameEnv" $at ) ) }}
+    {{- end }}
+    {{- if and ( eq $dest.authType "basicAuth" ) $dest.basicAuth.password }}
+      {{- $out = append $out ( dict "key" $dest.basicAuth.passwordEnv "value" ( tpl $dest.basicAuth.password $ ) "owner" ( printf "%s.basicAuth.passwordEnv" $at ) ) }}
+    {{- end }}
+    {{- if and ( eq $dest.authType "bearer" ) $dest.bearer.token }}
+      {{- $out = append $out ( dict "key" $dest.bearer.tokenEnv "value" ( tpl $dest.bearer.token $ ) "owner" ( printf "%s.bearer.tokenEnv" $at ) ) }}
+    {{- end }}
+  {{- end }}
+  {{- $out | toYaml }}
+{{- end }}
+
+
+{{- /*
 Validate the destination map.
 
 Catches the mistakes that otherwise present as a working install:
@@ -307,19 +472,25 @@ Catches the mistakes that otherwise present as a working install:
   1. **A name Alloy cannot use as a component label**, or one already taken.
      Alloy refuses the whole config at load, with a line number a long way from
      the values key that caused it.
-  2. **An unknown type**, or a signal switched on for a type that cannot carry
-     it.
+  2. **An unknown type**, a signal switched on for a type that cannot carry
+     it, a queue field the type does not take, or an `otlp` setting that does
+     not apply: an unknown protocol, a per-signal URL over gRPC, inline TLS
+     material. An enabled destination that carries no signal is a warning.
   3. **An active destination with no URL.** `sys.env` of an unset variable is
      empty, and `loki.write` accepts an empty endpoint at load, so this would
      surface only as failed writes.
-  4. **Two active destinations reading one URL variable**, through `urlEnv` or
-     names that differ only in case. The env ConfigMap would carry a duplicate
-     key, and both writers would read the same endpoint. Credential variables
-     are left alone: sharing one between destinations can be deliberate.
+  4. **Two fields writing one key into the env ConfigMap**, across every key
+     `mzmon.destinations.envEntries` lists and the remote-write destinations'
+     URL and allowlist variables. A ConfigMap keeps one value per key, so one
+     writer would read the other's endpoint or allowlist. This comes from an
+     explicit `*Env` override or names that differ only in case. A credential
+     supplied from outside the ConfigMap is not written, so sharing one is
+     allowed.
   5. **More than one log destination that blocks when its queue fills.** The
      fan-out hands each entry to every destination in turn, so a blocking
      destination that stalls holds back the others. One may block — the
-     customer's own copy should — and the rest have to shed.
+     customer's own copy should — and the rest have to shed. Each type's
+     default comes from `mzmon.destinations.blocksByDefault`.
 
 It also warns, once, about values still set under the deprecated
 `pipeline.logging.gateway.destination.loki`.
@@ -332,6 +503,8 @@ Usage:
   {{- $warnings := list }}
   {{- $path := "pipeline.destinations" }}
   {{- $types := include "mzmon.destinations.types" $ | fromYaml }}
+  {{- $queueFields := include "mzmon.destinations.queueFields" $ | fromYaml }}
+  {{- $blocksByDefault := include "mzmon.destinations.blocksByDefault" $ | fromYaml }}
   {{- $reserved := include "mzmon.destinations.reservedNames" $ | fromYamlArray }}
 
   {{- $legacy := include "mzmon.destinations.legacyLoki" $ | fromYaml }}
@@ -339,17 +512,25 @@ Usage:
     {{- $warnings = append $warnings ( printf "pipeline.logging.gateway.destination.loki is deprecated, and its keys (%s) are applied to %s.loki. Move them there: pipeline.logging.gateway.destination.loki.<key> becomes %s.loki.<key>." ( keys $legacy | sortAlpha | join ", " ) $path $path ) }}
   {{- end }}
 
+  {{- $written := dict }}
+  {{- range $prom := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
+    {{- if $prom.enabled }}
+      {{- $at := printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s" $prom.name }}
+      {{- $_ := set $written $prom.urlEnv ( printf "%s.urlEnv" $at ) }}
+      {{- $_ := set $written $prom.unfilteredMetricsEnv ( printf "%s.unfilteredMetricsEnv" $at ) }}
+    {{- end }}
+  {{- end }}
+  {{- range $entry := ( include "mzmon.destinations.envEntries" $ | fromYamlArray ) }}
+    {{- if hasKey $written $entry.key }}
+      {{- $errors = append $errors ( printf "%s and %s both write %s to the gateway's env ConfigMap, which keeps one value per key, so one of them would read the other's. Give one a different variable name, or rename a destination so the names differ by more than case." ( index $written $entry.key ) $entry.owner $entry.key ) }}
+    {{- else }}
+      {{- $_ := set $written $entry.key $entry.owner }}
+    {{- end }}
+  {{- end }}
+
   {{- $blocking := list }}
-  {{- $urlEnvs := dict }}
   {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
     {{- $name := $dest.name }}
-    {{- if $dest.active }}
-      {{- if hasKey $urlEnvs $dest.urlEnv }}
-        {{- $errors = append $errors ( printf "%s.%s and %s.%s both read their URL from %s. The env ConfigMap would carry the key twice, and both writers would read one endpoint. Give one of them a different urlEnv, or a name that differs by more than case." $path ( index $urlEnvs $dest.urlEnv ) $path $name $dest.urlEnv ) }}
-      {{- else }}
-        {{- $_ := set $urlEnvs $dest.urlEnv $name }}
-      {{- end }}
-    {{- end }}
     {{- if not ( regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" $name ) }}
       {{- $errors = append $errors ( printf "%s.%s is not a usable name. It becomes an Alloy component label, so it must match [a-zA-Z_][a-zA-Z0-9_]* — no dashes, dots, or leading digits." $path $name ) }}
     {{- else if has $name $reserved }}
@@ -358,8 +539,42 @@ Usage:
 
     {{- if not ( hasKey $types $dest.type ) }}
       {{- $errors = append $errors ( printf "%s.%s.type is %q. Supported types are: %s." $path $name $dest.type ( keys $types | sortAlpha | join ", " ) ) }}
-    {{- else if and $dest.logs.enabled ( not ( has "logs" ( index $types $dest.type ) ) ) }}
-      {{- $errors = append $errors ( printf "%s.%s turns logs on, but a %s destination does not carry logs." $path $name $dest.type ) }}
+    {{- else }}
+      {{- range $signal := list "logs" "metrics" }}
+        {{- if and ( index $dest $signal ).enabled ( not ( has $signal ( index $types $dest.type ) ) ) }}
+          {{- $errors = append $errors ( printf "%s.%s turns %s on, but a %s destination does not carry %s." $path $name $signal $dest.type $signal ) }}
+        {{- end }}
+      {{- end }}
+      {{- range $field := ( keys $dest.queue | sortAlpha ) }}
+        {{- if not ( has $field ( index $queueFields $dest.type ) ) }}
+          {{- $errors = append $errors ( printf "%s.%s.queue.%s does not apply to a %s destination, which takes: %s." $path $name $field $dest.type ( index $queueFields $dest.type | join ", " ) ) }}
+        {{- end }}
+      {{- end }}
+      {{- if and $dest.enabled ( not $dest.active ) }}
+        {{- $warnings = append $warnings ( printf "%s.%s is enabled but carries no signal, so nothing is sent to it. Add a logs or metrics block." $path $name ) }}
+      {{- end }}
+    {{- end }}
+
+    {{- if not ( has $dest.authType ( list "none" "basicAuth" "bearer" ) ) }}
+      {{- $errors = append $errors ( printf "%s.%s.authType is %q. Supported values are: none, basicAuth, bearer." $path $name $dest.authType ) }}
+    {{- end }}
+
+    {{- if eq $dest.type "otlp" }}
+      {{- if not ( has $dest.protocol ( list "http" "grpc" ) ) }}
+        {{- $errors = append $errors ( printf "%s.%s.protocol is %q. Supported values are: http, grpc." $path $name $dest.protocol ) }}
+      {{- end }}
+      {{- range $signal := list "logs" "metrics" }}
+        {{- if and ( eq $dest.protocol "grpc" ) ( index $dest $signal ).url }}
+          {{- $errors = append $errors ( printf "%s.%s.%s.url overrides the endpoint for one signal, which only the http protocol supports. gRPC serves every signal on the one endpoint." $path $name $signal ) }}
+        {{- end }}
+      {{- end }}
+      {{- /* The inline carriers read variables nothing writes (DEP-465), so a
+             new destination type does not take them. */}}
+      {{- range $field := list "ca" "cert" "key" }}
+        {{- if index $dest.tls $field }}
+          {{- $errors = append $errors ( printf "%s.%s.tls.%s is not supported on an otlp destination. Mount the material and use tls.%sFile, which also survives certificate renewal." $path $name $field $field ) }}
+        {{- end }}
+      {{- end }}
     {{- end }}
 
     {{- if and $dest.active ( not $dest.url ) }}
@@ -367,7 +582,7 @@ Usage:
     {{- end }}
 
     {{- if and $dest.active $dest.logs.enabled }}
-      {{- $blocks := true }}
+      {{- $blocks := index $blocksByDefault $dest.type | default false }}
       {{- if hasKey $dest.queue "blockOnOverflow" }}
         {{- $blocks = $dest.queue.blockOnOverflow }}
       {{- end }}
@@ -378,7 +593,7 @@ Usage:
   {{- end }}
 
   {{- if gt ( len $blocking ) 1 }}
-    {{- $warnings = append $warnings ( printf "Log destinations %s all block when their queue fills (queue.blockOnOverflow defaults to true). Every log entry goes to each destination in turn, so any one of them stalling holds back the others. Set queue.blockOnOverflow: false on every destination but the one whose copy must be complete, so the rest drop instead of stalling it." ( join ", " $blocking ) ) }}
+    {{- $warnings = append $warnings ( printf "Log destinations %s all block when their queue fills (the default for a loki destination). Every log entry goes to each destination in turn, so any one of them stalling holds back the others. Set queue.blockOnOverflow: false on every destination but the one whose copy must be complete, so the rest drop instead of stalling it." ( join ", " $blocking ) ) }}
   {{- end }}
 
   {{- /* final output */}}

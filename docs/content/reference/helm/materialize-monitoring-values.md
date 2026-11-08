@@ -1534,8 +1534,14 @@ The gateway's named destinations, as a map of name to destination.
 The signals an entry carries are switched on in their own blocks.
 A backend that takes only logs needs nothing switched off,
 and one that takes several signals has one entry and one credential.
-Only log destinations of type `loki` live here so far.
-Metric destinations are still under `pipeline.metrics.gateway.destination`.
+
+Each entry has a `type`:
+
+- `loki`: logs, pushed through `loki.write`. Logs are on unless `logs.enabled` is `false`.
+- `otlp`: logs, metrics, or both, sent through one OTLP exporter over HTTP or gRPC.
+  A signal is on when its block is present, so an `otlp` entry sends nothing until it has a `logs` or `metrics` block.
+
+Remote write and the older OTLP exporters are still configured under `pipeline.metrics.gateway.destination`.
 
 The default map holds one entry, `loki`, pointing at the bundled in-cluster Loki.
 Add an entry to write logs somewhere else as well; set `loki.enabled: false` to stop writing to the bundled Loki.
@@ -1543,31 +1549,41 @@ Add an entry to write logs somewhere else as well; set `loki.enabled: false` to 
 **Each destination is its own failure domain.**
 Every log entry is handed to each destination in turn,
 so a destination that blocks when its queue fills holds back the others while it is stalled.
-Leave one destination blocking (the copy that must be complete), and set `queue.blockOnOverflow: false` on the rest.
-They then drop entries when they fall behind, and count them in `loki_write_dropped_entries_total`.
+A `loki` destination blocks by default; an `otlp` destination drops by default.
+Leave one destination blocking (the copy that must be complete), and set `queue.blockOnOverflow: false` on any other `loki` entry.
+A dropping destination counts what it drops, in `loki_write_dropped_entries_total` or `otelcol_exporter_enqueue_failed_*`.
 The render warns when more than one log destination blocks.
 
-**Names are Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
+**Names become Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
 `egress` and `destination` are reserved.
 A name that breaks either rule fails at render.
+A `loki` destination's writer takes the bare name; an `otlp` destination's components are labeled `dest_<name>`.
 
 **Fields are optional.** Anything an entry omits falls back to the defaults below.
 Environment variable names derive from the name,
 such as `GATEWAY_CONTROLPLANE_DEST` and `GATEWAY_CONTROLPLANE_DEST_PASSWORD`.
 You can name them yourself where a caller wants to choose them.
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `type` | — | `loki`. Required. |
-| `enabled` | `true` | Write to this destination. |
-| `url` | — | Push endpoint. Required when enabled. Supports `tpl`. |
-| `urlEnv` | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint URL. |
-| `logs.enabled` | `true` for `loki` | Send logs to this destination. |
-| `retries` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
-| `queue` | Alloy's defaults | `loki.write`'s `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
-| `authType` | `none` | `none`, `basicAuth`, or `bearer`. |
-| `basicAuth` / `bearer` | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
-| `tls` | off | Client TLS: `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`. |
+The following table lists each field, the types it applies to, and its default:
+
+| Field | Types | Default | Meaning |
+| --- | --- | --- | --- |
+| `type` | all | — | `loki` or `otlp`. Required. |
+| `enabled` | all | `true` | Write to this destination. |
+| `url` | all | — | Endpoint, required when the entry carries a signal. For `otlp`: a base URL over HTTP, `host:port` over gRPC. |
+| `urlEnv` | all | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint. |
+| `logs.enabled` | all | on for `loki`; on when `logs` is present for `otlp` | Send logs here. |
+| `logs.url` / `metrics.url` | `otlp`, HTTP | the base URL plus `/v1/logs` or `/v1/metrics` | One signal's own endpoint. |
+| `metrics.enabled` | `otlp` | on when `metrics` is present | Send metrics here. |
+| `metrics.minMetricImportance` | `otlp` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
+| `protocol` | `otlp` | `http` | `http` or `grpc`. |
+| `compression` | `otlp` | `gzip` | Request compression. |
+| `retries` | `loki` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
+| `queue` | `loki` | Alloy's defaults | `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
+| `queue` | `otlp` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
+| `authType` | all | `none` | `none`, `basicAuth`, or `bearer`. |
+| `basicAuth` / `bearer` | all | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
+| `tls` | all | off | `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
 
 For example, a second, external Loki that must never slow the bundled one down:
 
@@ -1581,6 +1597,18 @@ pipeline:
       queue:
         capacity: 64MiB
         blockOnOverflow: false
+```
+
+An OTLP backend that takes only logs, on its own endpoint:
+
+```yaml
+pipeline:
+  destinations:
+    opensearch:
+      type: otlp
+      url: http://data-prepper.logging.svc:21890
+      logs:
+        url: http://data-prepper.logging.svc:21892/v1/logs
 ```
 
 #### Log configuration
