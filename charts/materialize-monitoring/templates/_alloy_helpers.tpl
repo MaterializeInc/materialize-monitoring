@@ -432,12 +432,12 @@ Usage:
          otelcol.processor.filter "egress" seam by their own tier filter. Only
          `loki` carries no metrics, and the validator refuses metrics on it. */}}
   {{- range $dest := ( include "mzmon.destinations.metrics" $ | fromYamlArray ) }}
-    {{- if ne $dest.type "loki" }}
+    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" ) }}
       {{- $metricsForward = append $metricsForward ( printf "otelcol.processor.transform.%s.input" $dest.label ) }}
     {{- end }}
   {{- end }}
   {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
-    {{- if ne $dest.type "loki" }}
+    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" ) }}
       {{- include "mzmon.alloyGateway.pipeline.otel.dest" ( dict "context" $ "dest" $dest ) }}
     {{- end }}
   {{- end }}
@@ -879,22 +879,6 @@ otelcol.exporter.{{ $exporter }} {{ $label | quote }} {
 
 
 {{/*
-Reserved Alloy component labels a Prometheus remote-write destination may not use.
-
-Each destination renders `prometheus.relabel "<name>"` and
-`prometheus.remote_write "<name>"`, so a name colliding with a component this
-pipeline already defines produces a duplicate-label config alloy rejects at load.
-`egress` is the fan-out seam every destination hangs off.
-
-Usage:
-  {{- if has $name ( include "mzmon.alloyGateway.promDest.reservedNames" $ | fromYamlArray ) }}
-*/}}
-{{- define "mzmon.alloyGateway.promDest.reservedNames" }}
-  {{- list "egress" | toYaml }}
-{{- end }}
-
-
-{{/*
 Legacy keys of the single-destination `prometheusRemoteWrite` shape.
 
 `prometheusRemoteWrite` used to *be* one destination; it is now a map of them.
@@ -914,146 +898,36 @@ Usage:
 
 
 {{/*
-Resolve one Prometheus remote-write destination against the per-destination defaults.
-
-A destination in values carries only what differs, so every consumer would
-otherwise have to `dig` each field with the same default — and the env
-ConfigMap and the pipeline disagreeing on one of those defaults is a
-misconfiguration neither side can detect. This is the single place they are
-written down.
-
-Fields are resolved with `dig` rather than `mergeOverwrite`, deliberately.
-`mergeOverwrite` is mergo's `WithOverride`, which does not override with a
-*zero* value — so `enabled: false` and `tls.verify: false` would both be
-silently discarded and the destination would stay on. Every boolean here has a
-`true` default or a caller who needs to turn it off, so that failure mode is not
-hypothetical.
-
-Environment variable names are derived from the destination name when not given.
-The caller can still name them, which is what the Terraform module's
-`mzmon-alloy-gateway-env` Secret needs (see DEP-204): the Secret supplies the
-value, the values supply the name, and the two cannot drift.
-
-Args:
-  name: the destination's key in the map — also its Alloy component label.
-  dest: the raw values for that destination.
-
-Usage:
-  {{- $d := include "mzmon.alloyGateway.promDest.resolve" ( dict
-        "name" $name "dest" $raw ) | fromYaml }}
-*/}}
-{{- define "mzmon.alloyGateway.promDest.resolve" }}
-  {{- $name := .name | required "name is required" | toString }}
-  {{- /* Not `| default dict`: a destination set to an explicit `null` (how Helm
-         records a cleared key) and a leftover scalar from the pre-map shape both
-         arrive here as a non-map, and `dig` panics on those with a Go type error
-         rather than anything an operator can act on. `mzmon.alloy.validate.promDests`
-         is what reports the leftover scalar properly. */}}
-  {{- $raw := .dest }}
-  {{- if not ( kindIs "map" $raw ) }}
-    {{- $raw = dict }}
-  {{- end }}
-  {{- /* Component labels allow more than env var names do, so the env fragment
-         is the name with everything else folded to `_`. */}}
-  {{- $slug := $name | regexReplaceAll "[^A-Za-z0-9]" "_" | upper }}
-
-  {{- $tls := dig "tls" dict $raw }}
-  {{- if not ( kindIs "map" $tls ) }}
-    {{- $tls = dict }}
-  {{- end }}
-
-  {{- /* The three booleans whose default is `true`, resolved by hand rather
-         than with `dig`. `dig` treats an explicit `null` as a *value* and
-         returns empty for it, and `null` is exactly how Helm records a key a
-         later values file cleared — so `enabled: null` would read as
-         `enabled: false` and silently take the destination off the fan-out.
-         Absent and null both have to mean "use the default"; only a real
-         `false` may switch it off. */}}
-  {{- $enabled := true }}
-  {{- if and ( hasKey $raw "enabled" ) ( not ( kindIs "invalid" ( index $raw "enabled" ) ) ) }}
-    {{- $enabled = index $raw "enabled" }}
-  {{- end }}
-  {{- $tlsEnabled := false }}
-  {{- if and ( hasKey $tls "enabled" ) ( not ( kindIs "invalid" ( index $tls "enabled" ) ) ) }}
-    {{- $tlsEnabled = index $tls "enabled" }}
-  {{- end }}
-  {{- $tlsVerify := true }}
-  {{- if and ( hasKey $tls "verify" ) ( not ( kindIs "invalid" ( index $tls "verify" ) ) ) }}
-    {{- $tlsVerify = index $tls "verify" }}
-  {{- end }}
-
-  {{- dict
-    "name" $name
-    "enabled" $enabled
-    "url" ( dig "url" "" $raw | toString )
-    "urlEnv" ( dig "urlEnv" ( printf "GATEWAY_PROM_DEST_%s" $slug ) $raw | toString )
-    "minMetricImportance" ( dig "minMetricImportance" "all" $raw | toString )
-    "unfilteredMetricsEnv" ( dig "unfilteredMetricsEnv" ( printf "GATEWAY_UNFILTERED_PROM_METRICS_%s" $slug ) $raw | toString )
-    "externalLabels" ( dig "externalLabels" dict $raw )
-    "authType" ( dig "authType" "none" $raw | toString )
-    "basicAuth" ( dict
-      "username" ( dig "basicAuth" "username" "" $raw | toString )
-      "usernameEnv" ( dig "basicAuth" "usernameEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_USERNAME" $slug ) $raw | toString )
-      "password" ( dig "basicAuth" "password" "" $raw | toString )
-      "passwordEnv" ( dig "basicAuth" "passwordEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_PASSWORD" $slug ) $raw | toString ) )
-    "bearer" ( dict
-      "token" ( dig "bearer" "token" "" $raw | toString )
-      "tokenEnv" ( dig "bearer" "tokenEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_BEARER_TOKEN" $slug ) $raw | toString ) )
-    "oauth2" ( dict
-      "clientId" ( dig "oauth2" "clientId" "" $raw | toString )
-      "clientIdEnv" ( dig "oauth2" "clientIdEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_OAUTH2_CLIENT_ID" $slug ) $raw | toString )
-      "clientSecret" ( dig "oauth2" "clientSecret" "" $raw | toString )
-      "clientSecretEnv" ( dig "oauth2" "clientSecretEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_OAUTH2_CLIENT_SECRET" $slug ) $raw | toString )
-      "scopes" ( dig "oauth2" "scopes" list $raw )
-      "tokenUrl" ( dig "oauth2" "tokenUrl" "" $raw | toString )
-      "tokenUrlEnv" ( dig "oauth2" "tokenUrlEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_OAUTH2_TOKEN_URL" $slug ) $raw | toString ) )
-    "sigv4" ( dict
-      "region" ( dig "sigv4" "region" "" $raw | toString )
-      "roleArn" ( dig "sigv4" "roleArn" "" $raw | toString ) )
-    "tls" ( dict
-      "enabled" $tlsEnabled
-      "verify" $tlsVerify
-      "ca" ( dig "ca" "" $tls | toString )
-      "caEnv" ( dig "caEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_TLS_CA" $slug ) $tls | toString )
-      "cert" ( dig "cert" "" $tls | toString )
-      "certEnv" ( dig "certEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_TLS_CERT" $slug ) $tls | toString )
-      "key" ( dig "key" "" $tls | toString )
-      "keyEnv" ( dig "keyEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_TLS_KEY" $slug ) $tls | toString )
-      "caFile" ( dig "caFile" "" $tls | toString )
-      "certFile" ( dig "certFile" "" $tls | toString )
-      "keyFile" ( dig "keyFile" "" $tls | toString )
-      "serverName" ( dig "serverName" "" $tls | toString )
-      "minVersion" ( dig "minVersion" "TLS13" $tls | toString ) )
-    | toYaml }}
-{{- end }}
-
-
-{{/*
 Every Prometheus remote-write destination, resolved, in a stable order.
 
-Returns a YAML list of resolved destinations — enabled and disabled alike, each
-carrying its own `name` — so a caller filters on `.enabled` rather than
-re-reading values. Sorted by name, because Go map iteration is randomized and an
-unsorted list would reorder the rendered components on every render, rolling the
-gateway for no reason (the pod template hashes the pipeline ConfigMap).
+The `prometheus` entries of `pipeline.destinations` (with the deprecated
+`prometheusRemoteWrite` map folded in by `mzmon.destinations.raw`), in the
+shape the remote-write render and the Thanos-hop validators read. Returns
+enabled and disabled alike, each carrying its own `name`, sorted by name.
+
+`enabled` is the destination's `active`: enabled, and carrying metrics.
 
 Usage:
   {{- range include "mzmon.alloyGateway.promDests" $ | fromYamlArray }}
     {{- if .enabled }}
 */}}
 {{- define "mzmon.alloyGateway.promDests" }}
-  {{- $dests := $.Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite | default dict }}
-  {{- $legacy := include "mzmon.alloyGateway.promDest.legacyKeys" $ | fromYamlArray }}
   {{- $out := list }}
-  {{- range $name := ( keys $dests | sortAlpha ) }}
-    {{- /* A leftover key from the pre-map shape is not a destination. Skipped
-           rather than rendered as one, so the render reaches
-           `mzmon.alloy.validate.promDests` and fails with the migration
-           instruction instead of on a nonsense component named `url`. */}}
-    {{- if not ( has $name $legacy ) }}
-      {{- $out = append $out ( include "mzmon.alloyGateway.promDest.resolve" ( dict
-            "name" $name
-            "dest" ( index $dests $name ) ) | fromYaml ) }}
+  {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
+    {{- if eq $dest.type "prometheus" }}
+      {{- $out = append $out ( dict
+            "name" $dest.name
+            "enabled" $dest.active
+            "url" $dest.url
+            "urlEnv" $dest.urlEnv
+            "minMetricImportance" $dest.metrics.minMetricImportance
+            "unfilteredMetricsEnv" $dest.metrics.unfilteredMetricsEnv
+            "externalLabels" ( $dest.externalLabels | default dict )
+            "authType" $dest.authType
+            "basicAuth" $dest.basicAuth
+            "bearer" $dest.bearer
+            "sigv4" $dest.sigv4
+            "tls" $dest.tls ) }}
     {{- end }}
   {{- end }}
   {{- $out | toYaml }}
@@ -1160,7 +1034,7 @@ prometheus.remote_write {{ $dest.name | quote }} {
             credentials = sys.env({{ $dest.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
         }
       {{- else }}
-        {{- printf "Unsupported authType for pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s: %s" $dest.name $dest.authType | fail }}
+        {{- printf "Unsupported authType for pipeline.destinations.%s: %s" $dest.name $dest.authType | fail }}
       {{- end }}
       {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $dest.tls "indent" 8 ) }}
     }
@@ -1870,20 +1744,6 @@ Usage:
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
 
-    {{- /* Auth is checked per destination against the *resolved* destination,
-           so a credential left to a derived env var name is checked under the
-           name the pipeline will actually read. */}}
-    {{- range $dest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
-      {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
-            "context" $
-            "role" "alloy-gateway"
-            "path" ( printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s" $dest.name )
-            "dest" $dest
-            "enabled" $dest.enabled ) | fromYaml }}
-      {{- $errors = concat $errors $res.errors | default list }}
-      {{- $warnings = concat $warnings $res.warnings | default list }}
-    {{- end }}
-
     {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
       {{- $res := include "mzmon.alloy.validate.otelDestAuth" $ | fromYaml }}
       {{- $errors = concat $errors $res.errors | default list }}
@@ -1980,16 +1840,9 @@ Validate that each signal has somewhere to go.
       {{- $warnings = append $warnings "Every gateway log destination is disabled (no pipeline.destinations entry carries logs, and pipeline.logging.gateway.destination.otel.enabled is false). Logs are processed and then discarded." }}
     {{- end }}
 
-    {{- $metrics := $.Values.pipeline.metrics.gateway.destination }}
-    {{- $anyPromDest := false }}
-    {{- range $dest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
-      {{- if $dest.enabled }}
-        {{- $anyPromDest = true }}
-      {{- end }}
-    {{- end }}
     {{- $metricDests := include "mzmon.destinations.metrics" $ | fromYamlArray }}
-    {{- if and ( not $anyPromDest ) ( not $metrics.otel.enabled ) ( not $metricDests ) }}
-      {{- $warnings = append $warnings "Every gateway metric destination is disabled (no pipeline.metrics.gateway.destination.prometheusRemoteWrite entry is enabled, .otel.enabled is false, and no pipeline.destinations entry carries metrics). Metrics are scraped and then discarded." }}
+    {{- if and ( not $metricDests ) ( not $.Values.pipeline.metrics.gateway.destination.otel.enabled ) }}
+      {{- $warnings = append $warnings "Every gateway metric destination is disabled (no pipeline.destinations entry carries metrics, and pipeline.metrics.gateway.destination.otel.enabled is false). Metrics are scraped and then discarded." }}
     {{- end }}
   {{- end }}
 
@@ -1998,24 +1851,14 @@ Validate that each signal has somewhere to go.
 {{- end }}
 
 {{- /*
-Validate the shape of the Prometheus remote-write destination map.
+Refuse the single-destination keys of the deprecated remote-write map.
 
-Three failures this catches, all of which otherwise present as a working install
-that quietly writes somewhere other than where it was told to:
-
-  1. **A pre-map override.** `prometheusRemoteWrite` used to be one destination.
-     Helm deep-merges, so an old `prometheusRemoteWrite.url` lands beside
-     `thanos` rather than replacing it: the key applies to nothing, the default
-     Thanos endpoint keeps receiving, and nothing errors. Refused by name, with
-     the destination-scoped path to move it to.
-
-  2. **A name Alloy cannot use as a component label**, or one this pipeline has
-     already taken. Alloy rejects the config at load with a parse error naming a
-     line number, which is a long way from the values key that caused it.
-
-  3. **An enabled destination with no URL.** `sys.env` of an unset variable is
-     the empty string, and `prometheus.remote_write` accepts an empty endpoint
-     URL at load, so this surfaces only as writes failing at run time.
+`prometheusRemoteWrite` used to be one destination. Helm deep-merges, so an old
+`prometheusRemoteWrite.url` lands beside the named entries rather than
+replacing anything: the key applies to nothing, the default Thanos endpoint
+keeps receiving, and nothing errors. Refused by name, with the path to move it
+to. The entries themselves are destinations, folded onto `pipeline.destinations`
+and checked there by `mzmon.destinations.validate`.
 
 Usage:
   {{- $res := include "mzmon.alloy.validate.promDests" $ | fromYaml }}
@@ -2024,13 +1867,14 @@ Usage:
   {{- $errors := list }}
   {{- $warnings := list }}
   {{- $path := "pipeline.metrics.gateway.destination.prometheusRemoteWrite" }}
-  {{- $dests := $.Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite | default dict }}
+  {{- $dests := dig "metrics" "gateway" "destination" "prometheusRemoteWrite" dict ( $.Values.pipeline | default dict ) }}
+  {{- if not ( kindIs "map" $dests ) }}
+    {{- $dests = dict }}
+  {{- end }}
   {{- $legacy := include "mzmon.alloyGateway.promDest.legacyKeys" $ | fromYamlArray }}
-  {{- $reserved := include "mzmon.alloyGateway.promDest.reservedNames" $ | fromYamlArray }}
 
-  {{- $names := keys $dests | sortAlpha }}
   {{- $legacyFound := list }}
-  {{- range $name := $names }}
+  {{- range $name := ( keys $dests | sortAlpha ) }}
     {{- if has $name $legacy }}
       {{- $legacyFound = append $legacyFound $name }}
     {{- end }}
@@ -2039,24 +1883,7 @@ Usage:
   {{- if $legacyFound }}
     {{- /* One error rather than one per key: they are a single mistake, and
            the migration is the same move for all of them. */}}
-    {{- $errors = append $errors ( printf "%s is now a map of named destinations, but it still carries the single-destination key(s) %s. Helm merges those alongside the named destinations instead of replacing them, so they would apply to nothing and the install would keep writing to the default endpoint with no error. Move them under a name — %s.<name>.%s — choosing `thanos` to keep the bundled Thanos Receive." $path ( join ", " $legacyFound ) $path ( first $legacyFound ) ) }}
-  {{- end }}
-
-  {{- range $dest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
-    {{- $name := $dest.name }}
-    {{- if has $name $legacy }}
-      {{- /* Already reported above; do not also complain about its shape. */}}
-    {{- else }}
-      {{- if not ( regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" $name ) }}
-        {{- $errors = append $errors ( printf "%s.%s is not a usable name. It becomes an Alloy component label, so it must match [a-zA-Z_][a-zA-Z0-9_]* — no dashes, dots, or leading digits." $path $name ) }}
-      {{- else if has $name $reserved }}
-        {{- $errors = append $errors ( printf "%s.%s uses a name this pipeline has already taken (%s). Two components cannot share a label, so alloy would refuse the whole config at load. Pick another name." $path $name ( join ", " $reserved ) ) }}
-      {{- end }}
-
-      {{- if and $dest.enabled ( not $dest.url ) }}
-        {{- $errors = append $errors ( printf "%s.%s is enabled but has no url. The rendered pipeline reads sys.env(%q), which would resolve empty — alloy accepts that at load and every remote write fails at run time." $path $name $dest.urlEnv ) }}
-      {{- end }}
-    {{- end }}
+    {{- $errors = append $errors ( printf "%s still carries the single-destination key(s) %s, from before destinations were a map. They apply to nothing, and the install would keep writing to the default endpoint with no error. Move them onto a pipeline.destinations entry of type prometheus: pipeline.destinations.thanos.%s for the bundled Thanos Receive." $path ( join ", " $legacyFound ) ( first $legacyFound ) ) }}
   {{- end }}
 
   {{- /* final output */}}

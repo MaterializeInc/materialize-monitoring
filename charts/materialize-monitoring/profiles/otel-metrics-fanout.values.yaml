@@ -24,16 +24,12 @@ alloy-gateway:
       iam.gke.io/gcp-service-account: "<REPLACE-ME>"
 
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        # Cheap, full-fidelity local storage: keep everything.
-        prometheusRemoteWrite:
-          thanos:
-            enabled: true
-            minMetricImportance: all
-
   destinations:
+    # Cheap, full-fidelity local storage: keep everything.
+    thanos:
+      metrics:
+        minMetricImportance: all
+
     # Google Cloud Monitoring (as prometheus.googleapis.com/ metrics):
     # essentials + dashboard metrics.
     googleCloud:

@@ -28,7 +28,7 @@ set:
   # Off-cluster, which keeps the reachability validators quiet about backends
   # this suite does not deploy.
   pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
-  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
+  pipeline.destinations.thanos.url: https://metrics.example.com/api/v1/receive
 tests:
   # --- the default ------------------------------------------------------------
   - it: should render one destination by default

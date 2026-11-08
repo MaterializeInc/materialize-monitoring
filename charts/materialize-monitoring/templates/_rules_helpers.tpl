@@ -654,7 +654,12 @@ Validation for the rules surface.
     {{- end }}
 
     {{- /* A destination filtering below a rule's metrics starves the rule. */}}
-    {{- $floor := dig "pipeline" "metrics" "gateway" "destination" "prometheusRemoteWrite" "thanos" "minMetricImportance" "all" ( $.Values | toYaml | fromYaml ) | toString }}
+    {{- $floor := "all" }}
+    {{- range $dest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
+      {{- if eq $dest.name "thanos" }}
+        {{- $floor = $dest.minMetricImportance | toString }}
+      {{- end }}
+    {{- end }}
     {{- $rank := dict "essential" 0 "recommended" 1 "extended" 2 "diagnostic" 3 "all" 4 }}
     {{- $installedRecords := include "mzmon.rules.installedRecords" $ | fromYamlArray }}
     {{- if hasKey $rank $floor }}

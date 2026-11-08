@@ -34,6 +34,7 @@ Usage:
       "otlp" ( list "logs" "metrics" )
       "googleCloud" ( list "metrics" )
       "datadog" ( list "logs" "metrics" )
+      "prometheus" ( list "metrics" )
     | toYaml }}
 {{- end }}
 
@@ -63,6 +64,8 @@ Usage:
                     "authTypes" ( list "none" ) )
       "datadog" ( dict "url" "" "urlRequired" false "minMetricImportance" "recommended"
                     "authTypes" ( list "apiKey" ) )
+      "prometheus" ( dict "url" "" "urlRequired" true "minMetricImportance" "all"
+                    "authTypes" ( list "none" "basicAuth" "bearer" "sigv4" ) )
     | toYaml }}
 {{- end }}
 
@@ -82,6 +85,7 @@ Usage:
       "otlp" $otel
       "googleCloud" $otel
       "datadog" $otel
+      "prometheus" list
     | toYaml }}
 {{- end }}
 
@@ -95,7 +99,7 @@ Usage:
   {{- $blocks := index ( include "mzmon.destinations.blocksByDefault" $ | fromYaml ) $type }}
 */}}
 {{- define "mzmon.destinations.blocksByDefault" }}
-  {{- dict "loki" true "otlp" false "googleCloud" false "datadog" false | toYaml }}
+  {{- dict "loki" true "otlp" false "googleCloud" false "datadog" false "prometheus" false | toYaml }}
 {{- end }}
 
 
@@ -165,8 +169,79 @@ Usage:
 
 
 {{- /*
-The destination map as values describe it, with the deprecated single Loki
-destination folded onto the `loki` entry.
+The deprecated `pipeline.metrics.gateway.destination.prometheusRemoteWrite`
+entries, translated into `pipeline.destinations` entries of type `prometheus`.
+
+The chart ships that map empty, so every entry in it is an override. Each one
+keeps working:
+
+  * `minMetricImportance` and `unfilteredMetricsEnv` move under `metrics`; every
+    other field has the same name and meaning on the map. `oauth2` is dropped,
+    as it never rendered.
+  * An entry with no counterpart in `pipeline.destinations` keeps the variable
+    names the remote-write map derived (`GATEWAY_PROM_DEST_<NAME>`,
+    `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, …), so a Secret written for it
+    still reaches it.
+  * An entry with a counterpart, such as `thanos`, is applied over it and takes
+    the counterpart's names.
+
+The single-destination keys from before the map (`url`, `enabled`, …) are not
+entries; `mzmon.alloy.validate.promDests` refuses them.
+
+Returns `{entries: {<name>: <entry>}, conflicts: [<name>]}`, where a conflict is
+a name the map already gives to a destination of another type.
+
+Usage:
+  {{- $legacy := include "mzmon.destinations.legacyPrometheus" $ | fromYaml }}
+*/}}
+{{- define "mzmon.destinations.legacyPrometheus" }}
+  {{- $legacy := dig "metrics" "gateway" "destination" "prometheusRemoteWrite" dict ( $.Values.pipeline | default dict ) }}
+  {{- if not ( kindIs "map" $legacy ) }}
+    {{- $legacy = dict }}
+  {{- end }}
+  {{- $current := $.Values.pipeline.destinations | default dict }}
+  {{- $preMap := include "mzmon.alloyGateway.promDest.legacyKeys" $ | fromYamlArray }}
+  {{- $entries := dict }}
+  {{- $conflicts := list }}
+  {{- range $name := ( keys $legacy | sortAlpha ) }}
+    {{- $raw := index $legacy $name }}
+    {{- if and ( not ( has $name $preMap ) ) ( kindIs "map" $raw ) }}
+      {{- $entry := omit $raw "minMetricImportance" "unfilteredMetricsEnv" "oauth2" }}
+      {{- $metrics := dict }}
+      {{- range $key := list "minMetricImportance" "unfilteredMetricsEnv" }}
+        {{- if not ( kindIs "invalid" ( index $raw $key ) ) }}
+          {{- $_ := set $metrics $key ( index $raw $key ) }}
+        {{- end }}
+      {{- end }}
+      {{- $_ := set $entry "metrics" $metrics }}
+      {{- $counterpart := index $current $name }}
+      {{- if kindIs "map" $counterpart }}
+        {{- if ne ( dig "type" "" $counterpart | toString ) "prometheus" }}
+          {{- $conflicts = append $conflicts $name }}
+        {{- end }}
+      {{- else }}
+        {{- $slug := $name | regexReplaceAll "[^A-Za-z0-9]" "_" | upper }}
+        {{- $p := printf "GATEWAY_PROMETHEUS_DEST_%s" $slug }}
+        {{- $names := dict
+              "type" "prometheus"
+              "urlEnv" ( printf "GATEWAY_PROM_DEST_%s" $slug )
+              "metrics" ( dict "unfilteredMetricsEnv" ( printf "GATEWAY_UNFILTERED_PROM_METRICS_%s" $slug ) )
+              "basicAuth" ( dict "usernameEnv" ( printf "%s_USERNAME" $p ) "passwordEnv" ( printf "%s_PASSWORD" $p ) )
+              "bearer" ( dict "tokenEnv" ( printf "%s_BEARER_TOKEN" $p ) )
+              "tls" ( dict "caEnv" ( printf "%s_TLS_CA" $p ) "certEnv" ( printf "%s_TLS_CERT" $p ) "keyEnv" ( printf "%s_TLS_KEY" $p ) ) }}
+        {{- $entry = include "mzmon.destinations.overlay" ( dict "base" $names "over" $entry ) | fromYaml }}
+      {{- end }}
+      {{- $_ := set $entries $name $entry }}
+    {{- end }}
+  {{- end }}
+  {{- dict "entries" $entries "conflicts" $conflicts | toYaml }}
+{{- end }}
+
+
+{{- /*
+The destination map as values describe it, with the deprecated destinations
+folded in: the single Loki destination onto the `loki` entry, and the
+remote-write map's entries onto entries of type `prometheus`.
 
 Usage:
   {{- $raw := include "mzmon.destinations.raw" $ | fromYaml }}
@@ -180,6 +255,12 @@ Usage:
       {{- $base = dict "type" "loki" }}
     {{- end }}
     {{- $_ := set $dests "loki" ( include "mzmon.destinations.overlay" ( dict "base" $base "over" $legacy ) | fromYaml ) }}
+  {{- end }}
+  {{- $legacyProm := include "mzmon.destinations.legacyPrometheus" $ | fromYaml }}
+  {{- range $name, $entry := $legacyProm.entries }}
+    {{- if not ( has $name $legacyProm.conflicts ) }}
+      {{- $_ := set $dests $name ( include "mzmon.destinations.overlay" ( dict "base" ( index $dests $name | default dict ) "over" $entry ) | fromYaml ) }}
+    {{- end }}
   {{- end }}
   {{- $dests | toYaml }}
 {{- end }}
@@ -348,6 +429,7 @@ Usage:
     "site" ( dig "site" "datadoghq.com" $raw | toString )
     "hostMetadata" ( dig "hostMetadata" false $raw )
     "project" ( dig "project" "" $raw | toString )
+    "externalLabels" ( dig "externalLabels" dict $raw )
     "location" ( dig "location" "" $raw | toString )
     "tls" ( dict
       "enabled" $tlsEnabled
@@ -382,7 +464,7 @@ Usage:
       "url" ( dig "url" "" $metrics | toString )
       "urlEnv" ( dig "urlEnv" ( printf "%s_METRICS" $prefix ) $metrics | toString )
       "unfilteredMetricsEnv" ( dig "unfilteredMetricsEnv" ( printf "%s_METRICS_ALLOWLIST" $prefix ) $metrics | toString ) )
-    "label" ( ternary $name ( printf "dest_%s" $name ) ( eq $type "loki" ) )
+    "label" ( ternary $name ( printf "dest_%s" $name ) ( has $type ( list "loki" "prometheus" ) ) )
     "active" ( and $enabled ( or $logsEnabled $metricsEnabled ) )
     | toYaml }}
 {{- end }}
@@ -652,14 +734,15 @@ Usage:
     {{- $warnings = append $warnings ( printf "pipeline.logging.gateway.destination.loki is deprecated, and its keys (%s) are applied to %s.loki. Move them there: pipeline.logging.gateway.destination.loki.<key> becomes %s.loki.<key>." ( keys $legacy | sortAlpha | join ", " ) $path $path ) }}
   {{- end }}
 
-  {{- $written := dict }}
-  {{- range $prom := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
-    {{- if $prom.enabled }}
-      {{- $at := printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s" $prom.name }}
-      {{- $_ := set $written $prom.urlEnv ( printf "%s.urlEnv" $at ) }}
-      {{- $_ := set $written $prom.unfilteredMetricsEnv ( printf "%s.unfilteredMetricsEnv" $at ) }}
-    {{- end }}
+  {{- $legacyProm := include "mzmon.destinations.legacyPrometheus" $ | fromYaml }}
+  {{- if $legacyProm.entries }}
+    {{- $warnings = append $warnings ( printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite is deprecated, and its entries (%s) are applied as %s entries of type prometheus. Move each one there: pipeline.metrics.gateway.destination.prometheusRemoteWrite.<name> becomes %s.<name> with type: prometheus, and its minMetricImportance moves under metrics. An entry with no counterpart keeps its variable names (GATEWAY_PROM_DEST_<NAME>, …) only while it stays here; name them with urlEnv and the *Env fields when you move it." ( keys $legacyProm.entries | sortAlpha | join ", " ) $path $path ) }}
   {{- end }}
+  {{- range $name := $legacyProm.conflicts }}
+    {{- $errors = append $errors ( printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s names a remote-write destination, but %s.%s is already a destination of type %s. Both maps feed one, so the remote-write entry cannot apply. Rename it." $name $path $name ( dig $name "type" "" ( $.Values.pipeline.destinations | default dict ) ) ) }}
+  {{- end }}
+
+  {{- $written := dict }}
   {{- range $entry := ( include "mzmon.destinations.envEntries" $ | fromYamlArray ) }}
     {{- if hasKey $written $entry.key }}
       {{- $errors = append $errors ( printf "%s and %s both write %s to the gateway's env ConfigMap, which keeps one value per key, so one of them would read the other's. Give one a different variable name, or rename a destination so the names differ by more than case." ( index $written $entry.key ) $entry.owner $entry.key ) }}

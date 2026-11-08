@@ -443,6 +443,13 @@ pipeline:
         enabled: true
         caFile: /etc/mzmon/tls/ca.crt
         # certFile/keyFile arrive in phase 2.
+    # The gateway's hop to the bundled Thanos Receive. See the note in
+    # mtls-phase2.values.yaml: this names the chart's default destination, and
+    # a renamed or additional one needs its own entry here.
+    thanos:
+      tls:
+        enabled: true
+        caFile: /etc/mzmon/tls/ca.crt
   logging:
     # The gateway's own listeners. Both halves of the agent hop move here, in one
     # release: Kubernetes does not order a DaemonSet against a Deployment, and
@@ -481,15 +488,6 @@ pipeline:
           certFile: /etc/mzmon/tls/tls.crt
           keyFile: /etc/mzmon/tls/tls.key
           clientAuth: NoClientCert
-      destination:
-        prometheusRemoteWrite:
-          # See the note in mtls-phase2.values.yaml: this names the chart's
-          # default destination, and a renamed or additional one needs its own
-          # entry here.
-          thanos:
-            tls:
-              enabled: true
-              caFile: /etc/mzmon/tls/ca.crt
 
 # ---------------------------------------------------------------------------
 # Grafana's datasources

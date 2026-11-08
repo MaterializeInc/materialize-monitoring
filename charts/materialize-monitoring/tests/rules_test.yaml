@@ -548,7 +548,7 @@ tests:
   - it: warns that an essential thanos destination drops recorded series no alert reads
     template: templates/NOTES.txt
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: essential
+      pipeline.destinations.thanos.metrics.minMetricImportance: essential
     asserts:
       - matchRegexRaw:
           pattern: 'the recorded series ext:consensus_commit_latency_seconds:p99 are in a less important tier'
@@ -558,7 +558,7 @@ tests:
   - it: keeps every recorded series in a recommended thanos destination
     template: templates/NOTES.txt
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: recommended
+      pipeline.destinations.thanos.metrics.minMetricImportance: recommended
     asserts:
       - notMatchRegexRaw:
           pattern: 'are in a less important tier'
@@ -888,7 +888,7 @@ tests:
     template: templates/NOTES.txt
     set:
       rules.selected: ["loki-req-duration-high"]
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: recommended
+      pipeline.destinations.thanos.metrics.minMetricImportance: recommended
     asserts:
       - matchRegexRaw:
           pattern: 'Alert "loki-req-duration-high" reads a metric in the "extended" tier'
