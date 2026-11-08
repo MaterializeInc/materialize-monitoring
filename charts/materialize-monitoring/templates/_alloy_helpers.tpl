@@ -687,8 +687,10 @@ Generate the components for one OTLP-family destination: `otlp`, `datadog`, or
     `otelcol.exporter.otlp` for gRPC. `datadog` renders
     `otelcol.exporter.datadog`, with its endpoints only when overridden, so they
     follow `site`. `googleCloud` renders the Telemetry API chain
-    (`googleCloud.chain`), labeled `dest_<name>_gcp` so that its filter and
-    transform do not collide with the tier filter's.
+    (`googleCloud.chain`), labeled `gcp_<name>`. Its filter and transform
+    need a label of their own beside the tier filter's `dest_<name>`, and no
+    `dest_` label can equal a `gcp_` one: a suffix such as `dest_<name>_gcp`
+    would be the tier filter's label for a destination named `<name>_gcp`.
   * For logs, `otelcol.receiver.loki` → `otelcol.processor.batch` in front of
     the exporter. The receiver converts one entry at a time, and the batch is
     what turns that back into requests of a useful size.
@@ -725,7 +727,7 @@ Usage:
   {{- $exporterInput := printf "otelcol.exporter.%s.%s.input" $exporter $label }}
   {{- $metricsTarget := $exporterInput }}
   {{- if eq $dest.type "googleCloud" }}
-    {{- $metricsTarget = printf "otelcol.processor.filter.%s_gcp.input" $label }}
+    {{- $metricsTarget = printf "otelcol.processor.filter.gcp_%s.input" $dest.name }}
   {{- end }}
   {{- $authHandler := get ( dict "basicAuth" "basic" "bearer" "bearer" "headers" "headers" "sigv4" "sigv4" ) $dest.authType }}
   {{- if eq $dest.type "otlp" }}
@@ -794,7 +796,7 @@ otelcol.processor.batch {{ $label | quote }} {
   {{- if eq $dest.type "googleCloud" }}
 
     {{- include "mzmon.alloyGateway.googleCloud.chain" ( dict
-          "label" ( printf "%s_gcp" $label )
+          "label" ( printf "gcp_%s" $dest.name )
           "endpointExpr" ( printf "sys.env(%q)" $dest.urlEnv )
           "project" $dest.project
           "location" $dest.location
@@ -1300,7 +1302,7 @@ in Alloy's components:
 
 Every component takes the one `label`, so the chain is one unit and two
 chains never collide: the deprecated `googleCloudExporter` renders it as
-`googleCloud`, a `googleCloud` destination as `dest_<name>_gcp`.
+`googleCloud`, a `googleCloud` destination as `gcp_<name>`.
 
 Args:
   label: the label every component in the chain takes.

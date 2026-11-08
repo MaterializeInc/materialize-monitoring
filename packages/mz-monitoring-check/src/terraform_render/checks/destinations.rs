@@ -127,7 +127,7 @@ pub fn google_cloud(ctx: &Ctx) -> Result<()> {
     if !ctx
         .rendered
         .gateway_config()?
-        .contains(r#"otelcol.exporter.otlphttp "dest_googleCloud_gcp""#)
+        .contains(r#"otelcol.exporter.otlphttp "gcp_googleCloud""#)
     {
         problems.push(
             "google_cloud_metrics is set but no OTLP exporter to the Telemetry API rendered"

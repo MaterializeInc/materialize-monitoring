@@ -32,20 +32,47 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'otelcol\.processor\.filter "egress" \{\s*output \{\s*metrics = \[[^\]]*otelcol\.processor\.transform\.dest_gcm\.input'
-      # ... into the chain, labeled dest_<name>_gcp so its own filter and
-      # transform do not collide with the tier filter's.
+      # ... into the chain, labeled gcp_<name> so its own filter and transform
+      # do not collide with the tier filter's.
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.processor\.filter "dest_gcm" \{[\s\S]*?metrics = \[\s*otelcol\.processor\.filter\.dest_gcm_gcp\.input'
+          pattern: 'otelcol\.processor\.filter "dest_gcm" \{[\s\S]*?metrics = \[\s*otelcol\.processor\.filter\.gcp_gcm\.input'
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.exporter\.otlphttp "dest_gcm_gcp" \{\s*client \{\s*endpoint\s*= sys\.env\("GATEWAY_GCM_DEST"\)[\s\S]*?auth\s*= otelcol\.auth\.google\.dest_gcm_gcp\.handler'
+          pattern: 'otelcol\.exporter\.otlphttp "gcp_gcm" \{\s*client \{\s*endpoint\s*= sys\.env\("GATEWAY_GCM_DEST"\)[\s\S]*?auth\s*= otelcol\.auth\.google\.gcp_gcm\.handler'
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'set\(resource\.attributes\[\\"gcp\.project_id\\"\], \\"example-project\\"\)'
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.auth\.google "dest_gcm_gcp" \{\s*project = "example-project"'
+          pattern: 'otelcol\.auth\.google "gcp_gcm" \{\s*project = "example-project"'
+
+  # A suffix scheme (dest_<name>_gcp) made the chain's labels equal the tier
+  # filter's for a destination named <name>_gcp, and Alloy refuses a config
+  # that declares a component twice.
+  - it: should not collide with a destination whose name ends in the chain's old suffix
+    set:
+      pipeline.destinations.gcm:
+        type: googleCloud
+      pipeline.destinations.gcm_gcp:
+        type: otlp
+        url: https://otlp.example.com
+        metrics: {}
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "gcp_gcm" \{'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "dest_gcm_gcp" \{'
+      # Exactly one of each: a second declaration would follow the first.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "dest_gcm_gcp" \{[\s\S]*otelcol\.processor\.filter "dest_gcm_gcp" \{'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.transform "dest_gcm_gcp" \{[\s\S]*otelcol\.processor\.transform "dest_gcm_gcp" \{'
 
   - it: should default a googleCloud destination to the Telemetry API and the recommended tier
     set:
@@ -70,7 +97,7 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.exporter\.otlphttp "dest_gcm_gcp" \{[\s\S]*?sending_queue \{\s*queue_size = 200'
+          pattern: 'otelcol\.exporter\.otlphttp "gcp_gcm" \{[\s\S]*?sending_queue \{\s*queue_size = 200'
 
   - it: should refuse logs on a googleCloud destination
     set:
