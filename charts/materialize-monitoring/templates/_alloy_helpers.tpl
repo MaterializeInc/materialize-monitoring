@@ -268,9 +268,9 @@ Usage:
 */}}
 {{- define "mzmon.alloyGateway.pipeline.lokiRules" }}
   {{- if ( include "mzmon.rules.logRuleSync.enabled" $ ) }}
-    {{- $lokiDest := $.Values.pipeline.logging.gateway.destination.loki }}
+    {{- $lokiTls := include "mzmon.destinations.bundledLokiTls" $ | fromYaml }}
     {{- $ruler := printf "http://%s.%s.svc:3100" ( include "mzmon.loki.ruler.service" $ ) ( include "mzmon.loki.namespace" $ ) }}
-    {{- $address := include "mzmon.alloy.destUrl" ( dict "url" $ruler "tls" $lokiDest.tls ) }}
+    {{- $address := include "mzmon.alloy.destUrl" ( dict "url" $ruler "tls" $lokiTls ) }}
     {{- range $i, $tenant := ( include "mzmon.rules.logTenants" $ | fromYamlArray ) }}
 
 loki.rules.kubernetes {{ printf "tenant_%d" $i | quote }} {
@@ -283,7 +283,7 @@ loki.rules.kubernetes {{ printf "tenant_%d" $i | quote }} {
             {{ include "mzmon.rules.flavorLabel" $ | quote }} = "logql",
         }
     }
-      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $lokiDest.tls "indent" 4 ) }}
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $lokiTls "indent" 4 ) }}
 }
     {{- end }}
   {{- end }}
@@ -410,9 +410,13 @@ Usage:
   {{- $logForward := list }}
   {{- $metricsForward := list }}
   {{- $metricsPromForward := list }}
-  {{- if $pipelineValues.logging.gateway.destination.loki.enabled }}
-    {{- $logForward = append $logForward "loki.write.destination.receiver" }}
-    {{- include "mzmon.alloyGateway.pipeline.loki.dest" $ }}
+  {{- /* Each log destination hangs off the shared loki.process "egress" seam
+         by its own writer, so each has its own queue and its own drop policy. */}}
+  {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
+    {{- if eq $dest.type "loki" }}
+      {{- $logForward = append $logForward ( printf "loki.write.%s.receiver" $dest.name ) }}
+      {{- include "mzmon.alloyGateway.pipeline.loki.dest" ( dict "context" $ "dest" $dest ) }}
+    {{- end }}
   {{- end }}
   {{- /* Each remote-write destination hangs off the shared prometheus.relabel
          "egress" seam by its own per-destination tier filter. The OTLP -> prom
@@ -466,40 +470,66 @@ otelcol.processor.filter "egress" {
 {{- end }}
 
 {{/*
-Generate the alloy-gateway loki.write.destination blocks.
+Generate the `loki.write` block for one log destination.
+
+The `queue_config` block appears only when the destination sets a queue field,
+so a destination that leaves the queue alone renders as it always has. Alloy
+marks `queue_config` experimental, which the gateway's stability level allows.
+
+Args:
+  context: the root context.
+  dest: a destination resolved by `mzmon.destinations.resolve`.
 
 Usage:
-  {{- include "mzmon.alloyGateway.pipeline.loki.dest" $ }}
+  {{- include "mzmon.alloyGateway.pipeline.loki.dest" ( dict "context" $ "dest" $dest ) }}
 */}}
 {{- define "mzmon.alloyGateway.pipeline.loki.dest" }}
-  {{- $gatewayLogValues := $.Values.pipeline.logging.gateway }}
-loki.write "destination" {
+  {{- $root := .context }}
+  {{- $dest := .dest }}
+loki.write {{ $dest.name | quote }} {
     endpoint {
-        url = sys.env("GATEWAY_LOKI_DEST")
-        max_backoff_period = {{ $gatewayLogValues.destination.loki.retries.maxBackoffPeriod | quote }}
-        max_backoff_retries = {{ $gatewayLogValues.destination.loki.retries.maxBackoffRetries }}
-        min_backoff_period = {{ $gatewayLogValues.destination.loki.retries.minBackoffPeriod | quote }}
-        retry_on_http_429 = {{ $gatewayLogValues.destination.loki.retries.retryOnHttp429 }}
-  {{- if eq $.Values.pipeline.logging.tenancy.tenantMap.default "static" }}
-        tenant_id = {{ $.Values.pipeline.logging.tenancy.staticTenant | quote }}
+        url = sys.env({{ $dest.urlEnv | quote }})
+        max_backoff_period = {{ $dest.retries.maxBackoffPeriod | quote }}
+        max_backoff_retries = {{ $dest.retries.maxBackoffRetries }}
+        min_backoff_period = {{ $dest.retries.minBackoffPeriod | quote }}
+        retry_on_http_429 = {{ $dest.retries.retryOnHttp429 }}
+  {{- if eq $root.Values.pipeline.logging.tenancy.tenantMap.default "static" }}
+        tenant_id = {{ $root.Values.pipeline.logging.tenancy.staticTenant | quote }}
   {{- end }}
-      {{- if eq $gatewayLogValues.destination.loki.authType "none" }}
-      {{- else if eq $gatewayLogValues.destination.loki.authType "basicAuth" }}
+      {{- if eq $dest.authType "none" }}
+      {{- else if eq $dest.authType "basicAuth" }}
 
         basic_auth {
-            username = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
-            password = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
+            username = sys.env({{ $dest.basicAuth.usernameEnv | quote }})
+            password = sys.env({{ $dest.basicAuth.passwordEnv | quote }})
         }
-      {{- else if eq $gatewayLogValues.destination.loki.authType "bearer" }}
+      {{- else if eq $dest.authType "bearer" }}
 
         authorization {
             type = "Bearer"
-            credentials = sys.env({{ $gatewayLogValues.destination.loki.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
+            credentials = sys.env({{ $dest.bearer.tokenEnv | quote }})
         }
       {{- else }}
-        {{- printf "Unsupported authType: %s" $gatewayLogValues.destination.loki.authType | fail }}
+        {{- printf "Unsupported pipeline.destinations.%s.authType (%s)" $dest.name $dest.authType | fail }}
       {{- end }}
-      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $gatewayLogValues.destination.loki.tls "indent" 8 ) }}
+      {{- with $dest.queue }}
+
+        queue_config {
+        {{- if hasKey . "blockOnOverflow" }}
+            block_on_overflow = {{ .blockOnOverflow }}
+        {{- end }}
+        {{- if hasKey . "capacity" }}
+            capacity = {{ .capacity | toString | quote }}
+        {{- end }}
+        {{- if hasKey . "drainTimeout" }}
+            drain_timeout = {{ .drainTimeout | toString | quote }}
+        {{- end }}
+        {{- if hasKey . "minShards" }}
+            min_shards = {{ .minShards | int }}
+        {{- end }}
+        }
+      {{- end }}
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $dest.tls "indent" 8 ) }}
     }
 }
 {{- end }}
@@ -1449,15 +1479,20 @@ Usage:
   {{- end }}
 
   {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
-    {{- $gw := $.Values.pipeline }}
-    {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
-          "context" $
-          "role" "alloy-gateway"
-          "path" "pipeline.logging.gateway.destination.loki"
-          "dest" $gw.logging.gateway.destination.loki
-          "enabled" $gw.logging.gateway.destination.loki.enabled ) | fromYaml }}
+    {{- $res := include "mzmon.destinations.validate" $ | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
+
+    {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
+      {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
+            "context" $
+            "role" "alloy-gateway"
+            "path" ( printf "pipeline.destinations.%s" $dest.name )
+            "dest" $dest
+            "enabled" $dest.enabled ) | fromYaml }}
+      {{- $errors = concat $errors $res.errors | default list }}
+      {{- $warnings = concat $warnings $res.warnings | default list }}
+    {{- end }}
 
     {{- $res := include "mzmon.alloy.validate.promDests" $ | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
@@ -1550,15 +1585,9 @@ Validate that the agent has a gateway to write to.
   {{- end }}
 
   {{- /* The bundled Loki is the gateway's default log destination. */}}
-  {{- if $gatewayOn }}
-    {{- $lokiDest := $.Values.pipeline.logging.gateway.destination.loki }}
-    {{- if $lokiDest.enabled }}
-      {{- $url := tpl ( $lokiDest.url | toString ) $ }}
-      {{- /* Require the in-cluster Service shape so an external host that
-             happens to start with `loki-` is not flagged. */}}
-      {{- if and ( contains "loki-" $url ) ( contains ".svc" $url ) ( not ( include "mzmon.loki.enabled" $ ) ) }}
-        {{- $errors = append $errors ( printf "pipeline.logging.gateway.destination.loki.url points at the bundled Loki (%s) but Loki is not enabled. Logs would be written to a Service that does not exist." $url ) }}
-      {{- end }}
+  {{- if and $gatewayOn ( not ( include "mzmon.loki.enabled" $ ) ) }}
+    {{- range $dest := ( include "mzmon.destinations.bundledLoki" $ | fromYamlArray ) }}
+      {{- $errors = append $errors ( printf "pipeline.destinations.%s.url points at the bundled Loki (%s) but Loki is not enabled. Logs would be written to a Service that does not exist. Set pipeline.destinations.%s.enabled: false, or enable Loki." $dest.name $dest.resolvedUrl $dest.name ) }}
     {{- end }}
   {{- end }}
 
@@ -1574,9 +1603,9 @@ Validate that each signal has somewhere to go.
   {{- $warnings := list }}
 
   {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
-    {{- $logging := $.Values.pipeline.logging.gateway.destination }}
-    {{- if and ( not $logging.loki.enabled ) ( not $logging.otel.enabled ) }}
-      {{- $warnings = append $warnings "Every gateway log destination is disabled (pipeline.logging.gateway.destination.loki.enabled and .otel.enabled are both false). Logs are processed and then discarded." }}
+    {{- $logDests := include "mzmon.destinations.logs" $ | fromYamlArray }}
+    {{- if and ( not $logDests ) ( not $.Values.pipeline.logging.gateway.destination.otel.enabled ) }}
+      {{- $warnings = append $warnings "Every gateway log destination is disabled (no pipeline.destinations entry carries logs, and pipeline.logging.gateway.destination.otel.enabled is false). Logs are processed and then discarded." }}
     {{- end }}
 
     {{- $metrics := $.Values.pipeline.metrics.gateway.destination }}

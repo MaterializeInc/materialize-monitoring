@@ -219,7 +219,8 @@ It removes the ones whose `PrometheusRule` is gone and leaves every other namesp
 
 Every gateway replica runs the sync; the writes set whole rule groups, so the replicas converge on the same set.
 The gateway addresses the Service that serves the ruler in Loki's deployment mode: `loki-ruler` when distributed, `loki-backend` when simple-scalable, and `loki` for a single binary.
-It uses the scheme and TLS settings of its Loki destination, `pipeline.logging.gateway.destination.loki.tls`, and the chart's Loki certificate names `loki-ruler`.
+It uses the scheme and TLS settings of the gateway's destination that writes to the bundled Loki, `pipeline.destinations.loki.tls` by default.
+The chart's Loki certificate names `loki-ruler`.
 
 A log-derived rule installs only where the release runs the Loki ruler and the gateway, and where the ruler's rule store accepts writes.
 A `local` store does not; that is what a filesystem-only Loki gets, such as the `loki-test` profile.

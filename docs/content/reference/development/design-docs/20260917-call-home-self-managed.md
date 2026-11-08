@@ -116,7 +116,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | Alert **definitions** | ✅ Shipped as documentation | `packages/queries/materialize-alerts.yaml`, `infra-alerts.yaml`, rendered to [Common Alerts](../../../common-alerts/) |
 | **Alert rule evaluation** | ❌ **Absent** | `templates/alerts/` is empty, nothing reads `config.rules.prometheus.enabled`, `pre-rendered/rules/prometheus/` holds only a `.gitkeep`, and `thanos.ruler.enabled` is `false` |
 | **Alertmanager** | ⚠️ Bundled, off | `tags.alertmanager: false`; routing is [DEP-216](https://linear.app/materializeinc/issue/DEP-216), unstarted |
-| **Logs to more than one destination** | ❌ Missing | One `loki.write "destination"`, one `egress` seam — [BYOC's blocking row](../20260813-byoc-observability/#chart-side-prerequisites) |
+| Logs to more than one destination | ✅ Shipped | `pipeline.destinations`, one writer and one queue per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
 | **Per-destination log processing and redaction** | ❌ Missing | `inputProcessor` is global — same row |
 | **A trust bundle for non-public CAs** | ❌ Not shipped | [DEP-236](https://linear.app/materializeinc/issue/DEP-236). Needed for any customer whose egress proxy presents a corporate certificate |
 | **`oauth2.tls` on destinations** | ❌ Missing | Named by the [query-API doc](../20260916-tenant-query-api/#the-blocker-stated-precisely); blocks exchanging a certificate for a token |

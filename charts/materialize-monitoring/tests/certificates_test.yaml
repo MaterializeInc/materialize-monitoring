@@ -328,8 +328,8 @@ tests:
   # protocol error rather than a configuration one.
   - it: should derive the scheme from tls.enabled
     set:
-      pipeline.logging.gateway.destination.loki.tls.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.loki.tls.enabled: true
+      pipeline.destinations.loki.tls.caFile: /etc/mzmon/tls/ca.crt
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     asserts:
       - matchRegex:
@@ -345,10 +345,10 @@ tests:
 
   - it: should render a tls_config from the file carriers
     set:
-      pipeline.logging.gateway.destination.loki.tls.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
-      pipeline.logging.gateway.destination.loki.tls.certFile: /etc/mzmon/tls/tls.crt
-      pipeline.logging.gateway.destination.loki.tls.keyFile: /etc/mzmon/tls/tls.key
+      pipeline.destinations.loki.tls.enabled: true
+      pipeline.destinations.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.loki.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.destinations.loki.tls.keyFile: /etc/mzmon/tls/tls.key
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -387,9 +387,9 @@ tests:
   # only checking the default would still have passed against the broken form.
   - it: should honour verify false
     set:
-      pipeline.logging.gateway.destination.loki.tls.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
-      pipeline.logging.gateway.destination.loki.tls.verify: false
+      pipeline.destinations.loki.tls.enabled: true
+      pipeline.destinations.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.loki.tls.verify: false
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -398,8 +398,8 @@ tests:
 
   - it: should not skip verification by default
     set:
-      pipeline.logging.gateway.destination.loki.tls.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.loki.tls.enabled: true
+      pipeline.destinations.loki.tls.caFile: /etc/mzmon/tls/ca.crt
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       # Scoped to the literal the helper emits: the kubelet scrape in the
@@ -631,7 +631,7 @@ tests:
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
-      pipeline.logging.gateway.destination.loki.url: http://somewhere-else.test-monitoring.svc:3100/loki/api/v1/push
+      pipeline.destinations.loki.url: http://somewhere-else.test-monitoring.svc:3100/loki/api/v1/push
     asserts:
       - failedTemplate:
           errorPattern: "which is not a SAN on the loki certificate"
@@ -735,7 +735,7 @@ tests:
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.enabled: false
+      pipeline.destinations.loki.tls.enabled: false
     asserts:
       - failedTemplate:
           errorPattern: "would send plaintext at a TLS port"

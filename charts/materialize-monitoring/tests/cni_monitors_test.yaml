@@ -13,7 +13,7 @@ release:
   namespace: test-monitoring
 set:
   tags.default: false
-  pipeline.logging.gateway.destination.loki.enabled: false
+  pipeline.destinations.loki.enabled: false
   pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
 templates:
   - templates/scrapers/monitor-cni.yaml

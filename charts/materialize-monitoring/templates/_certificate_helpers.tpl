@@ -307,9 +307,17 @@ Usage:
   {{- $pipeline := $.Values.pipeline | default dict }}
   {{- $checks := list
       ( dict "component" "alloy-gateway" "path" "pipeline.logging.agent.destination.loki.url"
-             "url" ( dig "logging" "agent" "destination" "loki" "url" "" $pipeline ) )
-      ( dict "component" "loki" "path" "pipeline.logging.gateway.destination.loki.url"
-             "url" ( dig "logging" "gateway" "destination" "loki" "url" "" $pipeline ) ) }}
+             "url" ( dig "logging" "agent" "destination" "loki" "url" "" $pipeline ) ) }}
+  {{- /* Every Loki-type log destination, whatever its host: the check below
+         only looks at hostnames this release serves. */}}
+  {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
+    {{- if eq $dest.type "loki" }}
+      {{- $checks = append $checks ( dict
+          "component" "loki"
+          "path" ( printf "pipeline.destinations.%s.url" $dest.name )
+          "url" $dest.url ) }}
+    {{- end }}
+  {{- end }}
 
   {{- /* One entry per remote-write destination. Only the ones addressing the
          bundled Thanos are checked: a certificate this chart issues can only be
@@ -482,9 +490,9 @@ Usage:
 
   {{- if ( include "mzmon.certificates.lokiServerTls" $ ) }}
     {{- /* The writer. */}}
-    {{- if dig "logging" "gateway" "destination" "loki" "enabled" false $pipeline }}
-      {{- if not ( dig "logging" "gateway" "destination" "loki" "tls" "enabled" false $pipeline ) }}
-        {{- $errors = append $errors "loki.loki.server.http_tls_config is set, so Loki serves TLS on 3100 — but pipeline.logging.gateway.destination.loki.tls.enabled is off, so the gateway would send plaintext at a TLS port. Every write fails with a protocol error that reads like Loki is broken. Turn the destination's TLS on, and point its caFile at the mounted CA." }}
+    {{- range $dest := ( include "mzmon.destinations.bundledLoki" $ | fromYamlArray ) }}
+      {{- if not $dest.tls.enabled }}
+        {{- $errors = append $errors ( printf "loki.loki.server.http_tls_config is set, so Loki serves TLS on 3100 — but pipeline.destinations.%s.tls.enabled is off, so the gateway would send plaintext at a TLS port. Every write fails with a protocol error that reads like Loki is broken. Turn the destination's TLS on, and point its caFile at the mounted CA." $dest.name ) }}
       {{- end }}
     {{- end }}
 
@@ -591,9 +599,6 @@ Usage:
   {{- $loki := $.Values.loki | default dict }}
 
   {{- /* Does the gateway present a client certificate on each hop? */}}
-  {{- $lokiPresents := and
-        ( dig "logging" "gateway" "destination" "loki" "tls" "certFile" "" $pipeline )
-        ( dig "logging" "gateway" "destination" "loki" "tls" "keyFile" "" $pipeline ) }}
   {{- /* Every destination writing to the bundled Thanos has to present a keypair,
          not just one of them — Receive requires a certificate from each client,
          so one destination missing it is one destination refused at the

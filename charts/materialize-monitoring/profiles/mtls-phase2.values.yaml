@@ -118,6 +118,14 @@ connections:
 # outage this phase exists to prevent.
 
 pipeline:
+  destinations:
+    loki:
+      tls:
+        # The client half of the phase. The gateway's certificate carries
+        # `client auth` as well as `server auth` — one certificate per
+        # component covers both roles, which is why a single mount is enough.
+        certFile: /etc/mzmon/tls/tls.crt
+        keyFile: /etc/mzmon/tls/tls.key
   logging:
     gateway:
       server:
@@ -129,14 +137,6 @@ pipeline:
           # phase on; any *other* OTLP sender has to roll first.
           clientCAFile: /etc/mzmon/tls/ca.crt
           clientAuth: VerifyClientCertIfGiven
-      destination:
-        loki:
-          tls:
-            # The client half of the phase. The gateway's certificate carries
-            # `client auth` as well as `server auth` — one certificate per
-            # component covers both roles, which is why a single mount is enough.
-            certFile: /etc/mzmon/tls/tls.crt
-            keyFile: /etc/mzmon/tls/tls.key
     agent:
       destination:
         loki:
