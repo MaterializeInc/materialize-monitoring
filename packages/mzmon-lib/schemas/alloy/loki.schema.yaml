@@ -197,8 +197,9 @@ $defs:
       metadata are never scanned, so place it before any stage that copies text
       out of the line.
 
-      `redact_with` is required. Without it, Alloy redacts 80% of each secret
-      and leaves the first 20% in the line. The schema refuses
+      `redact_with` is required and can't be empty. Alloy treats an empty
+      placeholder as unset, and without one it redacts 80% of each secret and
+      leaves the first 20% in the line. The schema also refuses
       `$SECRET_HASH` in the placeholder, because it's an unsalted SHA-1 of the
       secret and confirms any guess. For the same reason, `redact_percent` isn't
       typed here.
@@ -231,6 +232,7 @@ $defs:
           backslashes, spaces, and `=`, so that a redacted JSON or logfmt line
           still parses.
         type: string
+        minLength: 1
         not:
           pattern: '\$SECRET_HASH'
         examples: ["<redacted:$SECRET_NAME>"]

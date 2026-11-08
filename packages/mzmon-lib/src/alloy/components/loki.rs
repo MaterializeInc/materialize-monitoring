@@ -112,8 +112,9 @@ impl ToBlock for LokiSourceJournalBlock {
 /// A "loki.secretfilter" block — replaces credentials found in each log line
 /// with a placeholder before forwarding the entry.
 ///
-/// `redact_with` is required here, and `redact_percent` is left to `raw:`:
-/// without a placeholder, alloy keeps the first fifth of every secret.
+/// `redact_with` is required and non-empty here, and `redact_percent` is left
+/// to `raw:`: alloy reads an empty placeholder as unset, and without one it
+/// keeps the first fifth of every secret.
 ///
 /// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.secretfilter/
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,7 +126,7 @@ pub struct LokiSecretfilterBlock {
     /// Gitleaks TOML rule file; unset uses the defaults bundled with alloy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gitleaks_config: Option<Expressable<String>>,
-    /// Placeholder for each secret. The schema refuses `$SECRET_HASH`.
+    /// Placeholder for each secret. The schema refuses `""` and `$SECRET_HASH`.
     pub redact_with: String,
     /// Fraction of entries scanned (alloy default 1.0).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2204,6 +2205,10 @@ mod tests {
             (
                 &["rate: 1"][..],
                 "without redact_with, alloy keeps a fifth of each secret",
+            ),
+            (
+                &[r#"redact_with: """#][..],
+                "alloy reads an empty placeholder as unset",
             ),
             (
                 &[r#"redact_with: "<$SECRET_NAME:$SECRET_HASH>""#][..],
