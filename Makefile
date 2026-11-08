@@ -98,7 +98,7 @@ alloy-pipelines: charts/materialize-monitoring/pre-rendered/pipelines
 dashboards: grafana-dashboards datadog-dashboards
 .PHONY: dashboards
 
-pipelines: alloy-pipelines
+pipelines: alloy-pipelines secretfilter-rules
 .PHONY: pipelines
 
 prometheus-scrapers: charts/materialize-monitoring/pre-rendered/scrapers docs/assets/prometheus-scrapers docs/assets/metrics/labels.yaml
@@ -175,6 +175,18 @@ $(PIPELINES_DIR)/%.alloy: packages/alloy-pipelines/%.yaml target/debug/mz-monito
 $(PIPELINES_DIR): $(addprefix $(PIPELINES_DIR)/,$(addsuffix .alloy,$(ALLOY_TARGETS)))
 	$(MAKE) alloy-pipelines-validate
 	touch "$@"
+
+# The secret filter's Gitleaks rules ship as authored: flat files the chart
+# mounts into the gateway. See packages/alloy-pipelines/secretfilter/.
+SECRETFILTER_DIR = charts/materialize-monitoring/pre-rendered/secretfilter
+SECRETFILTER_RULES = $(patsubst packages/alloy-pipelines/secretfilter/%,$(SECRETFILTER_DIR)/%,$(wildcard packages/alloy-pipelines/secretfilter/*.toml))
+
+$(SECRETFILTER_DIR)/%.toml: packages/alloy-pipelines/secretfilter/%.toml
+	mkdir -p "$(@D)"
+	cp "$<" "$@"
+
+secretfilter-rules: $(SECRETFILTER_RULES)
+.PHONY: secretfilter-rules
 
 alloy-pipelines-validate:
 	cat "$(PIPELINES_DIR)/agent.alloy" "$(PIPELINES_DIR)/agent-dest-stub.alloy" | alloy validate /dev/stdin
@@ -307,7 +319,7 @@ HELM_DOCS_SOURCES_materialize-monitoring = \
 	charts/materialize-monitoring/values.yaml \
 	charts/materialize-monitoring/Chart.yaml
 
-charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers charts/materialize-monitoring/pre-rendered/rules/_index.yaml
+charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/pipelines $(SECRETFILTER_RULES) charts/materialize-monitoring/pre-rendered/scrapers charts/materialize-monitoring/pre-rendered/rules/_index.yaml
 	touch "$@"
 
 # Generate the chart-local README.md from values.yaml + the README template.

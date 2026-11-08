@@ -421,6 +421,7 @@ loki.secretfilter "ingest" {
 	forward_to = [
 		loki.process.inputProcessor.receiver,
 	]
+	gitleaks_config = "/etc/alloy/secretfilter-ingest.toml"
 	redact_with = "<redacted:$SECRET_NAME>"
 	rate = encoding.from_json(coalesce(sys.env("GATEWAY_SECRETFILTER_RATE"), "0"))
 	processing_timeout = coalesce(sys.env("GATEWAY_SECRETFILTER_TIMEOUT"), "0s")
@@ -433,6 +434,7 @@ loki.secretfilter "ingestBulk" {
 	forward_to = [
 		loki.process.inputProcessor.receiver,
 	]
+	gitleaks_config = "/etc/alloy/secretfilter-ingest.toml"
 	redact_with = "<redacted:$SECRET_NAME>"
 	rate = encoding.from_json(coalesce(sys.env("GATEWAY_SECRETFILTER_BULK_RATE"), "0"))
 	processing_timeout = coalesce(sys.env("GATEWAY_SECRETFILTER_TIMEOUT"), "0s")
