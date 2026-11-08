@@ -9,15 +9,15 @@ description: |
 blocks:
   # --- ingress: receive entries from alloy-agent ------------------------------
 
-  # Loki push API. Fans out to the sampled debug tap and the main processor.
+  # Loki push API, feeding the prefilter. The debug tap is fed from
+  # inputProcessor instead, so it never sees a line the secret filter skipped.
   # listen_port is configurable via ALLOY_LOKI_PORT (default 3100). The
   # encoding.from_json wrapper coerces the sys.env string to a number (alloy has
   # no to_int); treat that coercion as provisional (see agent.yaml stage.limit).
   - loki.source.api:
       label: gateway
       forward_to:
-        - loki.process.sampleDebug.receiver
-        - loki.process.inputProcessor.receiver
+        - loki.process.inputPrefilter.receiver
       blocks:
         - http:
             listen_port:

@@ -36,9 +36,10 @@ groups:
         values to a budget by design, so a cut there is routine.
 
         `component_id` says where the cut happened. `loki.process.pod_logs` and
-        `loki.process.node_logs` are an agent's clamp, and
-        `loki.process.inputProcessor` is the gateway's clamp or line limit. A
-        line cut by both counts twice.
+        `loki.process.node_logs` are an agent's clamp,
+        `loki.process.inputPrefilter` is the gateway's clamp, and
+        `loki.process.inputProcessor` is its line limit. A line cut by more than
+        one counts once for each.
 
         Alloy creates the counter at its first cut, so a series that is newer
         than the window counts as cut. Without that, the first oversized line

@@ -304,8 +304,7 @@ Usage:
   {{- $metricTls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
 loki.source.api "gateway" {
     forward_to = [
-        loki.process.sampleDebug.receiver,
-        loki.process.inputProcessor.receiver,
+        loki.process.inputPrefilter.receiver,
     ]
 
     http {
