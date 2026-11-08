@@ -1,0 +1,124 @@
+# Gitleaks rules for the gateway's ingest secret filter
+# (`loki.secretfilter.ingest` and `ingestBulk` in gateway.yaml).
+#
+# `make pipelines` copies this file to the chart's pre-rendered/secretfilter/,
+# and the chart ships it in the gateway's ConfigMap, which Alloy sees as
+# /etc/alloy/secretfilter-ingest.toml.
+# packages/mzmon-lib/tests/secretfilter_corpus.rs runs it through the pinned
+# Alloy binary against ingest.corpus.yaml; add a fixture with every rule change.
+#
+# Keep the file flat: one `[extend]` with `useDefault = true` and no `path`.
+# Gitleaks follows two levels of `[extend]` and not three, and a third level
+# loads cleanly while silently dropping every default rule. The customer's
+# extension is the one level left.
+#
+# Every rule declares keywords. A rule without them runs its regex on every
+# line instead of only the lines the keyword prefilter passes.
+#
+# See: docs/content/reference/development/design-docs/20260924-log-secret-filtering.md
+title = "mzmon ingest"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "mzmon-canary"
+description = "The published ingest canary"
+regex = '''mzmon-canary-v1-[0-9a-f]{16}'''
+keywords = ["mzmon-canary"]
+
+[[rules]]
+id = "mzmon-materialize-app-password"
+description = "Materialize app password"
+regex = '''\b(mzp_[A-Za-z0-9_-]{16,})'''
+keywords = ["mzp_"]
+
+# The metadata database's `metadata_backend_url`, and `persist_backend_url`
+# where the object store takes static credentials.
+[[rules]]
+id = "mzmon-url-userinfo"
+description = "Password in the userinfo of a URL"
+regex = '''(?i)\b[a-z][a-z0-9+.-]{1,20}://[^/\s:@"'\\]{1,256}:([^/\s@"'\\]{1,256})@'''
+keywords = ["://"]
+  [[rules.allowlists]]
+  regexes = ['''^(?:\*+|x+|(?i:redacted)|\$\{?[A-Za-z_]+\}?)$''']
+
+# Upstream matches these only inside a curl command.
+[[rules]]
+id = "mzmon-authorization-header"
+description = "Credential in an Authorization header, including inside an escaped JSON string"
+regex = '''(?i)\b(?:proxy-)?authorization\\?["']?\s*[:=]\s*\\?["']?\s*(?:bearer|basic|token|negotiate|aws4-hmac-sha256)\s+([A-Za-z0-9._~+/=,:-]{8,})'''
+keywords = ["authorization"]
+
+# Go's HTTP client strips a URL's password from its errors but keeps the query
+# string, so a presigned signature reaches the error line.
+[[rules]]
+id = "mzmon-url-query-credential"
+description = "Credential in a URL query string"
+regex = '''(?i)[?&](?:x-amz-signature|x-amz-security-token|x-amz-credential|x-goog-signature|x-goog-credential|sig|signature|access_token|id_token|refresh_token|token|api_key|apikey|client_secret|password)=([^&\s"'\\#]{8,})'''
+keywords = ["x-amz-", "x-goog-", "sig=", "signature=", "token=", "api_key=", "apikey=", "client_secret=", "password="]
+
+# Upstream requires the END line, so a key cut off by truncation escapes it.
+[[rules]]
+id = "mzmon-private-key-header"
+description = "PEM private key header, with or without its END line"
+regex = '''-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----(?:[A-Za-z0-9+/=\s]|\\[nr])*'''
+keywords = ["-----begin"]
+
+# Upstream's generic rule applies an entropy floor, which a human-chosen
+# password falls below, and does not see through `\"`.
+#
+# A quoted value is redacted to its closing quote, so a passphrase with spaces
+# goes whole. Plain JSON escapes a quote in the value as `\"`, and JSON nested
+# inside a JSON string as `\\\"`, so a quoted key picks the branch by whether
+# its own closing quote is escaped. A bare value stops at whitespace and
+# follows only an unquoted key: after a JSON key it is a number or a literal,
+# and a placeholder in its place breaks the line's JSON. Gitleaks redacts
+# whichever group matched.
+[[rules]]
+id = "mzmon-password-field"
+description = "A password-named field, any entropy, including inside escaped JSON or Rust Debug output"
+regex = '''(?i)\b(?:(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)"\s*:\s*"((?:[^"\\]|\\.){4,256})"|(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)\\"\s*:\s*\\"((?:[^"\\]|\\\\\\\\|\\\\\\"|\\\\[a-z/]|\\[a-z/]){4,256})\\"|(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)'\s*[:=]\s*'((?:[^'\\]|\\.){4,256})'|(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)\s*[:=]\s*(?:Some\()?(?:"((?:[^"\\]|\\.){4,256})"|\\"((?:[^"\\]|\\\\\\\\|\\\\\\"|\\\\[a-z/]|\\[a-z/]){4,256})\\"|'((?:[^'\\]|\\.){4,256})'|([^\s"'\\,;)}]{4,})))'''
+keywords = ["passw", "pwd", "secret"]
+  [[rules.allowlists]]
+  regexes = ['''^(?:None|Some|null|nil|true|false|\*+|(?i:<?redacted.*)|\$\{?[A-Za-z_]+\}?)$''']
+  # Alloy replaces a secret everywhere it occurs in the line, so a numeric
+  # password after a plain JSON key would also replace any JSON number with the
+  # same digits and break the line's JSON. Logfmt and nested JSON are unaffected.
+  [[rules.allowlists]]
+  regexTarget = "match"
+  regexes = ['''(?i)^[a-z_-]+"\s*:\s*"-?[0-9]+(?:\.[0-9]+)?(?:e[+-]?[0-9]+)?"$''']
+
+# A controller that logs a Kubernetes Secret logs its data base64-encoded, and
+# the filter decodes nothing. Base64 encodes three bytes as four characters,
+# so the last character of the `postgres://` prefix also carries the
+# username's first byte: `9` for a letter, `8` for a digit, `%` or an empty
+# username, `+` or `/` past ASCII. The `postgresql://` prefix ends before it.
+[[rules]]
+id = "mzmon-base64-postgres-url"
+description = "Base64 of a postgres:// URL, as in a logged Kubernetes Secret"
+regex = '''\b((?:cG9zdGdyZXM6Ly[89+/]|cG9zdGdyZXNxbDovL)[A-Za-z0-9+/]{8,}={0,2})'''
+keywords = ["cg9zdgdyzxm6ly", "cg9zdgdyzxnxbdovl"]
+
+# Upstream jwt admits a backslash in its last segment, so it can consume the
+# escape of a closing \" and leave the redacted line unparseable.
+[[rules]]
+id = "jwt"
+regex = '''\b(ey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9\/\\_-]{17,}\.(?:[a-zA-Z0-9\/\\_-]{9,}[a-zA-Z0-9\/_-]={0,2})?)(?:[\x60'"\s;]|\\[nr"]|$)'''
+
+# Identifier fields whose name says they are not credentials. The allowlist
+# targets the match, which runs from the key through the value, so it exempts
+# a value by the name in front of it and never by the value's shape. A UUID is
+# a strong bearer credential, and the default rules carry UUID-shaped
+# credentials for several providers. Grow this list from shadow-mode data.
+[[rules]]
+id = "generic-api-key"
+  [[rules.allowlists]]
+  regexTarget = "match"
+  regexes = ['''(?i)^[\w.-]{0,50}?\b(?:token|access|api|key|credential)[_.-]?(?:id|name|type|version|count)\b''']
+
+# A finding whose secret is already a placeholder is not a finding, so a
+# second pass over redacted text finds nothing.
+[[allowlists]]
+description = "Placeholders written by an earlier pass"
+regexes = ['''^<redacted:[a-z0-9-]+>$''']

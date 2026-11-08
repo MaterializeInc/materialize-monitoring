@@ -1,0 +1,247 @@
+# Lines that packages/mzmon-lib/tests/secretfilter_corpus.rs pushes through
+# ingest.toml on the pinned Alloy binary.
+#
+# `rules` lists every rule that must fire on the line. A line without `rules`
+# must come out byte for byte. `secret` is text that must not survive. A line
+# that parses as JSON must still parse after redaction, with the same keys.
+#
+# <<NAME>> placeholders are filled at test time, so the corpus commits no
+# provider-shaped credential: AWS_ACCESS_KEY_ID, JWT, LICENSE_KEY, PEM_HEADER,
+# MZP_TOKEN, UUID, ALNUM32, ALNUM40, HEX16, HEX32, HEX40, HEX64.
+
+# --- the default rules are loaded -------------------------------------------
+
+- id: aws-access-key-id
+  line: 'uploading to s3 with access key <<AWS_ACCESS_KEY_ID>>'
+  rules: [aws-access-token]
+  secret: '<<AWS_ACCESS_KEY_ID>>'
+
+- id: generic-api-key-json-field
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"INFO","fields":{"message":"configured","api_key":"<<ALNUM32>>"},"target":"mz_adapter"}'
+  rules: [generic-api-key]
+  secret: '<<ALNUM32>>'
+
+# The test that stops a value-shape allowlist: a UUID is a strong bearer
+# credential after a credential-named key.
+- id: uuid-after-credential-key
+  line: '{"api_key": "<<UUID>>"}'
+  rules: [generic-api-key]
+  secret: '<<UUID>>'
+
+- id: jwt-in-escaped-header-map
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"DEBUG","fields":{"message":"request headers: {\"x-auth\": \"<<JWT>>\"}"},"target":"mz_http_util"}'
+  rules: [jwt]
+  secret: '<<JWT>>'
+
+# A Materialize license key is a JWT: three dot-separated base64url sections.
+- id: license-key-field
+  line: 'starting environmentd license_key=<<LICENSE_KEY>>'
+  rules: [jwt]
+  secret: '<<LICENSE_KEY>>'
+
+# --- the Materialize rules ---------------------------------------------------
+
+- id: metadata-backend-url
+  line: 'ts=2026-11-08T16:49:20Z level=info msg=connecting metadata_backend_url=postgres://materialize:Hunter2-not-real@mzmon-metadata-db:5432/materialize?sslmode=require'
+  rules: [mzmon-url-userinfo]
+  secret: 'Hunter2-not-real'
+
+- id: persist-backend-url-static-credentials
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"INFO","fields":{"message":"opening blob","persist_backend_url":"s3://mzpersist:S3cret-not-real@mz-bucket/persist?region=us-east-1"},"target":"mz_persist_client"}'
+  rules: [mzmon-url-userinfo]
+  secret: 'S3cret-not-real'
+
+- id: human-password-logfmt
+  line: 'level=info msg="user created" user=alice password=changeme123'
+  rules: [mzmon-password-field]
+  secret: 'changeme123'
+
+- id: password-in-debug-dump
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"ERROR","fields":{"message":"bad config: Config { user: \"mz\", password: Some(\"changeme123\"), port: 5432 }"},"target":"mz_postgres_util"}'
+  rules: [mzmon-password-field]
+  secret: 'changeme123'
+
+# A quoted value goes whole, to its closing quote, so the words after a
+# passphrase's first space don't survive.
+- id: passphrase-json-field
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"INFO","fields":{"message":"connecting","password":"correct horse battery staple"},"target":"mz_postgres_util"}'
+  rules: [mzmon-password-field]
+  secret: 'horse battery staple'
+
+- id: passphrase-in-debug-dump
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"ERROR","fields":{"message":"bad config: Config { password: Some(\"correct horse battery staple\") }"},"target":"mz_postgres_util"}'
+  rules: [mzmon-password-field]
+  secret: 'horse battery staple'
+
+- id: passphrase-logfmt
+  line: 'level=info msg="user created" user=alice password="correct horse battery staple"'
+  rules: [mzmon-password-field]
+  secret: 'horse battery staple'
+
+# An escaped quote or backslash inside a quoted value doesn't end it, in plain
+# JSON or in JSON nested inside a JSON string.
+- id: password-json-escaped-quote
+  line: '{"user":"mz","password":"abc\"tail-secret","port":5432}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+- id: password-json-backslash
+  line: '{"user":"mz","password":"abc\\tail-secret","port":5432}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+- id: password-nested-escaped-quote
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"DEBUG","fields":{"message":"request body: {\"user\":\"mz\",\"password\":\"abc\\\"tail-secret\"}"},"target":"mz_http_util"}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+- id: password-nested-backslash
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"DEBUG","fields":{"message":"request body: {\"password\":\"abc\\\\tail-secret\"}"},"target":"mz_http_util"}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+- id: password-debug-escaped-quote
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"ERROR","fields":{"message":"bad config: Config { password: Some(\"abc\\\"tail-secret\") }"},"target":"mz_postgres_util"}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+# Two rules match the same secret. Both are counted, and it's replaced once.
+- id: app-password-in-password-field
+  line: '{"user":"alice","password":"<<MZP_TOKEN>>"}'
+  rules: [mzmon-password-field, mzmon-materialize-app-password]
+  secret: '<<MZP_TOKEN>>'
+
+- id: authorization-header-map
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"DEBUG","fields":{"message":"request"},"span":{"request.headers":"{\"authorization\": \"Bearer <<ALNUM40>>\", \"accept\": \"*/*\"}"},"target":"mz_http_util"}'
+  rules: [mzmon-authorization-header]
+  secret: '<<ALNUM40>>'
+
+- id: authorization-header-plain
+  line: 'level=debug msg="sending request" header="Authorization: Basic <<ALNUM32>>"'
+  rules: [mzmon-authorization-header]
+  secret: '<<ALNUM32>>'
+
+- id: presigned-url-signature
+  line: 'level=warn msg="GET https://mz-bucket.s3.us-east-1.amazonaws.com/blob?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=<<HEX64>> failed: 403"'
+  rules: [mzmon-url-query-credential]
+  secret: '<<HEX64>>'
+
+- id: truncated-private-key
+  line: 'loaded key: <<PEM_HEADER>>\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7[TRUNCATED:LINE]'
+  rules: [mzmon-private-key-header]
+  secret: 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC'
+
+- id: base64-postgres-url-in-secret
+  line: 'reconciling secret: {"data": {"metadata_backend_url": "cG9zdGdyZXM6Ly9tYXRlcmlhbGl6ZTpIdW50ZXIyLW5vdC1yZWFsQG16bW9uLW1ldGFkYXRhLWRiOjU0MzIvbWF0ZXJpYWxpemU="}}'
+  rules: [mzmon-base64-postgres-url]
+  secret: 'cG9zdGdyZXM6Ly9tYXRlcmlhbGl6ZTpIdW50ZXIy'
+
+# A username that starts with a digit changes the last character of the
+# encoded `postgres://` prefix.
+- id: base64-postgres-url-numeric-user
+  line: 'reconciling secret: {"data": {"metadata_backend_url": "cG9zdGdyZXM6Ly8xdXNlcjpjaGFuZ2VtZTEyM0Btem1vbi1tZXRhZGF0YS1kYjo1NDMyL21hdGVyaWFsaXpl"}}'
+  rules: [mzmon-base64-postgres-url]
+  secret: 'cG9zdGdyZXM6Ly8xdXNlcjpjaGFuZ2VtZTEy'
+
+- id: materialize-app-password
+  line: 'connecting as user alice with password <<MZP_TOKEN>>'
+  rules: [mzmon-materialize-app-password]
+  secret: '<<MZP_TOKEN>>'
+
+- id: ingest-canary
+  line: 'mz-monitoring-canary: mzmon-canary-v1-<<HEX16>>'
+  rules: [mzmon-canary]
+  secret: 'mzmon-canary-v1-<<HEX16>>'
+
+# --- false positives the ingest rules keep or add ----------------------------
+# Shadow mode (DEP-313) measures these on real logs. Change the expectation
+# when a rule change fixes one.
+
+- id: next-page-token
+  line: 'listed 100 objects next_page_token=<<ALNUM40>>'
+  rules: [generic-api-key]
+
+- id: password-policy-message
+  line: 'level=warn msg="rejected" password: must be at least 8 characters'
+  rules: [mzmon-password-field]
+
+# generic-api-key allows up to 20 characters of words and spaces between its
+# keyword and the separator, so the match starts at `password` and the name
+# allowlist for `token_id`, anchored at the start of the match, no longer
+# applies.
+- id: token-id-after-credential-word
+  line: 'created app password token_id=<<UUID>>'
+  rules: [generic-api-key]
+
+# --- misses the ingest rules keep --------------------------------------------
+# Each line carries a credential and passes untouched. Move it up when a rule
+# change catches it.
+
+# generic-api-key skips a value below 3.5 bits of Shannon entropy per
+# character. About one random v4 UUID in 23 falls below that; this one
+# measures 3.496.
+- id: low-entropy-uuid-after-credential-key
+  line: '{"api_key": "a31962a2-3a9a-4b4a-ada0-86446efd9a0d"}'
+
+# A short, human-chosen token. The egress file is designed to catch it.
+- id: short-token
+  line: '{"token": "shorttok99"}'
+
+# A password that is a JSON number. A placeholder in its place would break the
+# line's JSON, so the rule leaves bare values after a JSON key alone.
+- id: password-as-json-number
+  line: '{"user":"mz","password":123456,"port":5432}'
+
+# Alloy replaces a secret everywhere it occurs in the line, so a numeric
+# password after a JSON key would also replace the port and break the JSON.
+- id: password-numeric-json-string
+  line: '{"password":"5432","port":5432}'
+
+# The rule needs four characters, so a shorter value doesn't replace every
+# match of a few common letters elsewhere in the line.
+- id: password-under-four-characters
+  line: '{"user":"mz","password":"abc"}'
+
+# --- identifiers that must pass untouched ------------------------------------
+
+- id: environment-id
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"INFO","fields":{"message":"environment started","environment_id":"aws-us-east-1-<<UUID>>-0"},"target":"mz_environmentd"}'
+
+- id: organization-id
+  line: 'organization_id=<<UUID>> region=aws/us-east-1'
+
+- id: token-id
+  line: 'issued token_id=<<UUID>> for user alice'
+
+- id: resource-name-prefix
+  line: 'pod=mz2kq7x9vbn3-cluster-u1-replica-u1-gen-0-0 scheduled'
+
+- id: persist-shard-id
+  line: 'shard_id=s<<UUID>> compacted'
+
+- id: kubernetes-uid
+  line: 'uid=<<UUID>> kind=Pod name=environmentd-0'
+
+- id: trace-and-span-ids
+  line: 'trace_id=<<HEX32>> span_id=<<HEX16>>'
+
+- id: image-digest
+  line: 'image=materialize/environmentd@sha256:<<HEX64>>'
+
+- id: git-sha
+  line: 'build_sha=<<HEX40>> version=v26.1.0'
+
+- id: frontiers
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"DEBUG","fields":{"message":"advancing","as_of":"1731000000123","upper":"[1731000000124]"},"target":"mz_compute"}'
+
+- id: url-without-password
+  line: 'connecting to postgres://materialize@mzmon-metadata-db:5432/materialize'
+
+- id: password-from-environment
+  line: 'password=${MZ_METADATA_PASSWORD}'
+
+- id: password-absent
+  line: 'Config { user: "mz", password: None }'
+
+- id: plain-info-line
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"INFO","fields":{"message":"reconciled 3 clusters"},"target":"mz_orchestratord"}'

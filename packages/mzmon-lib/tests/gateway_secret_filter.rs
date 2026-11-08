@@ -12,7 +12,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use mzmon_lib::alloy::ast::{AttributeValue, ToBlock};
+use mzmon_lib::alloy::ast::{AttributeValue, Expressable, ToBlock};
 use mzmon_lib::alloy::components::loki::StageBlock;
 use mzmon_lib::alloy::pipeline::{ComponentBlock, Pipeline};
 
@@ -221,5 +221,39 @@ fn the_level_sniff_puts_only_debug_and_trace_in_the_bulk_tier() {
         ("DEBUG without a timestamp", None),
     ] {
         assert_eq!(bulk(line).as_deref(), tier, "{line}");
+    }
+}
+
+#[test]
+fn every_secret_filter_reads_a_shipped_rule_file() {
+    // The chart ships each file in packages/alloy-pipelines/secretfilter/ as
+    // /etc/alloy/secretfilter-<name>, and secretfilter_corpus.rs holds each one
+    // to the corpus and to being flat. Any other file is neither tested nor
+    // safe: two instances that load an `[extend] path` chain in one process
+    // race at startup, and one can come up with no rules.
+    const MOUNT: &str = "/etc/alloy/secretfilter-";
+    let shipped = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../alloy-pipelines/secretfilter");
+    let filters: Vec<_> = load("gateway.yaml")
+        .blocks
+        .into_iter()
+        .filter_map(|block| match block {
+            ComponentBlock::LokiSecretfilter(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+    assert!(!filters.is_empty());
+    for f in filters {
+        let label = f.label.as_deref().unwrap_or_default();
+        let path = match &f.gitleaks_config {
+            Some(Expressable::Literal(path)) => path,
+            other => panic!("{label}: gitleaks_config is {other:?}, not a literal path"),
+        };
+        let file = path
+            .strip_prefix(MOUNT)
+            .unwrap_or_else(|| panic!("{label}: {path} is outside {MOUNT}"));
+        assert!(
+            shipped.join(file).is_file(),
+            "{label}: {file} is not in packages/alloy-pipelines/secretfilter/"
+        );
     }
 }

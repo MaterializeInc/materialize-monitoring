@@ -1,6 +1,6 @@
 ---
 title: "Node metrics (node-exporter)"
-weight: 4
+weight: 5
 # custom parameters
 params:
   author: Heather Lapointe

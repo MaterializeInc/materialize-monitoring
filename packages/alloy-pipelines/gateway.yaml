@@ -604,6 +604,12 @@ blocks:
             regex: sniffed_level
             action: labeldrop
 
+  # Both instances load the rules in packages/alloy-pipelines/secretfilter/,
+  # which the chart ships in this config's ConfigMap as
+  # /etc/alloy/secretfilter-<name>. Keep them on the same
+  # flat file: two instances in one process that load an `[extend] path` chain
+  # race at startup, and one can come up with no rules (DEP-314).
+  #
   # The placeholder names the rule and carries no hash: `$SECRET_HASH` is an
   # unsalted SHA-1 of the secret, which confirms any guess. A line that runs
   # past GATEWAY_SECRETFILTER_TIMEOUT is forwarded, partly redacted, with
@@ -613,6 +619,7 @@ blocks:
   - loki.secretfilter:
       label: ingest
       forward_to: ["loki.process.inputProcessor.receiver"]
+      gitleaks_config: /etc/alloy/secretfilter-ingest.toml
       redact_with: "<redacted:$SECRET_NAME>"
       rate:
         function: encoding.from_json
@@ -632,6 +639,7 @@ blocks:
   - loki.secretfilter:
       label: ingestBulk
       forward_to: ["loki.process.inputProcessor.receiver"]
+      gitleaks_config: /etc/alloy/secretfilter-ingest.toml
       redact_with: "<redacted:$SECRET_NAME>"
       rate:
         function: encoding.from_json

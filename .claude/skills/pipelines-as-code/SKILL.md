@@ -40,7 +40,11 @@ Frequently needed deep links into Authoring:
 packages/alloy-pipelines/                       ← YAML inputs
   ├── gateway.yaml                              – gateway processing pipeline
   ├── gateway-dest-stub.yaml                    – gateway default egress tail (swappable)
-  └── agent.yaml
+  ├── agent.yaml
+  └── secretfilter/                             – Gitleaks rules for the gateway's loki.secretfilter
+      ├── ingest.toml                           – flat (one `[extend] useDefault = true`); copied to the chart by `make pipelines`
+      └── ingest.corpus.yaml                    – fixtures for mzmon-lib/tests/secretfilter_corpus.rs, which runs them on `alloy run`
+                                                  (skips without alloy unless MZMON_REQUIRE_ALLOY=1; the pipelines CI job sets it)
 
 packages/mzmon-lib/schemas/alloy/               ← validation schemas (embedded into the binary)
   ├── mzmon-alloy.schema.yaml                   – entry

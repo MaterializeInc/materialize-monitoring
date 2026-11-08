@@ -15,4 +15,13 @@ metadata:
 data:
   {{ include "mzmon.alloyGateway.configMap.key" $ }}: |-
     {{- include "mzmon.alloyGateway.pipeline" $ | nindent 4 }}
+  {{- /* The secret filter's Gitleaks rules, from pre-rendered/secretfilter/.
+         The subchart mounts every key of this ConfigMap at /etc/alloy/, so each
+         file lands at /etc/alloy/secretfilter-<name> beside the config that
+         reads it, with no volume an operator's mount override can drop. Alloy
+         refuses to start when a `gitleaks_config` file is missing. */}}
+  {{- range $path, $_ := $.Files.Glob "pre-rendered/secretfilter/*.toml" }}
+  secretfilter-{{ base $path }}: |-
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
 {{- end }}

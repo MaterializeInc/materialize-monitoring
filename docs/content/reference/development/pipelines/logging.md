@@ -145,9 +145,25 @@ A line that runs past `GATEWAY_SECRETFILTER_TIMEOUT` is forwarded with whatever 
 
 Both instances ship with `rate` set to `0`, which forwards every line unscanned and counts it in `loki_secretfilter_entries_bypassed_total`.
 To scan, set `GATEWAY_SECRETFILTER_RATE` and `GATEWAY_SECRETFILTER_BULK_RATE` to `1` in `pipeline.env`.
-The rule set is the Gitleaks default that Alloy bundles.
 <!-- TODO(DEP-313): drop the rate-0 paragraph once shadow mode has run and the default rate is 1. -->
-<!-- TODO(DEP-311): name the shipped rule files here once the gateway mounts them. -->
+
+#### Rule files
+
+Both instances read `packages/alloy-pipelines/secretfilter/ingest.toml`: the Gitleaks defaults that Alloy bundles, plus Materialize's own rules.
+`make pipelines` copies it to `pre-rendered/secretfilter/`, and the chart adds each rule file to the gateway's ConfigMap as `secretfilter-<name>`.
+The subchart mounts that ConfigMap at `/etc/alloy/`, so the rules sit beside the config that reads them, and overriding the gateway's extra mounts can't drop them.
+Alloy doesn't start without the file.
+
+`packages/mzmon-lib/tests/secretfilter_corpus.rs` runs each rule file through the Alloy binary against `ingest.corpus.yaml`.
+The corpus lists lines that must be redacted, with the rule that fires on each, and lines that must pass untouched.
+The pipelines CI job runs it on the pinned Alloy version, including on every Alloy upgrade, because the default rules change between releases.
+When you change a rule, add a fixture that the change makes pass.
+Elsewhere the test skips when `alloy` isn't on your `PATH`; set `MZMON_REQUIRE_ALLOY=1` to make it fail instead.
+
+Keep every shipped rule file flat: one `[extend]` section holding only `useDefault = true`.
+Gitleaks follows two levels of `[extend]`, and a third loads without the default rules, so the one level left over belongs to the customer.
+Two instances in one Alloy process that load a file extending another by `path` race at startup, and one of them can come up with no rules at all.
+`gateway_secret_filter.rs` fails if an instance reads anything but a shipped rule file.
 
 For the design and the layers that follow, see [Secret Filtering](../../design-docs/20260924-log-secret-filtering/).
 
