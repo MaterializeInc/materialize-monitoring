@@ -118,6 +118,10 @@ Resolve one destination against the per-destination defaults.
 The env ConfigMap, the pipeline, and the validators all read a destination
 through this helper, so a default written here cannot disagree between them.
 
+`active` is whether anything renders for the destination: it is enabled and
+carries at least one signal. A destination that is off, or carries nothing,
+needs no URL or credentials.
+
 Booleans whose default is `true` are resolved by hand rather than with `dig`:
 `dig` returns empty for an explicit `null`, which is how Helm records a cleared
 key, so `enabled: null` would read as `false`. Absent and `null` both mean "use
@@ -222,6 +226,7 @@ Usage:
       "minVersion" ( dig "minVersion" "TLS13" $tls | toString ) )
     "queue" $resolvedQueue
     "logs" ( dict "enabled" $logsEnabled )
+    "active" ( and $enabled $logsEnabled )
     | toYaml }}
 {{- end }}
 
@@ -270,8 +275,11 @@ The enabled log destinations that write to the bundled in-cluster Loki.
 
 The ruler sync, the TLS pairing, and the client-auth handshake are about this
 hop specifically, and applying them to an external Loki would be a false
-failure. Matched on the in-cluster Service shape rather than the name, so an
-external host that happens to start with `loki-` is left alone.
+failure. Matched on the host rather than the destination's name: a `loki` or
+`loki-<component>` Service in Loki's namespace. That covers the distributor
+(`loki-distributor`), the simple-scalable write target, and the single binary's
+bare `loki`, and leaves an external host that happens to start with `loki-`
+alone.
 
 Usage:
   {{- range $dest := ( include "mzmon.destinations.bundledLoki" $ | fromYamlArray ) }}
@@ -281,7 +289,8 @@ Usage:
   {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
     {{- if eq $dest.type "loki" }}
       {{- $url := tpl ( $dest.url | toString ) $ }}
-      {{- if and ( contains "loki-" $url ) ( contains ".svc" $url ) }}
+      {{- $service := printf `://loki(-[a-z0-9-]+)?\.%s\.svc` ( include "mzmon.loki.namespace" $ | regexQuoteMeta ) }}
+      {{- if regexMatch $service $url }}
         {{- $out = append $out ( merge ( dict "resolvedUrl" $url ) $dest ) }}
       {{- end }}
     {{- end }}
@@ -300,10 +309,14 @@ Catches the mistakes that otherwise present as a working install:
      the values key that caused it.
   2. **An unknown type**, or a signal switched on for a type that cannot carry
      it.
-  3. **An enabled destination with no URL.** `sys.env` of an unset variable is
+  3. **An active destination with no URL.** `sys.env` of an unset variable is
      empty, and `loki.write` accepts an empty endpoint at load, so this would
      surface only as failed writes.
-  4. **More than one log destination that blocks when its queue fills.** The
+  4. **Two active destinations reading one URL variable**, through `urlEnv` or
+     names that differ only in case. The env ConfigMap would carry a duplicate
+     key, and both writers would read the same endpoint. Credential variables
+     are left alone: sharing one between destinations can be deliberate.
+  5. **More than one log destination that blocks when its queue fills.** The
      fan-out hands each entry to every destination in turn, so a blocking
      destination that stalls holds back the others. One may block — the
      customer's own copy should — and the rest have to shed.
@@ -327,8 +340,16 @@ Usage:
   {{- end }}
 
   {{- $blocking := list }}
+  {{- $urlEnvs := dict }}
   {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
     {{- $name := $dest.name }}
+    {{- if $dest.active }}
+      {{- if hasKey $urlEnvs $dest.urlEnv }}
+        {{- $errors = append $errors ( printf "%s.%s and %s.%s both read their URL from %s. The env ConfigMap would carry the key twice, and both writers would read one endpoint. Give one of them a different urlEnv, or a name that differs by more than case." $path ( index $urlEnvs $dest.urlEnv ) $path $name $dest.urlEnv ) }}
+      {{- else }}
+        {{- $_ := set $urlEnvs $dest.urlEnv $name }}
+      {{- end }}
+    {{- end }}
     {{- if not ( regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" $name ) }}
       {{- $errors = append $errors ( printf "%s.%s is not a usable name. It becomes an Alloy component label, so it must match [a-zA-Z_][a-zA-Z0-9_]* — no dashes, dots, or leading digits." $path $name ) }}
     {{- else if has $name $reserved }}
@@ -341,11 +362,11 @@ Usage:
       {{- $errors = append $errors ( printf "%s.%s turns logs on, but a %s destination does not carry logs." $path $name $dest.type ) }}
     {{- end }}
 
-    {{- if and $dest.enabled ( not $dest.url ) }}
+    {{- if and $dest.active ( not $dest.url ) }}
       {{- $errors = append $errors ( printf "%s.%s is enabled but has no url. The rendered pipeline reads sys.env(%q), which would resolve empty — alloy accepts that at load and every write fails at run time." $path $name $dest.urlEnv ) }}
     {{- end }}
 
-    {{- if and $dest.enabled $dest.logs.enabled }}
+    {{- if and $dest.active $dest.logs.enabled }}
       {{- $blocks := true }}
       {{- if hasKey $dest.queue "blockOnOverflow" }}
         {{- $blocks = $dest.queue.blockOnOverflow }}

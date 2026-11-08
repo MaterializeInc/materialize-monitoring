@@ -308,10 +308,12 @@ Usage:
   {{- $checks := list
       ( dict "component" "alloy-gateway" "path" "pipeline.logging.agent.destination.loki.url"
              "url" ( dig "logging" "agent" "destination" "loki" "url" "" $pipeline ) ) }}
-  {{- /* Every Loki-type log destination, whatever its host: the check below
-         only looks at hostnames this release serves. */}}
+  {{- /* Every Loki-type log destination addressing a Service in Loki's
+         namespace, so a wrong in-cluster name is caught. An external
+         destination presents its own certificate, which this chart did not
+         issue, so it is left alone, as the ruler and the datasource are below. */}}
   {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
-    {{- if eq $dest.type "loki" }}
+    {{- if and ( eq $dest.type "loki" ) ( contains ( printf ".%s.svc" ( include "mzmon.loki.namespace" $ ) ) ( tpl ( $dest.url | toString ) $ ) ) }}
       {{- $checks = append $checks ( dict
           "component" "loki"
           "path" ( printf "pipeline.destinations.%s.url" $dest.name )

@@ -1489,7 +1489,7 @@ Usage:
             "role" "alloy-gateway"
             "path" ( printf "pipeline.destinations.%s" $dest.name )
             "dest" $dest
-            "enabled" $dest.enabled ) | fromYaml }}
+            "enabled" $dest.active ) | fromYaml }}
       {{- $errors = concat $errors $res.errors | default list }}
       {{- $warnings = concat $warnings $res.warnings | default list }}
     {{- end }}

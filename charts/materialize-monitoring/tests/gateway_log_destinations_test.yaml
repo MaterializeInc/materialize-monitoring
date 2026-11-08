@@ -198,6 +198,58 @@ tests:
       - failedTemplate:
           errorPattern: "pipeline.destinations.archive is enabled but has no url"
 
+  # A destination with every signal off renders nothing, so nothing it would
+  # need is checked: not its URL, and not credentials no component reads.
+  - it: should not validate a destination that carries no signal
+    set:
+      pipeline.destinations.archive:
+        type: loki
+        authType: bearer
+        logs:
+          enabled: false
+      alloy-gateway.alloy.envFrom: null
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: should refuse two destinations whose names differ only in case
+    set:
+      pipeline.destinations.Loki:
+        type: loki
+        url: https://other.example.com/loki/api/v1/push
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.Loki and pipeline.destinations.loki both read their URL from GATEWAY_LOKI_DEST"
+
+  - it: should refuse two destinations sharing a urlEnv
+    set:
+      pipeline.destinations.archive:
+        type: loki
+        url: https://archive.example.com/loki/api/v1/push
+        urlEnv: GATEWAY_LOKI_DEST
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "both read their URL from GATEWAY_LOKI_DEST"
+
+  # Sharing a credential is a legitimate choice, unlike sharing a URL.
+  - it: should allow two destinations to share a credential variable
+    set:
+      pipeline.destinations.loki.authType: bearer
+      pipeline.destinations.loki.bearer.tokenEnv: GATEWAY_SHARED_TOKEN
+      pipeline.destinations.archive:
+        type: loki
+        url: https://archive.example.com/loki/api/v1/push
+        authType: bearer
+        bearer:
+          tokenEnv: GATEWAY_SHARED_TOKEN
+        queue:
+          blockOnOverflow: false
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
   # --- the deprecated single destination --------------------------------------
   # The chart ships `pipeline.logging.gateway.destination.loki` empty, so every
   # key under it is an override that has to keep applying, to the `loki` entry.

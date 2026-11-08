@@ -740,6 +740,37 @@ tests:
       - failedTemplate:
           errorPattern: "would send plaintext at a TLS port"
 
+  # A single binary serves the bare `loki` Service, not `loki-distributor`, and
+  # the writer pointed at it is just as plaintext.
+  - it: should fail when the Loki client is left plaintext on a single binary
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.destinations.loki.url: http://loki.test-monitoring.svc:3100/loki/api/v1/push
+      pipeline.destinations.loki.tls.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.tls.enabled is off"
+
+  # A second, external destination presents its own certificate. Checking its
+  # host against the bundled Loki's SANs would refuse every fan-out under mTLS.
+  - it: should not check an external log destination against the Loki certificate
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.destinations.archive:
+        type: loki
+        url: https://logs.example.com/loki/api/v1/push
+        queue:
+          blockOnOverflow: false
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
   # The failure that presents as a crashloop rather than as a TLS problem.
   - it: should fail when the Loki readiness probe is left on HTTP
     values:

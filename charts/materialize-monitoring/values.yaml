@@ -958,7 +958,7 @@ pipeline:
   # | `queue` | Alloy's defaults | `loki.write`'s `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
   # | `authType` | `none` | `none`, `basicAuth`, or `bearer`. |
   # | `basicAuth` / `bearer` | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
-  # | `tls` | off | Client TLS: `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `ca` / `cert` / `key`, `serverName`, `minVersion`. |
+  # | `tls` | off | Client TLS: `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`. |
   #
   # For example, a second, external Loki that must never slow the bundled one down:
   #
@@ -976,11 +976,53 @@ pipeline:
   #
   # @default -- One destination, `loki`, pointing at the bundled Loki.
   destinations:
-    # The bundled in-cluster Loki. Everything not set here comes from the
-    # per-destination defaults documented above.
+    # The bundled in-cluster Loki. The fields below are the per-destination
+    # defaults, written out so this entry can be copied as a starting point.
+    # A new entry can leave out anything it does not change.
     loki:
       type: loki
+      enabled: true
       url: 'http://loki-distributor.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
+      # Derived from the name when unset: GATEWAY_<NAME>_DEST.
+      # urlEnv: GATEWAY_LOKI_DEST
+      logs:
+        enabled: true
+      retries:
+        maxBackoffRetries: 10
+        minBackoffPeriod: 1s
+        maxBackoffPeriod: 5m
+        retryOnHttp429: true
+      # Rendered as `queue_config` only when a field is set. These are Alloy's
+      # defaults. Set `blockOnOverflow: false` on every destination but the one
+      # whose copy must be complete.
+      # queue:
+      #   capacity: 10MiB
+      #   minShards: 1
+      #   blockOnOverflow: true
+      #   drainTimeout: 15s
+      # `none`, `basicAuth`, or `bearer`.
+      authType: none
+      # Inline values land in the env ConfigMap. Leave them empty and supply
+      # the variable through `alloy-gateway.alloy.envFrom` or `extraEnv`
+      # instead; each variable name is derived from the destination's name.
+      basicAuth:
+        username: ""
+        # usernameEnv: GATEWAY_<NAME>_DEST_USERNAME
+        password: ""
+        # passwordEnv: GATEWAY_<NAME>_DEST_PASSWORD
+      bearer:
+        token: ""
+        # tokenEnv: GATEWAY_<NAME>_DEST_BEARER_TOKEN
+      tls:
+        enabled: false
+        verify: true
+        # Prefer the file carriers for anything cert-manager renews: a mounted
+        # file is re-read, while an environment variable is read once at start.
+        caFile: ""
+        certFile: ""
+        keyFile: ""
+        serverName: ""
+        minVersion: TLS13
   # -- (h4) Configuration for log behavior
   # @notationType -- (sectionstart) Log configuration
   logging:
