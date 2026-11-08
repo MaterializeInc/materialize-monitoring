@@ -966,7 +966,8 @@ pipeline:
   # | `logs.enabled` | all | on for `loki`; on when `logs` is present for `otlp` | Send logs here. |
   # | `logs.url` / `metrics.url` | `otlp`, HTTP | the base URL plus `/v1/logs` or `/v1/metrics` | One signal's own endpoint. |
   # | `logs.selector` | all | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
-  # | `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. `UNKNOWN` is kept. |
+  # | `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. |
+  # | `logs.keepUnknown` | all | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
   # | `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
   # | `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (defaults to `rate`). Entries over the limit are dropped. |
   # | `metrics.enabled` | `otlp` | on when `metrics` is present | Send metrics here. |
@@ -985,7 +986,8 @@ pipeline:
   #
   # **The `logs` reduction fields apply to one destination's copy only**, in a `loki.process "dest_<name>"` in front of its writer.
   # They run in table order, and each drop is counted in `loki_process_dropped_lines_total` under its own `reason`.
-  # `minLevel` never drops `UNKNOWN`, because a panic arrives without a level the gateway can parse.
+  # `minLevel` doesn't drop `UNKNOWN`, the level of an entry the gateway couldn't parse; `keepUnknown: false` does.
+  # A panic is one of those entries.
   #
   # For example, a second, external Loki that must never slow the bundled one down:
   #
@@ -1029,6 +1031,7 @@ pipeline:
         # Reduction for this destination's copy; none by default.
         # selector: '{namespace=~"environment-.+"}'
         # minLevel: WARN
+        # keepUnknown: true
         # sampleRate: 1
         # rateLimit:
         #   rate: 1000
@@ -1084,6 +1087,7 @@ pipeline:
     #     # url: https://otlp.example.com/custom/logs
     #     # selector: '{namespace=~"environment-.+"}'
     #     # minLevel: WARN
+    #     # keepUnknown: true
     #     # sampleRate: 1
     #     # rateLimit:
     #     #   rate: 1000
@@ -3622,8 +3626,8 @@ alloy-gateway:
         # @raw
         # The Secret named in the paired volume, `mzmon-alloy-gateway-destination-tls`,
         # is yours to create, for a destination that authenticates with a
-        # client certificate, such as the BYOC control plane
-        # (`profiles/byoc.values.yaml`). Point the destination's
+        # client certificate, such as the call-home control plane
+        # (`profiles/call-home.values.yaml`). Point the destination's
         # `tls.certFile` and `tls.keyFile` at files under this path. It is
         # optional for the same reason as `mzmon-tls`: an install with no such
         # destination starts with the mount empty.

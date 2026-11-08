@@ -570,8 +570,8 @@ everything. The stages run cheapest first, and each drop is counted in
      entry is marked `__dest_keep="false"`, entries the selector matches are
      re-marked `"true"`, and the rest are dropped. The marker is removed before
      the entry leaves.
-  2. **minLevel**, dropping the levels below it. `UNKNOWN` is never dropped;
-     see `mzmon.destinations.levelsBelow`.
+  2. **minLevel**, dropping the levels below it, and `UNKNOWN` as well when
+     `keepUnknown` is false; see `mzmon.destinations.levelsBelow`.
   3. **sampleRate**, through `stage.sampling`.
   4. **rateLimit**, through `stage.limit` with `drop = true`. Without `drop` the
      stage backpressures, which would hold back every other destination.
@@ -619,16 +619,20 @@ loki.process {{ printf "dest_%s" $dest.name | quote }} {
         values = ["__dest_keep"]
     }
   {{- end }}
+  {{- $dropLevels := list }}
   {{- with $logs.minLevel }}
-    {{- $below := index ( include "mzmon.destinations.levelsBelow" $root | fromYaml ) . }}
-    {{- if $below }}
+    {{- $dropLevels = index ( include "mzmon.destinations.levelsBelow" $root | fromYaml ) . | default list }}
+  {{- end }}
+  {{- if not $logs.keepUnknown }}
+    {{- $dropLevels = append $dropLevels "UNKNOWN" }}
+  {{- end }}
+  {{- if $dropLevels }}
 
     stage.match {
-        selector = {{ printf "{level=~%q}" ( join "|" $below ) | quote }}
+        selector = {{ printf "{level=~%q}" ( join "|" $dropLevels ) | quote }}
         action = "drop"
         drop_counter_reason = "destination_level"
     }
-    {{- end }}
   {{- end }}
   {{- if lt ( $logs.sampleRate | float64 ) 1.0 }}
 

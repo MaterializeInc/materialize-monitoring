@@ -1,16 +1,18 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
 #
-# profiles/byoc.values.yaml: the control-plane destination (DEP-124).
+# profiles/call-home.values.yaml: the control-plane destination (DEP-124),
+# applied by self-managed installs that opt in and by Bring Your Own Cloud
+# stacks alike.
 #
-# The profile is the contract with the stack deployer: a Secret at a fixed name,
-# an endpoint, and what crosses. These tests pin each part, because a drift in
-# any of them installs cleanly and sends nothing, or sends more than it should.
-suite: byoc profile
+# The profile is a contract: a Secret at a fixed name, an endpoint, and what
+# crosses. These tests pin each part, because a drift in any of them installs
+# cleanly and sends nothing, or sends more than it should.
+suite: call-home profile
 release:
   name: test-mon
   namespace: monitoring
 values:
-  - ../profiles/byoc.values.yaml
+  - ../profiles/call-home.values.yaml
 set:
   tags.default: false
   tags.pipeline: true
@@ -35,7 +37,7 @@ tests:
           path: data["config.alloy"]
           pattern: 'otelcol\.exporter\.otlphttp "dest_controlPlane" \{[^}]*ca_file'
 
-  - it: should mount the Secret the stack deployer creates at that path
+  - it: should mount the Secret the operator creates at that path
     template: charts/alloy-gateway/templates/controllers/deployment.yaml
     asserts:
       - contains:
@@ -52,6 +54,7 @@ tests:
             mountPath: /etc/mzmon/destination-tls
             readOnly: true
 
+  # UNKNOWN is sent for now: the drop list stops at INFO.
   - it: should send logs at WARN and above, rate limited, and essential metrics
     asserts:
       - matchRegex:
@@ -91,7 +94,7 @@ tests:
   # has to survive that, in either order.
   - it: should keep the destination mount when composed with the mTLS profile
     values:
-      - ../profiles/byoc.values.yaml
+      - ../profiles/call-home.values.yaml
       - ../profiles/mtls.values.yaml
     template: charts/alloy-gateway/templates/controllers/deployment.yaml
     asserts:
@@ -102,3 +105,12 @@ tests:
             secret:
               secretName: mzmon-alloy-gateway-destination-tls
               optional: true
+
+  - it: should stop sending UNKNOWN when keepUnknown is turned off
+    set:
+      pipeline.destinations.controlPlane.logs.keepUnknown: false
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'selector = "\{level=~\\"TRACE\|DEBUG\|INFO\|UNKNOWN\\"\}"'

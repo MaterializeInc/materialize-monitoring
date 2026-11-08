@@ -432,3 +432,44 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: "pipeline.destinations.loki.logs.rateLimit.burst \\(10\\) is below its rate \\(100\\)"
+
+  - it: should drop UNKNOWN only when keepUnknown is false
+    set:
+      pipeline.destinations.archive:
+        type: loki
+        url: https://archive.example.com/loki/api/v1/push
+        queue:
+          blockOnOverflow: false
+        logs:
+          minLevel: WARN
+          keepUnknown: false
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'selector = "\{level=~\\"TRACE\|DEBUG\|INFO\|UNKNOWN\\"\}"'
+
+  # keepUnknown: false is a zero value, and on its own is a reduction.
+  - it: should drop UNKNOWN with no level floor
+    set:
+      pipeline.destinations.archive:
+        type: loki
+        url: https://archive.example.com/loki/api/v1/push
+        queue:
+          blockOnOverflow: false
+        logs:
+          keepUnknown: false
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_archive" \{[\s\S]*?selector = "\{level=~\\"UNKNOWN\\"\}"\s*action = "drop"'
+
+  # Call-home is opt-in: without profiles/call-home.values.yaml, nothing is
+  # addressed to the control plane.
+  - it: should send nothing to the control plane by default
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'dest_controlPlane|telemetry\.c\.'

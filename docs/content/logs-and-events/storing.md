@@ -69,7 +69,8 @@ Set any of the following fields in the destination's `logs` block:
 | Field | What it does |
 |---|---|
 | `selector` | Keeps only entries matching a LogQL stream selector, such as `{namespace=~"environment-.+"}`. Line filters are allowed after it. |
-| `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. Entries with an `UNKNOWN` level are kept, because a panic arrives without a level the gateway can parse. |
+| `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. |
+| `keepUnknown` | Set to `false` to drop entries with an `UNKNOWN` level, which `minLevel` keeps. A panic arrives without a level the gateway can parse, so it is `UNKNOWN`. Defaults to `true`. |
 | `sampleRate` | Keeps a fraction of entries, above 0 and at most 1. |
 | `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst`, which defaults to `rate`. |
 

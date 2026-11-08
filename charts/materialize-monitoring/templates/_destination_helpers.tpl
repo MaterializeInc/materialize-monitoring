@@ -239,6 +239,10 @@ Usage:
     {{- $tlsVerify = index $tls "verify" }}
   {{- end }}
   {{- $logsEnabled := index $signalOn "logs" }}
+  {{- $keepUnknown := true }}
+  {{- if and ( hasKey $logs "keepUnknown" ) ( not ( kindIs "invalid" ( index $logs "keepUnknown" ) ) ) }}
+    {{- $keepUnknown = index $logs "keepUnknown" }}
+  {{- end }}
   {{- $metricsEnabled := index $signalOn "metrics" }}
 
   {{- /* Only the queue settings the destination names are kept, so a
@@ -296,6 +300,7 @@ Usage:
       "urlEnv" ( dig "urlEnv" ( printf "%s_LOGS" $prefix ) $logs | toString )
       "selector" ( dig "selector" "" $logs | toString )
       "minLevel" ( dig "minLevel" "" $logs | toString | upper )
+      "keepUnknown" $keepUnknown
       "sampleRate" ( dig "sampleRate" 1 $logs )
       "rateLimit" ( dict
         "rate" ( dig "rateLimit" "rate" 0 $logs )
@@ -419,9 +424,10 @@ Usage:
 The levels a log destination's `minLevel` can name, lowest first, and the
 levels it drops for each.
 
-`UNKNOWN` is not on the ladder and is never dropped by a level floor: a Rust
-panic arrives with no level the gateway can parse, so it is `UNKNOWN`, and a
-floor that dropped it would drop the one line an escalation needs most.
+`UNKNOWN` is not on the ladder, so no floor drops it; `logs.keepUnknown`
+decides it on its own. A Rust panic arrives with no level the gateway can
+parse, so it is `UNKNOWN`, and a floor that dropped it would drop the one line
+an escalation needs most. `keepUnknown` defaults to true for that reason.
 
 Usage:
   {{- $below := index ( include "mzmon.destinations.levelsBelow" $ | fromYaml ) "WARN" }}
@@ -445,7 +451,7 @@ Usage:
 */}}
 {{- define "mzmon.destinations.reducesLogs" }}
   {{- $logs := .logs }}
-  {{- if or $logs.selector $logs.minLevel ( lt ( $logs.sampleRate | float64 ) 1.0 ) ( gt ( $logs.rateLimit.rate | float64 ) 0.0 ) }}
+  {{- if or $logs.selector $logs.minLevel ( not $logs.keepUnknown ) ( lt ( $logs.sampleRate | float64 ) 1.0 ) ( gt ( $logs.rateLimit.rate | float64 ) 0.0 ) }}
     {{- "true" }}
   {{- end }}
 {{- end }}
