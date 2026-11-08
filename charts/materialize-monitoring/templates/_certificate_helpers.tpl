@@ -491,6 +491,18 @@ Usage:
   {{- $pipeline := $.Values.pipeline | default dict }}
 
   {{- if ( include "mzmon.certificates.lokiServerTls" $ ) }}
+    {{- /* The query frontend's tail proxy to the querier, in the distributed
+           mode. The subchart writes it as http://, so under server TLS every
+           live tail, the canary's included, is a plaintext request at a TLS
+           port and fails with `websocket: bad handshake`. */}}
+    {{- if eq ( $loki.deploymentMode | default "Distributed" | toString ) "Distributed" }}
+      {{- $frontend := dig "loki" "frontend" dict $loki }}
+      {{- $tailUrl := dig "tail_proxy_url" "" $frontend | toString }}
+      {{- if or ( not ( contains "https://" $tailUrl ) ) ( not ( dig "tail_tls_config" "tls_ca_path" "" $frontend ) ) }}
+        {{- $errors = append $errors "loki.loki.server.http_tls_config is set, so the querier serves TLS on 3100, but the query frontend proxies live tails to it without TLS. Every tail fails with `websocket: bad handshake`, the Loki canary's included. Set loki.loki.frontend.tail_proxy_url to the querier's https:// address and loki.loki.frontend.tail_tls_config to the CA and keypair under /etc/mzmon/tls, as profiles/mtls.values.yaml does." }}
+      {{- end }}
+    {{- end }}
+
     {{- /* The writer. */}}
     {{- range $dest := ( include "mzmon.destinations.bundledLoki" $ | fromYamlArray ) }}
       {{- if not $dest.tls.enabled }}

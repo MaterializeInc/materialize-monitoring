@@ -83,10 +83,78 @@ Usage:
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
 
+    {{- $res := include "mzmon.loki.validate.canary" $ | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
+
     {{- if ( include "mzmon.loki.ruler.enabled" $ ) }}
       {{- $res := include "mzmon.loki.validate.ruler" $ | fromYaml }}
       {{- $errors = concat $errors $res.errors | default list }}
       {{- $warnings = concat $warnings $res.warnings | default list }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate that the Loki canary can find its own lines.
+
+The canary writes to stdout and reads its lines back through Loki. The Alloy
+agent and gateway carry them there like any pod's, so the canary has to ask for
+them the way the gateway stores them, and each mistake below is a canary that
+reports Loki broken while Loki is fine:
+
+  1. **The tenant.** The gateway puts the canary's lines in the tenant
+     `pipeline.logging.tenancy` assigns its namespace, which under `static`
+     tenancy is `staticTenant`, and under `byNamespace` is Loki's namespace.
+     Other tenancies cannot be checked here.
+  2. **The selector.** The canary selects on two labels: `-labelname` and
+     `-streamname`. Both have to be among the stream labels the gateway keeps.
+     The subchart's defaults, `pod` and `stream`, are structured metadata
+     there. A values file that replaces `extraArgs` drops the chart's selector
+     arguments, which is how this is usually lost.
+*/}}
+{{- define "mzmon.loki.validate.canary" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $canary := $.Values.loki.lokiCanary | default dict }}
+  {{- if $canary.enabled }}
+    {{- /* The flags as the canary parses them: the subchart's, then
+           `extraArgs`, with the last of a repeated flag winning. */}}
+    {{- $labelname := $canary.labelname | default "pod" | toString }}
+    {{- $streamname := "stream" }}
+    {{- range ( $canary.extraArgs | default list ) }}
+      {{- $arg := . | toString }}
+      {{- if hasPrefix "-labelname=" $arg }}
+        {{- $labelname = trimPrefix "-labelname=" $arg }}
+      {{- else if hasPrefix "-streamname=" $arg }}
+        {{- $streamname = trimPrefix "-streamname=" $arg }}
+      {{- end }}
+    {{- end }}
+    {{- $kept := list "level" "app" "container" "namespace" "component" "job" "service_name" "unit" "environment_id" }}
+    {{- range $flag, $name := dict "-labelname" $labelname "-streamname" $streamname }}
+      {{- if not ( has $name $kept ) }}
+        {{- $errors = append $errors ( printf "The Loki canary selects its own lines on %s=%s, which is not a stream label the gateway keeps (%s), so it never finds them and reports Loki as broken. Restore the selector arguments from the chart's loki.lokiCanary.extraArgs, which a values file setting extraArgs replaces." $flag $name ( join ", " $kept ) ) }}
+      {{- end }}
+    {{- end }}
+
+    {{- if dig "loki" "auth_enabled" true ( $.Values.loki | default dict ) }}
+      {{- $configured := dig "selfMonitoring" "tenant" "name" ( dig "tenant" "name" "" $canary ) ( $.Values.loki.monitoring | default dict ) | toString }}
+      {{- $tenancy := $.Values.pipeline.logging.tenancy }}
+      {{- $infra := dig "tenantMap" "infra" "static" $tenancy | toString }}
+      {{- $expected := "" }}
+      {{- if eq $infra "static" }}
+        {{- $expected = $tenancy.staticTenant | toString }}
+      {{- else if eq $infra "byNamespace" }}
+        {{- $expected = include "mzmon.loki.namespace" $ }}
+      {{- end }}
+      {{- if not $expected }}
+        {{- $warnings = append $warnings ( printf "pipeline.logging.tenancy.tenantMap.infra is %q, so the Loki tenant the canary's own lines land in cannot be checked at render. Set loki.lokiCanary.tenant.name to it, or the canary reports Loki as broken." $infra ) }}
+      {{- else if ne $configured $expected }}
+        {{- $errors = append $errors ( printf "The Loki canary reads tenant %q, but the gateway writes the canary's own lines to tenant %q (pipeline.logging.tenancy, tenantMap.infra %q). It would never find them and would report Loki as broken. Set loki.lokiCanary.tenant.name to %q." $configured $expected $infra $expected ) }}
+      {{- end }}
     {{- end }}
   {{- end }}
 
