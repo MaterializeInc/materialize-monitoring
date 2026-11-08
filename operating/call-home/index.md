@@ -25,14 +25,14 @@ The following table lists what the profile sends as written, and the setting und
 |---|---|---|
 | Metrics | The `essential` tier | `metrics.minMetricImportance` |
 | Logs | `WARN` and above | `logs.minLevel` |
-| Logs | Lines whose level the gateway couldn't parse | `logs.keepUnknown` |
 | Logs | At most 500 lines per second per gateway replica | `logs.rateLimit` |
+| Logs | Not lines whose level the gateway couldn't determine | `logs.keepUnknown` |
 
 The metric tiers are listed in [Controlling what each destination stores](../../metrics/storing/#controlling-what-each-destination-stores).
 
-Lines with an unparsed level are sent because a panic is one of them.
-Some of them also belong below `WARN`, so turning `keepUnknown` off sends less, and can miss a panic.
-<!-- TODO: flip keepUnknown to false in the profile once the gateway's level heuristics classify most UNKNOWN lines. -->
+The gateway levels most lines, including Rust and Go panics, which arrive as `CRITICAL`.
+A line it can't level is `UNKNOWN`, and the profile doesn't send those.
+To send them as well, set `logs.keepUnknown` to `true`.
 
 ## Turn on call-home {#enable}
 
@@ -78,7 +78,7 @@ The certificate is re-read every five minutes, so a renewed certificate in the S
 ## Choose how much to send {#levels}
 
 Override the profile's settings in your own values file, after the profile.
-The following example sends errors and above, drops lines with an unparsed level, and sends recommended metrics:
+The following example sends errors and above, and recommended metrics:
 
 ```yaml
 pipeline:
@@ -86,7 +86,6 @@ pipeline:
     controlPlane:
       logs:
         minLevel: ERROR
-        keepUnknown: false
       metrics:
         minMetricImportance: recommended
 ```
