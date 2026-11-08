@@ -21,9 +21,11 @@ document are to be interpreted as described in
 ## Keep credentials out of logs at the source {#at-the-source}
 
 **The filter is an extra layer of protection, not the control.**
-In a healthy install it SHOULD NOT catch anything.
-Every redaction means a component wrote a credential to its log, and the filter protects only what's downstream of the gateway.
+In a healthy install it SHOULD NOT find a credential.
+A redaction usually means a component wrote a credential to its log.
+The rules also replace some values that only look like credentials, which [the limits](#what-it-does) list.
 
+The filter protects only what's downstream of the gateway.
 The raw line stays where the component wrote it:
 
 - in the container's log file on the node, until log rotation removes it;
@@ -31,13 +33,16 @@ The raw line stays where the component wrote it:
 - in any other agent or tool that reads those files.
 
 So you MUST NOT rely on the filter in place of configuring each component not to log credentials.
-Treat a redaction as a credential that was exposed.
+Treat a credential the filter redacted as exposed.
 
-When the filter catches something, take the following steps:
+When the filter redacts something, take the following steps:
 
 1. Find the line in Loki and the component that wrote it, as [Watch what it catches](#watch) describes.
-2. Fix the source, so the component stops logging the credential.
-3. Rotate the credential.
+2. Decide whether the replaced value was a credential.
+   The placeholder names the rule, the rest of the line usually shows what the field held, and `kubectl logs` shows the raw line until log rotation removes it.
+   If it wasn't a credential, nothing was exposed.
+3. Fix the source, so the component stops logging the credential.
+4. Rotate the credential.
 
 ## What the filter does {#what-it-does}
 
@@ -47,6 +52,7 @@ So the structured metadata the gateway derives from a line, such as `msg` and `e
 Each credential becomes `<redacted:RULE_ID>`, where `RULE_ID` names the rule that matched.
 The placeholder carries no part of the credential and no hash of it.
 It contains no quote, backslash, space, or `=`, so a redacted JSON or logfmt line still parses.
+Alloy replaces a credential everywhere it occurs in the line, so the same text in another field is replaced too.
 
 The rules are [Alloy's bundled Gitleaks rules](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.secretfilter/), which cover provider-issued credentials such as cloud access keys, tokens, and JSON Web Tokens.
 The chart adds rules for credentials that Materialize deployments carry and the bundled rules miss:
@@ -67,7 +73,8 @@ The filter scans the line and nothing else, so it has the following limits:
 - **Labels and structured metadata aren't scanned.**
   A Loki or OTLP push client that sends a credential as structured metadata or as a label stores it as sent.
 - **Some credentials don't look like credentials.**
-  A short or low-randomness value after a key such as `api_key` or `token` can pass, and so can a password stored as a JSON number, which a placeholder can't replace without breaking the line's JSON.
+  A short or low-randomness value after a key such as `api_key` or `token` can pass, and so can a password of fewer than four characters.
+  A numeric password after a JSON key passes too, because a placeholder in its place, or in place of the same digits elsewhere in the line, would break the line's JSON.
   The filter decodes nothing, so an encoded credential passes unless a rule matches its encoded form, as one does for base64 `postgres://` URLs.
 - **Some identifiers look like credentials.**
   A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
@@ -111,7 +118,7 @@ The gateway exports the following metrics:
 
 `loki_secretfilter_secrets_redacted_by_category_total`
 : Redactions, by `rule` and by `origin`, the container that logged the line.
-  Any increase means a component logged a credential.
+  An increase usually means a component logged a credential; check the line before you act on it.
 
 `loki_secretfilter_entries_bypassed_total`
 : Lines an instance forwarded unscanned because of its rate.
