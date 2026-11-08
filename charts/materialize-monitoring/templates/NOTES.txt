@@ -28,8 +28,15 @@ Grafana Alloy (gateway) is installed and configured to process metrics and logs.
     Destination: Datadog
     {{- end }}
   {{- end }}
-  {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
-  Log destination: {{ $dest.name }} (Grafana Loki)
+  {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
+    {{- $signals := list }}
+    {{- if $dest.logs.enabled }}
+      {{- $signals = append $signals "logs" }}
+    {{- end }}
+    {{- if $dest.metrics.enabled }}
+      {{- $signals = append $signals ( printf "%s metrics" $dest.metrics.minMetricImportance ) }}
+    {{- end }}
+  Destination: {{ $dest.name }} ({{ $dest.type }}: {{ join ", " $signals }})
   {{- end }}
 {{- end }}
 

@@ -956,6 +956,7 @@ point rather than a researched one.
     "services": [
       "loki-distributor",
       "loki-gateway",
+      "loki-querier",
       "loki-query-frontend",
       "loki-ruler"
     ]
@@ -1539,9 +1540,15 @@ Each entry has a `type`:
 
 - `loki`: logs, pushed through `loki.write`. Logs are on unless `logs.enabled` is `false`.
 - `otlp`: logs, metrics, or both, sent through one OTLP exporter over HTTP or gRPC.
-  A signal is on when its block is present, so an `otlp` entry sends nothing until it has a `logs` or `metrics` block.
+- `googleCloud`: metrics, to Google Cloud Managed Service for Prometheus through the Telemetry API,
+  authenticated with the gateway's Google identity. Metrics are on unless `metrics.enabled` is `false`.
+- `datadog`: logs, metrics, or both, through Datadog's exporter, authenticated with an API key.
 
-Remote write and the older OTLP exporters are still configured under `pipeline.metrics.gateway.destination`.
+On a type that carries several signals, a signal is on when its block is present,
+so an `otlp` or `datadog` entry sends nothing until it has a `logs` or `metrics` block.
+
+Remote write is configured under `pipeline.metrics.gateway.destination.prometheusRemoteWrite`.
+The exporters under `pipeline.metrics.gateway.destination.otel` are deprecated in favor of these types.
 
 The default map holds one entry, `loki`, pointing at the bundled in-cluster Loki.
 Add an entry to write logs somewhere else as well; set `loki.enabled: false` to stop writing to the bundled Loki.
@@ -1549,7 +1556,7 @@ Add an entry to write logs somewhere else as well; set `loki.enabled: false` to 
 **Each destination is its own failure domain.**
 Every log entry is handed to each destination in turn,
 so a destination that blocks when its queue fills holds back the others while it is stalled.
-A `loki` destination blocks by default; an `otlp` destination drops by default.
+A `loki` destination blocks by default; every other type drops by default.
 Leave one destination blocking (the copy that must be complete), and set `queue.blockOnOverflow: false` on any other `loki` entry.
 A dropping destination counts what it drops, in `loki_write_dropped_entries_total` or `otelcol_exporter_enqueue_failed_*`.
 The render warns when more than one log destination blocks.
@@ -1557,7 +1564,7 @@ The render warns when more than one log destination blocks.
 **Names become Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
 `egress` and `destination` are reserved.
 A name that breaks either rule fails at render.
-A `loki` destination's writer takes the bare name; an `otlp` destination's components are labeled `dest_<name>`.
+A `loki` destination's writer takes the bare name; every other type's components are labeled `dest_<name>`.
 
 **Fields are optional.** Anything an entry omits falls back to the defaults below.
 Environment variable names derive from the name,
@@ -1568,27 +1575,34 @@ The following table lists each field, the types it applies to, and its default:
 
 | Field | Types | Default | Meaning |
 | --- | --- | --- | --- |
-| `type` | all | — | `loki` or `otlp`. Required. |
+| `type` | all | — | `loki`, `otlp`, `googleCloud`, or `datadog`. Required. |
 | `enabled` | all | `true` | Write to this destination. |
-| `url` | all | — | Endpoint, required when the entry carries a signal. For `otlp`: a base URL over HTTP, `host:port` over gRPC. |
+| `url` | all but `datadog` | — | Endpoint, required when the entry carries a signal. `otlp`: a base URL over HTTP, `host:port` over gRPC. |
+| `url` | `googleCloud` | `https://telemetry.googleapis.com` | Override for a Private Service Connect endpoint. |
 | `urlEnv` | all | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint. |
 | `logs.enabled` | all | on for `loki`; on when `logs` is present for `otlp` | Send logs here. |
-| `logs.url` / `metrics.url` | `otlp`, HTTP | the base URL plus `/v1/logs` or `/v1/metrics` | One signal's own endpoint. |
+| `logs.url` / `metrics.url` | `otlp` over HTTP, `datadog` | derived | One signal's own endpoint. `datadog` derives both from `site`. |
 | `logs.selector` | all | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
 | `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. |
 | `logs.keepUnknown` | all | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
 | `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
 | `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
-| `metrics.enabled` | `otlp` | on when `metrics` is present | Send metrics here. |
-| `metrics.minMetricImportance` | `otlp` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
+| `metrics.enabled` | all but `loki` | on for `googleCloud`; on when `metrics` is present otherwise | Send metrics here. |
+| `metrics.minMetricImportance` | all but `loki` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
-| `compression` | `otlp` | `gzip` | Request compression. |
+| `compression` | `otlp`, `googleCloud` | `gzip` | Request compression. |
+| `project` / `location` | `googleCloud` | detected on GKE | The project and location every series is filed under. Required off GKE. |
+| `site` | `datadog` | `datadoghq.com` | Your Datadog site, such as `datadoghq.eu`. |
+| `apiKey` | `datadog` | `keyEnv: GATEWAY_<NAME>_DEST_API_KEY` | The API key, inline as `key` (written to a ConfigMap) or through `keyEnv`. |
+| `hostMetadata` | `datadog` | `false` | Send the gateway's host metadata. |
 | `retries` | `loki` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
 | `queue` | `loki` | Alloy's defaults | `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
-| `queue` | `otlp` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
-| `authType` | all | `none` | `none`, `basicAuth`, or `bearer`. |
-| `basicAuth` / `bearer` | all | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
-| `tls` | all | off | `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
+| `queue` | all but `loki` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
+| `authType` | `loki`, `otlp` | `none` | `none`, `basicAuth`, or `bearer`; `otlp` also takes `headers` and `sigv4`. |
+| `basicAuth` / `bearer` | `loki`, `otlp` | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
+| `headers` | `otlp` | — | For `authType: headers`: a list of `key` with `value` (rendered inline) or `valueEnv`. |
+| `sigv4` | `otlp` | — | For `authType: sigv4`: `region`, `service`, and `roleArn` to assume a role beyond the gateway's own. |
+| `tls` | `loki`, `otlp` | off | `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
 
 **A client certificate for a destination** goes in the Secret `mzmon-alloy-gateway-destination-tls`, which you create.
 The gateway mounts it at `/etc/mzmon/destination-tls`, so set `tls.certFile` and `tls.keyFile` to files there.
@@ -1860,7 +1874,7 @@ Move each one across, so `pipeline.logging.gateway.destination.loki.url` becomes
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to an OpenTelemetry/OTLP destination. By default, we do not use the OTLP destination. NOTE: This is configured in the pipeline.metrics.gateway.destination.otlp block, not the logging block.
+      <td class="helm-value-desc">Deprecated. Send logs to the logs-capable exporters under `pipeline.metrics.gateway.destination.otel`. Use a `logs` block on a `pipeline.destinations` entry of type `otlp` or `datadog` instead.
 </td>
     </tr>
     <tr>
@@ -2608,12 +2622,25 @@ A worked two-destination example — full fidelity in Thanos, only the
 alerting metrics in AMP — is in
 [`profiles/aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml).
 
-##### OpenTelemetry/OTLP destinations.
+##### OpenTelemetry/OTLP destinations (deprecated)
 
-OpenTelemetry/OTLP destination configuration for metrics (and logging).
+Deprecated. OpenTelemetry/OTLP exporters for metrics (and logging).
 
-This supports several components and allows further customization of endpoints.
-Multiple exporters can be enabled at once.
+**Deprecated: use an entry in `pipeline.destinations` instead.**
+This block still renders as it always has, and the render warns while any of it is enabled.
+Each exporter maps onto a destination type:
+
+| Here | In `pipeline.destinations` |
+| --- | --- |
+| `otlpExporter` | `type: otlp`, with `metrics: {}` and its own `authType` |
+| `googleCloudExporter` | `type: googleCloud` |
+| `datadogExporter` | `type: datadog`, with `apiKey.keyEnv: GATEWAY_OTEL_DEST_DATADOG_API_KEY` to keep the variable |
+| `otel.enabled` | a `metrics` block on the entry |
+| `pipeline.logging.gateway.destination.otel.enabled` | a `logs` block on the entry |
+| `auth` | the entry's own `authType`; `awsSigv4` becomes `sigv4` |
+
+The raw `config`, `handlers`, and `auth.custom` overrides have no equivalent.
+A destination that needs one of those can stay here until the block is removed in a major version.
 
 <table class="helm-values">
   <thead>
@@ -6495,7 +6522,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "extraArgs":["-labelvalue=$(POD_NAMESPACE)", "-streamname=container", "-streamvalue=canary", "-query-append=| pod=\"$(POD_NAME)\" | stream=\"stdout\""], "extraEnv":[{"name":"POD_NAMESPACE", "valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}], "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "labelname":"namespace", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}, "tenant":{"name":"loki"}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -6510,6 +6537,42 @@ unconditional so the two modes share one code path.
 }</pre>
 </td>
       <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.tenant</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "name": "loki"
+}</pre>
+</td>
+      <td class="helm-value-desc">The tenant the canary reads its own lines back from.
+The canary writes to stdout, and the Alloy agent and gateway carry its
+lines to Loki like any pod's, so they land in the tenant the gateway
+assigns the canary's namespace: `pipeline.logging.tenancy.staticTenant`
+under the default `static` tenancy. Keep the two in step; the render
+refuses a canary tenant that does not match. The subchart's own default,
+`self-monitoring`, is a tenant nothing writes to here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.labelname</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"namespace"</code></td>
+      <td class="helm-value-desc">How the canary finds its own lines, with labels the gateway keeps.
+The subchart's default selector, `{stream="stdout", pod="<pod>"}`, names
+two labels the gateway stores as structured metadata, so it matches
+nothing. The canary instead selects its namespace and container, and
+filters on structured metadata with `-query-append`: `pod`, so each
+canary pod reads only its own lines, and `stream`, so it reads only the
+entries it writes to stdout. Without the second, its own stderr log lines
+come back as invalid entries, which it logs, which come back again. The
+subchart passes `-labelvalue=$(POD_NAME)`; the later `-labelvalue` here
+wins.
+
+`extraArgs` is a list, so a values file that sets it replaces these.
+`profiles/mtls.values.yaml` restates them beside its TLS arguments.
 </td>
     </tr>
     <tr>

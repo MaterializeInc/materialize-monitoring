@@ -333,9 +333,10 @@ Getting it wrong is a 403 from the intake, not a routing error.
 `all` — and each tier includes the ones below it. This is a cost control, and a sharper one than
 for most backends: Datadog bills per custom metric, so `all` is rarely what you want.
 
-`metric_endpoint` and `logs_endpoint` override the intake URLs the exporter derives from `site`.
-Leave them null unless you are routing through a proxy or PrivateLink — a hand-written endpoint
-that disagrees with `site` fails at the intake rather than at plan time.
+`metric_endpoint` overrides the metrics intake URL the exporter derives from `site`. Leave it
+null unless you are routing through a proxy or PrivateLink — a hand-written endpoint that
+disagrees with `site` fails at the intake rather than at plan time. `logs_endpoint` has no
+effect: this input exports metrics only.
 </td>
         <td class="tf-var-schema"><pre><code>object({
     site            = optional(string, "datadoghq.com")

@@ -1362,23 +1362,237 @@ blocks:
               level: level
 
         # --- heuristic level extraction for still-unknown entries -----------
+        # Lines no per-application parser leveled arrive here as UNKNOWN. Each
+        # detector below recognizes one shape of line, sets `level` from it, and
+        # promotes the label at once, so the first detector to match wins and
+        # the rest skip the entry. `levelheuristic` (structured metadata) names
+        # the detector that leveled the entry, or `none`, so what remains
+        # UNKNOWN can be grouped and the leveled lines audited by source.
+        #
+        # The order is: formats that carry a level of their own, then severity
+        # read from the content, then defaults for formats known to carry none.
+        # Each selector carries a line filter, so a detector costs nothing on
+        # lines it cannot match. Measured against a day of an AKS install, where
+        # UNKNOWN was the largest level by more than double; the detectors
+        # leveled about nine lines in ten.
+
+        # Loki canary payloads: a nanosecond timestamp and padding, written to
+        # be read back rather than read.
+        - stage.match:
+            selector: '{level="UNKNOWN", app="loki", container="canary"} |~ "^[0-9]{19} p+$"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: TRACE
+              - stage.template:
+                  source: levelheuristic
+                  template: canary
+              - stage.labels:
+                  values:
+                    level: level
+        # The canary's per-entry reports. Its metrics carry the same signal, so
+        # the lines are detail. A failure to connect is left to the keyword
+        # detector, which makes it an error.
+        - stage.match:
+            selector: '{level="UNKNOWN", app="loki", container="canary"} |~ "^(websocket missing entry|failed to receive entry|failed to find entry|Querying loki for logs|Connecting to loki)"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: DEBUG
+              - stage.template:
+                  source: levelheuristic
+                  template: canary
+              - stage.labels:
+                  values:
+                    level: level
+        # klog, from any component: `I1108 19:59:31.736880  1 file.go:314] ...`.
+        # The per-application klog parsers above cover only the components they
+        # name; this catches the rest, kubelet's journal lines included.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^[IWEF][0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]+ +[0-9]+ [^ ]+\\]"'
+            blocks:
+              - stage.regex:
+                  expression: '^(?P<level>[IWEF])[0-9]{4} '
+              - stage.template:
+                  source: levelheuristic
+                  template: klog
+              - stage.labels:
+                  values:
+                    level: level
+        # Panics, Go's and Rust's, are CRITICAL. They arrive with no level the
+        # parsers can read, and they are the lines an UNKNOWN floor would lose.
+        # Ahead of the level-word detector, which would take Go's `panic: `.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^(panic: |fatal error: |goroutine [0-9]+ \\[)|panicked at "'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: CRITICAL
+              - stage.template:
+                  source: levelheuristic
+                  template: panic
+              - stage.labels:
+                  values:
+                    level: level
+        # A level word opening the line, bare or bracketed, after an optional
+        # timestamp and a space or tab: `2026-11-08T19:58:00Z INFO ...`
+        # (WALinuxAgent), `...Z<TAB>error<TAB>...` (zap's console encoder),
+        # `[2026/11/08 20:00:00] [ info] ...` (fluent-bit), `[INFO] ...` (CoreDNS).
+        # Anchored to the start, so a level word inside a message never matches.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "(?i)^(\\[?[0-9]{4}[-/][0-9]{2}[-/][0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}[^ \\t\\]]*\\]?[ \\t]+)?\\[? *(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic) *\\]?[ \\t:]"'
+            blocks:
+              - stage.regex:
+                  expression: '(?i)^(?:\[?[0-9]{4}[-/][0-9]{2}[-/][0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}[^ \t\]]*\]?[ \t]+)?\[? *(?P<level>trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic) *\]?[ \t:]'
+              - stage.template:
+                  source: levelheuristic
+                  template: level_prefix
+              - stage.labels:
+                  values:
+                    level: level
+        # HTTP access logs: `host ident user [date]`, then the request and the
+        # status (common and combined formats), or the status first (the Loki
+        # gateway's nginx). 5xx is ERROR, 4xx WARN, anything else INFO.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^[^ ]+ [^ ]+ [^ ]+ \\[[^\\]]+\\] +(\"[^\"]*\" )?[1-5][0-9]{2} "'
+            blocks:
+              - stage.regex:
+                  expression: '^\S+ \S+ \S+ \[[^\]]+\] +(?:"[^"]*" )?(?P<http_status>[1-5][0-9]{2}) '
+              - stage.template:
+                  source: level
+                  template: '{{ if hasPrefix "5" .http_status }}ERROR{{ else if hasPrefix "4" .http_status }}WARN{{ else }}INFO{{ end }}'
+              - stage.template:
+                  source: levelheuristic
+                  template: access_log
+              - stage.labels:
+                  values:
+                    level: level
+        # A `level=` or `"severity":` pair anywhere in the line. The filter is
+        # looser than the capture, so only the entries the capture leveled are
+        # tagged.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "(?i)\"?(level|severity)\"?\\s*[:=]"'
+            blocks:
+              - stage.regex:
+                  expression: '(?i)"?(?:level|severity)"?\s*[:=]\s*"?(?P<level>(?:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))"?'
+              - stage.labels:
+                  values:
+                    level: level
+              - stage.match:
+                  selector: '{level!="UNKNOWN"}'
+                  blocks:
+                    - stage.template:
+                        source: levelheuristic
+                        template: keyvalue
+
+        # Journal entries with no level in the text take journald's priority,
+        # which the agent copies to `journal_priority`. It is coarser than the
+        # text detectors above, so it runs after them: kubelet writes every klog
+        # level at the same priority.
+        - stage.match:
+            selector: '{level="UNKNOWN", journal_priority=~".+"}'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: '{{ .journal_priority }}'
+              - stage.template:
+                  source: levelheuristic
+                  template: journal_priority
+              - stage.labels:
+                  values:
+                    level: level
+        # Stack-trace frames, one entry per frame: Go's file lines
+        # (`<TAB>path/file.go:123`), function lines with or without arguments
+        # (`pkg/path.(*Type).Method`, `net/http.(*conn).serve(0xc0, {0x1, 0x2})`,
+        # `main.main()`) and `created by` lines, Java's `at pkg.Class.method(`,
+        # and Python's `File "...", line N`. They accompany an error, so they
+        # are ERROR, and `levelheuristic="stacktrace"` separates them from the
+        # error itself. A function line with arguments has no space before its
+        # opening parenthesis, which keeps an ordinary sentence out.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^\\t[^ ]+\\.go:[0-9]+|^[a-zA-Z0-9_.-]+/[^ \\t]*\\.[a-zA-Z_*(][^ \\t/]*$|^[a-zA-Z0-9_.-]+(/[^ \\t]*)?\\.[a-zA-Z_*(][^ \\t]*\\(.*\\)$|^created by [^ \\t]+|^\\s+at [a-zA-Z0-9_.$]+\\(|^  File \"[^\"]+\", line [0-9]+"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: ERROR
+              - stage.template:
+                  source: levelheuristic
+                  template: stacktrace
+              - stage.labels:
+                  values:
+                    level: level
+        # Severity read from words in the line. Only words that mark a failure
+        # or a warning promote a line.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "(?i)\\b(error|errors|failed|failure|fatal|exception)\\b"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: ERROR
+              - stage.template:
+                  source: levelheuristic
+                  template: keyword
+              - stage.labels:
+                  values:
+                    level: level
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "(?i)\\b(warn|warning|deprecated)\\b"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: WARN
+              - stage.template:
+                  source: levelheuristic
+                  template: keyword
+              - stage.labels:
+                  values:
+                    level: level
+        # Formats that carry no level and have not matched a failure or warning
+        # word above: Go's standard `log` package (`2026/11/08 20:07:09 ...`) is
+        # INFO, and fluent-bit output plugins' traces (`[flb-<plugin>] ...`) are
+        # DEBUG. A line in no known format stays UNKNOWN rather than being
+        # guessed.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: INFO
+              - stage.template:
+                  source: levelheuristic
+                  template: go_log
+              - stage.labels:
+                  values:
+                    level: level
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^\\[flb-[a-z0-9_-]+\\] "'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: DEBUG
+              - stage.template:
+                  source: levelheuristic
+                  template: fluent_bit_plugin
+              - stage.labels:
+                  values:
+                    level: level
         - stage.match:
             selector: '{level="UNKNOWN"}'
             blocks:
-              - stage.regex:
-                  expression: '(?i)"?(?:level|severity)"?\s*[:=]\s*"?(?P<level>(?:info|warn|warning|err|error|debug|crit|critical|fatal))"?'
-                  labels_from_groups: true
               - stage.template:
                   source: levelheuristic
-                  template: '{{ if eq .level "UNKNOWN" }}failed{{ else }}success{{ end }}'
-              - stage.structured_metadata:
-                  values:
-                    levelheuristic: ""
+                  template: none
+        - stage.structured_metadata:
+            values:
+              levelheuristic: ""
+        # Read by the journal detector, and never a stream label.
+        - stage.label_drop:
+            values: ["journal_priority"]
 
         # --- normalize level values -----------------------------------------
         - stage.replace:
             source: level
-            expression: '(?i)^(fatal|critical|crit|f)$'
+            expression: '(?i)^(fatal|critical|crit|f|panic|emerg|alert)$'
             replace: CRITICAL
         - stage.replace:
             source: level

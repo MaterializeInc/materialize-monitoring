@@ -35,6 +35,14 @@ blocks:
             action: replace
             source_labels: ["__journal__systemd_unit"]
             target_label: unit
+        # journald's priority keyword (`err`, `warning`, `info`, ...), which the
+        # gateway reads as the level of a line whose text carries none, and then
+        # drops. Labels starting with `__` never leave the agent, so it crosses
+        # under a plain name.
+        - rule:
+            action: replace
+            source_labels: ["__journal_priority_keyword"]
+            target_label: journal_priority
 
   # Process journal entries: tag with the node's hostname, forward to gateway.
   - loki.process:

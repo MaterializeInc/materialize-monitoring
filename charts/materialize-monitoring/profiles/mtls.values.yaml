@@ -172,6 +172,20 @@ loki:
               cert_file: /etc/mzmon/tls/tls.crt
               key_file: /etc/mzmon/tls/tls.key
 
+    # The query frontend as a client of the querier, for live tails. It
+    # proxies `/loki/api/v1/tail` to `tail_proxy_url`, which the subchart
+    # writes as `http://`; against a querier serving TLS that is a plaintext
+    # request at a TLS port, and every tail, the canary's included, fails with
+    # `websocket: bad handshake`. The querier Service is a SAN on Loki's
+    # certificate for this hop. Outside the distributed mode the address is
+    # empty and the frontend serves tails itself.
+    frontend:
+      tail_proxy_url: '{{ include "loki.querierAddress" . | replace "http://" "https://" }}'
+      tail_tls_config:
+        tls_ca_path: /etc/mzmon/tls/ca.crt
+        tls_cert_path: /etc/mzmon/tls/tls.crt
+        tls_key_path: /etc/mzmon/tls/tls.key
+
   # The mount. `defaults` rather than a per-component list because Loki's
   # `_pod.tpl` coalesces component -> defaults -> loki, so this one entry reaches
   # every microservice; setting it per component means remembering all of them
@@ -249,7 +263,15 @@ loki:
     # ignores the keypair until phase 2, and the canary will not start without
     # it. Verified on a live cluster; the flag help calls all three files
     # "optional", which they are not once `-tls` is set.
+    #
+    # This list replaces the chart's own `extraArgs`, so the selector arguments
+    # are restated from `values.yaml`; without them the canary queries labels
+    # the gateway does not keep.
     extraArgs:
+      - -labelvalue=$(POD_NAMESPACE)
+      - -streamname=container
+      - -streamvalue=canary
+      - -query-append=| pod="$(POD_NAME)" | stream="stdout"
       - -tls
       - -ca-file=/etc/mzmon/tls/ca.crt
       - -cert-file=/etc/mzmon/tls/tls.crt
