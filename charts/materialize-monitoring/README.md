@@ -1533,6 +1533,63 @@ release instances.
   </tbody>
 </table>
 
+#### Destinations
+
+The gateway's named destinations, as a map of name to destination.
+
+**One entry is one wire**: an endpoint, its credentials, and its queue.
+The signals an entry carries are switched on in their own blocks.
+A backend that takes only logs needs nothing switched off,
+and one that takes several signals has one entry and one credential.
+Only log destinations of type `loki` live here so far.
+Metric destinations are still under `pipeline.metrics.gateway.destination`.
+
+The default map holds one entry, `loki`, pointing at the bundled in-cluster Loki.
+Add an entry to write logs somewhere else as well; set `loki.enabled: false` to stop writing to the bundled Loki.
+
+**Each destination is its own failure domain.**
+Every log entry is handed to each destination in turn,
+so a destination that blocks when its queue fills holds back the others while it is stalled.
+Leave one destination blocking (the copy that must be complete), and set `queue.blockOnOverflow: false` on the rest.
+They then drop entries when they fall behind, and count them in `loki_write_dropped_entries_total`.
+The render warns when more than one log destination blocks.
+
+**Names are Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
+`egress` and `destination` are reserved.
+A name that breaks either rule fails at render.
+
+**Fields are optional.** Anything an entry omits falls back to the defaults below.
+Environment variable names derive from the name,
+such as `GATEWAY_CONTROLPLANE_DEST` and `GATEWAY_CONTROLPLANE_DEST_PASSWORD`.
+You can name them yourself where a caller wants to choose them.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `type` | — | `loki`. Required. |
+| `enabled` | `true` | Write to this destination. |
+| `url` | — | Push endpoint. Required when enabled. Supports `tpl`. |
+| `urlEnv` | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint URL. |
+| `logs.enabled` | `true` for `loki` | Send logs to this destination. |
+| `retries` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
+| `queue` | Alloy's defaults | `loki.write`'s `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
+| `authType` | `none` | `none`, `basicAuth`, or `bearer`. |
+| `basicAuth` / `bearer` | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
+| `tls` | off | Client TLS: `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`. |
+
+For example, a second, external Loki that must never slow the bundled one down:
+
+```yaml
+pipeline:
+  destinations:
+    archive:
+      type: loki
+      url: https://logs.example.com/loki/api/v1/push
+      authType: bearer
+      queue:
+        capacity: 64MiB
+        blockOnOverflow: false
+```
+
 #### Log configuration
 
 Configuration for log behavior
@@ -1754,151 +1811,15 @@ established it.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable writing to a loki destination. By default, we use the in-cluster loki
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.url</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://loki-distributor.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
-      <td class="helm-value-desc">Loki push endpoint URL.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.retries</td>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-{
-  "maxBackoffPeriod": "5m",
-  "maxBackoffRetries": 10,
-  "minBackoffPeriod": "1s",
-  "retryOnHttp429": true
-}</pre>
+{}</pre>
 </td>
-      <td class="helm-value-desc">Retry configuration.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.authType</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"none"</code></td>
-      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.basicAuth</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "password": "",
-  "passwordEnv": "GATEWAY_LOKI_DEST_PASSWORD",
-  "username": "",
-  "usernameEnv": "GATEWAY_LOKI_DEST_USERNAME"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth You will need to provide alloy-gateway.alloy.agent.extraEnv TODO: add a check for this
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.bearer</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "token": "",
-  "tokenEnv": "GATEWAY_LOKI_DEST_BEARER_TOKEN"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.oauth2</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "clientId": "",
-  "clientIdEnv": "GATEWAY_LOKI_DEST_OAUTH2_CLIENT_ID",
-  "clientSecret": "",
-  "clientSecretEnv": "GATEWAY_LOKI_DEST_OAUTH2_CLIENT_SECRET",
-  "scopes": [],
-  "tokenUrl": "",
-  "tokenUrlEnv": "GATEWAY_LOKI_DEST_OAUTH2_TOKEN_URL"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Whether to enable TLS for the loki destination.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.verify</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Whether to verify the TLS certificate for the loki destination.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.ca</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.cert</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client certificate PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.key</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client private key PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.caFile</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Paths to certificate material on disk, and the preferred carrier for anything cert-manager renews.
-The inline `ca`/`cert`/`key` above travel through **environment
-variables**, which are captured once at process start. cert-manager
-renews by rewriting the Secret in place, so an env-carried PEM works
-for exactly one certificate lifetime and then fails on every hop at
-once, months after the change that caused it and with no deploy
-nearby to blame.
+      <td class="helm-value-desc">Deprecated. Use `pipeline.destinations.loki` instead.
 
-A mounted file does not have that problem: the kubelet refreshes
-Secret contents atomically, and Alloy's client paths pick up the new
-material on the next connection. Set these to paths under
-`/etc/mzmon/tls`, which is where the chart mounts the
-certificate it issues for this component.
-
-Inline PEM stays supported as the bring-your-own-PKI escape hatch.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.serverName</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.minVersion</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"TLS13"</code></td>
-      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.
+Keys set here still apply: the chart folds them onto `pipeline.destinations.loki` and warns at render.
+Move each one across, so `pipeline.logging.gateway.destination.loki.url` becomes `pipeline.destinations.loki.url`.
 </td>
     </tr>
     <tr>

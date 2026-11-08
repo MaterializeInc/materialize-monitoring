@@ -436,6 +436,13 @@ alertmanager:
 # because cert-manager renews by rewriting the Secret, and an env-injected PEM is
 # read once at process start — it works for exactly one certificate lifetime.
 pipeline:
+  destinations:
+    # The gateway's hop to the bundled Loki.
+    loki:
+      tls:
+        enabled: true
+        caFile: /etc/mzmon/tls/ca.crt
+        # certFile/keyFile arrive in phase 2.
   logging:
     # The gateway's own listeners. Both halves of the agent hop move here, in one
     # release: Kubernetes does not order a DaemonSet against a Deployment, and
@@ -456,12 +463,6 @@ pipeline:
           # CA as require-and-verify — it has no client_auth_type — so supplying
           # one here would reject every OTLP sender that has not rolled.
           clientAuth: NoClientCert
-      destination:
-        loki:
-          tls:
-            enabled: true
-            caFile: /etc/mzmon/tls/ca.crt
-            # certFile/keyFile arrive in phase 2.
     agent:
       destination:
         loki:

@@ -6,8 +6,48 @@ weight: 20
 # Storing Logs
 
 Loki keeps all durable log data in a single [object storage](../architecture/#storage) backend, maintained by the [Loki Compactor](../architecture/#backend).
-This page covers the storage layout, the index, retention, and disaster recovery.
+This page covers where the gateway writes logs, the storage layout, the index, retention, and disaster recovery.
 See the [logging architecture](../architecture/) for how storage relates to the ingesters that write it and the queriers that read it.
+
+## Where the gateway writes logs {#destinations}
+
+The gateway writes processed logs to each destination in `pipeline.destinations`.
+The map holds one entry by default, `loki`, which writes to the bundled Loki.
+Each entry gets its own `loki.write` component, labeled with the entry's name, and its own queue.
+
+To write logs somewhere else as well, add an entry.
+The following example adds an external Loki that never slows down delivery to the bundled one:
+
+```yaml
+pipeline:
+  destinations:
+    archive:
+      type: loki
+      url: https://logs.example.com/loki/api/v1/push
+      authType: bearer
+      queue:
+        capacity: 64MiB
+        blockOnOverflow: false
+```
+
+To stop writing to the bundled Loki, set `pipeline.destinations.loki.enabled` to `false`.
+For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
+
+### Keep one destination from holding back another {#destination-isolation}
+
+The gateway hands every log entry to each destination in turn.
+By default, a destination whose queue is full makes the gateway wait for room, which is `queue.blockOnOverflow: true`.
+While that destination is stalled, no other destination receives anything either.
+
+Set `queue.blockOnOverflow: false` on every destination except the one whose copy must be complete.
+A destination set that way drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
+`queue.capacity` sets how far it can fall behind before it drops.
+The render warns when more than one log destination blocks.
+
+> [!NOTE]
+>   `pipeline.logging.gateway.destination.loki` is deprecated.
+>   Keys you still set there apply to `pipeline.destinations.loki`, and the render warns.
+>   Move each key across, so `pipeline.logging.gateway.destination.loki.url` becomes `pipeline.destinations.loki.url`.
 
 ## Object storage
 

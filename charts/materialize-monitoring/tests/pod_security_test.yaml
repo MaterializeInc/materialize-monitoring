@@ -126,7 +126,7 @@ tests:
   - it: runs the Alloy agent under RuntimeDefault seccomp
     set:
       tags.pipeline: true
-      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.destinations.loki.enabled: false
       pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
     template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
     asserts:
@@ -137,7 +137,7 @@ tests:
   - it: runs the Alloy gateway under RuntimeDefault seccomp
     set:
       tags.pipeline: true
-      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.destinations.loki.enabled: false
       pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
     template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
     asserts:
@@ -173,7 +173,7 @@ tests:
   - it: runs the pre-validate job under RuntimeDefault seccomp, like the cleanup job
     set:
       tags.pipeline: true
-      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.destinations.loki.enabled: false
       pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
     template: templates/pipelines/validator/job-validate-agent.yaml
     asserts:

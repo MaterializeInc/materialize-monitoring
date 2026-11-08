@@ -30,7 +30,7 @@ set:
   tags.pipeline: true
   # Off-cluster, which is what these tests are about and what keeps the
   # reachability validators quiet about backends this suite does not deploy.
-  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
   pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
 tests:
   # --- the default, unchanged -------------------------------------------------

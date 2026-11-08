@@ -26,7 +26,7 @@ set:
   tags.pipeline: true
   # Off-cluster, so the reachability validators stay quiet about a Thanos and a
   # Loki this suite does not deploy.
-  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
   pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
   pipeline.metrics.gateway.destination.otel.enabled: true
   pipeline.metrics.gateway.destination.otel.googleCloudExporter.enabled: true
