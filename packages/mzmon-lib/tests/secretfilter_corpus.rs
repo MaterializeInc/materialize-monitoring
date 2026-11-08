@@ -472,10 +472,18 @@ fn the_ingest_rules_redact_the_corpus() {
                 f.id, f.line
             ));
         }
-        for rule in &f.rules {
-            if !out.contains(&format!("<redacted:{rule}>")) {
-                failures.push(format!("{}: no <redacted:{rule}> in\n    {out}", f.id));
-            }
+        // Rules that match the same secret are each counted, and the secret
+        // is replaced once, so one of their placeholders is enough.
+        if !f.rules.is_empty()
+            && !f
+                .rules
+                .iter()
+                .any(|rule| out.contains(&format!("<redacted:{rule}>")))
+        {
+            failures.push(format!(
+                "{}: no placeholder for {:?} in\n    {out}",
+                f.id, f.rules
+            ));
         }
         if let Some(secret) = &f.secret
             && out.contains(secret.as_str())

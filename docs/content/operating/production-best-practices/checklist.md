@@ -155,9 +155,10 @@ Skip one of these and someone outside the trust boundary can read your data or c
   SNS is the only integration that can use one; SES and Azure Communication Services email authenticate over SMTP with a credential in the Secret.
 - [ ] `[operator]` [Secret filtering](../secret-filtering/#at-the-source): **Keep credentials out of logs at the source.**
   A credential a component logs is in Loki for the tenant's full retention, readable by anyone who can query it.
-  The gateway's secret filter is an extra layer of protection, and a healthy install gives it nothing to catch.
-  When it does catch one, the raw line is still in the container's log file on the node and in `kubectl logs`, so fix
+  The gateway's secret filter is an extra layer of protection, and a healthy install gives it no credential to find.
+  When it redacts one, the raw line is still in the container's log file on the node and in `kubectl logs`, so fix
   the component and rotate the credential.
+  Check the value first: the rules also replace some values that only look like credentials.
 
 <details>
 <summary>What the chart already does</summary>
@@ -684,7 +685,7 @@ Each adds defense in depth, or extra signal where your environment calls for it.
   layer of protection behind keeping credentials out of logs: set `GATEWAY_SECRETFILTER_RATE` and
   `GATEWAY_SECRETFILTER_BULK_RATE` to `"1"` in `pipeline.env`.
   It ships off.
-  Then alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`, because each redaction is a credential a component exposed.
+  Then alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`, and check each one: a redaction is usually a credential a component logged.
 - [ ] `[operator]` [Alertmanager](../../../alerting/architecture/#tls): **TLS on the API port** comes with the mTLS
   profiles: `alerting.server.tls` moves 9093 to TLS, and the profiles move the probes, the reloader, the scrape, both
   rulers, and the Grafana data source with it.

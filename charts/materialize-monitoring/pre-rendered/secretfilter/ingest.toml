@@ -68,18 +68,26 @@ keywords = ["-----begin"]
 # Upstream's generic rule applies an entropy floor, which a human-chosen
 # password falls below, and does not see through `\"`.
 #
-# A quoted value is redacted to its closing quote, so a passphrase with
-# spaces goes whole. A bare value stops at whitespace, and is matched only
-# after an unquoted key: after a JSON key it is a number or a literal, and the
-# placeholder in its place would break the line's JSON. Gitleaks redacts
+# A quoted value is redacted to its closing quote, so a passphrase with spaces
+# goes whole. Plain JSON escapes a quote in the value as `\"`, and JSON nested
+# inside a JSON string as `\\\"`, so a quoted key picks the branch by whether
+# its own closing quote is escaped. A bare value stops at whitespace and
+# follows only an unquoted key: after a JSON key it is a number or a literal,
+# and a placeholder in its place breaks the line's JSON. Gitleaks redacts
 # whichever group matched.
 [[rules]]
 id = "mzmon-password-field"
 description = "A password-named field, any entropy, including inside escaped JSON or Rust Debug output"
-regex = '''(?i)\b(?:(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)\\?["']\s*[:=]\s*(?:\\?"([^"\\]{1,256})\\?"|'([^'\\]{1,256})')|(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)\s*[:=]\s*(?:Some\()?(?:\\?"([^"\\]{1,256})\\?"|'([^'\\]{1,256})'|([^\s"'\\,;)}]{4,})))'''
+regex = '''(?i)\b(?:(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)"\s*:\s*"((?:[^"\\]|\\.){4,256})"|(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)\\"\s*:\s*\\"((?:[^"\\]|\\\\\\\\|\\\\\\"|\\\\[a-z/]|\\[a-z/]){4,256})\\"|(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)'\s*[:=]\s*'((?:[^'\\]|\\.){4,256})'|(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)\s*[:=]\s*(?:Some\()?(?:"((?:[^"\\]|\\.){4,256})"|\\"((?:[^"\\]|\\\\\\\\|\\\\\\"|\\\\[a-z/]|\\[a-z/]){4,256})\\"|'((?:[^'\\]|\\.){4,256})'|([^\s"'\\,;)}]{4,})))'''
 keywords = ["passw", "pwd", "secret"]
   [[rules.allowlists]]
   regexes = ['''^(?:None|Some|null|nil|true|false|\*+|(?i:<?redacted.*)|\$\{?[A-Za-z_]+\}?)$''']
+  # Alloy replaces a secret everywhere it occurs in the line, so a numeric
+  # password after a plain JSON key would also replace any JSON number with the
+  # same digits and break the line's JSON. Logfmt and nested JSON are unaffected.
+  [[rules.allowlists]]
+  regexTarget = "match"
+  regexes = ['''(?i)^[a-z_-]+"\s*:\s*"-?[0-9]+(?:\.[0-9]+)?(?:e[+-]?[0-9]+)?"$''']
 
 # A controller that logs a Kubernetes Secret logs its data base64-encoded, and
 # the filter decodes nothing. Base64 encodes three bytes as four characters,

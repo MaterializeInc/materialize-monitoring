@@ -78,6 +78,39 @@
   rules: [mzmon-password-field]
   secret: 'horse battery staple'
 
+# An escaped quote or backslash inside a quoted value doesn't end it, in plain
+# JSON or in JSON nested inside a JSON string.
+- id: password-json-escaped-quote
+  line: '{"user":"mz","password":"abc\"tail-secret","port":5432}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+- id: password-json-backslash
+  line: '{"user":"mz","password":"abc\\tail-secret","port":5432}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+- id: password-nested-escaped-quote
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"DEBUG","fields":{"message":"request body: {\"user\":\"mz\",\"password\":\"abc\\\"tail-secret\"}"},"target":"mz_http_util"}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+- id: password-nested-backslash
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"DEBUG","fields":{"message":"request body: {\"password\":\"abc\\\\tail-secret\"}"},"target":"mz_http_util"}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+- id: password-debug-escaped-quote
+  line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"ERROR","fields":{"message":"bad config: Config { password: Some(\"abc\\\"tail-secret\") }"},"target":"mz_postgres_util"}'
+  rules: [mzmon-password-field]
+  secret: 'tail-secret'
+
+# Two rules match the same secret. Both are counted, and it's replaced once.
+- id: app-password-in-password-field
+  line: '{"user":"alice","password":"<<MZP_TOKEN>>"}'
+  rules: [mzmon-password-field, mzmon-materialize-app-password]
+  secret: '<<MZP_TOKEN>>'
+
 - id: authorization-header-map
   line: '{"timestamp":"2026-11-08T16:49:29.676746Z","level":"DEBUG","fields":{"message":"request"},"span":{"request.headers":"{\"authorization\": \"Bearer <<ALNUM40>>\", \"accept\": \"*/*\"}"},"target":"mz_http_util"}'
   rules: [mzmon-authorization-header]
@@ -158,6 +191,16 @@
 # line's JSON, so the rule leaves bare values after a JSON key alone.
 - id: password-as-json-number
   line: '{"user":"mz","password":123456,"port":5432}'
+
+# Alloy replaces a secret everywhere it occurs in the line, so a numeric
+# password after a JSON key would also replace the port and break the JSON.
+- id: password-numeric-json-string
+  line: '{"password":"5432","port":5432}'
+
+# The rule needs four characters, so a shorter value doesn't replace every
+# match of a few common letters elsewhere in the line.
+- id: password-under-four-characters
+  line: '{"user":"mz","password":"abc"}'
 
 # --- identifiers that must pass untouched ------------------------------------
 
