@@ -37,6 +37,8 @@ pub enum ComponentBlock {
     LokiProcess(loki::LokiProcessBlock),
     #[serde(rename = "loki.relabel")]
     LokiRelabel(loki::LokiRelabelBlock),
+    #[serde(rename = "loki.secretfilter")]
+    LokiSecretfilter(Box<loki::LokiSecretfilterBlock>),
     #[serde(rename = "loki.source.journal")]
     LokiSourceJournal(loki::LokiSourceJournalBlock),
     #[serde(rename = "loki.source.file")]
@@ -123,6 +125,7 @@ impl_to_block_dispatch!(ComponentBlock {
     LokiEcho,
     LokiProcess,
     LokiRelabel,
+    LokiSecretfilter,
     LokiSourceJournal,
     LokiSourceFile,
     DiscoveryKubernetes,
