@@ -229,7 +229,9 @@ The `oversized-log-lines` alert in `dev-alerts.yaml` fires on line cuts, for the
 
 `inputProcessor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
 
-- **Logs → Loki.** The chart renders one `loki.write` per log destination in `pipeline.destinations`, labeled with the destination's name, and lists each one in `loki.process "egress"`'s `forward_to`.
+- **Logs → destinations.** The chart renders one writer per log destination in `pipeline.destinations` and lists each one in `loki.process "egress"`'s `forward_to`.
+  A `loki` destination is a `loki.write` labeled with its name.
+  An `otlp` destination is `otelcol.receiver.loki` → `otelcol.processor.batch` → an OTLP exporter, all labeled `dest_<name>`, and its metrics come off `otelcol.processor.filter "egress"` through its own tier filter.
   The helpers are in `charts/materialize-monitoring/templates/_destination_helpers.tpl`.
   The stub wires `loki.process "egress"` to `loki.write "loki"`, the default destination's label, reading `GATEWAY_LOKI_DEST` with an in-cluster fallback, and leaves auth out.
   Each destination reads its URL from `GATEWAY_<NAME>_DEST`, so the default `loki` destination keeps `GATEWAY_LOKI_DEST`.
