@@ -25,7 +25,7 @@ set:
   # backend, so this matches what these tests are actually about — and it keeps
   # the reachability validators quiet, since they flag in-cluster Service URLs
   # aimed at backends this suite deliberately does not deploy.
-  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
   pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
 tests:
   - it: "metrics: external_labels renders at the top level, not inside endpoint"
@@ -80,7 +80,7 @@ tests:
 
   - it: "loki: basic_auth renders inside endpoint"
     set:
-      pipeline.logging.gateway.destination.loki.authType: basicAuth
+      pipeline.destinations.loki.authType: basicAuth
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -89,7 +89,7 @@ tests:
 
   - it: "loki: bearer authorization renders inside endpoint"
     set:
-      pipeline.logging.gateway.destination.loki.authType: bearer
+      pipeline.destinations.loki.authType: bearer
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:

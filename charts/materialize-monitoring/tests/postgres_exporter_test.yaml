@@ -14,7 +14,7 @@ set:
   tags.default: false
   tags.alloy-gateway: true
   pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
-  pipeline.logging.gateway.destination.loki.enabled: false
+  pipeline.destinations.loki.enabled: false
 templates:
   # The Deployment hashes these two into its pod annotations, so they are
   # loaded beside it.

@@ -46,7 +46,7 @@ blocks:
   # fan-out to several sinks, …) while keeping the `egress` label stable.
   - loki.process:
       label: egress
-      forward_to: ["loki.write.destination.receiver"]
+      forward_to: ["loki.write.loki.receiver"]
 
   # Metrics egress seam: the tail of gateway.yaml's otelcol metrics chain
   # (otelcol.processor.batch.outputBatch) forwards here. Swap its output to change
@@ -64,9 +64,10 @@ blocks:
       label: egress
       forward_to: ["prometheus.remote_write.destination.receiver"]
 
-  # Default sink: forwards processed entries to the log store.
+  # Default sink: forwards processed entries to the log store. Labelled after
+  # the chart's default destination, `pipeline.destinations.loki`.
   - loki.write:
-      label: destination
+      label: loki
       blocks:
         - endpoint:
             url:

@@ -20,26 +20,27 @@ data:
   GATEWAY_KUBELET_TLS_INSECURE: {{ $kubelet.tlsInsecureSkipVerify | toJson | quote }}
   {{- $kubeProxy := .Values.pipeline.metrics.kubeProxy }}
   GATEWAY_KUBE_PROXY_SCRAPE_INTERVAL: {{ $kubeProxy.scrapeInterval | quote }}
-  {{- $lokiDest := .Values.pipeline.logging.gateway.destination.loki }}
-  {{- if $lokiDest.enabled }}
-  GATEWAY_LOKI_DEST: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $lokiDest.url $ ) "tls" $lokiDest.tls ) | quote }}
-    {{- if eq $lokiDest.authType "none" }}
-    {{- else if eq $lokiDest.authType "basicAuth" }}
-      {{- if $lokiDest.basicAuth.username }}
-  {{ $lokiDest.basicAuth.usernameEnv }}: {{ tpl $lokiDest.basicAuth.username $ | quote }}
+  {{- /* One block of variables per log destination, named by the same helper
+         the pipeline reads them with. */}}
+  {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
+  {{ $dest.urlEnv }}: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.url $ ) "tls" $dest.tls ) | quote }}
+    {{- if eq $dest.authType "none" }}
+    {{- else if eq $dest.authType "basicAuth" }}
+      {{- if $dest.basicAuth.username }}
+  {{ $dest.basicAuth.usernameEnv }}: {{ tpl $dest.basicAuth.username $ | quote }}
       {{- end }}
-      {{- if $lokiDest.basicAuth.password }}
-  {{ $lokiDest.basicAuth.passwordEnv }}: {{ tpl $lokiDest.basicAuth.password $ | quote }}
+      {{- if $dest.basicAuth.password }}
+  {{ $dest.basicAuth.passwordEnv }}: {{ tpl $dest.basicAuth.password $ | quote }}
       {{- end }}
-    {{- else if eq $lokiDest.authType "bearer" }}
-      {{- if $lokiDest.bearer.token }}
-  {{ $lokiDest.bearer.tokenEnv }}: {{ tpl $lokiDest.bearer.token $ | quote }}
+    {{- else if eq $dest.authType "bearer" }}
+      {{- if $dest.bearer.token }}
+  {{ $dest.bearer.tokenEnv }}: {{ tpl $dest.bearer.token $ | quote }}
       {{- end }}
     {{- else }}
-      {{- printf "Unsupported .Values.pipeline.logging.gateway.destination.loki.authType (%s)" $lokiDest.authType | fail }}
+      {{- printf "Unsupported pipeline.destinations.%s.authType (%s)" $dest.name $dest.authType | fail }}
     {{- end }}
   {{- end }}
-  {{- /* </lokiDest> */}}
+  {{- /* </logDests> */}}
 
   {{- /* One block of variables per named remote-write destination. The names are
          resolved by the same helper the pipeline uses, so the variable this

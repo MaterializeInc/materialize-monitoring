@@ -111,18 +111,16 @@ postgres-exporter:
 # One pod instead of a distributed ring. Logs live on an emptyDir and are gone
 # when the pod is.
 pipeline:
-  logging:
-    gateway:
-      destination:
-        loki:
-          # SingleBinary renders one `loki` Service rather than the distributor.
-          url: 'http://loki.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
-          # SWITCH: pairs with `loki.enabled: false` below.
-          # enabled: false
+  destinations:
+    loki:
+      # SingleBinary renders one `loki` Service rather than the distributor.
+      url: 'http://loki.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
+      # SWITCH: pairs with `loki.enabled: false` below.
+      # enabled: false
 
 loki:
   # SWITCH: turns Loki off entirely. Also uncomment the `enabled: false` under
-  # `pipeline.logging.gateway.destination.loki` above, or the Alloy gateway
+  # `pipeline.destinations.loki` above, or the Alloy gateway
   # retries a Loki that does not exist.
   # enabled: false
 

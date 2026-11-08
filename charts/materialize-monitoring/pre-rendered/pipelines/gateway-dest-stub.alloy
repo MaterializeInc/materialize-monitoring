@@ -37,7 +37,7 @@
 
 loki.process "egress" {
 	forward_to = [
-		loki.write.destination.receiver,
+		loki.write.loki.receiver,
 	]
 }
 
@@ -55,7 +55,7 @@ prometheus.relabel "egress" {
 	]
 }
 
-loki.write "destination" {
+loki.write "loki" {
 	endpoint {
 		url = coalesce(sys.env("GATEWAY_LOKI_DEST"), "http://loki-distributor.monitoring.svc:3100/loki/api/v1/push")
 	}
