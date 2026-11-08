@@ -8977,6 +8977,12 @@ Skip one of these and someone outside the trust boundary can read your data or c
   not keys: an IRSA role or EKS Pod Identity association for the `alertmanager` ServiceAccount, allowing `sns:Publish`
   on the topic (plus `kms:GenerateDataKey*` and `kms:Decrypt` for an encrypted topic).
   SNS is the only integration that can use one; SES and Azure Communication Services email authenticate over SMTP with a credential in the Secret.
+- [ ] `[operator]` [Secret filtering](../secret-filtering/#at-the-source): **Keep credentials out of logs at the source.**
+  A credential a component logs is in Loki for the tenant's full retention, readable by anyone who can query it.
+  The gateway's secret filter is an extra layer of protection, and a healthy install gives it no credential to find.
+  When it redacts one, the raw line is still in the container's log file on the node and in `kubectl logs`, so fix
+  the component and rotate the credential.
+  Check the value first: the rules also replace some values that only look like credentials.
 
 <details>
 <summary>What the chart already does</summary>
@@ -9499,6 +9505,11 @@ Each adds defense in depth, or extra signal where your environment calls for it.
   A VPC endpoint's CIDR, or Cilium's `toFQDNs`, is the tighter form; for Loki, see [Object-storage egress](../loki/#object-storage-egress).
 - [ ] `[operator]` [TLS](../../securing/#gaps): Turn on in-cluster TLS where your environment requires it.
   Certificates and the mTLS profiles ship off by default.
+- [ ] `[operator]` [Secret filtering](../secret-filtering/#turn-it-on): **Turn on the secret filter** for an extra
+  layer of protection behind keeping credentials out of logs: set `GATEWAY_SECRETFILTER_RATE` and
+  `GATEWAY_SECRETFILTER_BULK_RATE` to `"1"` in `pipeline.env`.
+  It ships off.
+  Then alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`, and check each one: a redaction is usually a credential a component logged.
 - [ ] `[operator]` [Alertmanager](../../../alerting/architecture/#tls): **TLS on the API port** comes with the mTLS
   profiles: `alerting.server.tls` moves 9093 to TLS, and the profiles move the probes, the reloader, the scrape, both
   rulers, and the Grafana data source with it.
@@ -9878,6 +9889,144 @@ For more information, see [Where the gateway writes logs](../../../logs-and-even
 To send your own logs, target the gateway's OTLP ports, `:4317` for gRPC or `:4318` for HTTP.
 To chain gateways, point the upstream writer at the downstream gateway's `:3100`.
 For more information, see [Sending your own logs to the gateway](../../../logs-and-events/collecting/#sending-your-own-logs-to-the-gateway).
+
+
+--------------------------------------------------------------------------------
+title: "Secret filtering"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-k8s-openapi-0-x/operating/production-best-practices/secret-filtering/index.md
+--------------------------------------------------------------------------------
+
+# Secret filtering
+
+The gateway can scan every log line for credentials and replace each one it finds with a placeholder before the line is stored.
+This page is for you if you operate the stack and decide whether to turn that filter on, and what to do when it catches something.
+What to do about it is in the [production checklist](../checklist/).
+
+{{< rfc-2119 >}}
+
+## Keep credentials out of logs at the source {#at-the-source}
+
+**The filter is an extra layer of protection, not the control.**
+In a healthy install it SHOULD NOT find a credential.
+A redaction usually means a component wrote a credential to its log.
+The rules also replace some values that only look like credentials, which [the limits](#what-it-does) list.
+
+The filter protects only what's downstream of the gateway.
+The raw line stays where the component wrote it:
+
+- in the container's log file on the node, until log rotation removes it;
+- in `kubectl logs`, for anyone allowed to read the component's pod logs;
+- in any other agent or tool that reads those files.
+
+So you MUST NOT rely on the filter in place of configuring each component not to log credentials.
+Treat a credential the filter redacted as exposed.
+
+When the filter redacts something, take the following steps:
+
+1. Find the line in Loki and the component that wrote it, as [Watch what it catches](#watch) describes.
+2. Decide whether the replaced value was a credential.
+   The placeholder names the rule, the rest of the line usually shows what the field held, and `kubectl logs` shows the raw line until log rotation removes it.
+   If it wasn't a credential, nothing was exposed.
+3. Fix the source, so the component stops logging the credential.
+4. Rotate the credential.
+
+## What the filter does {#what-it-does}
+
+The filter runs in the gateway after a multi-line record such as a panic is reassembled, and before the gateway parses the line.
+So the structured metadata the gateway derives from a line, such as `msg` and `error`, comes from text that's already redacted.
+
+Each credential becomes `<redacted:RULE_ID>`, where `RULE_ID` names the rule that matched.
+The placeholder carries no part of the credential and no hash of it.
+It contains no quote, backslash, space, or `=`, so a redacted JSON or logfmt line still parses.
+Alloy replaces a credential everywhere it occurs in the line, so the same text in another field is replaced too.
+
+The rules are [Alloy's bundled Gitleaks rules](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.secretfilter/), which cover provider-issued credentials such as cloud access keys, tokens, and JSON Web Tokens.
+The chart adds rules for credentials that Materialize deployments carry and the bundled rules miss:
+
+- passwords in connection URLs, such as the metadata database's `metadata_backend_url`;
+- password fields, including human-chosen passwords and values inside escaped JSON or Rust `Debug` output;
+- `Authorization` and `Proxy-Authorization` header values;
+- signatures and tokens in URL query strings, such as a presigned URL's `X-Amz-Signature`;
+- private keys whose PEM block was cut off before its `END` line;
+- base64-encoded `postgres://` URLs, as in a logged Kubernetes Secret;
+- Materialize app passwords (`mzp_…`).
+
+Identifier fields whose names say they aren't credentials, such as `token_id`, are exempt by name.
+The bundled defaults change with each Alloy release; the project runs a corpus of positive and negative lines through the pinned Alloy version before each one ships.
+
+The filter scans the line and nothing else, so it has the following limits:
+
+- **Labels and structured metadata aren't scanned.**
+  A Loki or OTLP push client that sends a credential as structured metadata or as a label stores it as sent.
+- **Some credentials don't look like credentials.**
+  A short or low-randomness value after a key such as `api_key` or `token` can pass, and so can a password of fewer than four characters.
+  A numeric password after a JSON key passes too, because a placeholder in its place, or in place of the same digits elsewhere in the line, would break the line's JSON.
+  The filter decodes nothing, so an encoded credential passes unless a rule matches its encoded form, as one does for base64 `postgres://` URLs.
+- **Some identifiers look like credentials.**
+  A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
+
+## Turn it on {#turn-it-on}
+
+The filter ships off.
+Each false positive permanently replaces a value in your own logs, so the defaults wait on measurement against real logs.
+<!-- TODO(DEP-313): rewrite this section once shadow mode has run and the filter is on by default. -->
+
+To turn it on, set both rates to `1` in `pipeline.env`:
+
+```yaml
+pipeline:
+  env:
+    GATEWAY_SECRETFILTER_RATE: "1"
+    GATEWAY_SECRETFILTER_BULK_RATE: "1"
+```
+
+The filter runs as two instances.
+`GATEWAY_SECRETFILTER_RATE` sets the fraction of lines the main instance scans, and `GATEWAY_SECRETFILTER_BULK_RATE` sets it for `DEBUG` and `TRACE` lines, the levels most able to outrun the filter.
+At `0`, an instance forwards every line unscanned.
+The change is an environment variable, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+
+The following settings change what the filter costs:
+
+`GATEWAY_SECRETFILTER_BULK_RATE`
+: Below `1`, the bulk instance scans that fraction of `DEBUG` and `TRACE` lines and stores the rest unscanned.
+  Lower it only when the gateway can't keep up with its input at `1`.
+
+`GATEWAY_SECRETFILTER_TIMEOUT`
+: The most time the filter spends on one line, such as `50ms`.
+  The default, `0s`, sets no limit.
+  A line that runs past it is stored with whatever the filter redacted in time, and with the label `secretfilter="timed-out"`.
+
+Both instances load their rules when the gateway starts, which costs about 35 MiB of memory per gateway pod whether or not they scan.
+
+## Watch what it catches {#watch}
+
+The gateway exports the following metrics:
+
+`loki_secretfilter_secrets_redacted_by_category_total`
+: Redactions, by `rule` and by `origin`, the container that logged the line.
+  An increase usually means a component logged a credential; check the line before you act on it.
+
+`loki_secretfilter_entries_bypassed_total`
+: Lines an instance forwarded unscanned because of its rate.
+
+`loki_secretfilter_lines_timed_out_total`
+: Lines that ran past `GATEWAY_SECRETFILTER_TIMEOUT`.
+
+`loki_secretfilter_processing_duration_seconds`
+: Time spent per line. Its high quantiles are where to start when you set the timeout.
+
+The bundled Thanos keeps these metrics.
+A remote-write destination that filters by `minMetricImportance` drops them, because the query registry doesn't grade them.
+No alert ships for redactions, so to be told about one, alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`.
+<!-- TODO(DEP-316): link the shipped alerts and the dashboard row here. -->
+
+To find the redacted lines in Loki, query for the placeholder:
+
+```logql
+{level=~".+"} |= "<redacted:"
+```
+
+For how the filter is placed in the pipeline and tested, see the [logging pipeline reference](../../../reference/development/pipelines/logging/#secret-filter).
 
 
 --------------------------------------------------------------------------------
@@ -12658,7 +12807,7 @@ See [Images and registries](../production-best-practices/stack-wide/#images-and-
 
 Data that reaches the stack is stored as it arrives.
 
-- [ ] `[operator]` **Keep secrets out of logs at the source.** The pipeline ships no redaction stage today ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)), so a token an application logs is a token in Loki, searchable for the tenant's full retention.
+- [ ] `[operator]` **Keep secrets out of logs at the source.** A token an application logs is a token in Loki, searchable for the tenant's full retention. The gateway's [secret filter](../production-best-practices/secret-filtering/) can replace credentials before they're stored, but it ships off, and it's a backstop rather than the control: the raw line stays in the container's log on the node.
 - [ ] `[operator]` **Set retention deliberately.** It is the only bound on how long anything that did leak stays queryable. Retention and compaction are covered in [Logs & Events > Storing](../../logs-and-events/storing/) and [Metrics > Storing](../../metrics/storing/).
 - [ ] `[consumer]` Enable server-side encryption and access logging on the buckets. The Terraform modules enable versioning; encryption policy is yours, and bucket versioning means a deleted object is not necessarily gone.
 - [ ] `[operator]` Remember that **isolation within a Loki tenant is label-based**, not enforced. Per-environment separation via `environment_id` is a query convention; the hard boundary is a separate install. See [Tenancy & auth](../production-best-practices/loki/#tenancy).
@@ -26972,9 +27121,25 @@ A line that runs past `GATEWAY_SECRETFILTER_TIMEOUT` is forwarded with whatever 
 
 Both instances ship with `rate` set to `0`, which forwards every line unscanned and counts it in `loki_secretfilter_entries_bypassed_total`.
 To scan, set `GATEWAY_SECRETFILTER_RATE` and `GATEWAY_SECRETFILTER_BULK_RATE` to `1` in `pipeline.env`.
-The rule set is the Gitleaks default that Alloy bundles.
 <!-- TODO(DEP-313): drop the rate-0 paragraph once shadow mode has run and the default rate is 1. -->
-<!-- TODO(DEP-311): name the shipped rule files here once the gateway mounts them. -->
+
+#### Rule files
+
+Both instances read `packages/alloy-pipelines/secretfilter/ingest.toml`: the Gitleaks defaults that Alloy bundles, plus Materialize's own rules.
+`make pipelines` copies it to `pre-rendered/secretfilter/`, and the chart adds each rule file to the gateway's ConfigMap as `secretfilter-<name>`.
+The subchart mounts that ConfigMap at `/etc/alloy/`, so the rules sit beside the config that reads them, and overriding the gateway's extra mounts can't drop them.
+Alloy doesn't start without the file.
+
+`packages/mzmon-lib/tests/secretfilter_corpus.rs` runs each rule file through the Alloy binary against `ingest.corpus.yaml`.
+The corpus lists lines that must be redacted, with the rule that fires on each, and lines that must pass untouched.
+The pipelines CI job runs it on the pinned Alloy version, including on every Alloy upgrade, because the default rules change between releases.
+When you change a rule, add a fixture that the change makes pass.
+Elsewhere the test skips when `alloy` isn't on your `PATH`; set `MZMON_REQUIRE_ALLOY=1` to make it fail instead.
+
+Keep every shipped rule file flat: one `[extend]` section holding only `useDefault = true`.
+Gitleaks follows two levels of `[extend]`, and a third loads without the default rules, so the one level left over belongs to the customer.
+Two instances in one Alloy process that load a file extending another by `path` race at startup, and one of them can come up with no rules at all.
+`gateway_secret_filter.rs` fails if an instance reads anything but a shipped rule file.
 
 For the design and the layers that follow, see [Secret Filtering](../../design-docs/20260924-log-secret-filtering/).
 
@@ -29917,13 +30082,11 @@ Each control-plane branch runs a second, stricter filter immediately before its 
 |---|---|
 | [DEP-309] Close the remaining raw-line path: live debugging on the filter | ⬜ |
 | [DEP-310] Card-number redaction with `stage.luhn` | ⬜ |
-| [DEP-311] Rule files: the Materialize rules, the name allowlist, and the egress file | ⬜ |
-| [DEP-312] A corpus harness on the pinned Alloy binary, run on every Alloy bump | ⬜ |
 | [DEP-313] Shadow mode, counting matches on real logs before any rule enforces, then the ingest filter on by default | ⬜ |
-| [DEP-314] The values surface and fail-open validators | ⬜ |
+| [DEP-314] The values surface and fail-open validators, with the customer's rules rendered into a flat file | ⬜ |
 | [DEP-315] `mz-monitoring-canary`, a canary producer per layer | ⬜ |
 | [DEP-316] Alerts, runbooks and a dashboard row | ⬜ |
-| [DEP-317] A strict, fail-closed egress filter on each control-plane branch, and the `secretfilter="bulk"` stamp it drops on | ⬜ |
+| [DEP-317] A strict, fail-closed egress filter on each control-plane branch, with its rule file and the `secretfilter="bulk"` stamp it drops on | ⬜ |
 | [DEP-318] A backstop overlay for the control-plane gateway | ⬜ |
 | [DEP-320] A customer-facing secret-filtering page, and the design's revisions | ⬜ |
 
@@ -30157,8 +30320,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-306]: https://linear.app/materializeinc/issue/DEP-306
 [DEP-309]: https://linear.app/materializeinc/issue/DEP-309
 [DEP-310]: https://linear.app/materializeinc/issue/DEP-310
-[DEP-311]: https://linear.app/materializeinc/issue/DEP-311
-[DEP-312]: https://linear.app/materializeinc/issue/DEP-312
 [DEP-313]: https://linear.app/materializeinc/issue/DEP-313
 [DEP-314]: https://linear.app/materializeinc/issue/DEP-314
 [DEP-315]: https://linear.app/materializeinc/issue/DEP-315
