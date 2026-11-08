@@ -239,6 +239,10 @@ Usage:
     {{- $tlsVerify = index $tls "verify" }}
   {{- end }}
   {{- $logsEnabled := index $signalOn "logs" }}
+  {{- $keepUnknown := true }}
+  {{- if and ( hasKey $logs "keepUnknown" ) ( not ( kindIs "invalid" ( index $logs "keepUnknown" ) ) ) }}
+    {{- $keepUnknown = index $logs "keepUnknown" }}
+  {{- end }}
   {{- /* A rate limit is configured when its block is a non-empty map; an
          explicit `null` clears it like an absent one. `rate` is kept as given,
          so the validator can tell a missing rate from a bad one. `burst`
@@ -316,6 +320,7 @@ Usage:
       "urlEnv" ( dig "urlEnv" ( printf "%s_LOGS" $prefix ) $logs | toString )
       "selector" ( dig "selector" "" $logs | toString )
       "minLevel" ( dig "minLevel" "" $logs | toString | upper )
+      "keepUnknown" $keepUnknown
       "sampleRate" ( dig "sampleRate" 1 $logs )
       "rateLimit" $rateLimit )
     "metrics" ( dict
@@ -437,9 +442,10 @@ Usage:
 The levels a log destination's `minLevel` can name, lowest first, and the
 levels it drops for each.
 
-`UNKNOWN` is not on the ladder and is never dropped by a level floor: a Rust
-panic arrives with no level the gateway can parse, so it is `UNKNOWN`, and a
-floor that dropped it would drop the one line an escalation needs most.
+`UNKNOWN` is not on the ladder, so no floor drops it; `logs.keepUnknown`
+decides it on its own. A Rust panic arrives with no level the gateway can
+parse, so it is `UNKNOWN`, and a floor that dropped it would drop the one line
+an escalation needs most. `keepUnknown` defaults to true for that reason.
 
 Usage:
   {{- $below := index ( include "mzmon.destinations.levelsBelow" $ | fromYaml ) "WARN" }}
@@ -463,7 +469,7 @@ Usage:
 */}}
 {{- define "mzmon.destinations.reducesLogs" }}
   {{- $logs := .logs }}
-  {{- if or $logs.selector $logs.minLevel ( lt ( $logs.sampleRate | float64 ) 1.0 ) $logs.rateLimit.configured }}
+  {{- if or $logs.selector $logs.minLevel ( not $logs.keepUnknown ) ( lt ( $logs.sampleRate | float64 ) 1.0 ) $logs.rateLimit.configured }}
     {{- "true" }}
   {{- end }}
 {{- end }}
