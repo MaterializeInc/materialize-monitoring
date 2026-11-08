@@ -1576,7 +1576,7 @@ The following table lists each field, the types it applies to, and its default:
 | `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. |
 | `logs.keepUnknown` | all | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
 | `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
-| `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (defaults to `rate`). Entries over the limit are dropped. |
+| `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
 | `metrics.enabled` | `otlp` | on when `metrics` is present | Send metrics here. |
 | `metrics.minMetricImportance` | `otlp` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
