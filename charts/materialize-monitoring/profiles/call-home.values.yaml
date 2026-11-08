@@ -12,9 +12,9 @@
 # `pipeline.destinations.controlPlane`. As written, the profile sends:
 #
 #   * Metrics at the `essential` tier (`metrics.minMetricImportance`).
-#   * Logs at WARN and above (`logs.minLevel`), and logs with no level the
-#     gateway could parse (`logs.keepUnknown`), at most 500 lines per second per
-#     gateway replica (`logs.rateLimit`).
+#   * Logs at WARN and above (`logs.minLevel`), at most 500 lines per second
+#     per gateway replica (`logs.rateLimit`). Logs whose level the gateway
+#     could not determine are not sent (`logs.keepUnknown`).
 #
 # To send metrics only, set `logs.enabled: false`. The bundled Loki and Thanos
 # keep everything either way.
@@ -53,12 +53,10 @@ pipeline:
         enabled: true
         # TRACE, DEBUG, INFO, WARN, ERROR, or CRITICAL. Raise it to send less.
         minLevel: WARN
-        # Logs whose level the gateway could not parse. A panic is one of
-        # them, so they are sent while the level parsing still misses lines
-        # that belong below WARN.
-        # TODO: set to false once the gateway's level heuristics classify most
-        # UNKNOWN lines, so only lines at or above minLevel cross.
-        keepUnknown: true
+        # Logs whose level the gateway could not determine. Panics are not
+        # among them: the gateway levels Rust and Go panics CRITICAL, so they
+        # pass the floor. Set to true to send these lines as well.
+        keepUnknown: false
         # A starting point, per gateway replica.
         rateLimit:
           rate: 500

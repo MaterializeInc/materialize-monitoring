@@ -54,12 +54,12 @@ tests:
             mountPath: /etc/mzmon/destination-tls
             readOnly: true
 
-  # UNKNOWN is sent for now: the drop list stops at INFO.
+  # UNKNOWN is dropped with the levels below the floor.
   - it: should send logs at WARN and above, rate limited, and essential metrics
     asserts:
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'loki\.process "dest_controlPlane" \{[\s\S]*?selector = "\{level=~\\"TRACE\|DEBUG\|INFO\\"\}"\s*action = "drop"[\s\S]*?stage\.limit \{\s*rate = 500\s*burst = 5000\s*drop = true'
+          pattern: 'loki\.process "dest_controlPlane" \{[\s\S]*?selector = "\{level=~\\"TRACE\|DEBUG\|INFO\|UNKNOWN\\"\}"\s*action = "drop"[\s\S]*?stage\.limit \{\s*rate = 500\s*burst = 5000\s*drop = true'
         template: templates/pipelines/cm-alloy-gateway.yaml
       - matchRegex:
           path: data["config.alloy"]
@@ -106,11 +106,11 @@ tests:
               secretName: mzmon-alloy-gateway-destination-tls
               optional: true
 
-  - it: should stop sending UNKNOWN when keepUnknown is turned off
+  - it: should send UNKNOWN when keepUnknown is turned on
     set:
-      pipeline.destinations.controlPlane.logs.keepUnknown: false
+      pipeline.destinations.controlPlane.logs.keepUnknown: true
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'selector = "\{level=~\\"TRACE\|DEBUG\|INFO\|UNKNOWN\\"\}"'
+          pattern: 'selector = "\{level=~\\"TRACE\|DEBUG\|INFO\\"\}"'
