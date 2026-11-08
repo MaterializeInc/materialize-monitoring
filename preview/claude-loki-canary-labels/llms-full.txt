@@ -21003,7 +21003,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "extraArgs":["-labelvalue=$(POD_NAMESPACE)", "-streamname=container", "-streamvalue=canary", "-query-append=| pod=\"$(POD_NAME)\""], "extraEnv":[{"name":"POD_NAMESPACE", "valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}], "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "labelname":"namespace", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}, "tenant":{"name":"loki"}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "extraArgs":["-labelvalue=$(POD_NAMESPACE)", "-streamname=container", "-streamvalue=canary", "-query-append=| pod=\"$(POD_NAME)\" | stream=\"stdout\""], "extraEnv":[{"name":"POD_NAMESPACE", "valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}], "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "labelname":"namespace", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}, "tenant":{"name":"loki"}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -21045,9 +21045,12 @@ refuses a canary tenant that does not match. The subchart's own default,
 The subchart's default selector, `{stream="stdout", pod="<pod>"}`, names
 two labels the gateway stores as structured metadata, so it matches
 nothing. The canary instead selects its namespace and container, and
-filters on the `pod` structured metadata with `-query-append`, which
-keeps each canary pod reading only its own lines. The subchart passes
-`-labelvalue=$(POD_NAME)`; the later `-labelvalue` here wins.
+filters on structured metadata with `-query-append`: `pod`, so each
+canary pod reads only its own lines, and `stream`, so it reads only the
+entries it writes to stdout. Without the second, its own stderr log lines
+come back as invalid entries, which it logs, which come back again. The
+subchart passes `-labelvalue=$(POD_NAME)`; the later `-labelvalue` here
+wins.
 
 `extraArgs` is a list, so a values file that sets it replaces these.
 `profiles/mtls.values.yaml` restates them beside its TLS arguments.
