@@ -2,10 +2,16 @@
 #
 # The gateway remote-writes to the bundled Thanos out of the box; everything here
 # fans out in addition to it. Two shapes, and the difference is the chart's, not
-# this module's: the three OTLP-family destinations each turn on
-# `destination.otel`, a single switch shared by every OTLP exporter, while
-# `prometheus_remote_write` writes into a map keyed by destination name — where a
-# key of `thanos` retunes the built-in one rather than adding a second.
+# this module's: the three OTLP-family destinations each become an entry in the
+# chart's `pipeline.destinations` map, named `googleCloud`, `datadog`, and
+# `otlp`, while `prometheus_remote_write` writes into a map keyed by destination
+# name — where a key of `thanos` retunes the built-in one rather than adding a
+# second.
+#
+# The OTLP-family entries name every credential variable explicitly, as the
+# names the Secret in gateway_credentials.tf has always used, rather than letting
+# the chart derive them from the entry name. The Secret and the values then
+# change in the same apply only when this file says so.
 #
 # Credentials are deliberately absent from every document here. They reach the
 # gateway through the Secret in gateway_credentials.tf instead, so they stay out
@@ -17,16 +23,11 @@
 locals {
   google_cloud_metrics_document = var.google_cloud_metrics == null ? [] : [yamlencode({
     pipeline = {
-      metrics = {
-        gateway = {
-          destination = {
-            otel = {
-              enabled = true
-              googleCloudExporter = {
-                enabled             = true
-                minMetricImportance = var.google_cloud_metrics.min_importance
-              }
-            }
+      destinations = {
+        googleCloud = {
+          type = "googleCloud"
+          metrics = {
+            minMetricImportance = var.google_cloud_metrics.min_importance
           }
         }
       }
@@ -36,33 +37,23 @@ locals {
   # ----------------------------------------------------------------------------
   # Datadog
   # ----------------------------------------------------------------------------
-  # `site` is the only field most deployments set; the two endpoints are derived
-  # from it by Datadog's own exporter and are overridable here only for the
-  # proxy/private-link case. They are passed through rather than derived from
-  # `site` in the module, because the chart already defaults them and a derived
-  # value that disagrees with Datadog's own default is worse than no value.
+  # `site` is the only field most deployments set; Datadog's exporter derives
+  # the metrics endpoint from it, and `metric_endpoint` overrides that only for
+  # the proxy/PrivateLink case. The module sends metrics alone, so
+  # `logs_endpoint` has nothing to apply to and is not written.
   datadog_metrics_document = var.datadog_metrics == null ? [] : [yamlencode({
     pipeline = {
-      metrics = {
-        gateway = {
-          destination = {
-            otel = {
-              enabled = true
-              datadogExporter = merge(
-                {
-                  enabled             = true
-                  url                 = var.datadog_metrics.site
-                  minMetricImportance = var.datadog_metrics.min_importance
-                },
-                var.datadog_metrics.metric_endpoint == null ? {} : {
-                  metricEndpoint = var.datadog_metrics.metric_endpoint
-                },
-                var.datadog_metrics.logs_endpoint == null ? {} : {
-                  logsEndpoint = var.datadog_metrics.logs_endpoint
-                },
-              )
-            }
-          }
+      destinations = {
+        datadog = {
+          type   = "datadog"
+          site   = var.datadog_metrics.site
+          apiKey = { keyEnv = "GATEWAY_OTEL_DEST_DATADOG_API_KEY" }
+          metrics = merge(
+            { minMetricImportance = var.datadog_metrics.min_importance },
+            var.datadog_metrics.metric_endpoint == null ? {} : {
+              url = var.datadog_metrics.metric_endpoint
+            },
+          )
         }
       }
     }
@@ -99,8 +90,7 @@ locals {
     [for name in local.otlp_auth_header_names : { key = name, valueEnv = local.otlp_auth_header_env[name] }],
   )
 
-  # The chart's `otel.auth` is one stanza shared by every OTLP exporter and
-  # selected by a single `authType`, so this is derived rather than asked for:
+  # A destination has one `authType`, so this is derived rather than asked for:
   # with two auth inputs and one slot, an explicit `auth_type` could only
   # disagree with them. `bearer` and `headers` together is the one combination
   # that cannot be expressed, and main.tf rejects it rather than silently
@@ -111,36 +101,32 @@ locals {
     "none"
   )
 
+  # `url` is a bare host[:port], which is what the gRPC exporter dials. The
+  # HTTP exporter needs a URL, so `https://` is added for it. TLS is on with a
+  # 1.2 floor, which is what the exporter did before the chart had a `tls`
+  # block for it to read.
   otlp_metrics_document = var.otlp_metrics == null ? [] : [yamlencode({
     pipeline = {
-      metrics = {
-        gateway = {
-          destination = {
-            otel = {
-              enabled = true
-              otlpExporter = merge(
-                {
-                  enabled             = true
-                  url                 = var.otlp_metrics.url
-                  protocol            = var.otlp_metrics.protocol
-                  minMetricImportance = var.otlp_metrics.min_importance
-                },
-                var.otlp_metrics.compression == null ? {} : {
-                  compression = var.otlp_metrics.compression
-                },
-              )
-              # `bearer` needs nothing here: the chart's own bearer config
-              # already reads GATEWAY_OTEL_DEST_BEARER_TOKEN, which the Secret
-              # supplies. Only `headers` is caller-built.
-              auth = merge(
-                { authType = local.otlp_auth_type },
-                local.otlp_auth_type != "headers" ? {} : {
-                  headers = { headers = local.otlp_auth_header_entries }
-                },
-              )
-            }
-          }
-        }
+      destinations = {
+        otlp = merge(
+          {
+            type     = "otlp"
+            url      = var.otlp_metrics.protocol == "http" ? "https://${var.otlp_metrics.url}" : var.otlp_metrics.url
+            protocol = var.otlp_metrics.protocol
+            tls      = { enabled = true, minVersion = "TLS12" }
+            metrics  = { minMetricImportance = var.otlp_metrics.min_importance }
+            authType = local.otlp_auth_type
+          },
+          var.otlp_metrics.compression == null ? {} : {
+            compression = var.otlp_metrics.compression
+          },
+          local.otlp_auth_type != "bearer" ? {} : {
+            bearer = { tokenEnv = "GATEWAY_OTEL_DEST_BEARER_TOKEN" }
+          },
+          local.otlp_auth_type != "headers" ? {} : {
+            headers = local.otlp_auth_header_entries
+          },
+        )
       }
     }
   })]
