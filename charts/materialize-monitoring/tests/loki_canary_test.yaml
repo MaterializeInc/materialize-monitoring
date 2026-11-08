@@ -1,0 +1,251 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# The Loki canary reads its own lines back through Loki, after the Alloy agent
+# and gateway carried them there like any pod's. Every case here is a canary
+# that runs, writes, and never finds what it wrote, so it reports Loki broken
+# while Loki is fine:
+#
+#   1. The tenant. The subchart reads `self-monitoring`; the gateway writes the
+#      canary's lines to the tenant `pipeline.logging.tenancy` assigns.
+#   2. The selector. The subchart selects `{stream="stdout", pod="<pod>"}`, and
+#      the gateway keeps both as structured metadata, not stream labels. Both
+#      filters move to `-query-append`; dropping `stream` makes the canary read
+#      its own stderr log lines as invalid entries, which it logs again.
+#   3. The live tail under TLS. The query frontend proxies tails to the querier
+#      over http://, which a querier serving TLS refuses.
+suite: loki canary
+release:
+  name: t
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.loki: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector.matchLabels.app: alloy
+  loki.networkPolicy.ingress.namespaceSelector.matchLabels.app: grafana
+tests:
+  # --- the selector and tenant --------------------------------------------------
+  - it: should select its lines by namespace and container, and its pod by metadata
+    template: ../charts/loki/templates/loki-canary/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -labelname=namespace
+      # After the subchart's -labelvalue=$(POD_NAME), so it wins.
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[2]
+          pattern: '^-labelvalue=\$\(POD_NAME\)$'
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -labelvalue=$(POD_NAMESPACE)
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -streamname=container
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -streamvalue=canary
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -query-append=| pod="$(POD_NAME)" | stream="stdout"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+
+  - it: should read the tenant the gateway writes its lines to
+    template: ../charts/loki/templates/loki-canary/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -tenant-id=loki
+
+  - it: should refuse a canary tenant the gateway does not write to
+    set:
+      pipeline.logging.tenancy.staticTenant: logs
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The Loki canary reads tenant "loki", but the gateway writes the canary''s own lines to tenant "logs"'
+
+  - it: should accept a canary tenant set to match
+    set:
+      pipeline.logging.tenancy.staticTenant: logs
+      loki.lokiCanary.tenant.name: logs
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: should expect Loki's namespace under byNamespace tenancy
+    set:
+      pipeline.logging.tenancy.tenantMap.infra: byNamespace
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'writes the canary''s own lines to tenant "test-monitoring"'
+
+  - it: should warn when the tenancy cannot be checked
+    set:
+      pipeline.logging.tenancy.tenantMap.infra: byLabel
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'tenantMap.infra is "byLabel", so the Loki tenant the canary''s own lines land in cannot be checked'
+
+  # A values file that sets extraArgs replaces the chart's, selector and all.
+  - it: should refuse a canary whose extraArgs dropped the selector
+    set:
+      loki.lokiCanary.extraArgs:
+        - -interval=1s
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "selects its own lines on -streamname=stream, which is not a stream label the gateway keeps"
+
+  - it: should refuse a canary that would read its own log lines back
+    set:
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - -query-append=| pod="$(POD_NAME)"
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'does not filter on stream="stdout"'
+
+  - it: should accept any LogQL spelling of the stdout filter
+    set:
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - '-query-append=| pod="$(POD_NAME)" | stream = `stdout`'
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # The subchart writes -tenant-id from the tenant values, and a later one in
+  # extraArgs wins.
+  - it: should accept a tenant set through extraArgs
+    set:
+      pipeline.logging.tenancy.staticTenant: logs
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - -query-append=| pod="$(POD_NAME)" | stream="stdout"
+        - -tenant-id=logs
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: should refuse a wrong tenant set through extraArgs
+    set:
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - -query-append=| pod="$(POD_NAME)" | stream="stdout"
+        - -tenant-id=self-monitoring
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The Loki canary reads tenant "self-monitoring"'
+
+  - it: should refuse the subchart's pod label
+    set:
+      loki.lokiCanary.labelname: pod
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "selects its own lines on -labelname=pod"
+
+  # --- the mTLS profile ---------------------------------------------------------
+  - it: should keep the selector beside the TLS arguments under mTLS
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/loki-canary/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -streamname=container
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -query-append=| pod="$(POD_NAME)" | stream="stdout"
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -tls
+
+  - it: should proxy live tails to the querier over TLS
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'tail_proxy_url: https://t-loki-querier\.test-monitoring\.svc\.cluster\.local:3100|tail_proxy_url: https://loki-querier\.test-monitoring\.svc\.cluster\.local:3100'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'tail_tls_config:\s+tls_ca_path: /etc/mzmon/tls/ca\.crt'
+
+  - it: should refuse a plaintext tail proxy under Loki TLS
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.frontend.tail_proxy_url: '{{ include "loki.querierAddress" . }}'
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "proxies live tails to http://loki-querier\\.test-monitoring\\.svc\\.cluster\\.local:3100 without TLS"
+
+  # The value is resolved as the subchart resolves it, so the check follows the
+  # URL Loki will use rather than how the template spells it.
+  - it: should accept any template that resolves to https
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.frontend.tail_proxy_url: '{{ include "loki.querierAddress" . | replace "http" "https" }}'
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: should refuse a template that resolves to http
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.frontend.tail_proxy_url: '{{ include "loki.querierAddress" . | replace "https://" "http://" }}'
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "proxies live tails to http://loki-querier"
+
+  - it: should name the querier on Loki's certificate
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-loki-tls
+    asserts:
+      - contains:
+          path: spec.dnsNames
+          content: loki-querier.test-monitoring.svc.cluster.local

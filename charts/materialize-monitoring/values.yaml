@@ -670,13 +670,15 @@ certificates:
       # The Loki Services this chart's own clients dial: the alloy-gateway
       # writes logs to the distributor and rules to the ruler, Grafana reads
       # through the Loki gateway, and the Loki gateway reads from the query
-      # frontend and the ruler. The Loki gateway runs in Loki's namespace and
-      # serves this same certificate. Intra-Loki hops (distributor to ingester,
-      # the memberlist ring) are a separate trust boundary and are not covered
-      # here.
+      # frontend and the ruler. The query frontend proxies live tails to the
+      # querier over HTTP, so the querier is here too. The Loki gateway runs in
+      # Loki's namespace and serves this same certificate. Intra-Loki gRPC hops
+      # (distributor to ingester, the memberlist ring) are a separate trust
+      # boundary and are not covered here.
       services:
         - loki-distributor
         - loki-gateway
+        - loki-querier
         - loki-query-frontend
         - loki-ruler
       extraDnsNames: []
@@ -4696,6 +4698,41 @@ loki:
     kind: Deployment
     lokiurl: loki-query-frontend:3100
     push: false
+    # -- The tenant the canary reads its own lines back from.
+    # @raw
+    # The canary writes to stdout, and the Alloy agent and gateway carry its
+    # lines to Loki like any pod's, so they land in the tenant the gateway
+    # assigns the canary's namespace: `pipeline.logging.tenancy.staticTenant`
+    # under the default `static` tenancy. Keep the two in step; the render
+    # refuses a canary tenant that does not match. The subchart's own default,
+    # `self-monitoring`, is a tenant nothing writes to here.
+    tenant:
+      name: loki
+    # -- How the canary finds its own lines, with labels the gateway keeps.
+    # @raw
+    # The subchart's default selector, `{stream="stdout", pod="<pod>"}`, names
+    # two labels the gateway stores as structured metadata, so it matches
+    # nothing. The canary instead selects its namespace and container, and
+    # filters on structured metadata with `-query-append`: `pod`, so each
+    # canary pod reads only its own lines, and `stream`, so it reads only the
+    # entries it writes to stdout. Without the second, its own stderr log lines
+    # come back as invalid entries, which it logs, which come back again. The
+    # subchart passes `-labelvalue=$(POD_NAME)`; the later `-labelvalue` here
+    # wins.
+    #
+    # `extraArgs` is a list, so a values file that sets it replaces these.
+    # `profiles/mtls.values.yaml` restates them beside its TLS arguments.
+    labelname: namespace
+    extraArgs:
+      - -labelvalue=$(POD_NAMESPACE)
+      - -streamname=container
+      - -streamvalue=canary
+      - -query-append=| pod="$(POD_NAME)" | stream="stdout"
+    extraEnv:
+      - name: POD_NAMESPACE
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.namespace
     service:
       # -- Keep the canary out of the subchart's ServiceMonitor and into this
       # chart's plaintext one. Its `/metrics` server is plaintext even when

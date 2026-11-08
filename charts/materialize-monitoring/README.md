@@ -963,6 +963,7 @@ point rather than a researched one.
     "services": [
       "loki-distributor",
       "loki-gateway",
+      "loki-querier",
       "loki-query-frontend",
       "loki-ruler"
     ]
@@ -6496,7 +6497,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "extraArgs":["-labelvalue=$(POD_NAMESPACE)", "-streamname=container", "-streamvalue=canary", "-query-append=| pod=\"$(POD_NAME)\" | stream=\"stdout\""], "extraEnv":[{"name":"POD_NAMESPACE", "valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}], "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "labelname":"namespace", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}, "tenant":{"name":"loki"}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -6511,6 +6512,42 @@ unconditional so the two modes share one code path.
 }</pre>
 </td>
       <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.tenant</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "name": "loki"
+}</pre>
+</td>
+      <td class="helm-value-desc">The tenant the canary reads its own lines back from.
+The canary writes to stdout, and the Alloy agent and gateway carry its
+lines to Loki like any pod's, so they land in the tenant the gateway
+assigns the canary's namespace: `pipeline.logging.tenancy.staticTenant`
+under the default `static` tenancy. Keep the two in step; the render
+refuses a canary tenant that does not match. The subchart's own default,
+`self-monitoring`, is a tenant nothing writes to here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.labelname</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"namespace"</code></td>
+      <td class="helm-value-desc">How the canary finds its own lines, with labels the gateway keeps.
+The subchart's default selector, `{stream="stdout", pod="<pod>"}`, names
+two labels the gateway stores as structured metadata, so it matches
+nothing. The canary instead selects its namespace and container, and
+filters on structured metadata with `-query-append`: `pod`, so each
+canary pod reads only its own lines, and `stream`, so it reads only the
+entries it writes to stdout. Without the second, its own stderr log lines
+come back as invalid entries, which it logs, which come back again. The
+subchart passes `-labelvalue=$(POD_NAME)`; the later `-labelvalue` here
+wins.
+
+`extraArgs` is a list, so a values file that sets it replaces these.
+`profiles/mtls.values.yaml` restates them beside its TLS arguments.
 </td>
     </tr>
     <tr>
