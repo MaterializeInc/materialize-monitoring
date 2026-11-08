@@ -3524,7 +3524,12 @@ Two families of backend sit alongside the bundled Thanos, and both fan out *in a
 **More remote-write stores** — Amazon Managed Prometheus, Mimir, Grafana Cloud, another Thanos — are added as further entries in the [`prometheusRemoteWrite` map](#the-remote-write-destinations).
 Nothing on this page is an either/or with the in-cluster Thanos: keeping full fidelity locally while shipping a filtered slice to a metered backend is the shape the map exists for.
 
-**OpenTelemetry (OTLP) destinations** are configured under the `otel` block, described below.
+**OpenTelemetry (OTLP) destinations** are configured in one of two places:
+
+- An `otlp` entry in `pipeline.destinations` sends metrics, logs, or both over one connection, with its own `metrics.minMetricImportance`.
+  Use it when one backend takes both signals, or takes only logs.
+  For more information, see [Where the gateway writes logs](../../logs-and-events/storing/#destinations).
+- The `otel` block, described in the rest of this section, carries the generic OTLP, Google Cloud, and Datadog exporters.
 
 Enable the OTLP path with `pipeline.metrics.gateway.destination.otel.enabled: true`, then turn on one or more exporters — `otlpExporter` (generic), `googleCloudExporter`, and `datadogExporter` can all run at once, each with its own `minMetricImportance`.
 
@@ -5103,7 +5108,16 @@ See the [logging architecture](../architecture/) for how storage relates to the 
 
 The gateway writes processed logs to each destination in `pipeline.destinations`.
 The map holds one entry by default, `loki`, which writes to the bundled Loki.
-Each entry gets its own `loki.write` component, labeled with the entry's name, and its own queue.
+Each entry has its own components and its own queue.
+
+An entry's `type` sets how the gateway writes to it:
+
+`loki`
+: Pushes logs through `loki.write`, labeled with the entry's name.
+
+`otlp`
+: Sends logs, metrics, or both over one OTLP connection, through components labeled `dest_<name>`.
+  A signal is on when its block is present.
 
 To write logs somewhere else as well, add an entry.
 The following example adds an external Loki that never slows down delivery to the bundled one:
@@ -5120,18 +5134,38 @@ pipeline:
         blockOnOverflow: false
 ```
 
+The following example sends logs to an OTLP backend that takes only logs, on that signal's own endpoint:
+
+```yaml
+pipeline:
+  destinations:
+    opensearch:
+      type: otlp
+      url: http://data-prepper.logging.svc:21890
+      logs:
+        url: http://data-prepper.logging.svc:21892/v1/logs
+```
+
+An `otlp` entry with a `metrics` block also receives metrics, filtered to its own `metrics.minMetricImportance`, over the same connection and credentials.
+Over gRPC, set `protocol: grpc` and write `url` as `host:port`; gRPC serves every signal on one endpoint.
+
 To stop writing to the bundled Loki, set `pipeline.destinations.loki.enabled` to `false`.
 For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
 
 ### Keep one destination from holding back another {#destination-isolation}
 
 The gateway hands every log entry to each destination in turn.
-By default, a destination whose queue is full makes the gateway wait for room, which is `queue.blockOnOverflow: true`.
-While that destination is stalled, no other destination receives anything either.
+A destination that blocks when its queue is full makes the gateway wait for room, and while it's stalled, no other destination receives anything either.
 
-Set `queue.blockOnOverflow: false` on every destination except the one whose copy must be complete.
-A destination set that way drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
-`queue.capacity` sets how far it can fall behind before it drops.
+The types differ in their default:
+
+- A `loki` destination blocks.
+  Set `queue.blockOnOverflow: false` on every `loki` destination except the one whose copy must be complete.
+  It then drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
+  `queue.capacity` sets how far it can fall behind before it drops.
+- An `otlp` destination drops.
+  It counts what it drops in `otelcol_exporter_enqueue_failed_log_records_total`, and `queue.queueSize` sets how many requests it holds.
+
 The render warns when more than one log destination blocks.
 
 > [!NOTE]
@@ -8911,6 +8945,11 @@ Skip one of these and someone outside the trust boundary can read your data or c
   not keys: an IRSA role or EKS Pod Identity association for the `alertmanager` ServiceAccount, allowing `sns:Publish`
   on the topic (plus `kms:GenerateDataKey*` and `kms:Decrypt` for an encrypted topic).
   SNS is the only integration that can use one; SES and Azure Communication Services email authenticate over SMTP with a credential in the Secret.
+- [ ] `[operator]` [Secret filtering](../secret-filtering/#at-the-source): **Keep credentials out of logs at the source.**
+  A credential a component logs is in Loki for the tenant's full retention, readable by anyone who can query it.
+  The gateway's secret filter is an extra layer of protection, and a healthy install gives it nothing to catch.
+  When it does catch one, the raw line is still in the container's log file on the node and in `kubectl logs`, so fix
+  the component and rotate the credential.
 
 <details>
 <summary>What the chart already does</summary>
@@ -9433,6 +9472,11 @@ Each adds defense in depth, or extra signal where your environment calls for it.
   A VPC endpoint's CIDR, or Cilium's `toFQDNs`, is the tighter form; for Loki, see [Object-storage egress](../loki/#object-storage-egress).
 - [ ] `[operator]` [TLS](../../securing/#gaps): Turn on in-cluster TLS where your environment requires it.
   Certificates and the mTLS profiles ship off by default.
+- [ ] `[operator]` [Secret filtering](../secret-filtering/#turn-it-on): **Turn on the secret filter** for an extra
+  layer of protection behind keeping credentials out of logs: set `GATEWAY_SECRETFILTER_RATE` and
+  `GATEWAY_SECRETFILTER_BULK_RATE` to `"1"` in `pipeline.env`.
+  It ships off.
+  Then alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`, because each redaction is a credential a component exposed.
 - [ ] `[operator]` [Alertmanager](../../../alerting/architecture/#tls): **TLS on the API port** comes with the mTLS
   profiles: `alerting.server.tls` moves 9093 to TLS, and the profiles move the probes, the reloader, the scrape, both
   rulers, and the Grafana data source with it.
@@ -9812,6 +9856,137 @@ For more information, see [Where the gateway writes logs](../../../logs-and-even
 To send your own logs, target the gateway's OTLP ports, `:4317` for gRPC or `:4318` for HTTP.
 To chain gateways, point the upstream writer at the downstream gateway's `:3100`.
 For more information, see [Sending your own logs to the gateway](../../../logs-and-events/collecting/#sending-your-own-logs-to-the-gateway).
+
+
+--------------------------------------------------------------------------------
+title: "Secret filtering"
+url: https://materializeinc.github.io/materialize-monitoring/preview/dep-311-secretfilter-rules/operating/production-best-practices/secret-filtering/index.md
+--------------------------------------------------------------------------------
+
+# Secret filtering
+
+The gateway can scan every log line for credentials and replace each one it finds with a placeholder before the line is stored.
+This page is for you if you operate the stack and decide whether to turn that filter on, and what to do when it catches something.
+What to do about it is in the [production checklist](../checklist/).
+
+{{< rfc-2119 >}}
+
+## Keep credentials out of logs at the source {#at-the-source}
+
+**The filter is an extra layer of protection, not the control.**
+In a healthy install it SHOULD NOT catch anything.
+Every redaction means a component wrote a credential to its log, and the filter protects only what's downstream of the gateway.
+
+The raw line stays where the component wrote it:
+
+- in the container's log file on the node, until log rotation removes it;
+- in `kubectl logs`, for anyone allowed to read the component's pod logs;
+- in any other agent or tool that reads those files.
+
+So you MUST NOT rely on the filter in place of configuring each component not to log credentials.
+Treat a redaction as a credential that was exposed.
+
+When the filter catches something, take the following steps:
+
+1. Find the line in Loki and the component that wrote it, as [Watch what it catches](#watch) describes.
+2. Fix the source, so the component stops logging the credential.
+3. Rotate the credential.
+
+## What the filter does {#what-it-does}
+
+The filter runs in the gateway after a multi-line record such as a panic is reassembled, and before the gateway parses the line.
+So the structured metadata the gateway derives from a line, such as `msg` and `error`, comes from text that's already redacted.
+
+Each credential becomes `<redacted:RULE_ID>`, where `RULE_ID` names the rule that matched.
+The placeholder carries no part of the credential and no hash of it.
+It contains no quote, backslash, space, or `=`, so a redacted JSON or logfmt line still parses.
+
+The rules are [Alloy's bundled Gitleaks rules](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.secretfilter/), which cover provider-issued credentials such as cloud access keys, tokens, and JSON Web Tokens.
+The chart adds rules for credentials that Materialize deployments carry and the bundled rules miss:
+
+- passwords in connection URLs, such as the metadata database's `metadata_backend_url`;
+- password fields, including human-chosen passwords and values inside escaped JSON or Rust `Debug` output;
+- `Authorization` and `Proxy-Authorization` header values;
+- signatures and tokens in URL query strings, such as a presigned URL's `X-Amz-Signature`;
+- private keys whose PEM block was cut off before its `END` line;
+- base64-encoded `postgres://` URLs, as in a logged Kubernetes Secret;
+- Materialize app passwords (`mzp_…`).
+
+Identifier fields whose names say they aren't credentials, such as `token_id`, are exempt by name.
+The bundled defaults change with each Alloy release; the project runs a corpus of positive and negative lines through the pinned Alloy version before each one ships.
+
+The filter scans the line and nothing else, so it has the following limits:
+
+- **Labels and structured metadata aren't scanned.**
+  A Loki or OTLP push client that sends a credential as structured metadata or as a label stores it as sent.
+- **Some credentials don't look like credentials.**
+  A short or low-randomness value after a key such as `api_key` or `token` can pass.
+  The filter decodes nothing, so an encoded credential passes unless a rule matches its encoded form, as one does for base64 `postgres://` URLs.
+- **Some identifiers look like credentials.**
+  A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
+
+## Turn it on {#turn-it-on}
+
+The filter ships off.
+Each false positive permanently replaces a value in your own logs, so the defaults wait on measurement against real logs.
+<!-- TODO(DEP-313): rewrite this section once shadow mode has run and the filter is on by default. -->
+
+To turn it on, set both rates to `1` in `pipeline.env`:
+
+```yaml
+pipeline:
+  env:
+    GATEWAY_SECRETFILTER_RATE: "1"
+    GATEWAY_SECRETFILTER_BULK_RATE: "1"
+```
+
+The filter runs as two instances.
+`GATEWAY_SECRETFILTER_RATE` sets the fraction of lines the main instance scans, and `GATEWAY_SECRETFILTER_BULK_RATE` sets it for `DEBUG` and `TRACE` lines, the levels most able to outrun the filter.
+At `0`, an instance forwards every line unscanned.
+The change is an environment variable, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+
+The following settings change what the filter costs:
+
+`GATEWAY_SECRETFILTER_BULK_RATE`
+: Below `1`, the bulk instance scans that fraction of `DEBUG` and `TRACE` lines and stores the rest unscanned.
+  Lower it only when the gateway can't keep up with its input at `1`.
+
+`GATEWAY_SECRETFILTER_TIMEOUT`
+: The most time the filter spends on one line, such as `50ms`.
+  The default, `0s`, sets no limit.
+  A line that runs past it is stored with whatever the filter redacted in time, and with the label `secretfilter="timed-out"`.
+
+Both instances load their rules when the gateway starts, which costs about 35 MiB of memory per gateway pod whether or not they scan.
+
+## Watch what it catches {#watch}
+
+The gateway exports the following metrics:
+
+`loki_secretfilter_secrets_redacted_by_category_total`
+: Redactions, by `rule` and by `origin`, the container that logged the line.
+  Any increase means a component logged a credential.
+
+`loki_secretfilter_entries_bypassed_total`
+: Lines an instance forwarded unscanned because of its rate.
+
+`loki_secretfilter_lines_timed_out_total`
+: Lines that ran past `GATEWAY_SECRETFILTER_TIMEOUT`.
+
+`loki_secretfilter_processing_duration_seconds`
+: Time spent per line. Its high quantiles are where to start when you set the timeout.
+
+The bundled Thanos keeps these metrics.
+A remote-write destination that filters by `minMetricImportance` drops them, because the query registry doesn't grade them.
+No alert ships for redactions, so to be told about one, alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`.
+<!-- TODO(DEP-316): link the shipped alerts and the dashboard row here. -->
+
+To find the redacted lines in Loki, query for the placeholder:
+
+```logql
+{level=~".+"} |= "<redacted:"
+```
+
+For how the filter is placed in the pipeline and tested, see the [logging pipeline reference](../../../reference/development/pipelines/logging/#secret-filter).
 
 
 --------------------------------------------------------------------------------
@@ -12592,7 +12767,7 @@ See [Images and registries](../production-best-practices/stack-wide/#images-and-
 
 Data that reaches the stack is stored as it arrives.
 
-- [ ] `[operator]` **Keep secrets out of logs at the source.** The pipeline ships no redaction stage today ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)), so a token an application logs is a token in Loki, searchable for the tenant's full retention.
+- [ ] `[operator]` **Keep secrets out of logs at the source.** A token an application logs is a token in Loki, searchable for the tenant's full retention. The gateway's [secret filter](../production-best-practices/secret-filtering/) can replace credentials before they're stored, but it ships off, and it's a backstop rather than the control: the raw line stays in the container's log on the node.
 - [ ] `[operator]` **Set retention deliberately.** It is the only bound on how long anything that did leak stays queryable. Retention and compaction are covered in [Logs & Events > Storing](../../logs-and-events/storing/) and [Metrics > Storing](../../metrics/storing/).
 - [ ] `[consumer]` Enable server-side encryption and access logging on the buckets. The Terraform modules enable versioning; encryption policy is yours, and bucket versioning means a deleted object is not necessarily gone.
 - [ ] `[operator]` Remember that **isolation within a Loki tenant is label-based**, not enforced. Per-environment separation via `environment_id` is a query convention; the hard boundary is a separate install. See [Tenancy & auth](../production-best-practices/loki/#tenancy).
@@ -15736,8 +15911,14 @@ The gateway's named destinations, as a map of name to destination.
 The signals an entry carries are switched on in their own blocks.
 A backend that takes only logs needs nothing switched off,
 and one that takes several signals has one entry and one credential.
-Only log destinations of type `loki` live here so far.
-Metric destinations are still under `pipeline.metrics.gateway.destination`.
+
+Each entry has a `type`:
+
+- `loki`: logs, pushed through `loki.write`. Logs are on unless `logs.enabled` is `false`.
+- `otlp`: logs, metrics, or both, sent through one OTLP exporter over HTTP or gRPC.
+  A signal is on when its block is present, so an `otlp` entry sends nothing until it has a `logs` or `metrics` block.
+
+Remote write and the older OTLP exporters are still configured under `pipeline.metrics.gateway.destination`.
 
 The default map holds one entry, `loki`, pointing at the bundled in-cluster Loki.
 Add an entry to write logs somewhere else as well; set `loki.enabled: false` to stop writing to the bundled Loki.
@@ -15745,31 +15926,41 @@ Add an entry to write logs somewhere else as well; set `loki.enabled: false` to 
 **Each destination is its own failure domain.**
 Every log entry is handed to each destination in turn,
 so a destination that blocks when its queue fills holds back the others while it is stalled.
-Leave one destination blocking (the copy that must be complete), and set `queue.blockOnOverflow: false` on the rest.
-They then drop entries when they fall behind, and count them in `loki_write_dropped_entries_total`.
+A `loki` destination blocks by default; an `otlp` destination drops by default.
+Leave one destination blocking (the copy that must be complete), and set `queue.blockOnOverflow: false` on any other `loki` entry.
+A dropping destination counts what it drops, in `loki_write_dropped_entries_total` or `otelcol_exporter_enqueue_failed_*`.
 The render warns when more than one log destination blocks.
 
-**Names are Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
+**Names become Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
 `egress` and `destination` are reserved.
 A name that breaks either rule fails at render.
+A `loki` destination's writer takes the bare name; an `otlp` destination's components are labeled `dest_<name>`.
 
 **Fields are optional.** Anything an entry omits falls back to the defaults below.
 Environment variable names derive from the name,
 such as `GATEWAY_CONTROLPLANE_DEST` and `GATEWAY_CONTROLPLANE_DEST_PASSWORD`.
 You can name them yourself where a caller wants to choose them.
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `type` | — | `loki`. Required. |
-| `enabled` | `true` | Write to this destination. |
-| `url` | — | Push endpoint. Required when enabled. Supports `tpl`. |
-| `urlEnv` | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint URL. |
-| `logs.enabled` | `true` for `loki` | Send logs to this destination. |
-| `retries` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
-| `queue` | Alloy's defaults | `loki.write`'s `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
-| `authType` | `none` | `none`, `basicAuth`, or `bearer`. |
-| `basicAuth` / `bearer` | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
-| `tls` | off | Client TLS: `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`. |
+The following table lists each field, the types it applies to, and its default:
+
+| Field | Types | Default | Meaning |
+| --- | --- | --- | --- |
+| `type` | all | — | `loki` or `otlp`. Required. |
+| `enabled` | all | `true` | Write to this destination. |
+| `url` | all | — | Endpoint, required when the entry carries a signal. For `otlp`: a base URL over HTTP, `host:port` over gRPC. |
+| `urlEnv` | all | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint. |
+| `logs.enabled` | all | on for `loki`; on when `logs` is present for `otlp` | Send logs here. |
+| `logs.url` / `metrics.url` | `otlp`, HTTP | the base URL plus `/v1/logs` or `/v1/metrics` | One signal's own endpoint. |
+| `metrics.enabled` | `otlp` | on when `metrics` is present | Send metrics here. |
+| `metrics.minMetricImportance` | `otlp` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
+| `protocol` | `otlp` | `http` | `http` or `grpc`. |
+| `compression` | `otlp` | `gzip` | Request compression. |
+| `retries` | `loki` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
+| `queue` | `loki` | Alloy's defaults | `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
+| `queue` | `otlp` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
+| `authType` | all | `none` | `none`, `basicAuth`, or `bearer`. |
+| `basicAuth` / `bearer` | all | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
+| `tls` | all | off | `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
 
 For example, a second, external Loki that must never slow the bundled one down:
 
@@ -15783,6 +15974,18 @@ pipeline:
       queue:
         capacity: 64MiB
         blockOnOverflow: false
+```
+
+An OTLP backend that takes only logs, on its own endpoint:
+
+```yaml
+pipeline:
+  destinations:
+    opensearch:
+      type: otlp
+      url: http://data-prepper.logging.svc:21890
+      logs:
+        url: http://data-prepper.logging.svc:21892/v1/logs
 ```
 
 #### Log configuration
@@ -26972,7 +27175,9 @@ The `oversized-log-lines` alert in `dev-alerts.yaml` fires on line cuts, for the
 
 `inputProcessor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
 
-- **Logs → Loki.** The chart renders one `loki.write` per log destination in `pipeline.destinations`, labeled with the destination's name, and lists each one in `loki.process "egress"`'s `forward_to`.
+- **Logs → destinations.** The chart renders one writer per log destination in `pipeline.destinations` and lists each one in `loki.process "egress"`'s `forward_to`.
+  A `loki` destination is a `loki.write` labeled with its name.
+  An `otlp` destination is `otelcol.receiver.loki` → `otelcol.processor.batch` → an OTLP exporter, all labeled `dest_<name>`, and its metrics come off `otelcol.processor.filter "egress"` through its own tier filter.
   The helpers are in `charts/materialize-monitoring/templates/_destination_helpers.tpl`.
   The stub wires `loki.process "egress"` to `loki.write "loki"`, the default destination's label, reading `GATEWAY_LOKI_DEST` with an in-cluster fallback, and leaves auth out.
   Each destination reads its URL from `GATEWAY_<NAME>_DEST`, so the default `loki` destination keeps `GATEWAY_LOKI_DEST`.
@@ -29805,7 +30010,7 @@ Designed in [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byo
 
 | Item | Status |
 |---|---|
-| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane. `pipeline.destinations` ships, with a queue and drop policy per destination. Still to come: the `otlp` type, per-destination log reduction, and a `byoc` profile | 🔨 |
+| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane. `pipeline.destinations` ships with `loki` and `otlp` types, a queue and drop policy per destination, and mTLS over file-mounted certificates. Still to come: per-destination log reduction and a `byoc` profile | 🔨 |
 | [DEP-220] Sanitize telemetry before control-plane egress | ⬜ |
 | [DEP-236] A trust bundle for a private CA: the roots a corporate proxy or an on-premise object store needs, merged with the internal issuer's | ⬜ |
 | [DEP-287] `oauth2.tls` on the destination schema: certificate-authenticated token exchange, shared with call-home | ⬜ |
@@ -32158,7 +32363,7 @@ Work in **this** repo. Ordered roughly by dependency.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **Map-shaped log destinations** — a named map of destinations, rendered as one writer per destination off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | ✅ Shipped as `pipeline.destinations` ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). The map is signal-agnostic: one entry is one wire, and each signal it carries has its own block, so the control plane is one entry with one credential. Only the `loki` type exists so far |
+| **Map-shaped log destinations** — a named map of destinations, rendered as one writer per destination off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | ✅ Shipped as `pipeline.destinations` ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). The map is signal-agnostic: one entry is one wire, and each signal it carries has its own block, so the control plane is one `otlp` entry with one credential, carrying logs and tier-filtered metrics over mTLS |
 | **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | **Blocking** |
 | **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | ✅ Bounded and droppable: `queue.capacity` and `queue.blockOnOverflow: false` on each destination, measured to keep the local copy whole while another destination is unreachable. The per-destination `wal` is not wired |
 | **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | **Blocking** for the control-plane gateway |
@@ -32166,7 +32371,7 @@ Work in **this** repo. Ordered roughly by dependency.
 | **`otelcol.processor.transform` before the log bridge** ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) | Label ↔ resource-attribute fidelity across the OTLP round trip. Already an open TODO in `gateway.yaml`; shared with the agent OTLP work | **Blocking** — silent label loss is worse than delivery failure |
 | **Redaction stage set** composed from existing primitives, allowlist-shaped, fail-closed | [DEP-220](https://linear.app/materializeinc/issue/DEP-220). Primitives exist; the composition and the values surface do not | **Blocking** for log egress |
 | **Generated log-class / field allowlist artifact**, alongside `metric-tiers.yaml` | The customer-readable egress schedule, and the thing that stops the allowlist drifting on a rename | Should land with redaction |
-| **File-mounted certificate material** for gateway destinations, inline PEM retained as escape hatch | Env-var PEMs break renewal fleet-wide at one certificate lifetime. Shared with [cert-manager work](https://linear.app/materializeinc/issue/DEP-195) | **Blocking** for any renewing credential |
+| **File-mounted certificate material** for gateway destinations, inline PEM retained as escape hatch | Env-var PEMs break renewal fleet-wide at one certificate lifetime. Shared with [cert-manager work](https://linear.app/materializeinc/issue/DEP-195) | ✅ `tls.caFile` / `certFile` / `keyFile` on every destination. An `otlp` destination takes only the file carriers, and `tls.reloadInterval` re-reads them. The inline carriers never reached the env ([DEP-465](https://linear.app/materializeinc/issue/DEP-465)) |
 | **`byoc` profile** composing control-plane destination, reduction tiers, redaction defaults, Grafana ingress and persistence | The assembled shape the stack deployer applies | Blocking for delivery |
 | **Control-plane values overlay** — OTLP mTLS ingress on, kubelet and events collection off, egress to our backends | Lets the control-plane gateway be this repo's artifact rather than a fork | Blocking for the control plane |
 | **NetworkPolicy for the gateway** ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) | The receiver cannot check revocation, so "the LB is the only path" must be enforced rather than assumed | **Partly landed.** `alloy-gateway.networkPolicy` ships on by default, but its ingest ports (`3100`, `4317`, `4318`, `9090`) accept any pod in the cluster — correct for a customer-side install, where those endpoints exist for the customer's own workloads, and not the guarantee this needs. The control-plane overlay has to replace that first ingress rule with one naming the load balancer, which is a values change rather than new chart machinery |
