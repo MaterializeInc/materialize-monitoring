@@ -1565,7 +1565,7 @@ You can name them yourself where a caller wants to choose them.
 | `queue` | Alloy's defaults | `loki.write`'s `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
 | `authType` | `none` | `none`, `basicAuth`, or `bearer`. |
 | `basicAuth` / `bearer` | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
-| `tls` | off | Client TLS: `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `ca` / `cert` / `key`, `serverName`, `minVersion`. |
+| `tls` | off | Client TLS: `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`. |
 
 For example, a second, external Loki that must never slow the bundled one down:
 
