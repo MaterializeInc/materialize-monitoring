@@ -64,7 +64,7 @@ tests:
         template: templates/pipelines/cm-alloy-gateway.yaml
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.processor\.filter "dest_controlPlane" \{[\s\S]*?GATEWAY_UNFILTERED_CONTROLPLANE_DEST_METRICS[\s\S]*?metrics = \[\s*otelcol\.exporter\.otlphttp\.dest_controlPlane\.input'
+          pattern: 'otelcol\.processor\.filter "dest_controlPlane" \{[\s\S]*?GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST[\s\S]*?metrics = \[\s*otelcol\.exporter\.otlphttp\.dest_controlPlane\.input'
         template: templates/pipelines/cm-alloy-gateway.yaml
       - notMatchRegex:
           path: data["config.alloy"]
@@ -72,7 +72,7 @@ tests:
         template: templates/pipelines/cm-alloy-gateway.yaml
       # The tier is resolved to an allowlist, not left as "everything".
       - notEqual:
-          path: data.GATEWAY_UNFILTERED_CONTROLPLANE_DEST_METRICS
+          path: data.GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST
           value: ".*"
         template: templates/pipelines/cm-alloy-gateway-env.yaml
 
@@ -221,6 +221,62 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: "Log destinations archive, loki all block when their queue fills"
+
+  # --- environment variable collisions ----------------------------------------
+  # `archive`'s allowlist and `unfiltered_archive`'s metrics endpoint once
+  # derived the same variable. Every derived name now shares the
+  # destination's own prefix, so they cannot.
+  - it: should derive distinct variables for names that nest inside each other
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://a.example.com
+        metrics: {}
+      pipeline.destinations.unfiltered_archive:
+        type: otlp
+        url: https://b.example.com
+        metrics:
+          url: https://b.example.com/custom/metrics
+    asserts:
+      - notFailedTemplate: {}
+        template: templates/validate.yaml
+      - equal:
+          path: data.GATEWAY_UNFILTERED_ARCHIVE_DEST_METRICS
+          value: https://b.example.com/custom/metrics
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+      - exists:
+          path: data.GATEWAY_ARCHIVE_DEST_METRICS_ALLOWLIST
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+
+  # Names that differ only in case derive the same per-signal variables, even
+  # when each sets its own urlEnv.
+  - it: should refuse case-distinct names that collide on a derived variable
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://a.example.com
+        metrics: {}
+      pipeline.destinations.Archive:
+        type: otlp
+        url: https://b.example.com
+        urlEnv: GATEWAY_OTHER_DEST
+        metrics: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.Archive.metrics.unfilteredMetricsEnv and pipeline.destinations.archive.metrics.unfilteredMetricsEnv both write GATEWAY_ARCHIVE_DEST_METRICS_ALLOWLIST"
+
+  - it: should refuse an override that collides with a remote-write destination
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://a.example.com
+        metrics:
+          unfilteredMetricsEnv: GATEWAY_UNFILTERED_PROM_METRICS_THANOS
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.unfilteredMetricsEnv and pipeline.destinations.archive.metrics.unfilteredMetricsEnv both write GATEWAY_UNFILTERED_PROM_METRICS_THANOS"
 
   # --- validation -------------------------------------------------------------
   - it: should warn about an otlp destination that carries no signal

@@ -176,6 +176,13 @@ gives the `loki` destination exactly the names the single Loki destination used
 (`GATEWAY_LOKI_DEST`, `GATEWAY_LOKI_DEST_PASSWORD`, …). A credential an install
 already supplies through `extraEnv` keeps reaching it.
 
+Every derived name is `GATEWAY_<NAME>_DEST` plus a suffix, and no suffix
+contains `_DEST`, so two destinations whose names differ by more than case
+cannot derive the same variable. Keep new names under that prefix: a name
+outside it (`GATEWAY_UNFILTERED_<NAME>_…`) can equal another destination's
+derived name. `mzmon.destinations.validate` catches the collisions that are
+left, from explicit `*Env` overrides and case-only differences.
+
 Args:
   name: the destination's key in the map, and its Alloy component label.
   dest: the raw values for that destination.
@@ -292,7 +299,7 @@ Usage:
       "minMetricImportance" ( dig "minMetricImportance" "all" $metrics | toString )
       "url" ( dig "url" "" $metrics | toString )
       "urlEnv" ( dig "urlEnv" ( printf "%s_METRICS" $prefix ) $metrics | toString )
-      "unfilteredMetricsEnv" ( dig "unfilteredMetricsEnv" ( printf "GATEWAY_UNFILTERED_%s_DEST_METRICS" $slug ) $metrics | toString ) )
+      "unfilteredMetricsEnv" ( dig "unfilteredMetricsEnv" ( printf "%s_METRICS_ALLOWLIST" $prefix ) $metrics | toString ) )
     "label" ( ternary $name ( printf "dest_%s" $name ) ( eq $type "loki" ) )
     "active" ( and $enabled ( or $logsEnabled $metricsEnabled ) )
     | toYaml }}
@@ -403,6 +410,61 @@ Usage:
 
 
 {{- /*
+Every variable the env ConfigMap writes for a destination, in the order it
+writes them, as a list of `{key, value, owner}`.
+
+The ConfigMap renders from this list and the validator checks it for duplicate
+keys, so the two cannot disagree about what is written. `owner` is the values
+path of the field that names the key, for the error message.
+
+A credential variable is written only when its value is inline. One supplied
+through `envFrom` or `extraEnv` is not written, which is what lets two
+destinations share it.
+
+Usage:
+  {{- range $entry := ( include "mzmon.destinations.envEntries" $ | fromYamlArray ) }}
+*/}}
+{{- define "mzmon.destinations.envEntries" }}
+  {{- $out := list }}
+  {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
+    {{- $at := printf "pipeline.destinations.%s" $dest.name }}
+    {{- $out = append $out ( dict
+          "key" $dest.urlEnv
+          "value" ( include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.url $ ) "tls" $dest.tls ) )
+          "owner" ( printf "%s.urlEnv" $at ) ) }}
+    {{- if and $dest.logs.enabled $dest.logs.url }}
+      {{- $out = append $out ( dict
+            "key" $dest.logs.urlEnv
+            "value" ( include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.logs.url $ ) "tls" $dest.tls ) )
+            "owner" ( printf "%s.logs.urlEnv" $at ) ) }}
+    {{- end }}
+    {{- if and $dest.metrics.enabled $dest.metrics.url }}
+      {{- $out = append $out ( dict
+            "key" $dest.metrics.urlEnv
+            "value" ( include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.metrics.url $ ) "tls" $dest.tls ) )
+            "owner" ( printf "%s.metrics.urlEnv" $at ) ) }}
+    {{- end }}
+    {{- if $dest.metrics.enabled }}
+      {{- $out = append $out ( dict
+            "key" $dest.metrics.unfilteredMetricsEnv
+            "value" ( include "mzmon.alloyGateway.metricFilter" ( dict "context" $ "minMetricImportance" $dest.metrics.minMetricImportance ) )
+            "owner" ( printf "%s.metrics.unfilteredMetricsEnv" $at ) ) }}
+    {{- end }}
+    {{- if and ( eq $dest.authType "basicAuth" ) $dest.basicAuth.username }}
+      {{- $out = append $out ( dict "key" $dest.basicAuth.usernameEnv "value" ( tpl $dest.basicAuth.username $ ) "owner" ( printf "%s.basicAuth.usernameEnv" $at ) ) }}
+    {{- end }}
+    {{- if and ( eq $dest.authType "basicAuth" ) $dest.basicAuth.password }}
+      {{- $out = append $out ( dict "key" $dest.basicAuth.passwordEnv "value" ( tpl $dest.basicAuth.password $ ) "owner" ( printf "%s.basicAuth.passwordEnv" $at ) ) }}
+    {{- end }}
+    {{- if and ( eq $dest.authType "bearer" ) $dest.bearer.token }}
+      {{- $out = append $out ( dict "key" $dest.bearer.tokenEnv "value" ( tpl $dest.bearer.token $ ) "owner" ( printf "%s.bearer.tokenEnv" $at ) ) }}
+    {{- end }}
+  {{- end }}
+  {{- $out | toYaml }}
+{{- end }}
+
+
+{{- /*
 Validate the destination map.
 
 Catches the mistakes that otherwise present as a working install:
@@ -417,10 +479,13 @@ Catches the mistakes that otherwise present as a working install:
   3. **An active destination with no URL.** `sys.env` of an unset variable is
      empty, and `loki.write` accepts an empty endpoint at load, so this would
      surface only as failed writes.
-  4. **Two active destinations reading one URL variable**, through `urlEnv` or
-     names that differ only in case. The env ConfigMap would carry a duplicate
-     key, and both writers would read the same endpoint. Credential variables
-     are left alone: sharing one between destinations can be deliberate.
+  4. **Two fields writing one key into the env ConfigMap**, across every key
+     `mzmon.destinations.envEntries` lists and the remote-write destinations'
+     URL and allowlist variables. A ConfigMap keeps one value per key, so one
+     writer would read the other's endpoint or allowlist. This comes from an
+     explicit `*Env` override or names that differ only in case. A credential
+     supplied from outside the ConfigMap is not written, so sharing one is
+     allowed.
   5. **More than one log destination that blocks when its queue fills.** The
      fan-out hands each entry to every destination in turn, so a blocking
      destination that stalls holds back the others. One may block — the
@@ -447,17 +512,25 @@ Usage:
     {{- $warnings = append $warnings ( printf "pipeline.logging.gateway.destination.loki is deprecated, and its keys (%s) are applied to %s.loki. Move them there: pipeline.logging.gateway.destination.loki.<key> becomes %s.loki.<key>." ( keys $legacy | sortAlpha | join ", " ) $path $path ) }}
   {{- end }}
 
+  {{- $written := dict }}
+  {{- range $prom := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
+    {{- if $prom.enabled }}
+      {{- $at := printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s" $prom.name }}
+      {{- $_ := set $written $prom.urlEnv ( printf "%s.urlEnv" $at ) }}
+      {{- $_ := set $written $prom.unfilteredMetricsEnv ( printf "%s.unfilteredMetricsEnv" $at ) }}
+    {{- end }}
+  {{- end }}
+  {{- range $entry := ( include "mzmon.destinations.envEntries" $ | fromYamlArray ) }}
+    {{- if hasKey $written $entry.key }}
+      {{- $errors = append $errors ( printf "%s and %s both write %s to the gateway's env ConfigMap, which keeps one value per key, so one of them would read the other's. Give one a different variable name, or rename a destination so the names differ by more than case." ( index $written $entry.key ) $entry.owner $entry.key ) }}
+    {{- else }}
+      {{- $_ := set $written $entry.key $entry.owner }}
+    {{- end }}
+  {{- end }}
+
   {{- $blocking := list }}
-  {{- $urlEnvs := dict }}
   {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
     {{- $name := $dest.name }}
-    {{- if $dest.active }}
-      {{- if hasKey $urlEnvs $dest.urlEnv }}
-        {{- $errors = append $errors ( printf "%s.%s and %s.%s both read their URL from %s. The env ConfigMap would carry the key twice, and both writers would read one endpoint. Give one of them a different urlEnv, or a name that differs by more than case." $path ( index $urlEnvs $dest.urlEnv ) $path $name $dest.urlEnv ) }}
-      {{- else }}
-        {{- $_ := set $urlEnvs $dest.urlEnv $name }}
-      {{- end }}
-    {{- end }}
     {{- if not ( regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" $name ) }}
       {{- $errors = append $errors ( printf "%s.%s is not a usable name. It becomes an Alloy component label, so it must match [a-zA-Z_][a-zA-Z0-9_]* — no dashes, dots, or leading digits." $path $name ) }}
     {{- else if has $name $reserved }}

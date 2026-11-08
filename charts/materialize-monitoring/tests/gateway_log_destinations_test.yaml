@@ -220,7 +220,7 @@ tests:
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: "pipeline.destinations.Loki and pipeline.destinations.loki both read their URL from GATEWAY_LOKI_DEST"
+          errorPattern: "pipeline.destinations.Loki.urlEnv and pipeline.destinations.loki.urlEnv both write GATEWAY_LOKI_DEST"
 
   - it: should refuse two destinations sharing a urlEnv
     set:
@@ -231,9 +231,30 @@ tests:
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: "both read their URL from GATEWAY_LOKI_DEST"
+          errorPattern: "pipeline.destinations.archive.urlEnv and pipeline.destinations.loki.urlEnv both write GATEWAY_LOKI_DEST"
 
-  # Sharing a credential is a legitimate choice, unlike sharing a URL.
+  # Two inline values under one name cannot both survive in the ConfigMap.
+  - it: should refuse two inline credentials written under one variable
+    set:
+      pipeline.destinations.loki.authType: bearer
+      pipeline.destinations.loki.bearer.token: one
+      pipeline.destinations.loki.bearer.tokenEnv: GATEWAY_SHARED_TOKEN
+      pipeline.destinations.archive:
+        type: loki
+        url: https://archive.example.com/loki/api/v1/push
+        authType: bearer
+        bearer:
+          token: two
+          tokenEnv: GATEWAY_SHARED_TOKEN
+        queue:
+          blockOnOverflow: false
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.archive.bearer.tokenEnv and pipeline.destinations.loki.bearer.tokenEnv both write GATEWAY_SHARED_TOKEN"
+
+  # Sharing a credential supplied from outside the ConfigMap is a legitimate
+  # choice, unlike sharing a URL.
   - it: should allow two destinations to share a credential variable
     set:
       pipeline.destinations.loki.authType: bearer
