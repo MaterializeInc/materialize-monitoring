@@ -5164,7 +5164,8 @@ Set any of the following fields in the destination's `logs` block:
 | Field | What it does |
 |---|---|
 | `selector` | Keeps only entries matching a LogQL stream selector, such as `{namespace=~"environment-.+"}`. Line filters are allowed after it. |
-| `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. Entries with an `UNKNOWN` level are kept, because a panic arrives without a level the gateway can parse. |
+| `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. |
+| `keepUnknown` | Set to `false` to drop entries with an `UNKNOWN` level, which `minLevel` keeps. A panic arrives without a level the gateway can parse, so it is `UNKNOWN`. Defaults to `true`. |
 | `sampleRate` | Keeps a fraction of entries, above 0 and at most 1. |
 | `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst`, which defaults to `rate`. |
 
@@ -12890,6 +12891,121 @@ The design for the first three is written up in the [TLS and authentication desi
 
 
 --------------------------------------------------------------------------------
+title: "Call-home"
+url: https://materializeinc.github.io/materialize-monitoring/preview/dep-124-byoc-profile/operating/call-home/index.md
+--------------------------------------------------------------------------------
+
+# Call-home
+
+Call-home sends a reduced copy of your install's metrics and logs to Materialize,
+so Materialize can see what's running and what's wrong without a support ticket.
+Your own Loki and Thanos keep the full copy, and nothing is sent unless you turn call-home on.
+This page is for the operator of a `materialize-monitoring` install who decides whether to turn it on, and how much to send.
+
+<!-- more -->
+
+Call-home is one profile, `profiles/call-home.values.yaml`.
+It adds a single destination, `controlPlane`, to [`pipeline.destinations`](../../logs-and-events/storing/#destinations), and changes nothing else.
+Bring Your Own Cloud stacks apply the same profile.
+The only difference between the two is how the client certificate is issued, which happens outside this chart.
+
+## What the profile sends {#what-crosses}
+
+The following table lists what the profile sends as written, and the setting under `pipeline.destinations.controlPlane` that controls each part:
+
+| Signal | Sent | Setting |
+|---|---|---|
+| Metrics | The `essential` tier | `metrics.minMetricImportance` |
+| Logs | `WARN` and above | `logs.minLevel` |
+| Logs | Lines whose level the gateway couldn't parse | `logs.keepUnknown` |
+| Logs | At most 500 lines per second per gateway replica | `logs.rateLimit` |
+
+The metric tiers are listed in [Controlling what each destination stores](../../metrics/storing/#controlling-what-each-destination-stores).
+
+Lines with an unparsed level are sent because a panic is one of them.
+Some of them also belong below `WARN`, so turning `keepUnknown` off sends less, and can miss a panic.
+<!-- TODO: flip keepUnknown to false in the profile once the gateway's level heuristics classify most UNKNOWN lines. -->
+
+## Turn on call-home {#enable}
+
+Before you begin, get a client certificate for your install from Materialize.
+Its URI SAN, `spiffe://c.materialize.cloud/stack/CLIENT_STACK`, is your install's identity.
+The control plane reads your identity from the certificate, so the gateway sends no identity of its own.
+
+1. Create a `kubernetes.io/tls` Secret named `mzmon-alloy-gateway-destination-tls` in the gateway's namespace:
+
+   ```bash
+   kubectl create secret tls mzmon-alloy-gateway-destination-tls \
+     --namespace NAMESPACE --cert CERT_FILE --key KEY_FILE
+   ```
+
+   Replace the following:
+
+   - `NAMESPACE`: the namespace the Alloy gateway runs in.
+   - `CERT_FILE` and `KEY_FILE`: the certificate and private key Materialize issued.
+
+   The gateway mounts the Secret at `/etc/mzmon/destination-tls`.
+   Without it, the gateway fails to load its configuration and names the missing file.
+
+1. Add the profile to your install, after the profiles you already use.
+
+   With Helm, add it to the `-f` list of your upgrade command.
+   The profiles ship inside the chart package; for more information, see [Get the profiles](../../getting-started/helm/#get-the-profiles).
+
+   ```bash
+   helm upgrade RELEASE oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring \
+     --version VERSION --namespace NAMESPACE \
+     -f YOUR_VALUES.yaml \
+     -f materialize-monitoring/profiles/call-home.values.yaml
+   ```
+
+   With the Terraform module, append the profile's contents to `additional_values`, for example with `file()`.
+
+1. Confirm the gateway is sending.
+   After the gateway restarts, `otelcol_exporter_sent_metric_points_total` and `otelcol_exporter_sent_log_records_total` rise
+   for `component_id="otelcol.exporter.otlphttp.dest_controlPlane"`.
+
+The certificate is re-read every five minutes, so a renewed certificate in the Secret is picked up without a restart.
+
+## Choose how much to send {#levels}
+
+Override the profile's settings in your own values file, after the profile.
+The following example sends errors and above, drops lines with an unparsed level, and sends recommended metrics:
+
+```yaml
+pipeline:
+  destinations:
+    controlPlane:
+      logs:
+        minLevel: ERROR
+        keepUnknown: false
+      metrics:
+        minMetricImportance: recommended
+```
+
+To send metrics and no logs, set `pipeline.destinations.controlPlane.logs.enabled` to `false`.
+
+Each setting only reduces what the control plane receives.
+Your own Loki and Thanos keep everything.
+
+## Turn off call-home {#disable}
+
+Remove the profile from your install, or set `pipeline.destinations.controlPlane.enabled` to `false`.
+The gateway stops sending at its next restart, which the upgrade triggers.
+
+## When the control plane is unreachable {#unreachable}
+
+The control plane's copy is the only one that loses data.
+When the gateway can't reach it, the destination's queue fills and then drops entries, and delivery to your own Loki and Thanos continues.
+The drops are counted in `otelcol_exporter_enqueue_failed_log_records_total` and `otelcol_exporter_enqueue_failed_metric_points_total`.
+
+## See more
+
+- [Where the gateway writes logs](../../logs-and-events/storing/#destinations): every field a destination takes.
+- [Call-Home design](../../reference/development/design-docs/20260917-call-home-self-managed/): the consent model this profile is a first step toward.
+
+
+--------------------------------------------------------------------------------
 title: "Tuning"
 url: https://materializeinc.github.io/materialize-monitoring/preview/dep-124-byoc-profile/operating/tuning/index.md
 --------------------------------------------------------------------------------
@@ -15847,7 +15963,8 @@ The following table lists each field, the types it applies to, and its default:
 | `logs.enabled` | all | on for `loki`; on when `logs` is present for `otlp` | Send logs here. |
 | `logs.url` / `metrics.url` | `otlp`, HTTP | the base URL plus `/v1/logs` or `/v1/metrics` | One signal's own endpoint. |
 | `logs.selector` | all | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
-| `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. `UNKNOWN` is kept. |
+| `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. |
+| `logs.keepUnknown` | all | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
 | `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
 | `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (defaults to `rate`). Entries over the limit are dropped. |
 | `metrics.enabled` | `otlp` | on when `metrics` is present | Send metrics here. |
@@ -15866,7 +15983,8 @@ The gateway mounts it at `/etc/mzmon/destination-tls`, so set `tls.certFile` and
 
 **The `logs` reduction fields apply to one destination's copy only**, in a `loki.process "dest_<name>"` in front of its writer.
 They run in table order, and each drop is counted in `loki_process_dropped_lines_total` under its own `reason`.
-`minLevel` never drops `UNKNOWN`, because a panic arrives without a level the gateway can parse.
+`minLevel` doesn't drop `UNKNOWN`, the level of an entry the gateway couldn't parse; `keepUnknown: false` does.
+A panic is one of those entries.
 
 For example, a second, external Loki that must never slow the bundled one down:
 
@@ -19339,8 +19457,8 @@ the `tls.*File` carriers are preferred over the inline PEMs.
       <td class="helm-value-desc">A client certificate for a `pipeline.destinations` entry.
 The Secret named in the paired volume, `mzmon-alloy-gateway-destination-tls`,
 is yours to create, for a destination that authenticates with a
-client certificate, such as the BYOC control plane
-(`profiles/byoc.values.yaml`). Point the destination's
+client certificate, such as the call-home control plane
+(`profiles/call-home.values.yaml`). Point the destination's
 `tls.certFile` and `tls.keyFile` at files under this path. It is
 optional for the same reason as `mzmon-tls`: an install with no such
 destination starts with the mount empty.
@@ -24666,7 +24784,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
         * `metrics/`: `metric-tiers.yaml`
       * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`, `_postgres_exporter_helpers.tpl`, and others)
-      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), `adhoc`, the whole stack in one file, and `byoc`, the control-plane destination a Bring Your Own Cloud stack deployer applies. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
+      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), `adhoc`, the whole stack in one file, and `call-home`, the opt-in control-plane destination that self-managed installs and Bring Your Own Cloud stacks apply. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
       * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect, each checked with `amtool check-config` and rendered with `amtool template render`
     * `materialize-monitoring-dashboards/`: the Materialize environment dashboards, as a chart and release of their own.
@@ -32289,7 +32407,7 @@ Work in **this** repo. Ordered roughly by dependency.
 | **Redaction stage set** composed from existing primitives, allowlist-shaped, fail-closed | [DEP-220](https://linear.app/materializeinc/issue/DEP-220). Primitives exist; the composition and the values surface do not | **Blocking** for log egress |
 | **Generated log-class / field allowlist artifact**, alongside `metric-tiers.yaml` | The customer-readable egress schedule, and the thing that stops the allowlist drifting on a rename | Should land with redaction |
 | **File-mounted certificate material** for gateway destinations, inline PEM retained as escape hatch | Env-var PEMs break renewal fleet-wide at one certificate lifetime. Shared with [cert-manager work](https://linear.app/materializeinc/issue/DEP-195) | ✅ `tls.caFile` / `certFile` / `keyFile` on every destination. An `otlp` destination takes only the file carriers, and `tls.reloadInterval` re-reads them. The inline carriers never reached the env ([DEP-465](https://linear.app/materializeinc/issue/DEP-465)) |
-| **`byoc` profile** composing control-plane destination, reduction tiers, redaction defaults, Grafana ingress and persistence | The assembled shape the stack deployer applies | ✅ `profiles/byoc.values.yaml`: an `otlp` destination to `telemetry.c.<appHost>` over mTLS, with the client certificate from the Secret `mzmon-alloy-gateway-destination-tls`, logs at `WARN` and above rate limited, and `essential` metrics. Redaction is [DEP-317](https://linear.app/materializeinc/issue/DEP-317)'s. Grafana ingress and persistence stay with the cloud profiles the deployer already composes |
+| **`byoc` profile** composing control-plane destination, reduction tiers, redaction defaults, Grafana ingress and persistence | The assembled shape the stack deployer applies | ✅ `profiles/call-home.values.yaml`, shared with self-managed call-home: an `otlp` destination to `telemetry.c.<appHost>` over mTLS, with the client certificate from the Secret `mzmon-alloy-gateway-destination-tls`, logs at `WARN` and above rate limited, and `essential` metrics. Redaction is [DEP-317](https://linear.app/materializeinc/issue/DEP-317)'s. Grafana ingress and persistence stay with the cloud profiles the deployer already composes |
 | **Control-plane values overlay** — OTLP mTLS ingress on, kubelet and events collection off, egress to our backends | Lets the control-plane gateway be this repo's artifact rather than a fork | Blocking for the control plane |
 | **NetworkPolicy for the gateway** ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) | The receiver cannot check revocation, so "the LB is the only path" must be enforced rather than assumed | **Partly landed.** `alloy-gateway.networkPolicy` ships on by default, but its ingest ports (`3100`, `4317`, `4318`, `9090`) accept any pod in the cluster — correct for a customer-side install, where those endpoints exist for the customer's own workloads, and not the guarantee this needs. The control-plane overlay has to replace that first ingress rule with one naming the load balancer, which is a values change rather than new chart machinery |
 | **Per-tenant Loki limits** in the control-plane overlay | One environment's crash loop must not degrade ingestion for the fleet | Blocking for the control plane |
@@ -35245,7 +35363,7 @@ A chart upgrade that starts sending anything is the single failure that would en
 This belongs in a render assertion, not in review discipline.
 
 **The levels are assembled by profiles, not by the operator.**
-Consistent with [profiles as documentation](../20260803-terraform-modules/#profiles-are-documentation-with-one-exception), each level is a composable overlay — `callhome-heartbeat`, `callhome-alerts`, and so on — that sets the destination, the tier floor, the redaction chain and the budget together.
+Consistent with [profiles as documentation](../20260803-terraform-modules/#profiles-are-documentation-with-one-exception), each level is a composable overlay — `call-home-heartbeat`, `call-home-alerts`, and so on — that sets the destination, the tier floor, the redaction chain and the budget together.
 An operator who assembles a level by hand will get four of the five settings right, which is the failure mode the [mTLS validator work](../20260816-tls-authentication/#per-component-notes) already found on a different feature.
 
 **Every level publishes a generated schedule and a measured envelope.**
@@ -35543,7 +35661,7 @@ None of it is ticketed yet.
 | **All [BYOC blocking prerequisites](../20260813-byoc-observability/#chart-side-prerequisites)** — map-shaped log destinations, per-destination processing, per-destination queue and drop policy, the tenant overwrite, the log-bridge transform, and the redaction stage set | This design is defaults and consent on top of that channel. Nothing above level 3 exists without them | **Blocking**, inherited |
 | **Rule evaluation actually shipping** — a template that emits the bundled rules, and an evaluator enabled by default in the bundled shape | Nothing evaluates alerting rules today, so the alerts level would forward an empty set that reads as good news | **Blocking** for levels 2 and up |
 | **Alert state reaching the gateway** — whatever evaluates metric rules remote-writes to `prometheus.receive_http`, as Loki's ruler already does | The fan-out happens at the gateway. Series that land in Thanos without traversing it cannot be forwarded | **Blocking** for the alerts level |
-| **The `callHome.level` values surface**, defaulting `off`, with the level profiles that assemble each rung | The feature. A level assembled by hand is a level with four of five settings right | **Blocking** |
+| **The `callHome.level` values surface**, defaulting `off`, with the level profiles that assemble each rung | The feature. A level assembled by hand is a level with four of five settings right | **Blocking**. `profiles/call-home.values.yaml` is the first profile, shared with BYOC: off unless applied, and the `metrics` and `diagnostics` rungs through `logs.enabled`, `logs.minLevel`, `logs.keepUnknown` and `metrics.minMetricImportance` on one destination. The single key selecting a rung, and the `heartbeat` and `alerts` rungs, are not built |
 | **A render assertion that the default sends nothing**, re-checked on every values change | A default that drifts to on in a refactor is the one failure that ends the programme | **Blocking** |
 | **`previewOnly` on the call-home destination** — full chain, counted and sampled locally, dropped before the writer | The compliance artifact a generated schedule cannot be, because it runs on the customer's own data | **Blocking** for the review story |
 | **A byte-rate ceiling per level**, shed rather than queued, with the shed event reported | Selection bounds kind, not volume, and volume spikes during exactly the incidents this exists for | **Blocking** |
