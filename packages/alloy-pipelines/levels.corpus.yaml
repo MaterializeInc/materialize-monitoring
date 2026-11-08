@@ -6,6 +6,10 @@
 # metadata the UNKNOWN detectors must record; leave it out for a line a
 # per-application parser levels before the detectors run, which must carry none.
 #
+# The test replaces <<NOW>> with the push time. Use it for a timestamp that a
+# parser makes the entry's own, because inputProcessor drops an entry more than
+# two hours old.
+#
 # The shapes come from a day of an AKS install's UNKNOWN lines, with names and
 # addresses made generic.
 
@@ -13,7 +17,7 @@
 
 - id: parsed-logfmt
   labels: {namespace: monitoring, app: loki, container: querier, job: monitoring/querier}
-  line: 'level=warn ts=2026-11-08T20:03:00.191063124Z caller=metrics.go:285 component=querier msg="query slow"'
+  line: 'level=warn ts=<<NOW>> caller=metrics.go:285 component=querier msg="query slow"'
   level: WARN
 
 # --- the Loki canary ----------------------------------------------------------
