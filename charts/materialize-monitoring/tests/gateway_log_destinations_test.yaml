@@ -317,3 +317,179 @@ tests:
       - matchRegexRaw:
           pattern: "is deprecated"
         not: true
+
+  # --- reduction --------------------------------------------------------------
+  # A destination that reduces its logs gets a loki.process of its own between
+  # the seam and its writer, so the reduction never touches another copy.
+  - it: should reduce one destination's logs in a loki.process of its own
+    set:
+      pipeline.destinations.archive:
+        type: loki
+        url: https://archive.example.com/loki/api/v1/push
+        queue:
+          blockOnOverflow: false
+        logs:
+          selector: '{namespace=~"environment-.+"}'
+          minLevel: warn
+          sampleRate: 0.25
+          rateLimit:
+            rate: 100
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "egress" \{\s*forward_to = \[\s*loki\.process\.dest_archive\.receiver,\s*loki\.write\.loki\.receiver,\s*\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_archive" \{\s*forward_to = \[loki\.write\.archive\.receiver\]'
+      # The allowlist: mark everything, re-mark what matches, drop the rest,
+      # then remove the marker. Without the first mark, unmatched entries carry
+      # no marker and pass the drop; without the last, the marker leaves with
+      # the entry.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_archive" \{\s*forward_to = \[[^\]]*\]\s*stage\.static_labels \{\s*values = \{\s*"__dest_keep" = "false",'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'action = "drop"\s*drop_counter_reason = "destination_selector"\s*\}\s*stage\.label_drop \{\s*values = \["__dest_keep"\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'stage\.match \{\s*selector = "\{namespace=~\\"environment-\.\+\\"\}"\s*stage\.static_labels \{\s*values = \{\s*"__dest_keep" = "true",'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'stage\.match \{\s*selector = "\{__dest_keep=\\"false\\"\}"\s*action = "drop"'
+      # Below WARN is dropped; UNKNOWN is not on the list.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'selector = "\{level=~\\"TRACE\|DEBUG\|INFO\\"\}"\s*action = "drop"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'stage\.sampling \{\s*rate = 0\.25'
+      # Without drop the limit backpressures, which stalls every destination.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'stage\.limit \{\s*rate = 100\s*burst = 100\s*drop = true'
+
+  - it: should leave a destination that sets no reduction field unwrapped
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_'
+
+  - it: should reduce an otlp destination's logs before its bridge
+    set:
+      pipeline.destinations.controlPlane:
+        type: otlp
+        url: https://ingest.example.com
+        logs:
+          minLevel: ERROR
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_controlPlane" \{\s*forward_to = \[otelcol\.receiver\.loki\.dest_controlPlane\.receiver\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'selector = "\{level=~\\"TRACE\|DEBUG\|INFO\|WARN\\"\}"'
+
+  - it: should render no level stage for a floor of TRACE
+    set:
+      pipeline.destinations.archive:
+        type: loki
+        url: https://archive.example.com/loki/api/v1/push
+        queue:
+          blockOnOverflow: false
+        logs:
+          minLevel: TRACE
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'destination_level'
+
+  - it: should refuse an unknown level
+    set:
+      pipeline.destinations.loki.logs.minLevel: NOTICE
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pipeline.destinations.loki.logs.minLevel is "NOTICE"'
+
+  - it: should refuse a selector that is not a stream selector
+    set:
+      pipeline.destinations.loki.logs.selector: 'namespace="x"'
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.logs.selector is .* which is not a LogQL stream selector"
+
+  - it: should refuse a sample rate of zero
+    set:
+      pipeline.destinations.loki.logs.sampleRate: 0
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.logs.sampleRate is 0"
+
+  # A token bucket with a burst below its rate still passes the rate, evenly
+  # spaced, so the two are checked independently.
+  - it: should accept a burst below the rate
+    set:
+      pipeline.destinations.loki.logs.rateLimit:
+        rate: 100
+        burst: 10
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # Alloy takes the burst as an integer, so a fractional rate's default burst
+  # is rounded up rather than copied.
+  - it: should round a fractional rate's default burst up to a whole line
+    set:
+      pipeline.destinations.loki.logs.rateLimit:
+        rate: 0.5
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'stage\.limit \{\s*rate = 0\.5\s*burst = 1\s*drop = true'
+
+  # `null` is how Helm records a cleared key; it means no limit.
+  - it: should treat a null rate limit as no limit
+    set:
+      pipeline.destinations.loki.logs.rateLimit: null
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_loki"'
+
+  # A limit with no rate would otherwise render nothing and limit nothing.
+  - it: should refuse a rate limit with no rate
+    set:
+      pipeline.destinations.loki.logs.rateLimit:
+        burst: 100
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.logs.rateLimit.rate is missing"
+
+  - it: should refuse a negative rate
+    set:
+      pipeline.destinations.loki.logs.rateLimit:
+        rate: -5
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.logs.rateLimit.rate is -5"
+
+  - it: should refuse a fractional burst
+    set:
+      pipeline.destinations.loki.logs.rateLimit:
+        rate: 5
+        burst: 2.5
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.logs.rateLimit.burst is 2.5"
