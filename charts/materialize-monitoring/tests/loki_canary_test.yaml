@@ -117,6 +117,45 @@ tests:
       - failedTemplate:
           errorPattern: 'does not filter on stream="stdout"'
 
+  - it: should accept any LogQL spelling of the stdout filter
+    set:
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - '-query-append=| pod="$(POD_NAME)" | stream = `stdout`'
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # The subchart writes -tenant-id from the tenant values, and a later one in
+  # extraArgs wins.
+  - it: should accept a tenant set through extraArgs
+    set:
+      pipeline.logging.tenancy.staticTenant: logs
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - -query-append=| pod="$(POD_NAME)" | stream="stdout"
+        - -tenant-id=logs
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: should refuse a wrong tenant set through extraArgs
+    set:
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - -query-append=| pod="$(POD_NAME)" | stream="stdout"
+        - -tenant-id=self-monitoring
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The Loki canary reads tenant "self-monitoring"'
+
   - it: should refuse the subchart's pod label
     set:
       loki.lokiCanary.labelname: pod
@@ -169,7 +208,32 @@ tests:
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: "proxies live tails to it without TLS"
+          errorPattern: "proxies live tails to http://loki-querier\\.test-monitoring\\.svc\\.cluster\\.local:3100 without TLS"
+
+  # The value is resolved as the subchart resolves it, so the check follows the
+  # URL Loki will use rather than how the template spells it.
+  - it: should accept any template that resolves to https
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.frontend.tail_proxy_url: '{{ include "loki.querierAddress" . | replace "http" "https" }}'
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: should refuse a template that resolves to http
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.frontend.tail_proxy_url: '{{ include "loki.querierAddress" . | replace "https://" "http://" }}'
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "proxies live tails to http://loki-querier"
 
   - it: should name the querier on Loki's certificate
     values:

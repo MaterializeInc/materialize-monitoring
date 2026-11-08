@@ -491,16 +491,17 @@ Usage:
   {{- $pipeline := $.Values.pipeline | default dict }}
 
   {{- if ( include "mzmon.certificates.lokiServerTls" $ ) }}
-    {{- /* The query frontend's tail proxy to the querier, in the distributed
-           mode. The subchart writes it as http://, so under server TLS every
-           live tail, the canary's included, is a plaintext request at a TLS
-           port and fails with `websocket: bad handshake`. */}}
-    {{- if eq ( $loki.deploymentMode | default "Distributed" | toString ) "Distributed" }}
-      {{- $frontend := dig "loki" "frontend" dict $loki }}
-      {{- $tailUrl := dig "tail_proxy_url" "" $frontend | toString }}
-      {{- if or ( not ( contains "https://" $tailUrl ) ) ( not ( dig "tail_tls_config" "tls_ca_path" "" $frontend ) ) }}
-        {{- $errors = append $errors "loki.loki.server.http_tls_config is set, so the querier serves TLS on 3100, but the query frontend proxies live tails to it without TLS. Every tail fails with `websocket: bad handshake`, the Loki canary's included. Set loki.loki.frontend.tail_proxy_url to the querier's https:// address and loki.loki.frontend.tail_tls_config to the CA and keypair under /etc/mzmon/tls, as profiles/mtls.values.yaml does." }}
-      {{- end }}
+    {{- /* The query frontend's tail proxy to the querier. The subchart writes
+           it as http://, so under server TLS every live tail, the canary's
+           included, is a plaintext request at a TLS port and fails with
+           `websocket: bad handshake`. The value is a template the subchart
+           resolves with its own helpers, so it is resolved here the same way;
+           outside the distributed mode it is empty and the frontend serves
+           tails itself. */}}
+    {{- $frontend := dig "loki" "frontend" dict $loki }}
+    {{- $tailUrl := tpl ( dig "tail_proxy_url" "" $frontend | toString ) ( include "mzmon.loki.subchartContext" $ | fromYaml | merge ( dict "Template" $.Template ) ) }}
+    {{- if and $tailUrl ( or ( not ( hasPrefix "https://" $tailUrl ) ) ( not ( dig "tail_tls_config" "tls_ca_path" "" $frontend ) ) ) }}
+      {{- $errors = append $errors ( printf "loki.loki.server.http_tls_config is set, so the querier serves TLS on 3100, but the query frontend proxies live tails to %s without TLS. Every tail fails with `websocket: bad handshake`, the Loki canary's included. Set loki.loki.frontend.tail_proxy_url to the querier's https:// address and loki.loki.frontend.tail_tls_config to the CA and keypair under /etc/mzmon/tls, as profiles/mtls.values.yaml does." $tailUrl ) }}
     {{- end }}
 
     {{- /* The writer. */}}

@@ -99,6 +99,28 @@ Usage:
 {{- end }}
 
 {{- /*
+A context shaped like the one the Loki subchart renders its templates in, so a
+value the subchart passes through `tpl`, such as `loki.loki.frontend.tail_proxy_url`,
+can be resolved here the way Loki will see it. The subchart's helpers read
+`.Values` (its own values, globals included), `.Release` and `.Chart.Name`.
+
+Returned without `Template`, which does not survive `toYaml`; the caller merges
+`$.Template` back in.
+
+Usage:
+  {{- $ctx := include "mzmon.loki.subchartContext" $ | fromYaml | merge ( dict "Template" $.Template ) }}
+*/}}
+{{- define "mzmon.loki.subchartContext" }}
+  {{- $values := deepCopy ( $.Values.loki | default dict ) }}
+  {{- $_ := set $values "global" ( mergeOverwrite ( deepCopy ( $values.global | default dict ) ) ( deepCopy ( $.Values.global | default dict ) ) ) }}
+  {{- dict
+      "Values" $values
+      "Release" ( dict "Name" $.Release.Name "Namespace" $.Release.Namespace "Service" $.Release.Service )
+      "Chart" ( dict "Name" "loki" )
+    | toYaml }}
+{{- end }}
+
+{{- /*
 Validate that the Loki canary can find its own lines.
 
 The canary writes to stdout and reads its lines back through Loki. The Alloy
@@ -140,7 +162,9 @@ reports Loki broken while Loki is fine:
         {{- $queryAppend = trimPrefix "-query-append=" $arg }}
       {{- end }}
     {{- end }}
-    {{- if and ( ne $streamname "stream" ) ( not ( contains `stream="stdout"` $queryAppend ) ) }}
+    {{- /* Any LogQL spelling of the filter: spaces around the operator, and
+           either string delimiter. */}}
+    {{- if and ( ne $streamname "stream" ) ( not ( regexMatch "stream\\s*=\\s*(\"stdout\"|`stdout`)" $queryAppend ) ) }}
       {{- $errors = append $errors ( printf "The Loki canary does not filter on stream=\"stdout\" (its -query-append is %q), so it reads its own stderr log lines back as invalid entries, logs each one, and reads that back too. Keep `| stream=\"stdout\"` in loki.lokiCanary.extraArgs' -query-append." $queryAppend ) }}
     {{- end }}
     {{- $kept := list "level" "app" "container" "namespace" "component" "job" "service_name" "unit" "environment_id" }}
@@ -152,6 +176,13 @@ reports Loki broken while Loki is fine:
 
     {{- if dig "loki" "auth_enabled" true ( $.Values.loki | default dict ) }}
       {{- $configured := dig "selfMonitoring" "tenant" "name" ( dig "tenant" "name" "" $canary ) ( $.Values.loki.monitoring | default dict ) | toString }}
+      {{- /* A later -tenant-id in extraArgs wins over the one the subchart
+             writes from these values. */}}
+      {{- range ( $canary.extraArgs | default list ) }}
+        {{- if hasPrefix "-tenant-id=" ( . | toString ) }}
+          {{- $configured = trimPrefix "-tenant-id=" ( . | toString ) }}
+        {{- end }}
+      {{- end }}
       {{- $tenancy := $.Values.pipeline.logging.tenancy }}
       {{- $infra := dig "tenantMap" "infra" "static" $tenancy | toString }}
       {{- $expected := "" }}
