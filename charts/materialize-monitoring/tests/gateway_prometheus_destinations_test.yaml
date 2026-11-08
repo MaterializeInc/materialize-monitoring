@@ -410,3 +410,60 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: "prometheusRemoteWrite.loki names a remote-write destination, but pipeline.destinations.loki is already a destination of type loki"
+
+  # A Secret written for a legacy entry's credentials names the variables the
+  # old map derived. A retune of the bundled `thanos` has a counterpart, so its
+  # URL and allowlist follow the counterpart, but its credentials must not move.
+  - it: should keep the legacy credential names on a retune of thanos
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.authType: basicAuth
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.remote_write "thanos" \{[\s\S]*?username = sys\.env\("GATEWAY_PROMETHEUS_DEST_THANOS_USERNAME"\)\s*password = sys\.env\("GATEWAY_PROMETHEUS_DEST_THANOS_PASSWORD"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'url = sys\.env\("GATEWAY_THANOS_DEST"\)'
+
+  # A name the new entry sets for itself still wins over the legacy default.
+  - it: should let the counterpart's own credential names win over the legacy ones
+    set:
+      pipeline.destinations.thanos.basicAuth.passwordEnv: MY_THANOS_PASSWORD
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.authType: basicAuth
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'password = sys\.env\("MY_THANOS_PASSWORD"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'username = sys\.env\("GATEWAY_PROMETHEUS_DEST_THANOS_USERNAME"\)'
+
+  # A bare URL where a destination map belongs was reported by the old resolver
+  # as a destination with no url; the fold must not make it vanish instead.
+  - it: should refuse a legacy entry that is not a map
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp: https://aps.example.com/api/v1/remote_write
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "prometheusRemoteWrite.amp is string, not a destination"
+
+  # `null` is how Helm records a cleared key, and is not a mistake.
+  - it: should ignore a legacy entry cleared to null
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.amp: null
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # Two of the pre-map keys move under `metrics`. Moved to the same name, they
+  # would apply to nothing, so the error has to say where each one goes.
+  - it: should name the metrics path for a leftover tier key
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.minMetricImportance: essential
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "minMetricImportance to pipeline\\.destinations\\.thanos\\.metrics\\.minMetricImportance"

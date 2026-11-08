@@ -1882,8 +1882,20 @@ Usage:
 
   {{- if $legacyFound }}
     {{- /* One error rather than one per key: they are a single mistake, and
-           the migration is the same move for all of them. */}}
-    {{- $errors = append $errors ( printf "%s still carries the single-destination key(s) %s, from before destinations were a map. They apply to nothing, and the install would keep writing to the default endpoint with no error. Move them onto a pipeline.destinations entry of type prometheus: pipeline.destinations.thanos.%s for the bundled Thanos Receive." $path ( join ", " $legacyFound ) ( first $legacyFound ) ) }}
+           the migration is the same move for all of them. Each key is named
+           with its target, because two of them move under `metrics`, and a
+           key moved to the same name there would apply to nothing. */}}
+    {{- $moves := list }}
+    {{- range $key := $legacyFound }}
+      {{- if has $key ( list "minMetricImportance" "unfilteredMetricsEnv" ) }}
+        {{- $moves = append $moves ( printf "%s to pipeline.destinations.thanos.metrics.%s" $key $key ) }}
+      {{- else if eq $key "oauth2" }}
+        {{- $moves = append $moves "oauth2 has no replacement: it never rendered" }}
+      {{- else }}
+        {{- $moves = append $moves ( printf "%s to pipeline.destinations.thanos.%s" $key $key ) }}
+      {{- end }}
+    {{- end }}
+    {{- $errors = append $errors ( printf "%s still carries the single-destination key(s) %s, from before destinations were a map. They apply to nothing, and the install would keep writing to the default endpoint with no error. Move them onto the bundled Thanos Receive's entry: %s." $path ( join ", " $legacyFound ) ( join "; " $moves ) ) }}
   {{- end }}
 
   {{- /* final output */}}

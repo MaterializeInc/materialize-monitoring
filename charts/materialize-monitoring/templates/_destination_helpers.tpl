@@ -178,18 +178,23 @@ keeps working:
   * `minMetricImportance` and `unfilteredMetricsEnv` move under `metrics`; every
     other field has the same name and meaning on the map. `oauth2` is dropped,
     as it never rendered.
-  * An entry with no counterpart in `pipeline.destinations` keeps the variable
-    names the remote-write map derived (`GATEWAY_PROM_DEST_<NAME>`,
-    `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, …), so a Secret written for it
-    still reaches it.
-  * An entry with a counterpart, such as `thanos`, is applied over it and takes
-    the counterpart's names.
+  * Every entry keeps the credential variable names the remote-write map
+    derived (`GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, `…_BEARER_TOKEN`, the
+    TLS ones), unless it or its counterpart names its own, so a Secret written
+    for it still reaches it. That holds for a retune of `thanos` too.
+  * An entry with no counterpart in `pipeline.destinations` also keeps its URL
+    and allowlist names (`GATEWAY_PROM_DEST_<NAME>`,
+    `GATEWAY_UNFILTERED_PROM_METRICS_<NAME>`). An entry with a counterpart, such
+    as `thanos`, is applied over it and takes the counterpart's: those two are
+    written by the chart's own env ConfigMap, so nothing outside reads them.
 
 The single-destination keys from before the map (`url`, `enabled`, …) are not
 entries; `mzmon.alloy.validate.promDests` refuses them.
 
-Returns `{entries: {<name>: <entry>}, conflicts: [<name>]}`, where a conflict is
-a name the map already gives to a destination of another type.
+Returns `{entries: {<name>: <entry>}, conflicts: [<name>], invalid: [<name>]}`.
+A conflict is a name the map already gives to a destination of another type.
+An invalid entry is one that is neither a map nor `null`, such as a bare URL:
+it would otherwise vanish without a word.
 
 Usage:
   {{- $legacy := include "mzmon.destinations.legacyPrometheus" $ | fromYaml }}
@@ -203,9 +208,19 @@ Usage:
   {{- $preMap := include "mzmon.alloyGateway.promDest.legacyKeys" $ | fromYamlArray }}
   {{- $entries := dict }}
   {{- $conflicts := list }}
+  {{- $invalid := list }}
   {{- range $name := ( keys $legacy | sortAlpha ) }}
     {{- $raw := index $legacy $name }}
+    {{- if and ( not ( has $name $preMap ) ) ( not ( kindIs "map" $raw ) ) ( not ( kindIs "invalid" $raw ) ) }}
+      {{- $invalid = append $invalid $name }}
+    {{- end }}
     {{- if and ( not ( has $name $preMap ) ) ( kindIs "map" $raw ) }}
+      {{- $slug := $name | regexReplaceAll "[^A-Za-z0-9]" "_" | upper }}
+      {{- $p := printf "GATEWAY_PROMETHEUS_DEST_%s" $slug }}
+      {{- $credentialNames := dict
+            "basicAuth" ( dict "usernameEnv" ( printf "%s_USERNAME" $p ) "passwordEnv" ( printf "%s_PASSWORD" $p ) )
+            "bearer" ( dict "tokenEnv" ( printf "%s_BEARER_TOKEN" $p ) )
+            "tls" ( dict "caEnv" ( printf "%s_TLS_CA" $p ) "certEnv" ( printf "%s_TLS_CERT" $p ) "keyEnv" ( printf "%s_TLS_KEY" $p ) ) }}
       {{- $entry := omit $raw "minMetricImportance" "unfilteredMetricsEnv" "oauth2" }}
       {{- $metrics := dict }}
       {{- range $key := list "minMetricImportance" "unfilteredMetricsEnv" }}
@@ -219,22 +234,21 @@ Usage:
         {{- if ne ( dig "type" "" $counterpart | toString ) "prometheus" }}
           {{- $conflicts = append $conflicts $name }}
         {{- end }}
+        {{- /* The counterpart's own settings win over the legacy credential
+               names, and the legacy entry wins over both. */}}
+        {{- $under := include "mzmon.destinations.overlay" ( dict "base" $credentialNames "over" $counterpart ) | fromYaml }}
+        {{- $entry = include "mzmon.destinations.overlay" ( dict "base" $under "over" $entry ) | fromYaml }}
       {{- else }}
-        {{- $slug := $name | regexReplaceAll "[^A-Za-z0-9]" "_" | upper }}
-        {{- $p := printf "GATEWAY_PROMETHEUS_DEST_%s" $slug }}
-        {{- $names := dict
+        {{- $names := merge ( dict
               "type" "prometheus"
               "urlEnv" ( printf "GATEWAY_PROM_DEST_%s" $slug )
-              "metrics" ( dict "unfilteredMetricsEnv" ( printf "GATEWAY_UNFILTERED_PROM_METRICS_%s" $slug ) )
-              "basicAuth" ( dict "usernameEnv" ( printf "%s_USERNAME" $p ) "passwordEnv" ( printf "%s_PASSWORD" $p ) )
-              "bearer" ( dict "tokenEnv" ( printf "%s_BEARER_TOKEN" $p ) )
-              "tls" ( dict "caEnv" ( printf "%s_TLS_CA" $p ) "certEnv" ( printf "%s_TLS_CERT" $p ) "keyEnv" ( printf "%s_TLS_KEY" $p ) ) }}
+              "metrics" ( dict "unfilteredMetricsEnv" ( printf "GATEWAY_UNFILTERED_PROM_METRICS_%s" $slug ) ) ) $credentialNames }}
         {{- $entry = include "mzmon.destinations.overlay" ( dict "base" $names "over" $entry ) | fromYaml }}
       {{- end }}
       {{- $_ := set $entries $name $entry }}
     {{- end }}
   {{- end }}
-  {{- dict "entries" $entries "conflicts" $conflicts | toYaml }}
+  {{- dict "entries" $entries "conflicts" $conflicts "invalid" $invalid | toYaml }}
 {{- end }}
 
 
@@ -736,7 +750,10 @@ Usage:
 
   {{- $legacyProm := include "mzmon.destinations.legacyPrometheus" $ | fromYaml }}
   {{- if $legacyProm.entries }}
-    {{- $warnings = append $warnings ( printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite is deprecated, and its entries (%s) are applied as %s entries of type prometheus. Move each one there: pipeline.metrics.gateway.destination.prometheusRemoteWrite.<name> becomes %s.<name> with type: prometheus, and its minMetricImportance moves under metrics. An entry with no counterpart keeps its variable names (GATEWAY_PROM_DEST_<NAME>, …) only while it stays here; name them with urlEnv and the *Env fields when you move it." ( keys $legacyProm.entries | sortAlpha | join ", " ) $path $path ) }}
+    {{- $warnings = append $warnings ( printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite is deprecated, and its entries (%s) are applied as %s entries of type prometheus. Move each one there: pipeline.metrics.gateway.destination.prometheusRemoteWrite.<name> becomes %s.<name> with type: prometheus, and its minMetricImportance moves under metrics. While an entry stays here it keeps the credential variable names this map derived (GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD, …); name them with the *Env fields when you move it, if a Secret uses them." ( keys $legacyProm.entries | sortAlpha | join ", " ) $path $path ) }}
+  {{- end }}
+  {{- range $name := $legacyProm.invalid }}
+    {{- $errors = append $errors ( printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s is %s, not a destination. Each entry is a map with a url and the rest; better, move it to %s.%s with type: prometheus." $name ( kindOf ( index $.Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite $name ) ) $path $name ) }}
   {{- end }}
   {{- range $name := $legacyProm.conflicts }}
     {{- $errors = append $errors ( printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s names a remote-write destination, but %s.%s is already a destination of type %s. Both maps feed one, so the remote-write entry cannot apply. Rename it." $name $path $name ( dig $name "type" "" ( $.Values.pipeline.destinations | default dict ) ) ) }}

@@ -2544,9 +2544,9 @@ The bundled Thanos Receive is `pipeline.destinations.thanos`.
 Entries set here still apply: the chart folds each one onto `pipeline.destinations` as a `prometheus` entry and warns at render.
 Move each across, so `prometheusRemoteWrite.amp.url` becomes `pipeline.destinations.amp.url`, with `type: prometheus`.
 `minMetricImportance` and `unfilteredMetricsEnv` move under `metrics`; every other field keeps its name.
-An entry with no counterpart in `pipeline.destinations` keeps the variable names this map derived
-(`GATEWAY_PROM_DEST_<NAME>`, `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, and so on) while it stays here.
-Name them with `urlEnv` and the `*Env` fields when you move it, if a Secret already uses them.
+While an entry stays here, it keeps the credential variable names this map derived, such as
+`GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, and that includes a retune of `thanos`.
+Name them with the `*Env` fields when you move it, if a Secret already uses them.
 
 ##### OpenTelemetry/OTLP destinations (deprecated)
 

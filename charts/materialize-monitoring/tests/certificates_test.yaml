@@ -874,6 +874,9 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: "puts Receive into require-and-verify immediately"
+      # And names a values path that exists, for the keypair it asks for.
+      - failedTemplate:
+          errorPattern: "no certFile/keyFile on pipeline\\.destinations\\.<name>\\.tls\\)"
 
   # The canary's -tls flag means mTLS: it builds an mTLS transport and will not
   # start without a keypair, even against a server that requires none.

@@ -650,7 +650,7 @@ Usage:
       {{- if hasPrefix "--remote-write.server-tls-client-ca" ( $arg | toString ) }}{{- $hasClientCa = true }}{{- end }}
     {{- end }}
     {{- if and $hasClientCa $promSilent }}
-      {{- $errors = append $errors ( printf "thanos.receive.extraArgs sets --remote-write.server-tls-client-ca, which puts Receive into require-and-verify immediately — there is no verify-if-given on this hop, whatever the flag's help text suggests. Remote-write destination(s) %s present no client certificate (no certFile/keyFile on pipeline.metrics.gateway.destination.pipeline.destinations.<name>.tls), so their metric writes would be refused at the TLS handshake. Apply profiles/mtls-phase2.values.yaml first, confirm the gateway has rolled, then add this flag." ( join ", " $promSilent ) ) }}
+      {{- $errors = append $errors ( printf "thanos.receive.extraArgs sets --remote-write.server-tls-client-ca, which puts Receive into require-and-verify immediately — there is no verify-if-given on this hop, whatever the flag's help text suggests. Remote-write destination(s) %s present no client certificate (no certFile/keyFile on pipeline.destinations.<name>.tls), so their metric writes would be refused at the TLS handshake. Apply profiles/mtls-phase2.values.yaml first, confirm the gateway has rolled, then add this flag." ( join ", " $promSilent ) ) }}
     {{- end }}
   {{- end }}
 
