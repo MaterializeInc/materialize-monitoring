@@ -32,6 +32,37 @@ Usage:
   {{- dict
       "loki" ( list "logs" )
       "otlp" ( list "logs" "metrics" )
+      "googleCloud" ( list "metrics" )
+      "datadog" ( list "logs" "metrics" )
+    | toYaml }}
+{{- end }}
+
+
+{{- /*
+Per-type defaults the resolver and the validator share.
+
+  url                  the endpoint when the destination names none
+  urlRequired          whether the destination is unusable without a URL;
+                       Datadog derives its endpoints from `site`
+  minMetricImportance  the metric tier floor. The metered backends default to
+                       `recommended`, as the exporters they replace did
+  authTypes            the `authType` values the type accepts, default first.
+                       Google Cloud authenticates with the gateway's ambient
+                       Google identity, and Datadog with its API key
+
+Usage:
+  {{- $defaults := index ( include "mzmon.destinations.typeDefaults" $ | fromYaml ) "otlp" }}
+*/}}
+{{- define "mzmon.destinations.typeDefaults" }}
+  {{- dict
+      "loki" ( dict "url" "" "urlRequired" true "minMetricImportance" "all"
+                    "authTypes" ( list "none" "basicAuth" "bearer" ) )
+      "otlp" ( dict "url" "" "urlRequired" true "minMetricImportance" "all"
+                    "authTypes" ( list "none" "basicAuth" "bearer" "headers" "sigv4" ) )
+      "googleCloud" ( dict "url" "https://telemetry.googleapis.com" "urlRequired" true "minMetricImportance" "recommended"
+                    "authTypes" ( list "none" ) )
+      "datadog" ( dict "url" "" "urlRequired" false "minMetricImportance" "recommended"
+                    "authTypes" ( list "apiKey" ) )
     | toYaml }}
 {{- end }}
 
@@ -45,9 +76,12 @@ Usage:
   {{- $fields := index ( include "mzmon.destinations.queueFields" $ | fromYaml ) "otlp" }}
 */}}
 {{- define "mzmon.destinations.queueFields" }}
+  {{- $otel := list "queueSize" "numConsumers" "blockOnOverflow" }}
   {{- dict
       "loki" ( list "capacity" "minShards" "blockOnOverflow" "drainTimeout" )
-      "otlp" ( list "queueSize" "numConsumers" "blockOnOverflow" )
+      "otlp" $otel
+      "googleCloud" $otel
+      "datadog" $otel
     | toYaml }}
 {{- end }}
 
@@ -61,7 +95,7 @@ Usage:
   {{- $blocks := index ( include "mzmon.destinations.blocksByDefault" $ | fromYaml ) $type }}
 */}}
 {{- define "mzmon.destinations.blocksByDefault" }}
-  {{- dict "loki" true "otlp" false | toYaml }}
+  {{- dict "loki" true "otlp" false "googleCloud" false "datadog" false | toYaml }}
 {{- end }}
 
 
@@ -200,6 +234,12 @@ Usage:
   {{- $prefix := printf "GATEWAY_%s_DEST" $slug }}
   {{- $type := dig "type" "" $raw | toString }}
   {{- $signals := index ( include "mzmon.destinations.types" . | fromYaml ) $type | default list }}
+  {{- $defaults := index ( include "mzmon.destinations.typeDefaults" . | fromYaml ) $type | default ( dict
+        "url" "" "urlRequired" true "minMetricImportance" "all" "authTypes" ( list "none" ) ) }}
+  {{- $headers := dig "headers" list $raw }}
+  {{- if not ( kindIs "slice" $headers ) }}
+    {{- $headers = list }}
+  {{- end }}
 
   {{- $tls := dig "tls" dict $raw }}
   {{- if not ( kindIs "map" $tls ) }}
@@ -280,14 +320,15 @@ Usage:
     "name" $name
     "type" $type
     "enabled" $enabled
-    "url" ( dig "url" "" $raw | toString )
+    "url" ( dig "url" $defaults.url $raw | toString )
     "urlEnv" ( dig "urlEnv" $prefix $raw | toString )
+    "urlRequired" $defaults.urlRequired
     "retries" ( dict
       "maxBackoffRetries" ( dig "retries" "maxBackoffRetries" 10 $raw )
       "minBackoffPeriod" ( dig "retries" "minBackoffPeriod" "1s" $raw | toString )
       "maxBackoffPeriod" ( dig "retries" "maxBackoffPeriod" "5m" $raw | toString )
       "retryOnHttp429" ( dig "retries" "retryOnHttp429" true $raw ) )
-    "authType" ( dig "authType" "none" $raw | toString )
+    "authType" ( dig "authType" ( first $defaults.authTypes ) $raw | toString )
     "basicAuth" ( dict
       "username" ( dig "basicAuth" "username" "" $raw | toString )
       "usernameEnv" ( dig "basicAuth" "usernameEnv" ( printf "%s_USERNAME" $prefix ) $raw | toString )
@@ -296,6 +337,18 @@ Usage:
     "bearer" ( dict
       "token" ( dig "bearer" "token" "" $raw | toString )
       "tokenEnv" ( dig "bearer" "tokenEnv" ( printf "%s_BEARER_TOKEN" $prefix ) $raw | toString ) )
+    "headers" $headers
+    "sigv4" ( dict
+      "region" ( dig "sigv4" "region" "" $raw | toString )
+      "service" ( dig "sigv4" "service" "" $raw | toString )
+      "roleArn" ( dig "sigv4" "roleArn" "" $raw | toString ) )
+    "apiKey" ( dict
+      "key" ( dig "apiKey" "key" "" $raw | toString )
+      "keyEnv" ( dig "apiKey" "keyEnv" ( printf "%s_API_KEY" $prefix ) $raw | toString ) )
+    "site" ( dig "site" "datadoghq.com" $raw | toString )
+    "hostMetadata" ( dig "hostMetadata" false $raw )
+    "project" ( dig "project" "" $raw | toString )
+    "location" ( dig "location" "" $raw | toString )
     "tls" ( dict
       "enabled" $tlsEnabled
       "verify" $tlsVerify
@@ -325,7 +378,7 @@ Usage:
       "rateLimit" $rateLimit )
     "metrics" ( dict
       "enabled" $metricsEnabled
-      "minMetricImportance" ( dig "minMetricImportance" "all" $metrics | toString )
+      "minMetricImportance" ( dig "minMetricImportance" $defaults.minMetricImportance $metrics | toString )
       "url" ( dig "url" "" $metrics | toString )
       "urlEnv" ( dig "urlEnv" ( printf "%s_METRICS" $prefix ) $metrics | toString )
       "unfilteredMetricsEnv" ( dig "unfilteredMetricsEnv" ( printf "%s_METRICS_ALLOWLIST" $prefix ) $metrics | toString ) )
@@ -494,10 +547,12 @@ Usage:
   {{- $out := list }}
   {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
     {{- $at := printf "pipeline.destinations.%s" $dest.name }}
-    {{- $out = append $out ( dict
-          "key" $dest.urlEnv
-          "value" ( include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.url $ ) "tls" $dest.tls ) )
-          "owner" ( printf "%s.urlEnv" $at ) ) }}
+    {{- if $dest.urlRequired }}
+      {{- $out = append $out ( dict
+            "key" $dest.urlEnv
+            "value" ( include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.url $ ) "tls" $dest.tls ) )
+            "owner" ( printf "%s.urlEnv" $at ) ) }}
+    {{- end }}
     {{- if and $dest.logs.enabled $dest.logs.url }}
       {{- $out = append $out ( dict
             "key" $dest.logs.urlEnv
@@ -524,6 +579,9 @@ Usage:
     {{- end }}
     {{- if and ( eq $dest.authType "bearer" ) $dest.bearer.token }}
       {{- $out = append $out ( dict "key" $dest.bearer.tokenEnv "value" ( tpl $dest.bearer.token $ ) "owner" ( printf "%s.bearer.tokenEnv" $at ) ) }}
+    {{- end }}
+    {{- if and ( eq $dest.authType "apiKey" ) $dest.apiKey.key }}
+      {{- $out = append $out ( dict "key" $dest.apiKey.keyEnv "value" ( tpl $dest.apiKey.key $ ) "owner" ( printf "%s.apiKey.keyEnv" $at ) ) }}
     {{- end }}
   {{- end }}
   {{- $out | toYaml }}
@@ -558,8 +616,12 @@ Catches the mistakes that otherwise present as a working install:
      customer's own copy should — and the rest have to shed. Each type's
      default comes from `mzmon.destinations.blocksByDefault`.
 
-It also warns, once, about values still set under the deprecated
-`pipeline.logging.gateway.destination.loki`.
+It also warns, once each, about the deprecated destinations still in use:
+values set under `pipeline.logging.gateway.destination.loki`, and the
+`otel` exporters under `pipeline.metrics.gateway.destination.otel`. The `otel`
+block keeps rendering as it did; it is not folded onto the map, because its
+raw `config` and `handlers` overrides and its shared `auth` have no faithful
+equivalent there.
 
 Usage:
   {{- $res := include "mzmon.destinations.validate" $ | fromYaml }}
@@ -572,6 +634,18 @@ Usage:
   {{- $queueFields := include "mzmon.destinations.queueFields" $ | fromYaml }}
   {{- $blocksByDefault := include "mzmon.destinations.blocksByDefault" $ | fromYaml }}
   {{- $reserved := include "mzmon.destinations.reservedNames" $ | fromYamlArray }}
+
+  {{- $otel := dig "metrics" "gateway" "destination" "otel" dict ( $.Values.pipeline | default dict ) }}
+  {{- $otelLogs := dig "logging" "gateway" "destination" "otel" "enabled" false ( $.Values.pipeline | default dict ) }}
+  {{- if or ( dig "enabled" false $otel ) $otelLogs }}
+    {{- $moves := list }}
+    {{- range $exporter := list ( list "otlpExporter" "otlp" ) ( list "googleCloudExporter" "googleCloud" ) ( list "datadogExporter" "datadog" ) }}
+      {{- if dig ( index $exporter 0 ) "enabled" false $otel }}
+        {{- $moves = append $moves ( printf "%s becomes an entry of type %s" ( index $exporter 0 ) ( index $exporter 1 ) ) }}
+      {{- end }}
+    {{- end }}
+    {{- $warnings = append $warnings ( printf "pipeline.metrics.gateway.destination.otel is deprecated, and still renders as before. Replace each exporter with an entry in %s, which gives it its own credentials, metric tier, queue, and log reduction: %s. Turn a signal on with a metrics or logs block on the entry, in place of otel.enabled and pipeline.logging.gateway.destination.otel.enabled, and set the entry's authType in place of otel.auth." $path ( $moves | default ( list "no exporter is enabled" ) | join "; " ) ) }}
+  {{- end }}
 
   {{- $legacy := include "mzmon.destinations.legacyLoki" $ | fromYaml }}
   {{- if $legacy }}
@@ -621,8 +695,28 @@ Usage:
       {{- end }}
     {{- end }}
 
-    {{- if not ( has $dest.authType ( list "none" "basicAuth" "bearer" ) ) }}
-      {{- $errors = append $errors ( printf "%s.%s.authType is %q. Supported values are: none, basicAuth, bearer." $path $name $dest.authType ) }}
+    {{- $authTypes := dig $dest.type "authTypes" ( list "none" ) ( include "mzmon.destinations.typeDefaults" $ | fromYaml ) }}
+    {{- if not ( has $dest.authType $authTypes ) }}
+      {{- $errors = append $errors ( printf "%s.%s.authType is %q, which a %s destination does not take. Supported values are: %s." $path $name $dest.authType $dest.type ( join ", " $authTypes ) ) }}
+    {{- end }}
+    {{- if eq $dest.authType "headers" }}
+      {{- if not $dest.headers }}
+        {{- $errors = append $errors ( printf "%s.%s.authType is headers, but %s.%s.headers is empty, so the exporter would send no credential." $path $name $path $name ) }}
+      {{- end }}
+      {{- range $i, $header := $dest.headers }}
+        {{- $h := $header | default dict }}
+        {{- if not ( kindIs "map" $h ) }}
+          {{- $h = dict }}
+        {{- end }}
+        {{- if not $h.key }}
+          {{- $errors = append $errors ( printf "%s.%s.headers[%d] has no key." $path $name $i ) }}
+        {{- end }}
+        {{- if eq ( len ( compact ( list ( $h.value | default "" ) ( $h.valueEnv | default "" ) ) ) ) 2 }}
+          {{- $errors = append $errors ( printf "%s.%s.headers[%d] sets both value and valueEnv. Set value for a literal that renders into the pipeline ConfigMap, or valueEnv to read a secret from the environment." $path $name $i ) }}
+        {{- else if not ( or $h.value $h.valueEnv ) }}
+          {{- $errors = append $errors ( printf "%s.%s.headers[%d] sets neither value nor valueEnv." $path $name $i ) }}
+        {{- end }}
+      {{- end }}
     {{- end }}
 
     {{- if $dest.logs.enabled }}
@@ -649,6 +743,14 @@ Usage:
       {{- end }}
     {{- end }}
 
+    {{- if eq $dest.type "googleCloud" }}
+      {{- range $field := list "ca" "cert" "key" "caFile" "certFile" "keyFile" }}
+        {{- if index $dest.tls $field }}
+          {{- $errors = append $errors ( printf "%s.%s.tls.%s does not apply to a googleCloud destination, which reaches Google's public endpoint with Google's own credentials." $path $name $field ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+
     {{- if eq $dest.type "otlp" }}
       {{- if not ( has $dest.protocol ( list "http" "grpc" ) ) }}
         {{- $errors = append $errors ( printf "%s.%s.protocol is %q. Supported values are: http, grpc." $path $name $dest.protocol ) }}
@@ -667,7 +769,7 @@ Usage:
       {{- end }}
     {{- end }}
 
-    {{- if and $dest.active ( not $dest.url ) }}
+    {{- if and $dest.active $dest.urlRequired ( not $dest.url ) }}
       {{- $errors = append $errors ( printf "%s.%s is enabled but has no url. The rendered pipeline reads sys.env(%q), which would resolve empty — alloy accepts that at load and every write fails at run time." $path $name $dest.urlEnv ) }}
     {{- end }}
 

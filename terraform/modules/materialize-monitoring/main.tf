@@ -326,8 +326,8 @@ resource "helm_release" "monitoring" {
         otlp_auth_bearer_token cannot be combined with otlp_auth_header_secrets or
         otlp_metrics.auth_headers.
 
-        The chart has one auth slot per OTLP destination (`otel.auth.authType`), so only one of
-        these can be rendered. Failing here is deliberate: the alternative is silently dropping the
+        The chart has one auth slot per destination (`pipeline.destinations.otlp.authType`), so
+        only one of these can be rendered. Failing here is deliberate: the alternative is silently dropping the
         other, which reaches the destination as an authentication failure at run time.
       EOT
     }

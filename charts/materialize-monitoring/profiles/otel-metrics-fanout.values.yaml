@@ -33,21 +33,26 @@ pipeline:
             enabled: true
             minMetricImportance: all
 
-        otel:
-          enabled: true
+  destinations:
+    # Google Cloud Monitoring (as prometheus.googleapis.com/ metrics):
+    # essentials + dashboard metrics.
+    googleCloud:
+      type: googleCloud
+      metrics:
+        minMetricImportance: recommended
 
-          # Google Cloud Monitoring (as prometheus.googleapis.com/ metrics):
-          # essentials + dashboard metrics.
-          googleCloudExporter:
-            enabled: true
-            minMetricImportance: recommended
+    # Datadog: alerting metrics only, to keep custom-metric cost down.
+    datadog:
+      type: datadog
+      # Your Datadog site (datadoghq.com, datadoghq.eu, ...). The exporter
+      # derives its intake endpoints from it.
+      site: datadoghq.com
+      # The variable named in the Secret above. Without this it would be
+      # derived from the entry's name, as GATEWAY_DATADOG_DEST_API_KEY.
+      apiKey:
+        keyEnv: GATEWAY_OTEL_DEST_DATADOG_API_KEY
+      metrics:
+        minMetricImportance: essential
 
-          # Datadog: alerting metrics only, to keep custom-metric cost down.
-          datadogExporter:
-            enabled: true
-            # Your Datadog site (datadoghq.com, datadoghq.eu, ...).
-            url: "datadoghq.com"
-            minMetricImportance: essential
-
-          # To also push to a generic OTLP backend (e.g. Honeycomb), enable
-          # otlpExporter and set otel.auth — see otlp-metrics-honeycomb.values.yaml.
+    # To also push to a generic OTLP backend (e.g. Honeycomb), add an entry of
+    # type otlp — see otlp-metrics-honeycomb.values.yaml.

@@ -19,10 +19,10 @@
 # request. Both are pinned to the same values the chart uses.
 
 locals {
-  # The names the chart's own configs read. Two are fixed by the chart (its
-  # datadog and bearer blocks name them literally); the header variables are
-  # derived in destinations.tf and written into the values beside this, so the
-  # two cannot drift.
+  # The names the gateway reads. destinations.tf writes each one into its
+  # destination's values explicitly (`apiKey.keyEnv`, `bearer.tokenEnv`, and the
+  # header `valueEnv`s), so the key set here and the variable read there cannot
+  # drift.
   gateway_env_secret_data = merge(
     var.datadog_api_key == null ? {} : {
       GATEWAY_OTEL_DEST_DATADOG_API_KEY = var.datadog_api_key

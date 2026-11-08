@@ -116,17 +116,18 @@ pub fn remote_write(ctx: &Ctx) -> Result<()> {
     )
 }
 
-/// The Google Cloud exporter reaches the gateway pipeline.
+/// The Google Cloud destination reaches the gateway pipeline.
 ///
-/// The observable proof is the per-destination filter variable, which renders
-/// only when the chart actually sees the exporter enabled, and the OTLP exporter
-/// aimed at the Telemetry API, which is what writes.
+/// The module writes it as the `pipeline.destinations` entry `googleCloud`, so
+/// the proof is in three places: its tier allowlist variable, its edge off the
+/// metric egress seam, and the OTLP exporter aimed at the Telemetry API, which
+/// is what writes.
 pub fn google_cloud(ctx: &Ctx) -> Result<()> {
-    let mut problems = filter_problems(ctx, "GATEWAY_UNFILTERED_GCM_METRICS", "Google Cloud")?;
+    let mut problems = otel_destination_problems(ctx, "googleCloud", "Google Cloud")?;
     if !ctx
         .rendered
         .gateway_config()?
-        .contains(r#"otelcol.exporter.otlphttp "googleCloud""#)
+        .contains(r#"otelcol.exporter.otlphttp "dest_googleCloud_gcp""#)
     {
         problems.push(
             "google_cloud_metrics is set but no OTLP exporter to the Telemetry API rendered"
@@ -136,30 +137,65 @@ pub fn google_cloud(ctx: &Ctx) -> Result<()> {
     report(problems, "")
 }
 
-/// The Datadog exporter reaches the gateway pipeline.
+/// The Datadog destination reaches the gateway pipeline, reading the API key
+/// the module's Secret supplies.
+///
+/// The Secret and the values name the variable independently, so a rename on
+/// either side leaves an exporter that loads and authenticates with an empty
+/// key.
 pub fn datadog(ctx: &Ctx) -> Result<()> {
-    report(
-        filter_problems(ctx, "GATEWAY_UNFILTERED_DATADOG_METRICS", "Datadog")?,
-        "",
-    )
+    let mut problems = otel_destination_problems(ctx, "datadog", "Datadog")?;
+    let config = ctx.rendered.gateway_config()?;
+    if !config.contains(r#"otelcol.exporter.datadog "dest_datadog""#) {
+        problems.push("datadog_metrics is set but no Datadog exporter rendered".to_owned());
+    } else if !config.contains(r#"api_key = sys.env("GATEWAY_OTEL_DEST_DATADOG_API_KEY")"#) {
+        problems.push(
+            "the Datadog exporter does not read GATEWAY_OTEL_DEST_DATADOG_API_KEY, the variable \
+             gateway_credentials.tf puts the API key in"
+                .to_owned(),
+        );
+    }
+    report(problems, "")
 }
 
-/// The OTLP exporter reaches the gateway pipeline.
+/// The OTLP destination reaches the gateway pipeline, with its endpoint.
 pub fn otlp(ctx: &Ctx) -> Result<()> {
-    report(
-        filter_problems(ctx, "GATEWAY_UNFILTERED_OTLP_METRICS", "OTLP")?,
-        "",
-    )
+    let mut problems = otel_destination_problems(ctx, "otlp", "OTLP")?;
+    if !ctx
+        .rendered
+        .gateway_env()?
+        .contains_key("GATEWAY_OTLP_DEST")
+    {
+        problems.push(
+            "otlp_metrics is set but GATEWAY_OTLP_DEST, the endpoint the exporter reads, did not \
+             render"
+                .to_owned(),
+        );
+    }
+    report(problems, "")
 }
 
-fn filter_problems(ctx: &Ctx, variable: &str, destination: &str) -> Result<Vec<String>> {
-    Ok(if ctx.rendered.gateway_env()?.contains_key(variable) {
-        Vec::new()
-    } else {
-        vec![format!(
-            "the {destination} exporter is set but no {variable} metric filter rendered"
-        )]
-    })
+/// What every OTLP-family `pipeline.destinations` entry needs: its tier
+/// allowlist in the env ConfigMap, and its tier filter on the metric egress
+/// seam. Absent, the allowlist falls back to `.*`, and a destination asked for
+/// `essential` silently receives everything; absent, the edge leaves an orphan
+/// filter that never receives a sample.
+fn otel_destination_problems(ctx: &Ctx, name: &str, destination: &str) -> Result<Vec<String>> {
+    let mut problems = Vec::new();
+    let allowlist = format!("GATEWAY_{}_DEST_METRICS_ALLOWLIST", slug(name));
+    if !ctx.rendered.gateway_env()?.contains_key(&allowlist) {
+        problems.push(format!(
+            "the {destination} destination is set but no {allowlist} metric filter rendered"
+        ));
+    }
+    let edge = format!("otelcol.processor.transform.dest_{name}.input");
+    if !ctx.rendered.gateway_config()?.contains(&edge) {
+        problems.push(format!(
+            "the {destination} destination is set but the metric egress seam does not forward \
+             to {edge}"
+        ));
+    }
+    Ok(problems)
 }
 
 /// The components a destination needs in the rendered pipeline.

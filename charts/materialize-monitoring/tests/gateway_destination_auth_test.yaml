@@ -157,4 +157,4 @@ tests:
           pattern: 'value = sys\.env\("GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY"\)'
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'auth = otelcol\.auth\.headers\.oteldest\.handler'
+          pattern: 'auth = otelcol\.auth\.headers\.dest_honeycomb\.handler'

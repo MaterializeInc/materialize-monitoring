@@ -416,7 +416,7 @@ Usage:
     {{- if eq $dest.type "loki" }}
       {{- $writer = printf "loki.write.%s.receiver" $dest.label }}
       {{- include "mzmon.alloyGateway.pipeline.loki.dest" ( dict "context" $ "dest" $dest ) }}
-    {{- else if eq $dest.type "otlp" }}
+    {{- else }}
       {{- $writer = printf "otelcol.receiver.loki.%s.receiver" $dest.label }}
     {{- end }}
     {{- /* A destination that reduces its logs gets a loki.process of its own
@@ -428,17 +428,17 @@ Usage:
     {{- end }}
     {{- $logForward = append $logForward $writer }}
   {{- end }}
-  {{- /* An otlp destination's metrics hang off the otelcol.processor.filter
-         "egress" seam by their own tier filter, the way the older OTLP
-         exporters do. */}}
+  {{- /* An OTLP-family destination's metrics hang off the
+         otelcol.processor.filter "egress" seam by their own tier filter. Only
+         `loki` carries no metrics, and the validator refuses metrics on it. */}}
   {{- range $dest := ( include "mzmon.destinations.metrics" $ | fromYamlArray ) }}
-    {{- if eq $dest.type "otlp" }}
+    {{- if ne $dest.type "loki" }}
       {{- $metricsForward = append $metricsForward ( printf "otelcol.processor.transform.%s.input" $dest.label ) }}
     {{- end }}
   {{- end }}
   {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
-    {{- if eq $dest.type "otlp" }}
-      {{- include "mzmon.alloyGateway.pipeline.otlp.dest" ( dict "context" $ "dest" $dest ) }}
+    {{- if ne $dest.type "loki" }}
+      {{- include "mzmon.alloyGateway.pipeline.otel.dest" ( dict "context" $ "dest" $dest ) }}
     {{- end }}
   {{- end }}
   {{- /* Each remote-write destination hangs off the shared prometheus.relabel
@@ -654,22 +654,54 @@ loki.process {{ printf "dest_%s" $dest.name | quote }} {
 
 
 {{/*
-Generate the components for one `otlp` destination.
+Render a `sending_queue` block from a destination's resolved `queue`, or
+nothing when it sets no field. Shared by every otelcol exporter a destination
+renders; each drops when its queue is full unless `blockOnOverflow` is true.
 
-  * The exporter: `otelcol.exporter.otlphttp`, or `otelcol.exporter.otlp` for
-    gRPC. Its `sending_queue` appears only when the destination sets a queue
-    field; the exporter's default is to drop when the queue is full, which is
-    what keeps a stalled destination from holding back the others.
+Usage:
+  {{- include "mzmon.alloyGateway.otel.sendingQueue" $dest.queue }}
+*/}}
+{{- define "mzmon.alloyGateway.otel.sendingQueue" }}
+  {{- with . }}
+
+    sending_queue {
+    {{- if hasKey . "blockOnOverflow" }}
+        block_on_overflow = {{ .blockOnOverflow }}
+    {{- end }}
+    {{- if hasKey . "numConsumers" }}
+        num_consumers = {{ .numConsumers | int }}
+    {{- end }}
+    {{- if hasKey . "queueSize" }}
+        queue_size = {{ .queueSize | int }}
+    {{- end }}
+    }
+  {{- end }}
+{{- end }}
+
+
+{{/*
+Generate the components for one OTLP-family destination: `otlp`, `datadog`, or
+`googleCloud`.
+
+  * The exporter. `otlp` renders `otelcol.exporter.otlphttp`, or
+    `otelcol.exporter.otlp` for gRPC. `datadog` renders
+    `otelcol.exporter.datadog`, with its endpoints only when overridden, so they
+    follow `site`. `googleCloud` renders the Telemetry API chain
+    (`googleCloud.chain`), labeled `dest_<name>_gcp` so that its filter and
+    transform do not collide with the tier filter's.
   * For logs, `otelcol.receiver.loki` → `otelcol.processor.batch` in front of
     the exporter. The receiver converts one entry at a time, and the batch is
     what turns that back into requests of a useful size.
   * For metrics, the per-destination tier filter (`otelDest.egressFilter`) in
-    front of the exporter. Metrics are already batched upstream of the seam.
+    front of the exporter, or of the Google Cloud chain. Metrics are already
+    batched upstream of the seam.
+  * For an `otlp` destination with credentials, an `otelcol.auth.*` handler of
+    its own.
 
 Every component is labeled `dest_<name>` (`$dest.label`).
 
-An `otelcol` TLS block encrypts by default, so a destination with TLS off
-renders `insecure = true` rather than nothing: without it a gRPC exporter
+An `otelcol` TLS block encrypts by default, so an `otlp` destination with TLS
+off renders `insecure = true` rather than nothing: without it a gRPC exporter
 would try TLS against a plaintext listener. otelcol spells the minimum version
 `1.3`, and rejects `TLS13` silently, so the value is translated.
 
@@ -678,15 +710,26 @@ Args:
   dest: a destination resolved by `mzmon.destinations.resolve`.
 
 Usage:
-  {{- include "mzmon.alloyGateway.pipeline.otlp.dest" ( dict "context" $ "dest" $dest ) }}
+  {{- include "mzmon.alloyGateway.pipeline.otel.dest" ( dict "context" $ "dest" $dest ) }}
 */}}
-{{- define "mzmon.alloyGateway.pipeline.otlp.dest" }}
+{{- define "mzmon.alloyGateway.pipeline.otel.dest" }}
   {{- $root := .context }}
   {{- $dest := .dest }}
   {{- $label := $dest.label }}
-  {{- $exporter := ternary "otlp" "otlphttp" ( eq $dest.protocol "grpc" ) }}
+  {{- $exporter := "" }}
+  {{- if eq $dest.type "otlp" }}
+    {{- $exporter = ternary "otlp" "otlphttp" ( eq $dest.protocol "grpc" ) }}
+  {{- else if eq $dest.type "datadog" }}
+    {{- $exporter = "datadog" }}
+  {{- end }}
   {{- $exporterInput := printf "otelcol.exporter.%s.%s.input" $exporter $label }}
-  {{- if eq $dest.authType "basicAuth" }}
+  {{- $metricsTarget := $exporterInput }}
+  {{- if eq $dest.type "googleCloud" }}
+    {{- $metricsTarget = printf "otelcol.processor.filter.%s_gcp.input" $label }}
+  {{- end }}
+  {{- $authHandler := get ( dict "basicAuth" "basic" "bearer" "bearer" "headers" "headers" "sigv4" "sigv4" ) $dest.authType }}
+  {{- if eq $dest.type "otlp" }}
+    {{- if eq $dest.authType "basicAuth" }}
 
 otelcol.auth.basic {{ $label | quote }} {
     client_auth {
@@ -694,11 +737,38 @@ otelcol.auth.basic {{ $label | quote }} {
         password = sys.env({{ $dest.basicAuth.passwordEnv | quote }})
     }
 }
-  {{- else if eq $dest.authType "bearer" }}
+    {{- else if eq $dest.authType "bearer" }}
 
 otelcol.auth.bearer {{ $label | quote }} {
     token = sys.env({{ $dest.bearer.tokenEnv | quote }})
 }
+    {{- else if eq $dest.authType "headers" }}
+
+otelcol.auth.headers {{ $label | quote }} {
+      {{- range $dest.headers }}
+    header {
+        key   = {{ .key | quote }}
+        value = {{ if .valueEnv }}sys.env({{ .valueEnv | quote }}){{ else }}{{ .value | quote }}{{ end }}
+    }
+      {{- end }}
+}
+    {{- else if eq $dest.authType "sigv4" }}
+
+otelcol.auth.sigv4 {{ $label | quote }} {
+      {{- with $dest.sigv4.region }}
+    region = {{ . | quote }}
+      {{- end }}
+      {{- with $dest.sigv4.service }}
+    service = {{ . | quote }}
+      {{- end }}
+      {{- with $dest.sigv4.roleArn }}
+
+    assume_role {
+        arn = {{ . | quote }}
+    }
+      {{- end }}
+}
+    {{- end }}
   {{- end }}
   {{- if $dest.logs.enabled }}
 
@@ -716,11 +786,47 @@ otelcol.processor.batch {{ $label | quote }} {
   {{- end }}
   {{- if $dest.metrics.enabled }}
     {{- include "mzmon.alloyGateway.otelDest.egressFilter" ( dict
-          "forwardTo" ( list $exporterInput )
+          "forwardTo" ( list $metricsTarget )
           "processorName" $label
           "unfilteredMetricsEnv" $dest.metrics.unfilteredMetricsEnv
           "root" $root ) | nindent 0 }}
   {{- end }}
+  {{- if eq $dest.type "googleCloud" }}
+
+    {{- include "mzmon.alloyGateway.googleCloud.chain" ( dict
+          "label" ( printf "%s_gcp" $label )
+          "endpointExpr" ( printf "sys.env(%q)" $dest.urlEnv )
+          "project" $dest.project
+          "location" $dest.location
+          "compression" $dest.compression
+          "queue" $dest.queue ) }}
+  {{- else if eq $dest.type "datadog" }}
+
+otelcol.exporter.datadog {{ $label | quote }} {
+    api {
+        api_key = sys.env({{ $dest.apiKey.keyEnv | quote }})
+        fail_on_invalid_key = true
+        site = {{ $dest.site | quote }}
+    }
+    {{- if and $dest.metrics.enabled $dest.metrics.url }}
+
+    metrics {
+        endpoint = sys.env({{ $dest.metrics.urlEnv | quote }})
+    }
+    {{- end }}
+    {{- if and $dest.logs.enabled $dest.logs.url }}
+
+    logs {
+        endpoint = sys.env({{ $dest.logs.urlEnv | quote }})
+    }
+    {{- end }}
+
+    host_metadata {
+        enabled = {{ $dest.hostMetadata | toString }}
+    }
+    {{- include "mzmon.alloyGateway.otel.sendingQueue" $dest.queue }}
+}
+  {{- else }}
 
 otelcol.exporter.{{ $exporter }} {{ $label | quote }} {
   {{- if and ( eq $exporter "otlphttp" ) $dest.logs.enabled $dest.logs.url }}
@@ -732,8 +838,8 @@ otelcol.exporter.{{ $exporter }} {{ $label | quote }} {
     client {
         endpoint = sys.env({{ $dest.urlEnv | quote }})
         compression = {{ $dest.compression | quote }}
-  {{- if ne $dest.authType "none" }}
-        auth = otelcol.auth.{{ ternary "basic" "bearer" ( eq $dest.authType "basicAuth" ) }}.{{ $label }}.handler
+  {{- with $authHandler }}
+        auth = otelcol.auth.{{ . }}.{{ $label }}.handler
   {{- end }}
 
         tls {
@@ -764,21 +870,9 @@ otelcol.exporter.{{ $exporter }} {{ $label | quote }} {
   {{- end }}
         }
     }
-  {{- with $dest.queue }}
-
-    sending_queue {
-    {{- if hasKey . "blockOnOverflow" }}
-        block_on_overflow = {{ .blockOnOverflow }}
-    {{- end }}
-    {{- if hasKey . "numConsumers" }}
-        num_consumers = {{ .numConsumers | int }}
-    {{- end }}
-    {{- if hasKey . "queueSize" }}
-        queue_size = {{ .queueSize | int }}
-    {{- end }}
-    }
-  {{- end }}
+  {{- include "mzmon.alloyGateway.otel.sendingQueue" $dest.queue }}
 }
+  {{- end }}
 {{- end }}
 
 
@@ -1204,14 +1298,24 @@ in Alloy's components:
   batch               the Telemetry API's 200 points per request
   otlphttp            with otelcol.auth.google (ADC; Workload Identity on GKE)
 
-Every component is labelled `googleCloud`, so none collides with the OTLP
-destination's `otelcol.exporter.otlphttp "destination"`.
+Every component takes the one `label`, so the chain is one unit and two
+chains never collide: the deprecated `googleCloudExporter` renders it as
+`googleCloud`, a `googleCloud` destination as `dest_<name>_gcp`.
+
+Args:
+  label: the label every component in the chain takes.
+  endpointExpr: the exporter's endpoint, as a rendered Alloy expression.
+  project, location: overrides for the detected project and location.
+  compression: the request compression.
+  queue: optional `sending_queue` fields, as `mzmon.destinations.resolve`
+    resolves them.
 
 Usage:
-  {{ include "mzmon.alloyGateway.otelDest.googleCloud" $ }}
+  {{- include "mzmon.alloyGateway.googleCloud.chain" ( dict "label" "x" "endpointExpr" "\"https://…\"" … ) }}
 */}}
-{{- define "mzmon.alloyGateway.otelDest.googleCloud" }}
-  {{- $gcm := $.Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter }}
+{{- define "mzmon.alloyGateway.googleCloud.chain" }}
+  {{- $label := .label | required "label is required" }}
+  {{- $gcm := . }}
   {{- $cluster := `\"" + sys.env("CLUSTER_NAME") + "\"` }}
 // Google Cloud Managed Service for Prometheus, over OTLP to the Telemetry API.
 //
@@ -1219,7 +1323,7 @@ Usage:
 // one from each Prometheus staleness marker: a series that disappears ends with
 // one, and so does every series of a target that moves to another gateway
 // replica. Google's own exporters drop them the same way.
-otelcol.processor.filter "googleCloud" {
+otelcol.processor.filter {{ $label | quote }} {
     metric_conditions {
         context = "datapoint"
         conditions = [
@@ -1228,7 +1332,7 @@ otelcol.processor.filter "googleCloud" {
     }
 
     output {
-        metrics = [otelcol.processor.resourcedetection.googleCloud.input]
+        metrics = [otelcol.processor.resourcedetection.{{ $label }}.input]
     }
 }
 
@@ -1236,7 +1340,7 @@ otelcol.processor.filter "googleCloud" {
 // cloud.availability_zone), from GKE's metadata server. Off GKE this finds
 // nothing, and `project` and `location` supply them. The host attributes
 // describe the gateway's own node, not the series, and are left off.
-otelcol.processor.resourcedetection "googleCloud" {
+otelcol.processor.resourcedetection {{ $label | quote }} {
     detectors = ["gcp"]
     override  = false
 
@@ -1261,11 +1365,11 @@ otelcol.processor.resourcedetection "googleCloud" {
     }
 
     output {
-        metrics = [otelcol.processor.transform.googleCloud.input]
+        metrics = [otelcol.processor.transform.{{ $label }}.input]
     }
 }
 
-otelcol.processor.transform "googleCloud" {
+otelcol.processor.transform {{ $label | quote }} {
     error_mode = "ignore"
 
     // The Telemetry API refuses a resource without `gcp.project_id` ("Resource
@@ -1334,7 +1438,7 @@ otelcol.processor.transform "googleCloud" {
     }
 
     output {
-        metrics = [otelcol.processor.groupbyattrs.googleCloud.input]
+        metrics = [otelcol.processor.groupbyattrs.{{ $label }}.input]
     }
 }
 
@@ -1342,11 +1446,11 @@ otelcol.processor.transform "googleCloud" {
 // Telemetry API reads prometheus_target's labels. Left on the series they
 // would collide with those labels; renamed, every query filtering on
 // `namespace` would stop matching.
-otelcol.processor.groupbyattrs "googleCloud" {
+otelcol.processor.groupbyattrs {{ $label | quote }} {
     keys = ["namespace", "cluster"]
 
     output {
-        metrics = [otelcol.processor.metric_start_time.googleCloud.input]
+        metrics = [otelcol.processor.metric_start_time.{{ $label }}.input]
     }
 }
 
@@ -1354,38 +1458,57 @@ otelcol.processor.groupbyattrs "googleCloud" {
 // Each series' first point becomes its baseline and is not sent; later points
 // are sent relative to it. Stateful, per gateway replica: clustering keeps a
 // target on one replica, and a target that moves restarts from a new baseline.
-otelcol.processor.metric_start_time "googleCloud" {
+otelcol.processor.metric_start_time {{ $label | quote }} {
     strategy = "subtract_initial_point"
 
     output {
-        metrics = [otelcol.processor.batch.googleCloud.input]
+        metrics = [otelcol.processor.batch.{{ $label }}.input]
     }
 }
 
 // The Telemetry API takes at most 200 points per request.
-otelcol.processor.batch "googleCloud" {
+otelcol.processor.batch {{ $label | quote }} {
     send_batch_size     = 200
     send_batch_max_size = 200
     timeout             = "5s"
 
     output {
-        metrics = [otelcol.exporter.otlphttp.googleCloud.input]
+        metrics = [otelcol.exporter.otlphttp.{{ $label }}.input]
     }
 }
 
-otelcol.exporter.otlphttp "googleCloud" {
+otelcol.exporter.otlphttp {{ $label | quote }} {
     client {
-        endpoint    = {{ $gcm.endpoint | required "pipeline.metrics.gateway.destination.otel.googleCloudExporter.endpoint must be set" | quote }}
+        endpoint    = {{ $gcm.endpointExpr }}
         compression = {{ $gcm.compression | quote }}
-        auth        = otelcol.auth.google.googleCloud.handler
+        auth        = otelcol.auth.google.{{ $label }}.handler
     }
+  {{- include "mzmon.alloyGateway.otel.sendingQueue" ( $gcm.queue | default dict ) }}
 }
 
-otelcol.auth.google "googleCloud" {
+otelcol.auth.google {{ $label | quote }} {
   {{- with $gcm.project }}
     project = {{ . | quote }}
   {{- end }}
 }
+{{- end }}
+
+
+{{/*
+The deprecated `googleCloudExporter`'s chain, from its own values. The default
+`googleCloudExporter.config` calls this.
+
+Usage:
+  {{ include "mzmon.alloyGateway.otelDest.googleCloud" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.otelDest.googleCloud" }}
+  {{- $gcm := $.Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter }}
+  {{- include "mzmon.alloyGateway.googleCloud.chain" ( dict
+        "label" "googleCloud"
+        "endpointExpr" ( $gcm.endpoint | required "pipeline.metrics.gateway.destination.otel.googleCloudExporter.endpoint must be set" | quote )
+        "project" $gcm.project
+        "location" $gcm.location
+        "compression" $gcm.compression ) }}
 {{- end }}
 
 {{/*
@@ -1975,6 +2098,17 @@ Usage:
     {{- else if eq $authType "bearer" }}
       {{- $needed = list
             ( dict "field" "bearer.token" "value" $dest.bearer.token "env" $dest.bearer.tokenEnv "secret" true ) }}
+    {{- else if eq $authType "apiKey" }}
+      {{- $needed = list
+            ( dict "field" "apiKey.key" "value" $dest.apiKey.key "env" $dest.apiKey.keyEnv "secret" true ) }}
+    {{- else if eq $authType "headers" }}
+      {{- /* A literal header renders into the pipeline config itself, so only
+             the ones read from the environment need a source. */}}
+      {{- range $i, $header := ( $dest.headers | default list ) }}
+        {{- if and ( kindIs "map" $header ) $header.valueEnv }}
+          {{- $needed = append $needed ( dict "field" ( printf "headers[%d].value" $i ) "value" "" "env" $header.valueEnv ) }}
+        {{- end }}
+      {{- end }}
     {{- else if eq $authType "oauth2" }}
       {{- $needed = list
             ( dict "field" "oauth2.clientId" "value" $dest.oauth2.clientId "env" $dest.oauth2.clientIdEnv )
