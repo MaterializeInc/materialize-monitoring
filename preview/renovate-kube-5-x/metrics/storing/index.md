@@ -516,7 +516,12 @@ Two families of backend sit alongside the bundled Thanos, and both fan out *in a
 **More remote-write stores** — Amazon Managed Prometheus, Mimir, Grafana Cloud, another Thanos — are added as further entries in the [`prometheusRemoteWrite` map](#the-remote-write-destinations).
 Nothing on this page is an either/or with the in-cluster Thanos: keeping full fidelity locally while shipping a filtered slice to a metered backend is the shape the map exists for.
 
-**OpenTelemetry (OTLP) destinations** are configured under the `otel` block, described below.
+**OpenTelemetry (OTLP) destinations** are configured in one of two places:
+
+- An `otlp` entry in `pipeline.destinations` sends metrics, logs, or both over one connection, with its own `metrics.minMetricImportance`.
+  Use it when one backend takes both signals, or takes only logs.
+  For more information, see [Where the gateway writes logs](../../logs-and-events/storing/#destinations).
+- The `otel` block, described in the rest of this section, carries the generic OTLP, Google Cloud, and Datadog exporters.
 
 Enable the OTLP path with `pipeline.metrics.gateway.destination.otel.enabled: true`, then turn on one or more exporters — `otlpExporter` (generic), `googleCloudExporter`, and `datadogExporter` can all run at once, each with its own `minMetricImportance`.
 
