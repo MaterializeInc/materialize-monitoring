@@ -1906,13 +1906,21 @@ on, see Production best practices > Secret filtering.
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.secretFilter<wbr>.shadow<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Scan a copy of every log line with the filter's rules and store only the lines it would have redacted, redacted, with the label `secretfilter="shadow"`. What the gateway stores otherwise doesn't change. Use it to see what the rules match on your logs before you turn the filter on.
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.secretFilter<wbr>.mode</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"off"</code></td>
+      <td class="helm-value-desc">What the secret filter does with the gateway's log lines: `off`, `shadow`, or `on`.
 
-It costs the same CPU as turning the filter on. Off, the chart doesn't
-wire it, so it costs nothing.
+| Mode | Effect |
+| --- | --- |
+| `off` | Lines are stored as they arrive. |
+| `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. What's stored otherwise doesn't change. |
+| `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored. |
+
+`shadow` and `on` each cost a scan of every line. Use `shadow` to see what
+the rules match on your logs before you turn the filter on. In `on`, set
+`pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE` below `"1"` to scan only
+that fraction of `DEBUG` and `TRACE` lines.
 </td>
     </tr>
   </tbody>

@@ -136,6 +136,11 @@ module "monitoring" {
   # needs none of this — see the variable's documentation.
   grafana_external_dns_names = ["grafana.monitoring.example.com"]
 
+  # The secret filter on: every log line is scanned, and each credential found is
+  # replaced with `<redacted:RULE_ID>` before it's stored. It's an extra layer
+  # of protection, not a reason to log credentials.
+  secret_filter = "on"
+
   # Alerting with the receiver Secret owned elsewhere, by External Secrets
   # Operator say: no `alerting_receiver_secrets`, so the module creates no
   # Secret and leaves `alertmanager-receivers` to its owner. The aws example

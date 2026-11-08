@@ -142,6 +142,12 @@ module "monitoring" {
   # the server pod happens to roll first.
   internal_tls = "authenticate"
 
+  # The secret filter in shadow mode: every log line is scanned, and only the
+  # lines it would have redacted are stored, already redacted, under
+  # `secretfilter="shadow"`. Run it before `on` to see what the rules would
+  # replace in your own logs.
+  secret_filter = "shadow"
+
   # Alerting, on the shape a production deployment starts from: a pager for the
   # platform, a chat channel for everything else, and workload alerts routed to
   # the people who own the clusters. Each credential is a key of

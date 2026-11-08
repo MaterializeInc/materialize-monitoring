@@ -1210,6 +1210,33 @@ variable "tolerations" {
   nullable = false
 }
 
+variable "secret_filter" {
+  description = <<-EOT
+    What the gateway's secret filter does with log lines. Sets the chart's
+    `pipeline.logging.secretFilter.mode`.
+
+    | Value | Effect |
+    |---|---|
+    | `off` | Lines are stored as they arrive |
+    | `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. Nothing else that's stored changes |
+    | `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored |
+
+    `shadow` and `on` each cost a scan of every log line the gateway handles.
+    Run `shadow` first, to see what the rules would replace in your logs. The
+    filter is an extra layer of protection, not the control: configure each
+    component not to log credentials in the first place.
+  EOT
+  # TODO(DEP-313): default to `on` alongside the chart, once shadow mode has run on real logs.
+  type     = string
+  default  = "off"
+  nullable = false
+
+  validation {
+    condition     = contains(["off", "shadow", "on"], var.secret_filter)
+    error_message = "secret_filter must be one of: off, shadow, on."
+  }
+}
+
 variable "additional_values" {
   description = <<-EOT
     Raw YAML documents appended to the Helm values, in order, after everything this module computes.

@@ -18,7 +18,8 @@
 // them into a full tier and a DEBUG/TRACE bulk tier, each scanned by its own
 // loki.secretfilter before inputProcessor reads anything out of the line. The
 // filter ships with its rate at 0, so it forwards every line unscanned until
-// GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE are set.
+// pipeline.logging.secretFilter.mode is `on`, which sets
+// GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE to 1.
 //
 // A Rust panic is not one log line, so inputPrefilter opens with a
 // stage.multiline that reassembles one before any stage can drop or reorder it,

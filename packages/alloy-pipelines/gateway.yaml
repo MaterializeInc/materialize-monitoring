@@ -23,7 +23,8 @@ description: |
   them into a full tier and a DEBUG/TRACE bulk tier, each scanned by its own
   loki.secretfilter before inputProcessor reads anything out of the line. The
   filter ships with its rate at 0, so it forwards every line unscanned until
-  GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE are set.
+  pipeline.logging.secretFilter.mode is `on`, which sets
+  GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE to 1.
 
   A Rust panic is not one log line, so inputPrefilter opens with a
   stage.multiline that reassembles one before any stage can drop or reorder it,
@@ -402,9 +403,10 @@ blocks:
   # inputProcessor.
   #
   # The filter ships with `rate` 0, which forwards every line unscanned and
-  # counts it in loki_secretfilter_entries_bypassed_total. Set
-  # GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE to 1 to scan.
-  # TODO(DEP-313): default both to 1 after shadow mode has run on real logs.
+  # counts it in loki_secretfilter_entries_bypassed_total. The chart's
+  # pipeline.logging.secretFilter.mode `on` sets GATEWAY_SECRETFILTER_RATE and
+  # GATEWAY_SECRETFILTER_BULK_RATE to 1.
+  # TODO(DEP-313): default the mode to `on` after shadow mode has run on real logs.
   - loki.process:
       label: inputPrefilter
       forward_to:
@@ -667,9 +669,9 @@ blocks:
   # per-rule counters give the rate, and the stored lines give the context
   # that tells a credential from a value that only looks like one.
   #
-  # Off unless pipeline.logging.secretFilter.shadow.enabled is true. Off, the
-  # chart removes this instance's receiver from inputPrefilter's forward_to as
-  # it renders the config, so no line is copied: an idle branch still costs
+  # Wired only when pipeline.logging.secretFilter.mode is `shadow`. Otherwise
+  # the chart removes this instance's receiver from inputPrefilter's forward_to
+  # as it renders the config, so no line is copied: an idle branch still costs
   # about 6% of the log path's CPU, measured, in the copy and the drop. On, it
   # scans every line and costs the same CPU as turning the ingest filter on. It
   # reads the same flat rule file as the two ingest instances; see the startup

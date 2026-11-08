@@ -965,6 +965,25 @@ chart's values, so the two cannot disagree.
   }))</code></pre></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="secret_filter" href="#secret_filter">secret_<wbr>filter</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">What the gateway's secret filter does with log lines. Sets the chart's
+`pipeline.logging.secretFilter.mode`.
+
+| Value | Effect |
+|---|---|
+| `off` | Lines are stored as they arrive |
+| `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. Nothing else that's stored changes |
+| `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored |
+
+`shadow` and `on` each cost a scan of every log line the gateway handles.
+Run `shadow` first, to see what the rules would replace in your logs. The
+filter is an extra layer of protection, not the control: configure each
+component not to log credentials in the first place.
+</td>
+        <td class="tf-var-default"><code>off</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="sizing" href="#sizing">sizing</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Deployment size. The chart's defaults target `medium`, and the small/large profiles are deltas
