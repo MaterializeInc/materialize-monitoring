@@ -20,10 +20,22 @@ data:
   GATEWAY_KUBELET_TLS_INSECURE: {{ $kubelet.tlsInsecureSkipVerify | toJson | quote }}
   {{- $kubeProxy := .Values.pipeline.metrics.kubeProxy }}
   GATEWAY_KUBE_PROXY_SCRAPE_INTERVAL: {{ $kubeProxy.scrapeInterval | quote }}
-  {{- /* One block of variables per log destination, named by the same helper
-         the pipeline reads them with. */}}
-  {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
+  {{- /* One block of variables per destination that carries a signal, named by
+         the same helper the pipeline reads them with. */}}
+  {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
   {{ $dest.urlEnv }}: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.url $ ) "tls" $dest.tls ) | quote }}
+    {{- if and $dest.logs.enabled $dest.logs.url }}
+  {{ $dest.logs.urlEnv }}: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.logs.url $ ) "tls" $dest.tls ) | quote }}
+    {{- end }}
+    {{- if and $dest.metrics.enabled $dest.metrics.url }}
+  {{ $dest.metrics.urlEnv }}: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.metrics.url $ ) "tls" $dest.tls ) | quote }}
+    {{- end }}
+    {{- if $dest.metrics.enabled }}
+  {{ $dest.metrics.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict
+      "context" $
+      "minMetricImportance" $dest.metrics.minMetricImportance
+    ) | quote }}
+    {{- end }}
     {{- if eq $dest.authType "none" }}
     {{- else if eq $dest.authType "basicAuth" }}
       {{- if $dest.basicAuth.username }}

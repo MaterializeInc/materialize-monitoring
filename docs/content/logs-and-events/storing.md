@@ -13,7 +13,16 @@ See the [logging architecture](../architecture/) for how storage relates to the 
 
 The gateway writes processed logs to each destination in `pipeline.destinations`.
 The map holds one entry by default, `loki`, which writes to the bundled Loki.
-Each entry gets its own `loki.write` component, labeled with the entry's name, and its own queue.
+Each entry has its own components and its own queue.
+
+An entry's `type` sets how the gateway writes to it:
+
+`loki`
+: Pushes logs through `loki.write`, labeled with the entry's name.
+
+`otlp`
+: Sends logs, metrics, or both over one OTLP connection, through components labeled `dest_<name>`.
+  A signal is on when its block is present.
 
 To write logs somewhere else as well, add an entry.
 The following example adds an external Loki that never slows down delivery to the bundled one:
@@ -30,18 +39,38 @@ pipeline:
         blockOnOverflow: false
 ```
 
+The following example sends logs to an OTLP backend that takes only logs, on that signal's own endpoint:
+
+```yaml
+pipeline:
+  destinations:
+    opensearch:
+      type: otlp
+      url: http://data-prepper.logging.svc:21890
+      logs:
+        url: http://data-prepper.logging.svc:21892/v1/logs
+```
+
+An `otlp` entry with a `metrics` block also receives metrics, filtered to its own `metrics.minMetricImportance`, over the same connection and credentials.
+Over gRPC, set `protocol: grpc` and write `url` as `host:port`; gRPC serves every signal on one endpoint.
+
 To stop writing to the bundled Loki, set `pipeline.destinations.loki.enabled` to `false`.
 For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
 
 ### Keep one destination from holding back another {#destination-isolation}
 
 The gateway hands every log entry to each destination in turn.
-By default, a destination whose queue is full makes the gateway wait for room, which is `queue.blockOnOverflow: true`.
-While that destination is stalled, no other destination receives anything either.
+A destination that blocks when its queue is full makes the gateway wait for room, and while it's stalled, no other destination receives anything either.
 
-Set `queue.blockOnOverflow: false` on every destination except the one whose copy must be complete.
-A destination set that way drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
-`queue.capacity` sets how far it can fall behind before it drops.
+The types differ in their default:
+
+- A `loki` destination blocks.
+  Set `queue.blockOnOverflow: false` on every `loki` destination except the one whose copy must be complete.
+  It then drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
+  `queue.capacity` sets how far it can fall behind before it drops.
+- An `otlp` destination drops.
+  It counts what it drops in `otelcol_exporter_enqueue_failed_log_records_total`, and `queue.queueSize` sets how many requests it holds.
+
 The render warns when more than one log destination blocks.
 
 > [!NOTE]

@@ -414,8 +414,23 @@ Usage:
          by its own writer, so each has its own queue and its own drop policy. */}}
   {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
     {{- if eq $dest.type "loki" }}
-      {{- $logForward = append $logForward ( printf "loki.write.%s.receiver" $dest.name ) }}
+      {{- $logForward = append $logForward ( printf "loki.write.%s.receiver" $dest.label ) }}
       {{- include "mzmon.alloyGateway.pipeline.loki.dest" ( dict "context" $ "dest" $dest ) }}
+    {{- else if eq $dest.type "otlp" }}
+      {{- $logForward = append $logForward ( printf "otelcol.receiver.loki.%s.receiver" $dest.label ) }}
+    {{- end }}
+  {{- end }}
+  {{- /* An otlp destination's metrics hang off the otelcol.processor.filter
+         "egress" seam by their own tier filter, the way the older OTLP
+         exporters do. */}}
+  {{- range $dest := ( include "mzmon.destinations.metrics" $ | fromYamlArray ) }}
+    {{- if eq $dest.type "otlp" }}
+      {{- $metricsForward = append $metricsForward ( printf "otelcol.processor.transform.%s.input" $dest.label ) }}
+    {{- end }}
+  {{- end }}
+  {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
+    {{- if eq $dest.type "otlp" }}
+      {{- include "mzmon.alloyGateway.pipeline.otlp.dest" ( dict "context" $ "dest" $dest ) }}
     {{- end }}
   {{- end }}
   {{- /* Each remote-write destination hangs off the shared prometheus.relabel
@@ -486,7 +501,7 @@ Usage:
 {{- define "mzmon.alloyGateway.pipeline.loki.dest" }}
   {{- $root := .context }}
   {{- $dest := .dest }}
-loki.write {{ $dest.name | quote }} {
+loki.write {{ $dest.label | quote }} {
     endpoint {
         url = sys.env({{ $dest.urlEnv | quote }})
         max_backoff_period = {{ $dest.retries.maxBackoffPeriod | quote }}
@@ -531,6 +546,135 @@ loki.write {{ $dest.name | quote }} {
       {{- end }}
       {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $dest.tls "indent" 8 ) }}
     }
+}
+{{- end }}
+
+
+{{/*
+Generate the components for one `otlp` destination.
+
+  * The exporter: `otelcol.exporter.otlphttp`, or `otelcol.exporter.otlp` for
+    gRPC. Its `sending_queue` appears only when the destination sets a queue
+    field; the exporter's default is to drop when the queue is full, which is
+    what keeps a stalled destination from holding back the others.
+  * For logs, `otelcol.receiver.loki` → `otelcol.processor.batch` in front of
+    the exporter. The receiver converts one entry at a time, and the batch is
+    what turns that back into requests of a useful size.
+  * For metrics, the per-destination tier filter (`otelDest.egressFilter`) in
+    front of the exporter. Metrics are already batched upstream of the seam.
+
+Every component is labeled `dest_<name>` (`$dest.label`).
+
+An `otelcol` TLS block encrypts by default, so a destination with TLS off
+renders `insecure = true` rather than nothing: without it a gRPC exporter
+would try TLS against a plaintext listener. otelcol spells the minimum version
+`1.3`, and rejects `TLS13` silently, so the value is translated.
+
+Args:
+  context: the root context.
+  dest: a destination resolved by `mzmon.destinations.resolve`.
+
+Usage:
+  {{- include "mzmon.alloyGateway.pipeline.otlp.dest" ( dict "context" $ "dest" $dest ) }}
+*/}}
+{{- define "mzmon.alloyGateway.pipeline.otlp.dest" }}
+  {{- $root := .context }}
+  {{- $dest := .dest }}
+  {{- $label := $dest.label }}
+  {{- $exporter := ternary "otlp" "otlphttp" ( eq $dest.protocol "grpc" ) }}
+  {{- $exporterInput := printf "otelcol.exporter.%s.%s.input" $exporter $label }}
+  {{- if eq $dest.authType "basicAuth" }}
+
+otelcol.auth.basic {{ $label | quote }} {
+    client_auth {
+        username = sys.env({{ $dest.basicAuth.usernameEnv | quote }})
+        password = sys.env({{ $dest.basicAuth.passwordEnv | quote }})
+    }
+}
+  {{- else if eq $dest.authType "bearer" }}
+
+otelcol.auth.bearer {{ $label | quote }} {
+    token = sys.env({{ $dest.bearer.tokenEnv | quote }})
+}
+  {{- end }}
+  {{- if $dest.logs.enabled }}
+
+otelcol.receiver.loki {{ $label | quote }} {
+    output {
+        logs = [otelcol.processor.batch.{{ $label }}.input]
+    }
+}
+
+otelcol.processor.batch {{ $label | quote }} {
+    output {
+        logs = [{{ $exporterInput }}]
+    }
+}
+  {{- end }}
+  {{- if $dest.metrics.enabled }}
+    {{- include "mzmon.alloyGateway.otelDest.egressFilter" ( dict
+          "forwardTo" ( list $exporterInput )
+          "processorName" $label
+          "unfilteredMetricsEnv" $dest.metrics.unfilteredMetricsEnv
+          "root" $root ) | nindent 0 }}
+  {{- end }}
+
+otelcol.exporter.{{ $exporter }} {{ $label | quote }} {
+  {{- if and ( eq $exporter "otlphttp" ) $dest.logs.enabled $dest.logs.url }}
+    logs_endpoint = sys.env({{ $dest.logs.urlEnv | quote }})
+  {{- end }}
+  {{- if and ( eq $exporter "otlphttp" ) $dest.metrics.enabled $dest.metrics.url }}
+    metrics_endpoint = sys.env({{ $dest.metrics.urlEnv | quote }})
+  {{- end }}
+    client {
+        endpoint = sys.env({{ $dest.urlEnv | quote }})
+        compression = {{ $dest.compression | quote }}
+  {{- if ne $dest.authType "none" }}
+        auth = otelcol.auth.{{ ternary "basic" "bearer" ( eq $dest.authType "basicAuth" ) }}.{{ $label }}.handler
+  {{- end }}
+
+        tls {
+  {{- if not $dest.tls.enabled }}
+            insecure = true
+  {{- else }}
+    {{- if not $dest.tls.verify }}
+            insecure_skip_verify = true
+    {{- end }}
+    {{- with $dest.tls.caFile }}
+            ca_file = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.tls.certFile }}
+            cert_file = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.tls.keyFile }}
+            key_file = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.tls.serverName }}
+            server_name = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.tls.minVersion }}
+            min_version = {{ get ( dict "TLS10" "1.0" "TLS11" "1.1" "TLS12" "1.2" "TLS13" "1.3" ) ( . | toString | trimPrefix "Version" ) | default . | quote }}
+    {{- end }}
+    {{- with $dest.tls.reloadInterval }}
+            reload_interval = {{ . | quote }}
+    {{- end }}
+  {{- end }}
+        }
+    }
+  {{- with $dest.queue }}
+
+    sending_queue {
+    {{- if hasKey . "blockOnOverflow" }}
+        block_on_overflow = {{ .blockOnOverflow }}
+    {{- end }}
+    {{- if hasKey . "numConsumers" }}
+        num_consumers = {{ .numConsumers | int }}
+    {{- end }}
+    {{- if hasKey . "queueSize" }}
+        queue_size = {{ .queueSize | int }}
+    {{- end }}
+    }
+  {{- end }}
 }
 {{- end }}
 
@@ -1615,8 +1759,9 @@ Validate that each signal has somewhere to go.
         {{- $anyPromDest = true }}
       {{- end }}
     {{- end }}
-    {{- if and ( not $anyPromDest ) ( not $metrics.otel.enabled ) }}
-      {{- $warnings = append $warnings "Every gateway metric destination is disabled (no pipeline.metrics.gateway.destination.prometheusRemoteWrite entry is enabled, and .otel.enabled is false). Metrics are scraped and then discarded." }}
+    {{- $metricDests := include "mzmon.destinations.metrics" $ | fromYamlArray }}
+    {{- if and ( not $anyPromDest ) ( not $metrics.otel.enabled ) ( not $metricDests ) }}
+      {{- $warnings = append $warnings "Every gateway metric destination is disabled (no pipeline.metrics.gateway.destination.prometheusRemoteWrite entry is enabled, .otel.enabled is false, and no pipeline.destinations entry carries metrics). Metrics are scraped and then discarded." }}
     {{- end }}
   {{- end }}
 
