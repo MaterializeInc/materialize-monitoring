@@ -3095,11 +3095,12 @@ To move an entry, apply the following changes:
 - Put it under `pipeline.destinations`, with `type: prometheus`.
 - Move `minMetricImportance` and `unfilteredMetricsEnv` under `metrics`.
   Every other field keeps its name.
-- Check the variable names.
-  While an entry with no counterpart stays in the old map, it keeps the names that map derived,
-  such as `GATEWAY_PROM_DEST_AMP` and `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
-  Once moved, it derives `GATEWAY_AMP_DEST` and `GATEWAY_AMP_DEST_PASSWORD`.
-  If a Secret already uses the old names, keep them with `urlEnv` and the `*Env` fields.
+- Check the credential variable names.
+  While an entry stays in the old map, it keeps the credential names that map derived, such as `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
+  That includes a retune of `thanos`.
+  Once moved, it derives `GATEWAY_AMP_DEST_PASSWORD`.
+  If a Secret already uses the old names, keep them with the `*Env` fields, such as `basicAuth.passwordEnv`.
+  The URL and allowlist variables are written by the chart itself, so their new names need nothing from you.
 
 The following example moves an entry:
 
@@ -3187,8 +3188,10 @@ Every row is per destination, so two destinations on `basicAuth` need two pairs 
 | `otlp` · `headers` | `pipeline.destinations.<name>.headers` | whatever each header's `valueEnv` names; you choose |
 | `datadog` | `pipeline.destinations.<name>.apiKey` | `GATEWAY_<NAME>_DEST_API_KEY` |
 | `prometheus` or `otlp` · `sigv4` | `pipeline.destinations.<name>.sigv4` | none; uses the pod's IRSA identity |
-| Deprecated `prometheusRemoteWrite` | `<name>.basicAuth`, `.bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN` |
+| Deprecated `prometheusRemoteWrite` | `basicAuth`/`bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN` |
 | Deprecated `otel` block | `…otel.auth.*`, `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN`, `…_DATADOG_API_KEY` |
+
+The deprecated `prometheusRemoteWrite` row covers every entry still set there, a retune of `thanos` included.
 
 SigV4 and the cloud-native exporters (GCM via Workload Identity) carry no secret keys — they authenticate with the gateway pod's ambient cloud identity, so those rows stay out of the Secret entirely.
 
@@ -12953,7 +12956,8 @@ helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
 ```
 
 **It is a profile rather than a switch because the change is not one setting.**
-Turning on Loki's listener is one key; keeping the deployment working is six, spread across three subcharts and two of this chart's own trees — the writer, the reader, the kubelet probes, the metrics scrape, and the canary all dial the port that just moved.
+Turning on Loki's listener is one key, and keeping the deployment working takes settings across three subcharts and two of this chart's own trees.
+The writer, the reader, the kubelet probes, the metrics scrape, the canary, and Loki's own query frontend all dial the port that just moved.
 Every one of them fails quietly, and none of the symptoms names TLS:
 
 | Left behind | What you see |
@@ -12964,6 +12968,7 @@ Every one of them fails quietly, and none of the symptoms names TLS:
 | The Grafana datasource URL | Every log panel renders empty, with no error on the dashboard |
 | The Loki gateway's `nginxConfig.schema`, `ssl` and probe scheme | The same empty panels, from the hop between Grafana and Loki; or both gateway replicas unready |
 | The canary's flags | The end-to-end check reports the log store as broken when it is not |
+| The query frontend's `tail_proxy_url` and `tail_tls_config` | Every live tail fails with `websocket: bad handshake`, the canary's included, and the querier logs `client sent an HTTP request to an HTTPS server` |
 
 The render refuses each of those rather than letting you find out, which is most of what the chart contributes here.
 
@@ -13121,14 +13126,14 @@ The following table lists what the profile sends as written, and the setting und
 |---|---|---|
 | Metrics | The `essential` tier | `metrics.minMetricImportance` |
 | Logs | `WARN` and above | `logs.minLevel` |
-| Logs | Lines whose level the gateway couldn't parse | `logs.keepUnknown` |
 | Logs | At most 500 lines per second per gateway replica | `logs.rateLimit` |
+| Logs | Not lines whose level the gateway couldn't determine | `logs.keepUnknown` |
 
 The metric tiers are listed in [Controlling what each destination stores](../../metrics/storing/#controlling-what-each-destination-stores).
 
-Lines with an unparsed level are sent because a panic is one of them.
-Some of them also belong below `WARN`, so turning `keepUnknown` off sends less, and can miss a panic.
-<!-- TODO: flip keepUnknown to false in the profile once the gateway's level heuristics classify most UNKNOWN lines. -->
+The gateway levels most lines, including Rust and Go panics, which arrive as `CRITICAL`.
+A line it can't level is `UNKNOWN`, and the profile doesn't send those.
+To send them as well, set `logs.keepUnknown` to `true`.
 
 ## Turn on call-home {#enable}
 
@@ -13174,7 +13179,7 @@ The certificate is re-read every five minutes, so a renewed certificate in the S
 ## Choose how much to send {#levels}
 
 Override the profile's settings in your own values file, after the profile.
-The following example sends errors and above, drops lines with an unparsed level, and sends recommended metrics:
+The following example sends errors and above, and recommended metrics:
 
 ```yaml
 pipeline:
@@ -13182,7 +13187,6 @@ pipeline:
     controlPlane:
       logs:
         minLevel: ERROR
-        keepUnknown: false
       metrics:
         minMetricImportance: recommended
 ```
@@ -15548,6 +15552,7 @@ point rather than a researched one.
     "services": [
       "loki-distributor",
       "loki-gateway",
+      "loki-querier",
       "loki-query-frontend",
       "loki-ruler"
     ]
@@ -17136,9 +17141,9 @@ The bundled Thanos Receive is `pipeline.destinations.thanos`.
 Entries set here still apply: the chart folds each one onto `pipeline.destinations` as a `prometheus` entry and warns at render.
 Move each across, so `prometheusRemoteWrite.amp.url` becomes `pipeline.destinations.amp.url`, with `type: prometheus`.
 `minMetricImportance` and `unfilteredMetricsEnv` move under `metrics`; every other field keeps its name.
-An entry with no counterpart in `pipeline.destinations` keeps the variable names this map derived
-(`GATEWAY_PROM_DEST_<NAME>`, `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, and so on) while it stays here.
-Name them with `urlEnv` and the `*Env` fields when you move it, if a Secret already uses them.
+While an entry stays here, it keeps the credential variable names this map derived, such as
+`GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, and that includes a retune of `thanos`.
+Name them with the `*Env` fields when you move it, if a Secret already uses them.
 
 ##### OpenTelemetry/OTLP destinations (deprecated)
 
@@ -21040,7 +21045,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "extraArgs":["-labelvalue=$(POD_NAMESPACE)", "-streamname=container", "-streamvalue=canary", "-query-append=| pod=\"$(POD_NAME)\" | stream=\"stdout\""], "extraEnv":[{"name":"POD_NAMESPACE", "valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}], "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "labelname":"namespace", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}, "tenant":{"name":"loki"}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -21055,6 +21060,42 @@ unconditional so the two modes share one code path.
 }</pre>
 </td>
       <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.tenant</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "name": "loki"
+}</pre>
+</td>
+      <td class="helm-value-desc">The tenant the canary reads its own lines back from.
+The canary writes to stdout, and the Alloy agent and gateway carry its
+lines to Loki like any pod's, so they land in the tenant the gateway
+assigns the canary's namespace: `pipeline.logging.tenancy.staticTenant`
+under the default `static` tenancy. Keep the two in step; the render
+refuses a canary tenant that does not match. The subchart's own default,
+`self-monitoring`, is a tenant nothing writes to here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.labelname</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"namespace"</code></td>
+      <td class="helm-value-desc">How the canary finds its own lines, with labels the gateway keeps.
+The subchart's default selector, `{stream="stdout", pod="<pod>"}`, names
+two labels the gateway stores as structured metadata, so it matches
+nothing. The canary instead selects its namespace and container, and
+filters on structured metadata with `-query-append`: `pod`, so each
+canary pod reads only its own lines, and `stream`, so it reads only the
+entries it writes to stdout. Without the second, its own stderr log lines
+come back as invalid entries, which it logs, which come back again. The
+subchart passes `-labelvalue=$(POD_NAME)`; the later `-labelvalue` here
+wins.
+
+`extraArgs` is a list, so a values file that sets it replaces these.
+`profiles/mtls.values.yaml` restates them beside its TLS arguments.
 </td>
     </tr>
     <tr>

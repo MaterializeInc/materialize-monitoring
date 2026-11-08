@@ -120,11 +120,12 @@ To move an entry, apply the following changes:
 - Put it under `pipeline.destinations`, with `type: prometheus`.
 - Move `minMetricImportance` and `unfilteredMetricsEnv` under `metrics`.
   Every other field keeps its name.
-- Check the variable names.
-  While an entry with no counterpart stays in the old map, it keeps the names that map derived,
-  such as `GATEWAY_PROM_DEST_AMP` and `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
-  Once moved, it derives `GATEWAY_AMP_DEST` and `GATEWAY_AMP_DEST_PASSWORD`.
-  If a Secret already uses the old names, keep them with `urlEnv` and the `*Env` fields.
+- Check the credential variable names.
+  While an entry stays in the old map, it keeps the credential names that map derived, such as `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
+  That includes a retune of `thanos`.
+  Once moved, it derives `GATEWAY_AMP_DEST_PASSWORD`.
+  If a Secret already uses the old names, keep them with the `*Env` fields, such as `basicAuth.passwordEnv`.
+  The URL and allowlist variables are written by the chart itself, so their new names need nothing from you.
 
 The following example moves an entry:
 
@@ -212,8 +213,10 @@ Every row is per destination, so two destinations on `basicAuth` need two pairs 
 | `otlp` · `headers` | `pipeline.destinations.<name>.headers` | whatever each header's `valueEnv` names; you choose |
 | `datadog` | `pipeline.destinations.<name>.apiKey` | `GATEWAY_<NAME>_DEST_API_KEY` |
 | `prometheus` or `otlp` · `sigv4` | `pipeline.destinations.<name>.sigv4` | none; uses the pod's IRSA identity |
-| Deprecated `prometheusRemoteWrite` | `<name>.basicAuth`, `.bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN` |
+| Deprecated `prometheusRemoteWrite` | `basicAuth`/`bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN` |
 | Deprecated `otel` block | `…otel.auth.*`, `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN`, `…_DATADOG_API_KEY` |
+
+The deprecated `prometheusRemoteWrite` row covers every entry still set there, a retune of `thanos` included.
 
 SigV4 and the cloud-native exporters (GCM via Workload Identity) carry no secret keys — they authenticate with the gateway pod's ambient cloud identity, so those rows stay out of the Secret entirely.
 

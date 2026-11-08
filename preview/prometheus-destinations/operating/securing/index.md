@@ -279,7 +279,8 @@ helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
 ```
 
 **It is a profile rather than a switch because the change is not one setting.**
-Turning on Loki's listener is one key; keeping the deployment working is six, spread across three subcharts and two of this chart's own trees — the writer, the reader, the kubelet probes, the metrics scrape, and the canary all dial the port that just moved.
+Turning on Loki's listener is one key, and keeping the deployment working takes settings across three subcharts and two of this chart's own trees.
+The writer, the reader, the kubelet probes, the metrics scrape, the canary, and Loki's own query frontend all dial the port that just moved.
 Every one of them fails quietly, and none of the symptoms names TLS:
 
 | Left behind | What you see |
@@ -290,6 +291,7 @@ Every one of them fails quietly, and none of the symptoms names TLS:
 | The Grafana datasource URL | Every log panel renders empty, with no error on the dashboard |
 | The Loki gateway's `nginxConfig.schema`, `ssl` and probe scheme | The same empty panels, from the hop between Grafana and Loki; or both gateway replicas unready |
 | The canary's flags | The end-to-end check reports the log store as broken when it is not |
+| The query frontend's `tail_proxy_url` and `tail_tls_config` | Every live tail fails with `websocket: bad handshake`, the canary's included, and the querier logs `client sent an HTTP request to an HTTPS server` |
 
 The render refuses each of those rather than letting you find out, which is most of what the chart contributes here.
 
