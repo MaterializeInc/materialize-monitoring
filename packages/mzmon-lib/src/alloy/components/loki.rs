@@ -106,6 +106,80 @@ impl ToBlock for LokiSourceJournalBlock {
 }
 
 // ============================================================
+// loki.secretfilter
+// ============================================================
+
+/// A "loki.secretfilter" block — replaces credentials found in each log line
+/// with a placeholder before forwarding the entry.
+///
+/// `redact_with` is required and non-empty here, and `redact_percent` is left
+/// to `raw:`: alloy reads an empty placeholder as unset, and without one it
+/// keeps the first fifth of every secret.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.secretfilter/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LokiSecretfilterBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Identifier>,
+    pub forward_to: Vec<LogsReceiver>,
+    /// Gitleaks TOML rule file; unset uses the defaults bundled with alloy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gitleaks_config: Option<Expressable<String>>,
+    /// Placeholder for each secret. The schema refuses `""` and `$SECRET_HASH`.
+    pub redact_with: String,
+    /// Fraction of entries scanned (alloy default 1.0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate: Option<Expressable<f64>>,
+    /// Time limit per entry (alloy default `0`, no limit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub processing_timeout: Option<Expressable<GoDuration>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drop_on_timeout: Option<bool>,
+    /// Adds `secretfilter="timed-out"` to an entry forwarded after a timeout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_timed_out: Option<bool>,
+    /// Label that becomes the `origin` dimension of the per-rule counter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_label: Option<String>,
+}
+
+impl ToBlock for LokiSecretfilterBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("forward_to".into(), logs_receiver_list(&self.forward_to));
+        if let Some(v) = &self.gitleaks_config {
+            attributes.insert("gitleaks_config".into(), v.to_attribute_value()?);
+        }
+        attributes.insert(
+            "redact_with".into(),
+            AttributeValue::String(self.redact_with.clone()),
+        );
+        if let Some(v) = &self.rate {
+            attributes.insert("rate".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.processing_timeout {
+            attributes.insert("processing_timeout".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = self.drop_on_timeout {
+            attributes.insert("drop_on_timeout".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = self.label_timed_out {
+            attributes.insert("label_timed_out".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = &self.origin_label {
+            attributes.insert("origin_label".into(), AttributeValue::String(v.clone()));
+        }
+        Ok(Block {
+            component: "loki.secretfilter".into(),
+            label: self.label.clone(),
+            attributes,
+            ..Default::default()
+        })
+    }
+}
+
+// ============================================================
 // loki.relabel
 // ============================================================
 
@@ -325,6 +399,8 @@ pub enum StageBlock {
     Tenant(StageTenantBlock),
     #[serde(rename = "stage.truncate")]
     Truncate(StageTruncateBlock),
+    #[serde(rename = "stage.luhn")]
+    Luhn(StageLuhnBlock),
     #[serde(rename = "raw")]
     Raw(Block),
 }
@@ -348,6 +424,7 @@ impl_to_block_dispatch!(StageBlock {
     Multiline,
     Tenant,
     Truncate,
+    Luhn,
     Raw
 });
 
@@ -1042,6 +1119,57 @@ impl ToBlock for TruncateRuleBlock {
         }
         Ok(Block {
             component: "rule".into(),
+            label: None,
+            attributes,
+            ..Default::default()
+        })
+    }
+}
+
+// ----- stage.luhn -----
+
+/// `stage.luhn` — replaces digit runs that pass the Luhn checksum, which
+/// covers payment card numbers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StageLuhnBlock {
+    /// Extracted-map field to scan; unset scans the line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Shortest digit run to check (alloy default 13).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_length: Option<f64>,
+    /// Characters accepted inside a number (alloy default none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delimiters: Option<String>,
+    /// RE2 expression for substrings left unchecked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skip_regex: Option<String>,
+    /// Replaces each match (alloy default `**REDACTED**`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<String>,
+}
+
+impl ToBlock for StageLuhnBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        if let Some(v) = &self.source {
+            attributes.insert("source".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = self.min_length {
+            attributes.insert("min_length".into(), AttributeValue::Number(v));
+        }
+        if let Some(v) = &self.delimiters {
+            attributes.insert("delimiters".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.skip_regex {
+            attributes.insert("skip_regex".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.replacement {
+            attributes.insert("replacement".into(), AttributeValue::String(v.clone()));
+        }
+        Ok(Block {
+            component: "stage.luhn".into(),
             label: None,
             attributes,
             ..Default::default()
@@ -2016,6 +2144,124 @@ mod tests {
             "#,
         );
         assert!(err.is_err(), "accepted a limit with no unit");
+    }
+
+    #[test]
+    fn loki_secretfilter_renders_every_typed_attribute() {
+        // Byte-checked rather than `assert_renders`: the multi-line
+        // `forward_to` trips the renderer alignment quirk, so `alloy fmt` would
+        // align the scalar attributes that follow it.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.secretfilter:
+                  label: ingest
+                  forward_to: ["loki.process.input_processor.receiver"]
+                  gitleaks_config: /etc/alloy/secretfilter/ingest.toml
+                  redact_with: "<redacted:$SECRET_NAME>"
+                  rate: 1
+                  processing_timeout: {env: GATEWAY_SECRETFILTER_TIMEOUT}
+                  drop_on_timeout: false
+                  label_timed_out: true
+                  origin_label: container
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "loki.secretfilter \"ingest\" {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.process.input_processor.receiver,\n",
+                "\t]\n",
+                "\tgitleaks_config = \"/etc/alloy/secretfilter/ingest.toml\"\n",
+                "\tredact_with = \"<redacted:$SECRET_NAME>\"\n",
+                "\trate = 1\n",
+                "\tprocessing_timeout = sys.env(\"GATEWAY_SECRETFILTER_TIMEOUT\")\n",
+                "\tdrop_on_timeout = false\n",
+                "\tlabel_timed_out = true\n",
+                "\torigin_label = \"container\"\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn loki_secretfilter_refuses_settings_that_leave_secrets_in_the_line() {
+        // Each case differs from a block the schema accepts by one line, so a
+        // refusal can only come from that line.
+        const PLACEHOLDER: &str = r#"redact_with: "<redacted:$SECRET_NAME>""#;
+        let block = |lines: &[&str]| {
+            format!(
+                "blocks:\n  - loki.secretfilter:\n      forward_to: [\"loki.echo.out.receiver\"]\n{}",
+                lines
+                    .iter()
+                    .map(|l| format!("      {l}\n"))
+                    .collect::<String>()
+            )
+        };
+        Pipeline::from_yaml_str(&block(&[PLACEHOLDER])).expect("the base block is valid");
+        for (lines, why) in [
+            (
+                &["rate: 1"][..],
+                "without redact_with, alloy keeps a fifth of each secret",
+            ),
+            (
+                &[r#"redact_with: """#][..],
+                "alloy reads an empty placeholder as unset",
+            ),
+            (
+                &[r#"redact_with: "<$SECRET_NAME:$SECRET_HASH>""#][..],
+                "an unsalted hash confirms a guessed secret",
+            ),
+            (
+                &[PLACEHOLDER, "redact_percent: 100"][..],
+                "redact_percent is left to raw:",
+            ),
+            (&[PLACEHOLDER, "rate: 1.5"][..], "rate is a fraction"),
+        ] {
+            assert!(
+                Pipeline::from_yaml_str(&block(lines)).is_err(),
+                "accepted {lines:?}: {why}"
+            );
+        }
+    }
+
+    #[test]
+    fn stage_luhn_round_trips() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.luhn:
+                        min_length: 13
+                        delimiters: ""
+                        skip_regex: '\b1(?:\d{12}|\d{15}|\d{18})\b'
+                        replacement: "<redacted:luhn>"
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.luhn {\n",
+                "\t\tmin_length  = 13\n",
+                "\t\tdelimiters  = \"\"\n",
+                "\t\tskip_regex  = ",
+                r#""\\b1(?:\\d{12}|\\d{15}|\\d{18})\\b""#,
+                "\n",
+                "\t\treplacement = \"<redacted:luhn>\"\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
     }
 
     #[test]

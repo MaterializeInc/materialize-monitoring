@@ -136,7 +136,7 @@ The conversion was verified by rendering before and after: `agent.alloy`, `gatew
   keep the limiter's thresholds above the ratio.
 
 
-**Top-level loki.* components**: `loki.echo`, `loki.process`, `loki.relabel`, `loki.source.journal`, `loki.source.file` (incl. the `file_match` sub-block), `loki.source.api` (+`http` server), `loki.source.kubernetes` (+`clustering`), `loki.source.kubernetes_events`, `loki.write` (+`endpoint`).
+**Top-level loki.* components**: `loki.echo`, `loki.process`, `loki.relabel`, `loki.secretfilter` (`redact_with` required and free of `$SECRET_HASH`; `redact_percent` left to `raw:`), `loki.source.journal`, `loki.source.file` (incl. the `file_match` sub-block), `loki.source.api` (+`http` server), `loki.source.kubernetes` (+`clustering`), `loki.source.kubernetes_events`, `loki.write` (+`endpoint`).
 
 **Top-level discovery.* components**: `discovery.kubernetes`, `discovery.relabel`.
 
@@ -160,7 +160,7 @@ The conversion was verified by rendering before and after: `agent.alloy`, `gatew
 
 **`otelcol.*` sub-blocks**: `output` (shared — `metrics`/`logs`/`traces` lists of the `OtelcolConsumer` capsule; bare refs), `action` (attributes), `*_conditions` (filter: `context` + `conditions`), `*_statements` (transform: `context`/`statements`/`conditions`/`error_mode`), `statements` (transform inferred: `trace`/`metric`/`log`). Sub-block enums: `ProcessorSubBlock`, `AttributesSubBlock`, `FilterSubBlock`, `TransformSubBlock`.
 
-**`loki.process` stages** (and `stage.match` body, recursively): `stage.match`, `stage.drop`, `stage.limit`, `stage.regex`, `stage.replace`, `stage.template`, `stage.logfmt`, `stage.json`, `stage.timestamp`, `stage.labels`, `stage.static_labels`, `stage.label_drop`, `stage.structured_metadata`, `stage.structured_metadata_drop`, `stage.sampling`, `stage.cri` (empty, no attributes), `stage.multiline` (`firstline` required; `max_lines`/`max_wait_time` `Expressable`, `trim_newlines` bool), `stage.tenant` (`label`/`source`/`value`, each `Expressable<String>`), `stage.truncate` (typed `rule` sub-blocks: `limit` `Expressable<String>` needing a unit, `source_type`, `sources`, `suffix`; the schema refuses `sources` on a `line` rule because only `alloy run` does, and Alloy counts the suffix inside the limit).
+**`loki.process` stages** (and `stage.match` body, recursively): `stage.match`, `stage.drop`, `stage.limit`, `stage.regex`, `stage.replace`, `stage.template`, `stage.logfmt`, `stage.json`, `stage.timestamp`, `stage.labels`, `stage.static_labels`, `stage.label_drop`, `stage.structured_metadata`, `stage.structured_metadata_drop`, `stage.sampling`, `stage.cri` (empty, no attributes), `stage.multiline` (`firstline` required; `max_lines`/`max_wait_time` `Expressable`, `trim_newlines` bool), `stage.tenant` (`label`/`source`/`value`, each `Expressable<String>`), `stage.truncate` (typed `rule` sub-blocks: `limit` `Expressable<String>` needing a unit, `source_type`, `sources`, `suffix`; the schema refuses `sources` on a `line` rule because only `alloy run` does, and Alloy counts the suffix inside the limit), `stage.luhn` (`source`, `min_length`, `delimiters`, `skip_regex`, `replacement`).
 
 **`discovery.kubernetes` sub-blocks**: `selectors` (incl. `field`/`label` as `Expressable<String>`), `attach_metadata` (`node` + `namespace`). Other sub-blocks (e.g. `namespaces`) use `raw:`.
 

@@ -209,7 +209,6 @@ Each control-plane branch runs a second, stricter filter immediately before its 
 
 | Item | Status |
 |---|---|
-| [DEP-307] Typed `loki.secretfilter` and `stage.luhn` in the pipeline schema | ⬜ |
 | [DEP-308] The ingest filter ahead of parsing, with the bulk tier ahead of the scan | ⬜ |
 | [DEP-309] Close the two raw-line paths: the `sampleDebug` tap and live debugging | ⬜ |
 | [DEP-310] Card-number redaction with `stage.luhn` | ⬜ |
@@ -451,7 +450,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-303]: https://linear.app/materializeinc/issue/DEP-303
 [DEP-304]: https://linear.app/materializeinc/issue/DEP-304
 [DEP-306]: https://linear.app/materializeinc/issue/DEP-306
-[DEP-307]: https://linear.app/materializeinc/issue/DEP-307
 [DEP-308]: https://linear.app/materializeinc/issue/DEP-308
 [DEP-309]: https://linear.app/materializeinc/issue/DEP-309
 [DEP-310]: https://linear.app/materializeinc/issue/DEP-310
