@@ -8,21 +8,29 @@
 // before forwarding to a type-neutral egress seam and a local sampled debug tap.
 //
 // Ingress: loki.source.api (configurable HTTP port via ALLOY_LOKI_PORT, default
-// 3100), loki.source.kubernetes_events, and otelcol.receiver.otlp (via an
-// otelcol.exporter.loki bridge) all feed loki.process.inputProcessor. The
-// listeners themselves live in gateway-sources-stub.yaml; every component here
-// is typed and schema-validated, and no `raw:` escape remains in any pipeline.
+// 3100), loki.source.kubernetes_events, the agent log sidechannel, and
+// otelcol.receiver.otlp (via an otelcol.exporter.loki bridge) all feed
+// loki.process.inputPrefilter. The listeners themselves live in
+// gateway-sources-stub.yaml; every component here is typed and
+// schema-validated, and no `raw:` escape remains in any pipeline.
 //
-// A Rust panic is not one log line, so inputProcessor opens with a
+// inputPrefilter merges, drops, clamps, and rate-limits whole lines, then splits
+// them into a full tier and a DEBUG/TRACE bulk tier, each scanned by its own
+// loki.secretfilter before inputProcessor reads anything out of the line. The
+// filter ships with its rate at 0, so it forwards every line unscanned until
+// GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE are set.
+//
+// A Rust panic is not one log line, so inputPrefilter opens with a
 // stage.multiline that reassembles one before any stage can drop or reorder it,
-// and closes with a block that gives the merged entry a level, a message, and
-// the thread and source location as structured metadata. Both are commented
-// where they sit.
+// and inputProcessor closes with a block that gives the merged entry a level, a
+// message, and the thread and source location as structured metadata. Both are
+// commented where they sit.
 //
-// inputProcessor never drops a line for its size. It clamps every entry to
-// PIPELINE_LOG_LINE_SAFETY_CLAMP (1MiB) on intake, and its last stage cuts the
-// line, labels, and structured metadata to fit Loki's limits, the last on a
-// per-entry budget. Each truncation leaves a suffix saying which rule cut it.
+// Neither component drops a line for its size. inputPrefilter clamps every
+// entry to PIPELINE_LOG_LINE_SAFETY_CLAMP (1MiB) on intake, and the last stage
+// of inputProcessor cuts the line, labels, and structured metadata to fit Loki's
+// limits, the last on a per-entry budget. Each truncation leaves a suffix saying
+// which rule cut it.
 //
 // Metrics: this file also carries a metrics pipeline, processed primarily in
 // otelcol and converted back to Prometheus only on the way out. prometheus
@@ -74,7 +82,7 @@ livedebugging {
 
 loki.source.kubernetes_events "k8sEvents" {
 	forward_to = [
-		loki.process.inputProcessor.receiver,
+		loki.process.inputPrefilter.receiver,
 	]
 }
 
@@ -148,7 +156,7 @@ discovery.relabel "agent_pods" {
 loki.source.kubernetes "agent_logs" {
 	targets = discovery.relabel.agent_pods.output
 	forward_to = [
-		loki.process.inputProcessor.receiver,
+		loki.process.inputPrefilter.receiver,
 	]
 
 	clustering {
@@ -315,14 +323,14 @@ prometheus.scrape "kube_proxy" {
 
 otelcol.exporter.loki "bridge" {
 	forward_to = [
-		loki.process.inputProcessor.receiver,
+		loki.process.inputPrefilter.receiver,
 	]
 }
 
-loki.process "inputProcessor" {
+loki.process "inputPrefilter" {
 	forward_to = [
-		loki.process.egress.receiver,
-		loki.process.sampleDebug.receiver,
+		loki.relabel.tierFull.receiver,
+		loki.relabel.tierBulk.receiver,
 	]
 
 	stage.match {
@@ -353,6 +361,91 @@ loki.process "inputProcessor" {
 		drop          = true
 		by_label_name = "namespace"
 	}
+
+	stage.regex {
+		expression = "^(?:\\{\"timestamp\":\"[^\"]*\",\"level\":\"|\\d{4}-\\d{2}-\\d{2}T\\S+\\s+|(?:ts|time|t)=\\S+\\s+level=)(?P<sniffed_level>DEBUG|TRACE|debug|trace)(?:\"|\\s|$)"
+	}
+
+	stage.labels {
+		values = {
+			sniffed_level = "",
+		}
+	}
+
+	stage.match {
+		selector = "{sniffed_level=~\".+\"}"
+
+		stage.limit {
+			rate          = 1000
+			burst         = 5000
+			drop          = true
+			by_label_name = "namespace"
+		}
+	}
+}
+
+loki.relabel "tierFull" {
+	forward_to = [
+		loki.secretfilter.ingest.receiver,
+	]
+
+	rule {
+		action = "drop"
+		source_labels = [
+			"sniffed_level",
+		]
+		regex = ".+"
+	}
+}
+
+loki.relabel "tierBulk" {
+	forward_to = [
+		loki.secretfilter.ingestBulk.receiver,
+	]
+
+	rule {
+		action = "keep"
+		source_labels = [
+			"sniffed_level",
+		]
+		regex = ".+"
+	}
+
+	rule {
+		action = "labeldrop"
+		regex  = "sniffed_level"
+	}
+}
+
+loki.secretfilter "ingest" {
+	forward_to = [
+		loki.process.inputProcessor.receiver,
+	]
+	redact_with = "<redacted:$SECRET_NAME>"
+	rate = encoding.from_json(coalesce(sys.env("GATEWAY_SECRETFILTER_RATE"), "0"))
+	processing_timeout = coalesce(sys.env("GATEWAY_SECRETFILTER_TIMEOUT"), "0s")
+	drop_on_timeout = false
+	label_timed_out = true
+	origin_label = "container"
+}
+
+loki.secretfilter "ingestBulk" {
+	forward_to = [
+		loki.process.inputProcessor.receiver,
+	]
+	redact_with = "<redacted:$SECRET_NAME>"
+	rate = encoding.from_json(coalesce(sys.env("GATEWAY_SECRETFILTER_BULK_RATE"), "0"))
+	processing_timeout = coalesce(sys.env("GATEWAY_SECRETFILTER_TIMEOUT"), "0s")
+	drop_on_timeout = false
+	label_timed_out = true
+	origin_label = "container"
+}
+
+loki.process "inputProcessor" {
+	forward_to = [
+		loki.process.egress.receiver,
+		loki.process.sampleDebug.receiver,
+	]
 
 	stage.regex {
 		expression = "(?P<orig_entry>.*)"

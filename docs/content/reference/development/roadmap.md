@@ -209,16 +209,15 @@ Each control-plane branch runs a second, stricter filter immediately before its 
 
 | Item | Status |
 |---|---|
-| [DEP-308] The ingest filter ahead of parsing, with the bulk tier ahead of the scan | ⬜ |
-| [DEP-309] Close the two raw-line paths: the `sampleDebug` tap and live debugging | ⬜ |
+| [DEP-309] Close the remaining raw-line path: live debugging on the filter | ⬜ |
 | [DEP-310] Card-number redaction with `stage.luhn` | ⬜ |
 | [DEP-311] Rule files: the Materialize rules, the name allowlist, and the egress file | ⬜ |
 | [DEP-312] A corpus harness on the pinned Alloy binary, run on every Alloy bump | ⬜ |
-| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces | ⬜ |
+| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces, then the ingest filter on by default | ⬜ |
 | [DEP-314] The values surface and fail-open validators | ⬜ |
 | [DEP-315] `mz-monitoring-canary`, a canary producer per layer | ⬜ |
 | [DEP-316] Alerts, runbooks and a dashboard row | ⬜ |
-| [DEP-317] A strict, fail-closed egress filter on each control-plane branch | ⬜ |
+| [DEP-317] A strict, fail-closed egress filter on each control-plane branch, and the `secretfilter="bulk"` stamp it drops on | ⬜ |
 | [DEP-318] A backstop overlay for the control-plane gateway | ⬜ |
 | [DEP-320] A customer-facing secret-filtering page, and the design's revisions | ⬜ |
 
@@ -450,7 +449,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-303]: https://linear.app/materializeinc/issue/DEP-303
 [DEP-304]: https://linear.app/materializeinc/issue/DEP-304
 [DEP-306]: https://linear.app/materializeinc/issue/DEP-306
-[DEP-308]: https://linear.app/materializeinc/issue/DEP-308
 [DEP-309]: https://linear.app/materializeinc/issue/DEP-309
 [DEP-310]: https://linear.app/materializeinc/issue/DEP-310
 [DEP-311]: https://linear.app/materializeinc/issue/DEP-311
