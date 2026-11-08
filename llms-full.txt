@@ -5152,6 +5152,38 @@ Over gRPC, set `protocol: grpc` and write `url` as `host:port`; gRPC serves ever
 To stop writing to the bundled Loki, set `pipeline.destinations.loki.enabled` to `false`.
 For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
 
+### Reduce what one destination receives {#destination-reduction}
+
+A destination can receive a reduced copy of the logs while every other destination keeps everything.
+Set any of the following fields in the destination's `logs` block:
+
+| Field | What it does |
+|---|---|
+| `selector` | Keeps only entries matching a LogQL stream selector, such as `{namespace=~"environment-.+"}`. Line filters are allowed after it. |
+| `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. Entries with an `UNKNOWN` level are kept, because a panic arrives without a level the gateway can parse. |
+| `sampleRate` | Keeps a fraction of entries, above 0 and at most 1. |
+| `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst` whole lines. `burst` defaults to `rate`, rounded up, and can be lower than it. |
+
+The gateway applies them in that order, in a `loki.process` component of the destination's own, `loki.process "dest_<name>"`.
+Each drop is counted in `loki_process_dropped_lines_total`, with `reason` set to `destination_selector`, `destination_level`, `destination_sampling`, or `ratelimit_drop_stage`.
+
+The following example sends only warnings and above from environment namespaces, at most 500 lines per second:
+
+```yaml
+pipeline:
+  destinations:
+    controlPlane:
+      type: otlp
+      url: https://ingest.example.com
+      logs:
+        selector: '{namespace=~"environment-.+"}'
+        minLevel: WARN
+        rateLimit:
+          rate: 500
+```
+
+To send a destination no logs at all, set `logs.enabled` to `false` rather than a sample rate of 0.
+
 ### Keep one destination from holding back another {#destination-isolation}
 
 The gateway hands every log entry to each destination in turn.
@@ -15810,6 +15842,10 @@ The following table lists each field, the types it applies to, and its default:
 | `urlEnv` | all | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint. |
 | `logs.enabled` | all | on for `loki`; on when `logs` is present for `otlp` | Send logs here. |
 | `logs.url` / `metrics.url` | `otlp`, HTTP | the base URL plus `/v1/logs` or `/v1/metrics` | One signal's own endpoint. |
+| `logs.selector` | all | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
+| `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. `UNKNOWN` is kept. |
+| `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
+| `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
 | `metrics.enabled` | `otlp` | on when `metrics` is present | Send metrics here. |
 | `metrics.minMetricImportance` | `otlp` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
@@ -15820,6 +15856,10 @@ The following table lists each field, the types it applies to, and its default:
 | `authType` | all | `none` | `none`, `basicAuth`, or `bearer`. |
 | `basicAuth` / `bearer` | all | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
 | `tls` | all | off | `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
+
+**The `logs` reduction fields apply to one destination's copy only**, in a `loki.process "dest_<name>"` in front of its writer.
+They run in table order, and each drop is counted in `loki_process_dropped_lines_total` under its own `reason`.
+`minLevel` never drops `UNKNOWN`, because a panic arrives without a level the gateway can parse.
 
 For example, a second, external Loki that must never slow the bundled one down:
 
@@ -29853,7 +29893,7 @@ Designed in [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byo
 
 | Item | Status |
 |---|---|
-| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane. `pipeline.destinations` ships with `loki` and `otlp` types, a queue and drop policy per destination, and mTLS over file-mounted certificates. Still to come: per-destination log reduction and a `byoc` profile | 🔨 |
+| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane. `pipeline.destinations` ships with `loki` and `otlp` types, a queue and drop policy per destination, mTLS over file-mounted certificates, and per-destination log reduction (selector, level floor, sampling, rate limit). Still to come: a `byoc` profile | 🔨 |
 | [DEP-220] Sanitize telemetry before control-plane egress | ⬜ |
 | [DEP-236] A trust bundle for a private CA: the roots a corporate proxy or an on-premise object store needs, merged with the internal issuer's | ⬜ |
 | [DEP-287] `oauth2.tls` on the destination schema: certificate-authenticated token exchange, shared with call-home | ⬜ |
@@ -31883,7 +31923,7 @@ The pieces below are shipped and in use, and the design deliberately builds on t
 | Multi-tenancy for logs | ✅ Shipped | `pipeline.logging.tenancy.tenantMap` — `static` / `byEnvironment` / `byNamespace` / `byLabel` / `none` |
 | Redaction primitives | ✅ In schema, unused | `stage.replace`, `stage.drop`, `stage.limit`, `stage.sampling`, `stage.label_drop`, `stage.structured_metadata_drop`, `stage.match` |
 | Logs to more than one destination | ✅ Shipped | `pipeline.destinations`: one `loki.write` and one queue per destination, each free to drop when full ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
-| **Per-destination log processing** | ❌ **Missing** | `inputProcessor` is global; everything downstream of it is identical |
+| Per-destination log processing | ✅ Shipped | `logs.selector`, `minLevel`, `sampleRate`, and `rateLimit` on each destination, in a `loki.process` of its own |
 | **Receiver-side (server) TLS / mTLS** | ⚠️ `raw` only | `grpc` / `http` nested blocks accept only the `raw` escape hatch in the schema |
 | **Certificate issuance** | ⬜ Planned | cert-manager integration, [DEP-195](https://linear.app/materializeinc/issue/DEP-195), OO-M1 |
 
@@ -32211,7 +32251,7 @@ Work in **this** repo. Ordered roughly by dependency.
 | Item | Why it is needed | Blocking? |
 |---|---|---|
 | **Map-shaped log destinations** — a named map of destinations, rendered as one writer per destination off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | ✅ Shipped as `pipeline.destinations` ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). The map is signal-agnostic: one entry is one wire, and each signal it carries has its own block, so the control plane is one `otlp` entry with one credential, carrying logs and tier-filtered metrics over mTLS |
-| **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | **Blocking** |
+| **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | ✅ Class, level, sampling, and rate limit, as `logs.selector`, `minLevel`, `sampleRate`, and `rateLimit` in a `loki.process "dest_<name>"` per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). Class is a LogQL selector rather than a new taxonomy. Redaction attaches to the same component ([DEP-317](https://linear.app/materializeinc/issue/DEP-317)) |
 | **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | ✅ Bounded and droppable: `queue.capacity` and `queue.blockOnOverflow: false` on each destination, measured to keep the local copy whole while another destination is unreachable. The per-destination `wal` is not wired |
 | **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | **Blocking** for the control-plane gateway |
 | **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | **Blocking** |
@@ -32254,7 +32294,8 @@ The kind tiers extend to cover this, and two of the assertions are genuinely new
 - [ ] Which L7 load balancer, and does the chosen one support CRL *and* OCSP, with a documented refresh interval? "Supports revocation" is not sufficient; a CRL refreshed daily is a one-day revocation window.
 - [ ] Does the LB terminate and re-originate TLS to the gateway, and if so what authenticates that second hop? An internal issuer certificate is the obvious answer and should be stated rather than assumed.
 - [ ] Should the control-plane gateway accept `loki.source.api` at all, or OTLP exclusively? Exclusively is a smaller attack surface; accepting both eases migration for anything already pushing Loki-native.
-- [ ] Log class taxonomy: extend the existing `tenantMap` classes (`default` / `infra` / `audit` / `environment`), or introduce an explicit egress-class label? Extending is cheaper and reuses a shipped concept; a separate axis is more honest if the two classifications diverge.
+- [x] Log class taxonomy: extend the existing `tenantMap` classes (`default` / `infra` / `audit` / `environment`), or introduce an explicit egress-class label? Extending is cheaper and reuses a shipped concept; a separate axis is more honest if the two classifications diverge.
+  Resolved as neither: each destination takes a LogQL stream selector (`logs.selector`), which selects on the labels the gateway already promotes and adds no classification to keep in step.
 - [ ] Is `WARN` and above the right default level for control-plane log egress? It is a defensible starting point, but the tuning signal after launch is how often support asks for a bundle — measure before hardening it.
 - [ ] Does redaction belong at the customer gateway (before the wire) or the control-plane gateway (after)? **Strong lean: the customer gateway**, so unredacted data never crosses the boundary at all — but the control-plane side is the one *we* can fix without a customer upgrade, and version skew makes that argument non-trivial. Possibly both, with the control-plane side as a backstop.
 - [ ] How does the control plane handle a pipeline version older than its own expectations, given self-managed customers upgrade on their own schedule? Plain OTLP plus the existing label contract should make this a non-event, but it needs an explicit compatibility statement.

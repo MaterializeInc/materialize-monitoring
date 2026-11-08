@@ -181,7 +181,7 @@ Designed in [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byo
 
 | Item | Status |
 |---|---|
-| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane. `pipeline.destinations` ships with `loki` and `otlp` types, a queue and drop policy per destination, and mTLS over file-mounted certificates. Still to come: per-destination log reduction and a `byoc` profile | 🔨 |
+| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane. `pipeline.destinations` ships with `loki` and `otlp` types, a queue and drop policy per destination, mTLS over file-mounted certificates, and per-destination log reduction (selector, level floor, sampling, rate limit). Still to come: a `byoc` profile | 🔨 |
 | [DEP-220] Sanitize telemetry before control-plane egress | ⬜ |
 | [DEP-236] A trust bundle for a private CA: the roots a corporate proxy or an on-premise object store needs, merged with the internal issuer's | ⬜ |
 | [DEP-287] `oauth2.tls` on the destination schema: certificate-authenticated token exchange, shared with call-home | ⬜ |
