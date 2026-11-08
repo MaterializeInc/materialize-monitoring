@@ -76,6 +76,39 @@ The filter scans the line and nothing else, so it has the following limits:
 - **Some identifiers look like credentials.**
   A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
 
+## Try it in shadow mode first {#shadow}
+
+Shadow mode shows what the rules match on your own logs without changing what's stored.
+The gateway scans a copy of every line and stores only the lines the filter would have redacted, already redacted, with the label `secretfilter="shadow"`.
+Use it to find the values the rules would replace by mistake before you turn the filter on.
+
+To turn shadow mode on, set the following value:
+
+```yaml
+pipeline:
+  logging:
+    secretFilter:
+      shadow:
+        enabled: true
+```
+
+The value changes the gateway's config, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+Shadow mode costs the same CPU as turning the filter on, because it scans every line.
+Off, the chart doesn't wire it, so it costs nothing.
+
+To read what it found, query the label:
+
+```logql
+{secretfilter="shadow"}
+```
+
+Each line has `<redacted:RULE_ID>` where a value was replaced, and the rest of the line shows which field held it.
+`loki_secretfilter_secrets_redacted_by_category_total{component_id="loki.secretfilter.shadow"}` counts the matches by rule and by container.
+
+Shadow lines go to every log destination, like any other line.
+Each one is redacted, and while the filter is off its original goes to the same destinations unchanged, so a shadow line exposes nothing new.
+After you turn the filter on, turn shadow mode off: the stored lines then carry the placeholders themselves.
+
 ## Turn it on {#turn-it-on}
 
 The filter ships off.

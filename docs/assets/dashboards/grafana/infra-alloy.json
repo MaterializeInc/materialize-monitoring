@@ -3531,10 +3531,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (app, reason) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      reason!~\"sampleDebug|skip self|skip loki|alloy loki.echo\"\n    }\n    [$__rate_interval]\n  )\n) > 0\nor on (app)\n0 * sum by (app) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "expr": "sum by (app, reason) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      reason!~\"sampleDebug|skip self|skip loki|alloy loki.echo|secretfilter shadow\"\n    }\n    [$__rate_interval]\n  )\n) > 0\nor on (app)\n0 * sum by (app) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
                         "legendFormat": "{{app}} {{reason}}",
                         "qryType": 1,
-                        "query": "sum by (app, reason) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      reason!~\"sampleDebug|skip self|skip loki|alloy loki.echo\"\n    }\n    [$__rate_interval]\n  )\n) > 0\nor on (app)\n0 * sum by (app) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "sum by (app, reason) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      reason!~\"sampleDebug|skip self|skip loki|alloy loki.echo|secretfilter shadow\"\n    }\n    [$__rate_interval]\n  )\n) > 0\nor on (app)\n0 * sum by (app) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3546,7 +3546,7 @@
               "transformations": []
             }
           },
-          "description": "**Log lines per second a pipeline guard discarded before delivery, split by reason.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** `ratelimit_drop_stage` is a namespace writing faster than the gateway's per-namespace rate limit allows. `backlog > 2hr` and `processed time > 2hr old` are lines older than the store accepts, most often a backlog draining after an outage. Each of these lines is lost.\n\nExcludes the debug tap's sampling and its echo suppression, which drop copies that were never bound for a store. A reason not listed above is new, and counts as a loss until it is classified.\n\nA flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.",
+          "description": "**Log lines per second a pipeline guard discarded before delivery, split by reason.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** `ratelimit_drop_stage` is a namespace writing faster than the gateway's per-namespace rate limit allows. `backlog > 2hr` and `processed time > 2hr old` are lines older than the store accepts, most often a backlog draining after an outage. Each of these lines is lost.\n\nExcludes the debug tap's sampling, its echo suppression, and the secret filter's shadow copies, which drop copies that were never bound for a store. A reason not listed above is new, and counts as a loss until it is classified.\n\nA flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.",
           "id": 1025,
           "links": [],
           "title": "Lines Discarded by Guards",

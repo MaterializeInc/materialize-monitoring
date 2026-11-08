@@ -61,11 +61,13 @@ description: |
   name. The debug tap in both pipelines forks a copy of the stream, keeps about
   1% of it, and drops the rest with reasons `sampleDebug`, `skip self` and
   `skip loki`. The gateway also drops Alloy's own `loki.echo` output with reason
-  `alloy loki.echo`, which stops the tap re-collecting itself. None of those
-  lines were bound for a store. Every other reason is a guard on the main path,
-  and a line dropped there is lost. `infra.alloy.log_pipeline.guard_drops`
-  excludes the four deliberate reasons by name, so a reason added to a pipeline
-  later shows up as a loss until it is classified here.
+  `alloy loki.echo`, which stops the tap re-collecting itself. The secret
+  filter's shadow mode scans a copy of every gateway line and drops, with reason
+  `secretfilter shadow`, each copy it found nothing in. None of those lines were
+  bound for a store. Every other reason is a guard on the main path, and a line
+  dropped there is lost. `infra.alloy.log_pipeline.guard_drops` excludes the
+  deliberate reasons by name, so a reason added to a pipeline later shows up as
+  a loss until it is classified here.
 
 metricImportanceHint: recommended
 
@@ -1048,8 +1050,9 @@ queries:
         2hr old` are lines older than the store accepts, most often a backlog
         draining after an outage. Each of these lines is lost.
       notes: |
-        Excludes the debug tap's sampling and its echo suppression, which drop
-        copies that were never bound for a store. A reason not listed above is
+        Excludes the debug tap's sampling, its echo suppression, and the
+        secret filter's shadow copies, which drop copies that were never bound
+        for a store. A reason not listed above is
         new, and counts as a loss until it is classified.
 
         A flat zero means the collectors reported and there was nothing to
@@ -1061,7 +1064,7 @@ queries:
             app=~"$alloyRole",
             namespace=~"$alloyNamespace",
             pod=~"$alloyPod",
-            reason!~"sampleDebug|skip self|skip loki|alloy loki.echo"
+            reason!~"sampleDebug|skip self|skip loki|alloy loki.echo|secretfilter shadow"
           }
           %%{interval}
         )
@@ -1083,7 +1086,7 @@ queries:
     datadogQuery: |
       cutoff_min(
         sum:loki_process_dropped_lines_total{
-          $alloyRole AND $alloyNamespace AND $alloyPod AND reason NOT IN (sampledebug,skip_self,skip_loki,alloy_loki.echo)
+          $alloyRole AND $alloyNamespace AND $alloyPod AND reason NOT IN (sampledebug,skip_self,skip_loki,alloy_loki.echo,secretfilter_shadow)
         } by {app,reason}.as_rate().rollup(sum, 60),
         1e-9
       )

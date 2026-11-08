@@ -215,8 +215,21 @@ Usage:
     {{- fail "pipelines.* is the wrong key. Use pipeline.*" }}
   {{- end }}
 
-  {{- /* Output main snippet */}}
-  {{- $.Files.Get "pre-rendered/pipelines/gateway.alloy" }}
+  {{- /* Output main snippet. The secret filter's shadow branch is wired only
+         when pipeline.logging.secretFilter.shadow.enabled is true: otherwise
+         its receiver comes out of inputPrefilter's forward_to, so no line is
+         copied into a branch that would drop it. The shadow components stay
+         defined and receive nothing. A render fails rather than shipping the
+         copy if the entry ever stops matching. */}}
+  {{- $gateway := $.Files.Get "pre-rendered/pipelines/gateway.alloy" }}
+  {{- if not ( dig "logging" "secretFilter" "shadow" "enabled" false ( $.Values.pipeline | default dict ) ) }}
+    {{- $shadowTap := "\t\tloki.secretfilter.shadow.receiver,\n" }}
+    {{- if not ( contains $shadowTap $gateway ) }}
+      {{- fail "gateway.alloy no longer lists loki.secretfilter.shadow.receiver as the chart expects; update mzmon.alloyGateway.pipeline.contents" }}
+    {{- end }}
+    {{- $gateway = replace $shadowTap "" $gateway }}
+  {{- end }}
+  {{- $gateway }}
 
   {{- /* Metric processors */}}
   {{- $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}

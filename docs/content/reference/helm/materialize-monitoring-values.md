@@ -1887,6 +1887,30 @@ Move each one across, so `pipeline.logging.gateway.destination.loki.url` becomes
   </tbody>
 </table>
 
+##### Secret filter.
+
+The gateway's secret filter.
+The gateway can replace credentials in log lines before they're stored.
+The filter itself is off by default. For what it does and how to turn it
+on, see Production best practices > Secret filtering.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.secretFilter<wbr>.shadow<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Scan a copy of every log line with the filter's rules and store only the lines it would have redacted, redacted, with the label `secretfilter="shadow"`. What the gateway stores otherwise doesn't change. Use it to see what the rules match on your logs before you turn the filter on.
+
+It costs the same CPU as turning the filter on. Off, the chart doesn't
+wire it, so it costs nothing.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 #### Metrics configuration
 
 Configuration for metrics behavior

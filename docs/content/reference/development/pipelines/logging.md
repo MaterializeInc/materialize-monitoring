@@ -139,6 +139,13 @@ The `level` label is set only after parsing, so the sniff reads the level field 
 Each pattern is anchored where its format puts the level.
 A line the sniff can't classify goes to the full tier, so a miss costs a scan rather than coverage.
 
+A third instance, `loki.secretfilter.shadow`, measures the rules without enforcing them.
+When `pipeline.logging.secretFilter.shadow.enabled` is true, `inputPrefilter` also forwards every line to it, and `loki.process.secretfilterShadow` keeps only the lines it redacted, labels them `secretfilter="shadow"`, and passes them to `inputProcessor`.
+It drops the rest under the reason `secretfilter shadow`, which the Alloy dashboard counts as deliberate.
+The label is `secretfilter` rather than `job`, because `inputProcessor` parses some sources by `job`.
+When the value is false, the chart removes the shadow receiver from `inputPrefilter`'s `forward_to` as it renders the gateway config, and fails the render if that entry stops matching.
+An idle branch would still cost about 6% of the log path's CPU in the copy and the drop.
+
 Both instances replace each secret with `<redacted:RULE_ID>`, where `RULE_ID` is the ID of the Gitleaks rule that matched.
 The placeholder carries no hash, because Alloy's `$SECRET_HASH` is an unsalted SHA-1 that confirms any guessed secret.
 A line that runs past `GATEWAY_SECRETFILTER_TIMEOUT` is forwarded with whatever was redacted and the label `secretfilter="timed-out"`.

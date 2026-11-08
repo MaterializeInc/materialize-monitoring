@@ -331,6 +331,7 @@ loki.process "inputPrefilter" {
 	forward_to = [
 		loki.relabel.tierFull.receiver,
 		loki.relabel.tierBulk.receiver,
+		loki.secretfilter.shadow.receiver,
 	]
 
 	stage.match {
@@ -441,6 +442,42 @@ loki.secretfilter "ingestBulk" {
 	drop_on_timeout = false
 	label_timed_out = true
 	origin_label = "container"
+}
+
+loki.secretfilter "shadow" {
+	forward_to = [
+		loki.process.secretfilterShadow.receiver,
+	]
+	gitleaks_config = "/etc/alloy/secretfilter-ingest.toml"
+	redact_with = "<redacted:$SECRET_NAME>"
+	processing_timeout = coalesce(sys.env("GATEWAY_SECRETFILTER_TIMEOUT"), "0s")
+	drop_on_timeout = false
+	label_timed_out = true
+	origin_label = "container"
+}
+
+loki.process "secretfilterShadow" {
+	forward_to = [
+		loki.process.inputProcessor.receiver,
+	]
+
+	stage.label_drop {
+		values = [
+			"sniffed_level",
+		]
+	}
+
+	stage.static_labels {
+		values = {
+			secretfilter = "shadow",
+		}
+	}
+
+	stage.match {
+		selector            = "{secretfilter=\"shadow\"} != \"<redacted:\""
+		action              = "drop"
+		drop_counter_reason = "secretfilter shadow"
+	}
 }
 
 loki.process "inputProcessor" {

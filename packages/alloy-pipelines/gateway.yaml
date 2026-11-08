@@ -410,6 +410,7 @@ blocks:
       forward_to:
         - "loki.relabel.tierFull.receiver"
         - "loki.relabel.tierBulk.receiver"
+        - "loki.secretfilter.shadow.receiver"
       blocks:
         # --- multi-line records: Rust panics --------------------------------
         #
@@ -656,6 +657,56 @@ blocks:
       drop_on_timeout: false
       label_timed_out: true
       origin_label: container
+
+  # --- secret-filter shadow mode ----------------------------------------------
+  #
+  # Measures the ingest rules on real logs without changing them. The shadow
+  # instance scans a copy of every line the prefilter keeps, and
+  # secretfilterShadow stores only the lines it redacted, already redacted,
+  # with the label `secretfilter="shadow"`. The main stream is unchanged. The
+  # per-rule counters give the rate, and the stored lines give the context
+  # that tells a credential from a value that only looks like one.
+  #
+  # Off unless pipeline.logging.secretFilter.shadow.enabled is true. Off, the
+  # chart removes this instance's receiver from inputPrefilter's forward_to as
+  # it renders the config, so no line is copied: an idle branch still costs
+  # about 6% of the log path's CPU, measured, in the copy and the drop. On, it
+  # scans every line and costs the same CPU as turning the ingest filter on. It
+  # reads the same flat rule file as the two ingest instances; see the startup
+  # race above.
+  #
+  # The label is `secretfilter`, not `job`: inputProcessor parses some sources
+  # by `job`, and a shadow copy should parse like its original.
+  - loki.secretfilter:
+      label: shadow
+      forward_to: ["loki.process.secretfilterShadow.receiver"]
+      gitleaks_config: /etc/alloy/secretfilter-ingest.toml
+      redact_with: "<redacted:$SECRET_NAME>"
+      processing_timeout:
+        function: coalesce
+        arguments:
+          - env: GATEWAY_SECRETFILTER_TIMEOUT
+          - "0s"
+      drop_on_timeout: false
+      label_timed_out: true
+      origin_label: container
+  - loki.process:
+      label: secretfilterShadow
+      forward_to: ["loki.process.inputProcessor.receiver"]
+      blocks:
+        # The prefilter's tier mark, which only the splitters remove.
+        - stage.label_drop:
+            values: ["sniffed_level"]
+        - stage.static_labels:
+            values:
+              secretfilter: shadow
+        # Every line without a placeholder is a copy of a line the main stream
+        # already carries. The infra-alloy dashboard counts this reason as
+        # deliberate, not as loss.
+        - stage.match:
+            selector: '{secretfilter="shadow"} != "<redacted:"'
+            action: drop
+            drop_counter_reason: "secretfilter shadow"
 
   # --- main processing pipeline -----------
   # Receives only lines that passed a secret filter instance.
