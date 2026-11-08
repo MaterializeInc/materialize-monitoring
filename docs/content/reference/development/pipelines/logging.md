@@ -86,7 +86,7 @@ The following table lists the detectors in the order they run:
 | `access_log` | An HTTP access log line: common or combined format, or the status first | `ERROR` for 5xx, `WARN` for 4xx, otherwise `INFO` |
 | `keyvalue` | A `level=` or `"severity":` pair anywhere in the line | The value |
 | `journal_priority` | A journal entry, which carries journald's priority as `journal_priority` | The priority |
-| `stacktrace` | A Go, Java, or Python stack-trace frame | `ERROR` |
+| `stacktrace` | A Go, Java, or Python stack-trace frame, including Go's `created by` lines | `ERROR` |
 | `keyword` | `error`, `failed`, `failure`, `fatal`, or `exception` as a word, or else `warn`, `warning`, or `deprecated` | `ERROR`, or else `WARN` |
 | `go_log` | Go's standard `log` format, `2026/11/08 20:07:09 ...` | `INFO` |
 | `fluent_bit_plugin` | A fluent-bit output plugin's trace, `[flb-<plugin>] ...` | `DEBUG` |

@@ -1896,7 +1896,7 @@ loki.process "inputProcessor" {
 	}
 
 	stage.match {
-		selector = "{level=\"UNKNOWN\"} |~ \"(?i)\\\"?(level|severity)\\\"?[ ]*[:=]\""
+		selector = "{level=\"UNKNOWN\"} |~ \"(?i)\\\"?(level|severity)\\\"?\\\\s*[:=]\""
 
 		stage.regex {
 			expression = "(?i)\"?(?:level|severity)\"?\\s*[:=]\\s*\"?(?P<level>(?:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))\"?"
@@ -1939,7 +1939,7 @@ loki.process "inputProcessor" {
 	}
 
 	stage.match {
-		selector = "{level=\"UNKNOWN\"} |~ \"^\\\\t[^ ]+\\\\.go:[0-9]+|^[a-zA-Z0-9_.-]+/[^ \\\\t]*\\\\.[a-zA-Z_*(][^ \\\\t/]*$|^[a-zA-Z0-9_]+\\\\.[a-zA-Z_][^ \\\\t]*\\\\(.*\\\\)$|^\\\\s+at [a-zA-Z0-9_.$]+\\\\(|^  File \\\"[^\\\"]+\\\", line [0-9]+\""
+		selector = "{level=\"UNKNOWN\"} |~ \"^\\\\t[^ ]+\\\\.go:[0-9]+|^[a-zA-Z0-9_.-]+/[^ \\\\t]*\\\\.[a-zA-Z_*(][^ \\\\t/]*$|^[a-zA-Z0-9_.-]+(/[^ \\\\t]*)?\\\\.[a-zA-Z_*(][^ \\\\t]*\\\\(.*\\\\)$|^created by [^ \\\\t]+|^\\\\s+at [a-zA-Z0-9_.$]+\\\\(|^  File \\\"[^\\\"]+\\\", line [0-9]+\""
 
 		stage.template {
 			source   = "level"

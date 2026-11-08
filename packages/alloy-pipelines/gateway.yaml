@@ -1418,7 +1418,7 @@ blocks:
         # looser than the capture, so only the entries the capture leveled are
         # tagged.
         - stage.match:
-            selector: '{level="UNKNOWN"} |~ "(?i)\"?(level|severity)\"?[ ]*[:=]"'
+            selector: '{level="UNKNOWN"} |~ "(?i)\"?(level|severity)\"?\\s*[:=]"'
             blocks:
               - stage.regex:
                   expression: '(?i)"?(?:level|severity)"?\s*[:=]\s*"?(?P<level>(?:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))"?'
@@ -1449,12 +1449,15 @@ blocks:
                   values:
                     level: level
         # Stack-trace frames, one entry per frame: Go's file lines
-        # (`<TAB>path/file.go:123`) and function lines (`pkg/path.(*Type).Method`,
-        # `main.main()`), Java's `at pkg.Class.method(`, and Python's
-        # `File "...", line N`. They accompany an error, so they are ERROR, and
-        # `levelheuristic="stacktrace"` separates them from the error itself.
+        # (`<TAB>path/file.go:123`), function lines with or without arguments
+        # (`pkg/path.(*Type).Method`, `net/http.(*conn).serve(0xc0, {0x1, 0x2})`,
+        # `main.main()`) and `created by` lines, Java's `at pkg.Class.method(`,
+        # and Python's `File "...", line N`. They accompany an error, so they
+        # are ERROR, and `levelheuristic="stacktrace"` separates them from the
+        # error itself. A function line with arguments has no space before its
+        # opening parenthesis, which keeps an ordinary sentence out.
         - stage.match:
-            selector: '{level="UNKNOWN"} |~ "^\\t[^ ]+\\.go:[0-9]+|^[a-zA-Z0-9_.-]+/[^ \\t]*\\.[a-zA-Z_*(][^ \\t/]*$|^[a-zA-Z0-9_]+\\.[a-zA-Z_][^ \\t]*\\(.*\\)$|^\\s+at [a-zA-Z0-9_.$]+\\(|^  File \"[^\"]+\", line [0-9]+"'
+            selector: '{level="UNKNOWN"} |~ "^\\t[^ ]+\\.go:[0-9]+|^[a-zA-Z0-9_.-]+/[^ \\t]*\\.[a-zA-Z_*(][^ \\t/]*$|^[a-zA-Z0-9_.-]+(/[^ \\t]*)?\\.[a-zA-Z_*(][^ \\t]*\\(.*\\)$|^created by [^ \\t]+|^\\s+at [a-zA-Z0-9_.$]+\\(|^  File \"[^\"]+\", line [0-9]+"'
             blocks:
               - stage.template:
                   source: level

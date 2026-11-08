@@ -181,6 +181,13 @@
   level: WARN
   heuristic: keyvalue
 
+# Whitespace before the separator is any whitespace, as in the capture.
+- id: json-severity-tab-before-colon
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: "{\"severity\"\t:\"debug\",\"message\":\"previous error recovered\"}"
+  level: DEBUG
+  heuristic: keyvalue
+
 # --- journald priority --------------------------------------------------------
 
 - id: journal-info
@@ -218,6 +225,19 @@
 - id: go-frame-main
   labels: {namespace: default, app: service, container: service, job: default/service}
   line: 'main.main()'
+  level: ERROR
+  heuristic: stacktrace
+
+# Go panic dumps print each frame's arguments, with spaces between them.
+- id: go-frame-with-arguments
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: 'net/http.(*conn).serve(0xc000123000, {0x123, 0xc000456000})'
+  level: ERROR
+  heuristic: stacktrace
+
+- id: go-frame-created-by
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: 'created by net/http.(*Server).Serve in goroutine 1'
   level: ERROR
   heuristic: stacktrace
 
