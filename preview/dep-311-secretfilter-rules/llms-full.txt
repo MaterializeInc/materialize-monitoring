@@ -9920,7 +9920,7 @@ The filter scans the line and nothing else, so it has the following limits:
 - **Labels and structured metadata aren't scanned.**
   A Loki or OTLP push client that sends a credential as structured metadata or as a label stores it as sent.
 - **Some credentials don't look like credentials.**
-  A short or low-randomness value after a key such as `api_key` or `token` can pass.
+  A short or low-randomness value after a key such as `api_key` or `token` can pass, and so can a password stored as a JSON number, which a placeholder can't replace without breaking the line's JSON.
   The filter decodes nothing, so an encoded credential passes unless a rule matches its encoded form, as one does for base64 `postgres://` URLs.
 - **Some identifiers look like credentials.**
   A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
