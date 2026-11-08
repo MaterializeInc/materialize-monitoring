@@ -115,6 +115,10 @@ reports Loki broken while Loki is fine:
      The subchart's defaults, `pod` and `stream`, are structured metadata
      there. A values file that replaces `extraArgs` drops the chart's selector
      arguments, which is how this is usually lost.
+  3. **Its own log lines.** The canary writes its entries to stdout and its own
+     log to stderr, and reads back only stdout. With `stream` out of the
+     selector, `-query-append` has to keep `stream="stdout"`, or every line the
+     canary logs comes back as an invalid entry, which it logs again.
 */}}
 {{- define "mzmon.loki.validate.canary" }}
   {{- $errors := list }}
@@ -125,13 +129,19 @@ reports Loki broken while Loki is fine:
            `extraArgs`, with the last of a repeated flag winning. */}}
     {{- $labelname := $canary.labelname | default "pod" | toString }}
     {{- $streamname := "stream" }}
+    {{- $queryAppend := "" }}
     {{- range ( $canary.extraArgs | default list ) }}
       {{- $arg := . | toString }}
       {{- if hasPrefix "-labelname=" $arg }}
         {{- $labelname = trimPrefix "-labelname=" $arg }}
       {{- else if hasPrefix "-streamname=" $arg }}
         {{- $streamname = trimPrefix "-streamname=" $arg }}
+      {{- else if hasPrefix "-query-append=" $arg }}
+        {{- $queryAppend = trimPrefix "-query-append=" $arg }}
       {{- end }}
+    {{- end }}
+    {{- if and ( ne $streamname "stream" ) ( not ( contains `stream="stdout"` $queryAppend ) ) }}
+      {{- $errors = append $errors ( printf "The Loki canary does not filter on stream=\"stdout\" (its -query-append is %q), so it reads its own stderr log lines back as invalid entries, logs each one, and reads that back too. Keep `| stream=\"stdout\"` in loki.lokiCanary.extraArgs' -query-append." $queryAppend ) }}
     {{- end }}
     {{- $kept := list "level" "app" "container" "namespace" "component" "job" "service_name" "unit" "environment_id" }}
     {{- range $flag, $name := dict "-labelname" $labelname "-streamname" $streamname }}

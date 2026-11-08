@@ -1368,7 +1368,7 @@ large workloads:
                 - -labelvalue=$(POD_NAMESPACE)
                 - -streamname=container
                 - -streamvalue=canary
-                - -query-append=| pod="$(POD_NAME)"
+                - -query-append=| pod="$(POD_NAME)" | stream="stdout"
               env:
                 - name: POD_NAME
                   valueFrom:

@@ -8,7 +8,9 @@
 #   1. The tenant. The subchart reads `self-monitoring`; the gateway writes the
 #      canary's lines to the tenant `pipeline.logging.tenancy` assigns.
 #   2. The selector. The subchart selects `{stream="stdout", pod="<pod>"}`, and
-#      the gateway keeps both as structured metadata, not stream labels.
+#      the gateway keeps both as structured metadata, not stream labels. Both
+#      filters move to `-query-append`; dropping `stream` makes the canary read
+#      its own stderr log lines as invalid entries, which it logs again.
 #   3. The live tail under TLS. The query frontend proxies tails to the querier
 #      over http://, which a querier serving TLS refuses.
 suite: loki canary
@@ -45,7 +47,7 @@ tests:
           content: -streamvalue=canary
       - contains:
           path: spec.template.spec.containers[0].args
-          content: -query-append=| pod="$(POD_NAME)"
+          content: -query-append=| pod="$(POD_NAME)" | stream="stdout"
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -103,6 +105,18 @@ tests:
       - failedTemplate:
           errorPattern: "selects its own lines on -streamname=stream, which is not a stream label the gateway keeps"
 
+  - it: should refuse a canary that would read its own log lines back
+    set:
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - -query-append=| pod="$(POD_NAME)"
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'does not filter on stream="stdout"'
+
   - it: should refuse the subchart's pod label
     set:
       loki.lokiCanary.labelname: pod
@@ -125,7 +139,7 @@ tests:
           content: -streamname=container
       - contains:
           path: spec.template.spec.containers[0].args
-          content: -query-append=| pod="$(POD_NAME)"
+          content: -query-append=| pod="$(POD_NAME)" | stream="stdout"
       - contains:
           path: spec.template.spec.containers[0].args
           content: -tls

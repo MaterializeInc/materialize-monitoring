@@ -4662,9 +4662,12 @@ loki:
     # The subchart's default selector, `{stream="stdout", pod="<pod>"}`, names
     # two labels the gateway stores as structured metadata, so it matches
     # nothing. The canary instead selects its namespace and container, and
-    # filters on the `pod` structured metadata with `-query-append`, which
-    # keeps each canary pod reading only its own lines. The subchart passes
-    # `-labelvalue=$(POD_NAME)`; the later `-labelvalue` here wins.
+    # filters on structured metadata with `-query-append`: `pod`, so each
+    # canary pod reads only its own lines, and `stream`, so it reads only the
+    # entries it writes to stdout. Without the second, its own stderr log lines
+    # come back as invalid entries, which it logs, which come back again. The
+    # subchart passes `-labelvalue=$(POD_NAME)`; the later `-labelvalue` here
+    # wins.
     #
     # `extraArgs` is a list, so a values file that sets it replaces these.
     # `profiles/mtls.values.yaml` restates them beside its TLS arguments.
@@ -4673,7 +4676,7 @@ loki:
       - -labelvalue=$(POD_NAMESPACE)
       - -streamname=container
       - -streamvalue=canary
-      - -query-append=| pod="$(POD_NAME)"
+      - -query-append=| pod="$(POD_NAME)" | stream="stdout"
     extraEnv:
       - name: POD_NAMESPACE
         valueFrom:

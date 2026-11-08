@@ -271,7 +271,7 @@ loki:
       - -labelvalue=$(POD_NAMESPACE)
       - -streamname=container
       - -streamvalue=canary
-      - -query-append=| pod="$(POD_NAME)"
+      - -query-append=| pod="$(POD_NAME)" | stream="stdout"
       - -tls
       - -ca-file=/etc/mzmon/tls/ca.crt
       - -cert-file=/etc/mzmon/tls/tls.crt
