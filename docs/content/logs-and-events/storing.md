@@ -67,7 +67,7 @@ Set any of the following fields in the destination's `logs` block:
 | `selector` | Keeps only entries matching a LogQL stream selector, such as `{namespace=~"environment-.+"}`. Line filters are allowed after it. |
 | `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. Entries with an `UNKNOWN` level are kept, because a panic arrives without a level the gateway can parse. |
 | `sampleRate` | Keeps a fraction of entries, above 0 and at most 1. |
-| `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst`, which defaults to `rate`. |
+| `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst` whole lines. `burst` defaults to `rate`, rounded up, and can be lower than it. |
 
 The gateway applies them in that order, in a `loki.process` component of the destination's own, `loki.process "dest_<name>"`.
 Each drop is counted in `loki_process_dropped_lines_total`, with `reason` set to `destination_selector`, `destination_level`, `destination_sampling`, or `ratelimit_drop_stage`.

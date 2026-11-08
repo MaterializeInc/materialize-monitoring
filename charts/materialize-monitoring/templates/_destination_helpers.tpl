@@ -239,6 +239,26 @@ Usage:
     {{- $tlsVerify = index $tls "verify" }}
   {{- end }}
   {{- $logsEnabled := index $signalOn "logs" }}
+  {{- /* A rate limit is configured when its block is a non-empty map; an
+         explicit `null` clears it like an absent one. `rate` is kept as given,
+         so the validator can tell a missing rate from a bad one. `burst`
+         defaults to the rate rounded up, because Alloy takes it as a positive
+         integer and a fractional rate would otherwise fail the load. */}}
+  {{- $rateLimitRaw := index $logs "rateLimit" }}
+  {{- if not ( kindIs "map" $rateLimitRaw ) }}
+    {{- $rateLimitRaw = dict }}
+  {{- end }}
+  {{- $rlRate := index $rateLimitRaw "rate" }}
+  {{- $rlBurst := index $rateLimitRaw "burst" }}
+  {{- /* A number, or a numeric string: `--set rate=0.5` arrives as a string. */}}
+  {{- $rlRateOk := and ( not ( kindIs "invalid" $rlRate ) ) ( regexMatch "^[0-9]*\\.?[0-9]+$" ( toString $rlRate ) ) ( gt ( $rlRate | float64 ) 0.0 ) }}
+  {{- if and ( kindIs "invalid" $rlBurst ) $rlRateOk }}
+    {{- $rlBurst = max 1 ( ceil $rlRate | int ) }}
+  {{- end }}
+  {{- $rateLimit := dict
+        "configured" ( gt ( len $rateLimitRaw ) 0 )
+        "rate" $rlRate
+        "burst" $rlBurst }}
   {{- $metricsEnabled := index $signalOn "metrics" }}
 
   {{- /* Only the queue settings the destination names are kept, so a
@@ -297,9 +317,7 @@ Usage:
       "selector" ( dig "selector" "" $logs | toString )
       "minLevel" ( dig "minLevel" "" $logs | toString | upper )
       "sampleRate" ( dig "sampleRate" 1 $logs )
-      "rateLimit" ( dict
-        "rate" ( dig "rateLimit" "rate" 0 $logs )
-        "burst" ( dig "rateLimit" "burst" ( dig "rateLimit" "rate" 0 $logs ) $logs ) ) )
+      "rateLimit" $rateLimit )
     "metrics" ( dict
       "enabled" $metricsEnabled
       "minMetricImportance" ( dig "minMetricImportance" "all" $metrics | toString )
@@ -445,7 +463,7 @@ Usage:
 */}}
 {{- define "mzmon.destinations.reducesLogs" }}
   {{- $logs := .logs }}
-  {{- if or $logs.selector $logs.minLevel ( lt ( $logs.sampleRate | float64 ) 1.0 ) ( gt ( $logs.rateLimit.rate | float64 ) 0.0 ) }}
+  {{- if or $logs.selector $logs.minLevel ( lt ( $logs.sampleRate | float64 ) 1.0 ) $logs.rateLimit.configured }}
     {{- "true" }}
   {{- end }}
 {{- end }}
@@ -613,8 +631,15 @@ Usage:
       {{- if or ( le $rate 0.0 ) ( gt $rate 1.0 ) }}
         {{- $errors = append $errors ( printf "%s.%s.logs.sampleRate is %v. It is the fraction of entries kept, so it must be greater than 0 and at most 1. To send no logs, set logs.enabled: false." $path $name $dest.logs.sampleRate ) }}
       {{- end }}
-      {{- if and ( gt ( $dest.logs.rateLimit.rate | float64 ) 0.0 ) ( lt ( $dest.logs.rateLimit.burst | float64 ) ( $dest.logs.rateLimit.rate | float64 ) ) }}
-        {{- $errors = append $errors ( printf "%s.%s.logs.rateLimit.burst (%v) is below its rate (%v), so the limit could never pass a full second of traffic at the rate. Leave burst unset to match the rate, or raise it." $path $name $dest.logs.rateLimit.burst $dest.logs.rateLimit.rate ) }}
+      {{- /* Rate and burst are checked independently: a token bucket with a
+             burst below its rate still passes the rate, evenly spaced. */}}
+      {{- $rl := $dest.logs.rateLimit }}
+      {{- if $rl.configured }}
+        {{- if or ( kindIs "invalid" $rl.rate ) ( not ( regexMatch "^[0-9]*\\.?[0-9]+$" ( toString $rl.rate ) ) ) ( le ( $rl.rate | float64 ) 0.0 ) }}
+          {{- $errors = append $errors ( printf "%s.%s.logs.rateLimit.rate is %v. A rate limit needs a rate in lines per second greater than 0; to remove the limit, remove the rateLimit block." $path $name ( ternary "missing" ( toString $rl.rate ) ( kindIs "invalid" $rl.rate ) ) ) }}
+        {{- else if or ( kindIs "invalid" $rl.burst ) ( not ( regexMatch "^[0-9]+$" ( toString $rl.burst ) ) ) ( lt ( $rl.burst | float64 ) 1.0 ) }}
+          {{- $errors = append $errors ( printf "%s.%s.logs.rateLimit.burst is %v. Alloy takes the burst as a whole number of lines, at least 1." $path $name $rl.burst ) }}
+        {{- end }}
       {{- end }}
     {{- end }}
 
