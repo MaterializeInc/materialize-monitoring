@@ -67,21 +67,30 @@ keywords = ["-----begin"]
 
 # Upstream's generic rule applies an entropy floor, which a human-chosen
 # password falls below, and does not see through `\"`.
+#
+# A quoted value is redacted to its closing quote, so a passphrase with
+# spaces goes whole. A bare value stops at whitespace, and is matched only
+# after an unquoted key: after a JSON key it is a number or a literal, and the
+# placeholder in its place would break the line's JSON. Gitleaks redacts
+# whichever group matched.
 [[rules]]
 id = "mzmon-password-field"
 description = "A password-named field, any entropy, including inside escaped JSON or Rust Debug output"
-regex = '''(?i)\b(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)\\?["']?\s*[:=]\s*(?:Some\()?\\?["']?([^\s"'\\,;)}]{4,})'''
+regex = '''(?i)\b(?:(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)\\?["']\s*[:=]\s*(?:\\?"([^"\\]{1,256})\\?"|'([^'\\]{1,256})')|(?:passw(?:or)?d|pwd|client[_-]?secret|secret[_-]?access[_-]?key)\s*[:=]\s*(?:Some\()?(?:\\?"([^"\\]{1,256})\\?"|'([^'\\]{1,256})'|([^\s"'\\,;)}]{4,})))'''
 keywords = ["passw", "pwd", "secret"]
   [[rules.allowlists]]
   regexes = ['''^(?:None|Some|null|nil|true|false|\*+|(?i:<?redacted.*)|\$\{?[A-Za-z_]+\}?)$''']
 
 # A controller that logs a Kubernetes Secret logs its data base64-encoded, and
-# the filter decodes nothing.
+# the filter decodes nothing. Base64 encodes three bytes as four characters,
+# so the last character of the `postgres://` prefix also carries the
+# username's first byte: `9` for a letter, `8` for a digit, `%` or an empty
+# username, `+` or `/` past ASCII. The `postgresql://` prefix ends before it.
 [[rules]]
 id = "mzmon-base64-postgres-url"
 description = "Base64 of a postgres:// URL, as in a logged Kubernetes Secret"
-regex = '''\b((?:cG9zdGdyZXM6Ly9|cG9zdGdyZXNxbDovL)[A-Za-z0-9+/]{8,}={0,2})'''
-keywords = ["cg9zdgdyzxm6ly9", "cg9zdgdyzxnxbdovl"]
+regex = '''\b((?:cG9zdGdyZXM6Ly[89+/]|cG9zdGdyZXNxbDovL)[A-Za-z0-9+/]{8,}={0,2})'''
+keywords = ["cg9zdgdyzxm6ly", "cg9zdgdyzxnxbdovl"]
 
 # Upstream jwt admits a backslash in its last segment, so it can consume the
 # escape of a closing \" and leave the redacted line unparseable.
