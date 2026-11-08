@@ -33,6 +33,7 @@
   rules: [jwt]
   secret: '<<JWT>>'
 
+# A Materialize license key is a JWT: three dot-separated base64url sections.
 - id: license-key-field
   line: 'starting environmentd license_key=<<LICENSE_KEY>>'
   rules: [jwt]

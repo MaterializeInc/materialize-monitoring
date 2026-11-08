@@ -95,7 +95,8 @@ impl Generated {
                 format!("AKIA{}", pick("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", 16)),
             ),
             ("JWT", jwt(60, &mut pick)),
-            // A Materialize license key is a signed JWT with a long payload.
+            // A Materialize license key is a JWT, three dot-separated base64url
+            // sections, with a long payload.
             ("LICENSE_KEY", jwt(400, &mut pick)),
             ("PEM_HEADER", ["-----BEGIN ", "PRIVATE KEY-----"].concat()),
             ("MZP_TOKEN", format!("mzp_{}", pick(ALNUM, 40))),

@@ -193,7 +193,7 @@ See [Images and registries](../production-best-practices/stack-wide/#images-and-
 
 Data that reaches the stack is stored as it arrives.
 
-- [ ] `[operator]` **Keep secrets out of logs at the source.** The pipeline ships no redaction stage today ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)), so a token an application logs is a token in Loki, searchable for the tenant's full retention.
+- [ ] `[operator]` **Keep secrets out of logs at the source.** A token an application logs is a token in Loki, searchable for the tenant's full retention. The gateway's [secret filter](../production-best-practices/secret-filtering/) can replace credentials before they're stored, but it ships off, and it's a backstop rather than the control: the raw line stays in the container's log on the node.
 - [ ] `[operator]` **Set retention deliberately.** It is the only bound on how long anything that did leak stays queryable. Retention and compaction are covered in [Logs & Events > Storing](../../logs-and-events/storing/) and [Metrics > Storing](../../metrics/storing/).
 - [ ] `[consumer]` Enable server-side encryption and access logging on the buckets. The Terraform modules enable versioning; encryption policy is yours, and bucket versioning means a deleted object is not necessarily gone.
 - [ ] `[operator]` Remember that **isolation within a Loki tenant is label-based**, not enforced. Per-environment separation via `environment_id` is a query convention; the hard boundary is a separate install. See [Tenancy & auth](../production-best-practices/loki/#tenancy).

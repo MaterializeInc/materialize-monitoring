@@ -1,6 +1,6 @@
 ---
 title: "Logging (Loki)"
-weight: 5
+weight: 6
 # custom parameters
 params:
   author: Heather Lapointe

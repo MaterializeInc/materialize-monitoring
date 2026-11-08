@@ -1,6 +1,6 @@
 ---
 title: "Alertmanager"
-weight: 8
+weight: 9
 # custom parameters
 params:
   author: Heather Lapointe
