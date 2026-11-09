@@ -204,7 +204,7 @@ Each control-plane branch runs a second, stricter filter immediately before its 
 |---|---|
 | [DEP-309] Close the remaining raw-line path: live debugging on the filter | ⬜ |
 | [DEP-310] Card-number redaction with `stage.luhn` | ⬜ |
-| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces, then the ingest filter on by default | ⬜ |
+| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces, then the ingest filter on by default | 🔨 |
 | [DEP-314] The values surface and fail-open validators, with the customer's rules rendered into a flat file | ⬜ |
 | [DEP-315] `mz-monitoring-canary`, a canary producer per layer | ⬜ |
 | [DEP-316] Alerts, runbooks and a dashboard row | ⬜ |
