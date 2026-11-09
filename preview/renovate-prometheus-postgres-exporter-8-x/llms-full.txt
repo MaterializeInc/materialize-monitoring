@@ -1942,6 +1942,7 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
 | `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last. On an existing install, delete the four StatefulSets first; see [StatefulSet fields that cannot be patched](../../operating/upgrading/#statefulset-fields-that-cannot-be-patched) |
 | `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/stack-wide/#fewer-than-two-zones) |
+| `profiles/s3-worm.values.yaml` | archive a copy of the logs to an S3 bucket with Object Lock, for compliance retention. The bucket and its lock are yours to create; the header has the steps, and see [Log compliance](../../operating/production-best-practices/log-compliance/) |
 | `profiles/s3-compatible.values.yaml` | Ceph RGW, MinIO, or another S3-compatible store with static keys, for both backends. The keys come from two Secrets you create; the header has the commands |
 | `profiles/adhoc.values.yaml` | the whole stack in one file: one replica of everything, no volumes, no NetworkPolicies. For troubleshooting, not production; see [Ad-hoc install](../adhoc/) |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/stack-wide/#namespace-layout) |
@@ -2993,55 +2994,57 @@ If you keep the bundled Thanos, it persists blocks to object storage — see [Th
 
 ## The remote-write destinations {#the-remote-write-destinations}
 
-`pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a **map keyed by destination name**.
-The chart ships one entry, `thanos`, pointing at the bundled in-cluster Thanos Receive; adding a key adds a destination.
+A Prometheus remote-write store is an entry of type `prometheus` in `pipeline.destinations`, the map of everything the gateway writes to.
+The chart ships one such entry, `thanos`, pointing at the bundled in-cluster Thanos Receive; adding an entry adds a destination.
 
-Each destination takes these values:
+A `prometheus` entry takes the following values:
 
 | Value | Purpose |
 |---|---|
+| `type` | `prometheus`. Required on an entry you add; `thanos` already has it. |
 | `enabled` | Write to this destination (default `true`). |
 | `url` | Remote-write endpoint. Required, except on `thanos`, which defaults to the in-cluster Receive. |
-| `minMetricImportance` | Which [tier](#the-importance-tiers) this destination receives (default `all`). |
-| `authType` | `none` (default), `basicAuth`, `bearer`, `oauth2`, or `sigv4`. |
-| `sigv4` | AWS SigV4 signing config — for [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa). |
+| `metrics.minMetricImportance` | Which [tier](#the-importance-tiers) this destination receives (default `all`). |
+| `authType` | `none` (default), `basicAuth`, `bearer`, or `sigv4`. |
+| `sigv4` | AWS SigV4 signing config, for [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa). |
 | `tls` | Client TLS for this hop. |
 | `externalLabels` | Extra labels stamped on every sample this destination receives. |
+
+For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
 
 Point the bundled destination at an external store instead:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          thanos:
-            url: https://<your-remote-write-endpoint>/api/v1/write
+  destinations:
+    thanos:
+      url: https://<your-remote-write-endpoint>/api/v1/write
 ```
 
 Or write to two backends at once, each on its own tier:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          # Everything, to storage you already pay for.
-          thanos:
-            minMetricImportance: all
-          # Alerting metrics only, to a backend that bills per sample.
-          amp:
-            url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
-            minMetricImportance: essential
-            authType: sigv4
-            sigv4:
-              region: us-east-1
+  destinations:
+    # Everything, to storage you already pay for.
+    thanos:
+      metrics:
+        minMetricImportance: all
+    # Alerting metrics only, to a backend that bills per sample.
+    amp:
+      type: prometheus
+      url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
+      metrics:
+        minMetricImportance: essential
+      authType: sigv4
+      sigv4:
+        region: us-east-1
 ```
 
-The name is more than a label in `values`: it becomes the **Alloy component label**, so it appears as `prometheus.remote_write.<name>` in the gateway's own metrics and in its UI, and it is the fragment the [credential environment variables](#credential-environment-variables) are derived from.
-It must match `[a-zA-Z_][a-zA-Z0-9_]*` — no dashes or dots — and `egress` is reserved for the fan-out seam.
+The name is more than a label in `values`.
+It becomes the **Alloy component label**, so it appears as `prometheus.remote_write.<name>` in the gateway's own metrics and in its UI.
+It's also the fragment the [credential environment variables](#credential-environment-variables) are derived from.
+It must match `[a-zA-Z_][a-zA-Z0-9_]*`, with no dashes or dots, and `egress` and `destination` are reserved.
 Both rules fail at render rather than at gateway startup.
 
 ### One component per destination, and why it matters {#one-component-per-destination}
@@ -3074,38 +3077,54 @@ Add labels for one destination only with its `externalLabels` map, which is usef
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          amp:
-            externalLabels:
-              account: "012345678901"
+  destinations:
+    amp:
+      externalLabels:
+        account: "012345678901"
 ```
 
 Setting `cluster` in `externalLabels` replaces the environment-derived one for that destination.
 
-### Upgrading from the single-destination shape
+### Upgrading from `prometheusRemoteWrite` {#upgrading-from-prometheusremotewrite}
 
-`prometheusRemoteWrite` used to *be* one destination, with `url`, `authType`, and the rest directly under it.
-Those keys now live one level down, under a name.
-An install that never overrode them upgrades with no change at all — the default `thanos` destination writes to the same endpoint on the same tier.
+Remote-write destinations used to be configured under `pipeline.metrics.gateway.destination.prometheusRemoteWrite`, a map of the same shape.
+That map is deprecated.
+Each entry you still set there applies as a `prometheus` entry of `pipeline.destinations`, and the render warns.
 
-An install that did override them **fails at render** with a message naming the keys to move.
-That is deliberate rather than unfriendly: Helm merges maps, so a leftover `prometheusRemoteWrite.url` would land *beside* `thanos` rather than replacing it.
-The setting would apply to nothing, the default endpoint would keep receiving, and there would be no error and no metric gap to notice.
-Move each key under a name — `thanos` to keep the bundled Receive:
+To move an entry, apply the following changes:
+
+- Put it under `pipeline.destinations`, with `type: prometheus`.
+- Move `minMetricImportance` and `unfilteredMetricsEnv` under `metrics`.
+  Every other field keeps its name.
+- Check the credential variable names.
+  While an entry stays in the old map, it keeps the credential names that map derived, such as `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
+  That includes a retune of `thanos`.
+  Once moved, it derives `GATEWAY_AMP_DEST_PASSWORD`.
+  If a Secret already uses the old names, keep them with the `*Env` fields, such as `basicAuth.passwordEnv`.
+  The URL and allowlist variables are written by the chart itself, so their new names need nothing from you.
+
+The following example moves an entry:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          thanos:                       # was: directly under prometheusRemoteWrite
-            url: https://metrics.example.com/api/v1/write
-            authType: bearer
+  destinations:
+    amp:                                  # was: prometheusRemoteWrite.amp
+      type: prometheus
+      url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
+      metrics:
+        minMetricImportance: essential    # was: minMetricImportance
+      authType: sigv4
+      sigv4:
+        region: us-east-1
 ```
+
+An entry named after a destination of another type, such as `loki`, fails at render rather than turning that destination into a remote write.
+
+The map's older shape, with `url`, `authType`, and the rest directly under `prometheusRemoteWrite` rather than under a name,
+**fails at render** with a message naming the keys to move.
+Helm merges maps, so a leftover `prometheusRemoteWrite.url` would otherwise apply to nothing,
+and the default endpoint would keep receiving with no error.
+Move those keys onto `pipeline.destinations.thanos` to keep the bundled Receive.
 
 ## Authentication
 
@@ -3115,16 +3134,16 @@ Set `authType` and fill in the matching block:
 - **`none`** — no auth (the in-cluster Thanos default).
 - **`basicAuth`** — username / password from env.
 - **`bearer`** — bearer token from env.
-- **`oauth2`** — OAuth2 client credentials from env.
 - **`sigv4`** — AWS SigV4 signing, derived from IRSA (see [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa) below).
 
-The OpenTelemetry destinations have their own auth block, `destination.otel.auth`, whose `authType` is one of `none`, `basic`, `bearer`, `headers`, `awsSigv4`, or `custom`.
+An `otlp` destination in `pipeline.destinations` takes `none`, `basicAuth`, `bearer`, `headers`, or `sigv4`; see [Generic OTLP](#otlp).
+A `googleCloud` destination uses the gateway's Google identity, and a `datadog` destination its API key.
 
 Whichever destination and method you choose, the gateway reads the actual secret from an environment variable at runtime (`sys.env(...)`).
 There are two ways to populate that variable:
 
 - **Inline in `values`** — the Prometheus remote-write and Loki destinations accept the credential directly (`basicAuth.password`, `bearer.token`, …). When set, the value is baked into the gateway ConfigMap in plaintext, so this is convenient for a quick start but weaker for production.
-- **From a Secret** — leave the inline field blank and provide the same env var through a Secret. This is the preferred path, and the only option for the OpenTelemetry and Datadog destinations, which have no inline field.
+- **From a Secret** — leave the inline field blank and provide the same env var through a Secret. This is the preferred path for every destination.
 
 Both are described next.
 
@@ -3136,13 +3155,13 @@ The gateway loads its environment from two objects that share one name — `mzmo
 - a **Secret** *you* create — the credential values in the table below, kept out of the rendered manifests.
 
 The chart does **not** create the Secret; it is mounted `optional: true`, so you populate it out-of-band with only the keys your enabled destinations need.
-A bearer-authenticated OTLP endpoint plus a Datadog API key — the pairing in the reference `mzmon-gcp` install — is just two keys:
+For example, a bearer-authenticated `otlp` destination named `collector` and a `datadog` destination named `datadog` need two keys:
 
 ```bash
 kubectl create secret generic mzmon-alloy-gateway-env \
   --namespace monitoring \
-  --from-literal=GATEWAY_OTEL_DEST_BEARER_TOKEN='<token>' \
-  --from-literal=GATEWAY_OTEL_DEST_DATADOG_API_KEY='<api-key>'
+  --from-literal=GATEWAY_COLLECTOR_DEST_BEARER_TOKEN='<token>' \
+  --from-literal=GATEWAY_DATADOG_DEST_API_KEY='<api-key>'
 ```
 
 The Secret's keys are injected as environment variables next to the ConfigMap's, so the key names **are** the env-var names in the table below.
@@ -3158,24 +3177,26 @@ The Secret's keys are injected as environment variables next to the ConfigMap's,
 
 Populate only the rows for the destinations and auth methods you enable:
 
-`<NAME>` below is the destination's key in the `prometheusRemoteWrite` map, uppercased with anything outside `A-Z0-9` folded to `_` — the `amp` destination reads `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
-Every remote-write row is per destination, so two destinations on `basicAuth` need two pairs of keys.
+`<NAME>` below is the destination's key in `pipeline.destinations`, uppercased with anything outside `A-Z0-9` folded to `_`.
+A `prometheus` destination named `amp` reads `GATEWAY_AMP_DEST_PASSWORD`,
+and a `datadog` destination named `datadog` reads `GATEWAY_DATADOG_DEST_API_KEY`.
+Every row is per destination, so two destinations on `basicAuth` need two pairs of keys.
 
 | Destination · method | `values` block | Secret keys (env vars) |
 |---|---|---|
-| Prometheus remote-write · `basicAuth` | `…prometheusRemoteWrite.<name>.basicAuth` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_<NAME>_PASSWORD` |
-| Prometheus remote-write · `bearer` | `…prometheusRemoteWrite.<name>.bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_BEARER_TOKEN` |
-| Prometheus remote-write · `oauth2` | `…prometheusRemoteWrite.<name>.oauth2` | `GATEWAY_PROMETHEUS_DEST_<NAME>_OAUTH2_CLIENT_ID`, `…_CLIENT_SECRET`, `…_TOKEN_URL` |
-| Prometheus remote-write · client TLS | `…prometheusRemoteWrite.<name>.tls` | `GATEWAY_PROMETHEUS_DEST_<NAME>_TLS_CA`, `…_TLS_CERT`, `…_TLS_KEY` |
-| OTLP · `basic` | `…otel.auth.basic` | `GATEWAY_OTEL_DEST_USERNAME`, `GATEWAY_OTEL_DEST_PASSWORD` |
-| OTLP · `bearer` | `…otel.auth.bearer` | `GATEWAY_OTEL_DEST_BEARER_TOKEN` |
-| OTLP · `headers` | `…otel.auth.headers` | whatever each header's `valueEnv` names — you choose |
-| Datadog | `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_DATADOG_API_KEY` |
-| SigV4 — AMP or OTLP `awsSigv4` | `…prometheusRemoteWrite.<name>.sigv4` / `…otel.auth.awsSigv4` | — none; uses the pod's IRSA identity |
+| `prometheus` or `otlp` · `basicAuth` | `pipeline.destinations.<name>.basicAuth` | `GATEWAY_<NAME>_DEST_USERNAME`, `GATEWAY_<NAME>_DEST_PASSWORD` |
+| `prometheus` or `otlp` · `bearer` | `pipeline.destinations.<name>.bearer` | `GATEWAY_<NAME>_DEST_BEARER_TOKEN` |
+| `otlp` · `headers` | `pipeline.destinations.<name>.headers` | whatever each header's `valueEnv` names; you choose |
+| `datadog` | `pipeline.destinations.<name>.apiKey` | `GATEWAY_<NAME>_DEST_API_KEY` |
+| `prometheus` or `otlp` · `sigv4` | `pipeline.destinations.<name>.sigv4` | none; uses the pod's IRSA identity |
+| Deprecated `prometheusRemoteWrite` | `basicAuth`/`bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN` |
+| Deprecated `otel` block | `…otel.auth.*`, `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN`, `…_DATADOG_API_KEY` |
+
+The deprecated `prometheusRemoteWrite` row covers every entry still set there, a retune of `thanos` included.
 
 SigV4 and the cloud-native exporters (GCM via Workload Identity) carry no secret keys — they authenticate with the gateway pod's ambient cloud identity, so those rows stay out of the Secret entirely.
 
-Each remote-write destination can also name its own variables — `basicAuth.usernameEnv`, `bearer.tokenEnv`, and so on — where the derived name is inconvenient or a Secret already uses another.
+Each destination can also name its own variables, such as `basicAuth.usernameEnv`, `bearer.tokenEnv`, or `apiKey.keyEnv`, where the derived name is inconvenient or a Secret already uses another.
 The Terraform module sets them explicitly for this reason; see [Through Terraform](#through-terraform).
 
 ## Controlling what each destination stores
@@ -3207,22 +3228,21 @@ The defaults lean permissive for cheap local storage and frugal for metered SaaS
 
 | Destination | Default `minMetricImportance` |
 |---|---|
-| `prometheusRemoteWrite.thanos` (bundled Thanos) | `all` |
-| `prometheusRemoteWrite.<name>` (any you add) | `all` |
-| `otlpExporter` (generic OTLP) | `all` |
-| `googleCloudExporter` (GCM) | `recommended` |
-| `datadogExporter` | `recommended` |
+| `pipeline.destinations.thanos` (bundled Thanos) | `all` |
+| `pipeline.destinations` entry of type `prometheus` | `all` |
+| `pipeline.destinations` entry of type `otlp` | `all` |
+| `pipeline.destinations` entry of type `googleCloud` | `recommended` |
+| `pipeline.destinations` entry of type `datadog` | `recommended` |
 
 Set it per destination:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        otel:
-          datadogExporter:
-            minMetricImportance: essential   # ship only alerting metrics to Datadog
+  destinations:
+    datadog:
+      type: datadog
+      metrics:
+        minMetricImportance: essential   # ship only alerting metrics to Datadog
 ```
 
 The series the chart's recording rules write, such as the `ext:*` series for the metadata database, have tiers too.
@@ -3240,7 +3260,7 @@ See [One component per destination](#one-component-per-destination).
 ### How the allowlist is built
 
 Tier membership is generated from the query registry into `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml` (via `mz-monitoring-build gen-metric-tiers`, or `make metric-tiers`).
-At render time the chart reads that file, unions the tiers at or above each destination's `minMetricImportance`, and hands the gateway the result as an allowlist regex — one environment variable per destination, such as `GATEWAY_UNFILTERED_PROM_METRICS_AMP` for a remote-write destination named `amp`.
+At render time the chart reads that file, unions the tiers at or above each destination's `minMetricImportance`, and hands the gateway the result as an allowlist regex — one environment variable per destination, such as `GATEWAY_AMP_DEST_METRICS_ALLOWLIST` for a destination named `amp`.
 `all` skips the file entirely and uses `.*`.
 Do not edit `metric-tiers.yaml` by hand: reclassify metrics in the registry and regenerate.
 
@@ -3286,7 +3306,7 @@ otlp_metrics = {
 otlp_auth_header_secrets = { "x-honeycomb-team" = var.honeycomb_api_key }
 ```
 
-Remote-write destinations go through `prometheus_remote_write`, which is the same map keyed by name.
+Remote-write destinations go through `prometheus_remote_write`, keyed by name; each key becomes a `pipeline.destinations` entry of type `prometheus`.
 A key of `thanos` **retunes** the bundled destination rather than adding a second one, so dropping local fidelity and adding AMP is one input:
 
 ```hcl
@@ -3307,7 +3327,8 @@ gateway_service_account_annotations = {
 ```
 
 `basicAuth` and `bearer` destinations take their credentials from `prometheus_remote_write_credentials`, keyed by the same destination name.
-The module derives the environment variable names from that name and writes them into the chart's values, so the Secret it creates and the config the gateway reads cannot disagree.
+The module derives the environment variable names from that name, as `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD` and so on,
+and writes them into the chart's values, so the Secret it creates and the config the gateway reads cannot disagree.
 
 Credentials do **not** go through the Helm values — the module puts them in the gateway Secret instead, and rolls the gateway when one changes.
 See the [module README](https://github.com/MaterializeInc/materialize-monitoring/blob/main/terraform/modules/materialize-monitoring/README.md#metric-destinations) for the environment variables each input becomes.
@@ -3521,90 +3542,113 @@ See [Metrics Architecture](../architecture/) for how the roles connect.
 
 Two families of backend sit alongside the bundled Thanos, and both fan out *in addition to* it rather than replacing it.
 
-**More remote-write stores** — Amazon Managed Prometheus, Mimir, Grafana Cloud, another Thanos — are added as further entries in the [`prometheusRemoteWrite` map](#the-remote-write-destinations).
+**More remote-write stores** — Amazon Managed Prometheus, Mimir, Grafana Cloud, another Thanos — are added as further [`prometheus` entries](#the-remote-write-destinations).
 Nothing on this page is an either/or with the in-cluster Thanos: keeping full fidelity locally while shipping a filtered slice to a metered backend is the shape the map exists for.
 
-**OpenTelemetry (OTLP) destinations** are configured under the `otel` block, described below.
+**OpenTelemetry (OTLP) backends** are entries in `pipeline.destinations`, the map that also holds the gateway's log destinations.
+Each entry is one connection with its own credentials, metric tier, and queue, and it can carry logs as well as metrics.
+The following types send metrics:
 
-Enable the OTLP path with `pipeline.metrics.gateway.destination.otel.enabled: true`, then turn on one or more exporters — `otlpExporter` (generic), `googleCloudExporter`, and `datadogExporter` can all run at once, each with its own `minMetricImportance`.
+`otlp`
+: Any OTLP endpoint, such as Honeycomb, Grafana Cloud, or your own OpenTelemetry Collector.
 
-> [!WARNING]
->   The `otel` block is shared with the logs pipeline.
->   If you enable the OTLP *logs* destination, this block is still used for exporter configuration even when `otel.enabled` is `false` for metrics.
+`googleCloud`
+: Google Cloud Managed Service for Prometheus, through the Telemetry API.
+
+`datadog`
+: Datadog, through its own exporter.
+
+A metrics-carrying entry gets its own tier filter, set by `metrics.minMetricImportance`, so each backend receives only the tiers you choose.
+For the full list of fields, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
+
+> [!NOTE]
+>   The exporters under `pipeline.metrics.gateway.destination.otel` are deprecated.
+>   They still render as before, and the render warns while any is enabled.
+>   See [Move off the deprecated `otel` block](#otel-migration).
 
 ### Generic OTLP (Honeycomb, Grafana Cloud, collectors) {#otlp}
 
-`otlpExporter` is the generic OTLP push exporter — point it at any OTLP-compatible endpoint, whether a vendor (Honeycomb, Grafana Cloud) or your own OpenTelemetry Collector:
+An `otlp` entry sends to any OTLP-compatible endpoint:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        otel:
-          enabled: true
-          otlpExporter:
-            enabled: true
-            url: <host>:4317        # host[:port], no http:// or https:// prefix
-            protocol: grpc          # grpc → otlp, http → otlphttp
-            compression: gzip       # gzip for compatibility, snappy for speed
-          auth:
-            authType: bearer        # none | basic | bearer | headers | awsSigv4 | custom
+  destinations:
+    collector:
+      type: otlp
+      url: collector.example.com:4317
+      protocol: grpc
+      tls:
+        enabled: true
+      metrics:
+        minMetricImportance: recommended
 ```
 
-`url` takes a `host[:port]` with no scheme; `protocol: grpc` selects the OTLP/gRPC exporter and `protocol: http` selects OTLP/HTTP.
-Authentication is configured once under `otel.auth` (shared by the OTLP exporter): pick `authType` and fill the matching block.
-The credential values themselves come from the gateway Secret — see [Supplying credentials](#supplying-credentials-the-gateway-secret) for the env-var keys.
+Over gRPC, `url` is a `host:port`.
+Over `protocol: http`, the default, `url` is a base URL such as `https://otlp.example.com`, and the exporter appends `/v1/metrics`.
+Turn `tls.enabled` on for any endpoint that serves TLS; with it off, the gRPC exporter connects in plaintext.
+
+Set `authType` to authenticate:
+
+| `authType` | Credentials |
+|---|---|
+| `basicAuth` | `basicAuth.username` and `basicAuth.password`, or the variables `basicAuth.usernameEnv` and `basicAuth.passwordEnv` name |
+| `bearer` | `bearer.token`, or the variable `bearer.tokenEnv` names |
+| `headers` | `headers`, a list of request headers |
+| `sigv4` | The gateway's AWS identity, with `sigv4.region`, `sigv4.service`, and an optional `sigv4.roleArn` to assume |
+
+The credential values come from the gateway Secret.
+For the variable names, see [Supplying credentials](#supplying-credentials-the-gateway-secret).
 
 #### API-key headers {#otlp-headers}
 
-Several OTLP vendors authenticate with a custom request header rather than a bearer token — Honeycomb's `x-honeycomb-team`, for one.
-`authType: headers` covers that case without dropping to raw Alloy config:
-
-```yaml
-          auth:
-            authType: headers
-            headers:
-              headers:
-                - key: x-honeycomb-team
-                  valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
-                - key: x-honeycomb-dataset
-                  value: mzmon
-```
-
-Each header sets exactly one of `value` or `valueEnv`.
-`value` renders into the gateway's pipeline ConfigMap in plaintext, so keep it for non-secret routing headers such as a dataset or tenant name; `valueEnv` names an environment variable the gateway reads at startup, which is where a credential belongs.
-The variable name is yours to pick — nothing else in the chart depends on it — so name it after the backend rather than reusing another destination's key.
-
-The chart checks the shape at render time: an empty header list, a header missing its `key`, a header setting both `value` and `valueEnv` or neither, and a `valueEnv` no `extraEnv` or `envFrom` source could supply all fail the install rather than authenticating with an empty header at run time.
-
-For a ready-made starting point — generic OTLP to Honeycomb, including the header auth above — copy the annotated [`otlp-metrics-honeycomb.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otlp-metrics-honeycomb.values.yaml) profile.
-
-### Google Cloud Monitoring (GCM) {#gcm}
-
-`googleCloudExporter` writes OTLP to Google's [Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview) (`telemetry.googleapis.com`).
-The Telemetry API stores the series in Cloud Monitoring as Google Cloud Managed Service for Prometheus metrics, under `prometheus.googleapis.com/`, where PromQL reads them.
-
-> [!NOTE]
->   Before v0.31.0 this destination wrote `workload.googleapis.com/mzmon/<name>` through `otelcol.exporter.googlecloud`.
->   Upgrading moves every series to `prometheus.googleapis.com/<name>/<kind>`, so dashboards and alerting policies reading the old metric types stop receiving data.
->   The project needs the `telemetry.googleapis.com` API enabled, and `prefix` no longer exists.
+Several OTLP vendors authenticate with a custom request header rather than a bearer token, such as Honeycomb's `x-honeycomb-team`.
+`authType: headers` covers that case:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        otel:
-          enabled: true
-          googleCloudExporter:
-            enabled: true
-            minMetricImportance: recommended
+  destinations:
+    honeycomb:
+      type: otlp
+      url: api.honeycomb.io:443
+      protocol: grpc
+      tls:
+        enabled: true
+      metrics: {}
+      authType: headers
+      headers:
+        - key: x-honeycomb-team
+          valueEnv: GATEWAY_HONEYCOMB_API_KEY
+        - key: x-honeycomb-dataset
+          value: mzmon
+```
+
+Each header sets exactly one of `value` or `valueEnv`.
+A `value` renders into the gateway's pipeline ConfigMap in plaintext, so keep it for non-secret routing headers such as a dataset or tenant name.
+A `valueEnv` names an environment variable the gateway reads at startup, which is where a credential belongs.
+The variable name is yours to pick, so name it after the backend.
+
+The chart checks the shape at render time.
+An empty header list, a header with no `key`, a header that sets both `value` and `valueEnv` or neither, and a `valueEnv` that no `extraEnv` or `envFrom` source could supply all fail the install.
+
+For a ready-made starting point, copy the annotated [`otlp-metrics-honeycomb.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otlp-metrics-honeycomb.values.yaml) profile.
+
+### Google Cloud Monitoring (GCM) {#gcm}
+
+A `googleCloud` entry writes OTLP to Google's [Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview) (`telemetry.googleapis.com`).
+The Telemetry API stores the series in Cloud Monitoring as Google Cloud Managed Service for Prometheus metrics, under `prometheus.googleapis.com/`, where PromQL reads them.
+
+```yaml
+pipeline:
+  destinations:
+    googleCloud:
+      type: googleCloud
+      metrics:
+        minMetricImportance: recommended
 ```
 
 The project needs the `telemetry.googleapis.com` API enabled.
-Authentication uses **Workload Identity**: the `alloy-gateway` ServiceAccount is annotated with a Google service account, and `otelcol.auth.google` takes the ambient identity with no credentials in the config.
-The token-exchange mechanics are the same as [Thanos on GCS](#granting-object-storage-access-workload-identity) above, but on the gateway's ServiceAccount rather than Thanos's.
+Authentication uses **Workload Identity**: the `alloy-gateway` ServiceAccount is annotated with a Google service account, and the gateway takes that ambient identity with no credentials in the config.
+The token exchange works the same way as for [Thanos on GCS](#granting-object-storage-access-workload-identity), but on the gateway's ServiceAccount rather than Thanos's.
 That identity needs `roles/monitoring.metricWriter` on the project.
 
 #### What it costs
@@ -3639,8 +3683,8 @@ Cloud Monitoring files every series under a `prometheus_target` resource.
 
 | Label | Value |
 |---|---|
-| `project_id` | The project the gateway runs in, or `googleCloudExporter.project` |
-| `location` | The GKE cluster's region or zone, or `googleCloudExporter.location` |
+| `project_id` | The project the gateway runs in, or the destination's `project` |
+| `location` | The GKE cluster's region or zone, or the destination's `location` |
 | `cluster` | The series' own `cluster` label, or else `CLUSTER_NAME`, which is the `cluster` every other destination carries |
 | `namespace` | The series' own `namespace` label, as in Thanos |
 | `job`, `instance` | The scrape target's |
@@ -3654,32 +3698,52 @@ The gateway takes each series' first point as its baseline and does not send it.
 A counter's raw value in Cloud Monitoring therefore differs from Thanos, while `rate()` and `increase()` agree.
 
 Off GKE there is no metadata server to supply the project and the location, and the Telemetry API refuses a point without a location.
-`googleCloudExporter.project` and `googleCloudExporter.location` supply them.
+The destination's `project` and `location` supply them.
 
 Because the destination is metered, it defaults to `minMetricImportance: recommended`.
 `essential` writes less; a lower floor keeps more there.
 
 ### Datadog {#datadog}
 
-`datadogExporter` writes metrics (and logs) to Datadog:
+A `datadog` entry writes metrics, logs, or both to Datadog:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        otel:
-          enabled: true
-          datadogExporter:
-            enabled: true
-            url: datadoghq.com          # your Datadog site
-            minMetricImportance: recommended
+  destinations:
+    datadog:
+      type: datadog
+      site: datadoghq.eu
+      metrics:
+        minMetricImportance: recommended
 ```
 
-The API key is read from the `GATEWAY_OTEL_DEST_DATADOG_API_KEY` environment variable — source it from a Secret; never inline it in values.
-Set `url` to your Datadog site (for example `datadoghq.com` or `datadoghq.eu`); `metricEndpoint` and `logsEndpoint` default to the matching intake URLs.
+Set `site` to your Datadog site, such as `datadoghq.com` or `datadoghq.eu`.
+The exporter derives its intake endpoints from the site, and `metrics.url` or `logs.url` overrides one for a proxy or PrivateLink.
+The API key is read from `GATEWAY_<NAME>_DEST_API_KEY`, `GATEWAY_DATADOG_DEST_API_KEY` for the entry above.
+Supply it from the gateway Secret, or name another variable in `apiKey.keyEnv`.
 Like Google Cloud, it defaults to `minMetricImportance: recommended`.
-The [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile shows Datadog and GCM enabled together, each on its own tier.
+To send logs too, add a `logs` block.
+
+The [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile shows Datadog and Google Cloud together, each on its own tier.
+
+### Move off the deprecated `otel` block {#otel-migration}
+
+The exporters under `pipeline.metrics.gateway.destination.otel` still render as before.
+To move each one to `pipeline.destinations`, use the following table:
+
+| Deprecated | Replacement |
+|---|---|
+| `otlpExporter` | An entry of `type: otlp`, with a `metrics` block. Its `url` was a bare `host:port`; over `protocol: http`, add the scheme. Set `tls.enabled: true` for a TLS endpoint |
+| `googleCloudExporter` | An entry of `type: googleCloud`. `endpoint` becomes `url` |
+| `datadogExporter` | An entry of `type: datadog`. `url` becomes `site`, and `metricEndpoint` and `logsEndpoint` become `metrics.url` and `logs.url`. Set `apiKey.keyEnv: GATEWAY_OTEL_DEST_DATADOG_API_KEY` to keep reading the same variable |
+| `otel.enabled` | A `metrics` block on each entry |
+| `pipeline.logging.gateway.destination.otel.enabled` | A `logs` block on each `otlp` or `datadog` entry |
+| `otel.auth` | The entry's own `authType`. `awsSigv4` becomes `sigv4`, and the `headers.headers` list becomes `headers` |
+
+For the deprecated `prometheusRemoteWrite` map, see [Upgrading from `prometheusRemoteWrite`](#upgrading-from-prometheusremotewrite).
+
+The raw `config`, `handlers`, and `auth.custom` overrides have no equivalent in `pipeline.destinations`.
+A destination that relies on one can stay in the `otel` block, which is removed only in a major version.
 
 ### Amazon Managed Prometheus (SigV4 + IRSA)
 
@@ -3687,25 +3751,25 @@ To push to Amazon Managed Prometheus (AMP), sign requests with SigV4 and let the
 
 AMP is a remote-write destination like any other, so this **adds** to the bundled Thanos rather than replacing it.
 Running both is the usual choice: AMP bills per sample ingested and per active series, so the pairing below keeps everything in local storage you already pay for and sends only the alerting metrics to AMP.
-To send metrics *only* to AMP, drop the `thanos` entry and set `thanos.enabled: false` on the bundled backend.
+To send metrics *only* to AMP, set `enabled: false` on the `thanos` destination and on the bundled backend.
 
 1. Add a destination pointing at your workspace's remote-write URL, with `sigv4`:
 
    ```yaml
    pipeline:
-     metrics:
-       gateway:
-         destination:
-           prometheusRemoteWrite:
-             thanos:
-               minMetricImportance: all
-             amp:
-               url: https://aps-workspaces.<region>.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write
-               minMetricImportance: essential
-               authType: sigv4
-               sigv4:
-                 region: <region>
-                 # roleArn: optional — only to assume a *different* role than IRSA grants
+     destinations:
+       thanos:
+         metrics:
+           minMetricImportance: all
+       amp:
+         type: prometheus
+         url: https://aps-workspaces.<region>.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write
+         metrics:
+           minMetricImportance: essential
+         authType: sigv4
+         sigv4:
+           region: <region>
+           # roleArn: optional — only to assume a *different* role than IRSA grants
    ```
 
 2. Grant an IAM role `aps:RemoteWrite` on the workspace, and bind it to the gateway with IRSA by annotating the `alloy-gateway` ServiceAccount:
@@ -4764,7 +4828,8 @@ Because it is a DaemonSet, collection scales with the number of nodes, and no ap
 The **`alloy-gateway`** is a Grafana Alloy Deployment that does the central log processing and forwarding.
 It receives logs from the agents (and optionally other sources — see [Ingestion interfaces](#ingestion)), collects Kubernetes events, normalizes log levels, moves high-cardinality fields into [structured metadata](#storage), enforces drop and rate-limit policies, and then writes the result to Loki.
 It is the single place where the [cardinality](../../o11y-glossary/#observability-foundations) and label-family decisions are made, which is what keeps the log store stable and cheap.
-Its ingress port (`ALLOY_LOKI_PORT`, default `3100`) and its write destination (`GATEWAY_LOKI_DEST`) are configurable — see [Collecting > Tuning collection](../collecting/#tuning-collection).
+Its ingress port is `ALLOY_LOKI_PORT`, default `3100`, and you can change it; see [Collecting > Tuning collection](../collecting/#tuning-collection).
+It writes to every destination in `pipeline.destinations`; see [Where the gateway writes logs](../storing/#destinations).
 
 The gateway is also the egress point for the [remote-only topology](#alternative-topologies) and the conduit the [Loki Ruler](#ruler) uses to remote-write recording-rule samples to the long-term metric store.
 
@@ -5069,7 +5134,9 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
   Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
   For every rule, see the [logging pipeline reference](../../reference/development/pipelines/logging/#size-limits).
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
-- **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
+- **Gateway destinations.** The gateway writes processed logs to each entry in `pipeline.destinations`, which by default holds the bundled Loki.
+  For the [remote-only topology](../architecture/#alternative-topologies), point `pipeline.destinations.loki.url` at an external Loki.
+  For more information, see [Where the gateway writes logs](../storing/#destinations).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.
 
 > [!WARNING]
@@ -5093,8 +5160,201 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-pr
 # Storing Logs
 
 Loki keeps all durable log data in a single [object storage](../architecture/#storage) backend, maintained by the [Loki Compactor](../architecture/#backend).
-This page covers the storage layout, the index, retention, and disaster recovery.
+This page covers where the gateway writes logs, the storage layout, the index, retention, and disaster recovery.
 See the [logging architecture](../architecture/) for how storage relates to the ingesters that write it and the queriers that read it.
+
+## Where the gateway writes logs {#destinations}
+
+The gateway writes processed logs to each destination in `pipeline.destinations`.
+The map holds one entry by default, `loki`, which writes to the bundled Loki.
+Each entry has its own components and its own queue.
+
+An entry's `type` sets how the gateway writes to it:
+
+`loki`
+: Pushes logs through `loki.write`, labeled with the entry's name.
+
+`otlp`
+: Sends logs, metrics, or both over one OTLP connection, through components labeled `dest_<name>`.
+  A signal is on when its block is present.
+
+`s3`
+: Archives logs as objects in an S3 bucket, through components labeled `dest_<name>`.
+  See [Archive logs to write-once storage](#worm-archive).
+
+To write logs somewhere else as well, add an entry.
+The following example adds an external Loki that never slows down delivery to the bundled one:
+
+```yaml
+pipeline:
+  destinations:
+    archive:
+      type: loki
+      url: https://logs.example.com/loki/api/v1/push
+      authType: bearer
+      queue:
+        capacity: 64MiB
+        blockOnOverflow: false
+```
+
+The following example sends logs to an OTLP backend that takes only logs, on that signal's own endpoint:
+
+```yaml
+pipeline:
+  destinations:
+    opensearch:
+      type: otlp
+      url: http://data-prepper.logging.svc:21890
+      logs:
+        url: http://data-prepper.logging.svc:21892/v1/logs
+```
+
+An `otlp` entry with a `metrics` block also receives metrics, filtered to its own `metrics.minMetricImportance`, over the same connection and credentials.
+Over gRPC, set `protocol: grpc` and write `url` as `host:port`; gRPC serves every signal on one endpoint.
+
+To authenticate to a destination with a client certificate, put the certificate and key in a Secret named `mzmon-alloy-gateway-destination-tls` in the gateway's namespace.
+The gateway mounts it at `/etc/mzmon/destination-tls`, so set the destination's `tls.certFile` and `tls.keyFile` to files there.
+Until the Secret exists, the mount is empty and a destination that names a file in it fails to load.
+
+To stop writing to the bundled Loki, set `pipeline.destinations.loki.enabled` to `false`.
+For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
+
+### Reduce what one destination receives {#destination-reduction}
+
+A destination can receive a reduced copy of the logs while every other destination keeps everything.
+Set any of the following fields in the destination's `logs` block:
+
+| Field | What it does |
+|---|---|
+| `selector` | Keeps only entries matching a LogQL stream selector, such as `{namespace=~"environment-.+"}`. Line filters are allowed after it. |
+| `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. |
+| `keepUnknown` | Set to `false` to drop entries with an `UNKNOWN` level, which `minLevel` keeps. The gateway gives a panic the level `CRITICAL`, so a level floor never drops one. Defaults to `true`. |
+| `sampleRate` | Keeps a fraction of entries, above 0 and at most 1. |
+| `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst` whole lines. `burst` defaults to `rate`, rounded up, and can be lower than it. |
+
+The gateway applies them in that order, in a `loki.process` component of the destination's own, `loki.process "dest_<name>"`.
+Each drop is counted in `loki_process_dropped_lines_total`, with `reason` set to `destination_selector`, `destination_level`, `destination_sampling`, or `ratelimit_drop_stage`.
+
+The following example sends only warnings and above from environment namespaces, at most 500 lines per second:
+
+```yaml
+pipeline:
+  destinations:
+    controlPlane:
+      type: otlp
+      url: https://ingest.example.com
+      logs:
+        selector: '{namespace=~"environment-.+"}'
+        minLevel: WARN
+        rateLimit:
+          rate: 500
+```
+
+To send a destination no logs at all, set `logs.enabled` to `false` rather than a sample rate of 0.
+
+### Keep one destination from holding back another {#destination-isolation}
+
+The gateway hands every log entry to each destination in turn.
+A destination that blocks when its queue is full makes the gateway wait for room, and while it's stalled, no other destination receives anything either.
+
+The types differ in their default:
+
+- A `loki` destination blocks.
+  Set `queue.blockOnOverflow: false` on every `loki` destination except the one whose copy must be complete.
+  It then drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
+  `queue.capacity` sets how far it can fall behind before it drops.
+- Every other type drops.
+  It counts what it drops in `otelcol_exporter_enqueue_failed_log_records_total`, and `queue.queueSize` sets how many requests it holds.
+
+The render warns when more than one log destination blocks.
+
+> [!NOTE]
+>   `pipeline.logging.gateway.destination.loki` is deprecated.
+>   Keys you still set there apply to `pipeline.destinations.loki`, and the render warns.
+>   Move each key across, so `pipeline.logging.gateway.destination.loki.url` becomes `pipeline.destinations.loki.url`.
+
+### Archive logs to write-once storage {#worm-archive}
+
+An `s3` destination writes a copy of selected logs to an S3 bucket.
+With S3 Object Lock in compliance mode on that bucket, no one can delete or overwrite the objects until their retention period ends,
+which is what a compliance archive needs.
+The archive is separate from Loki's own bucket, so Loki's compactor and retention keep working on the operational copy.
+
+The following example archives warnings and above from Materialize's environments:
+
+```yaml
+pipeline:
+  destinations:
+    worm:
+      type: s3
+      bucket: example-audit-logs
+      region: us-east-1
+      prefix: mzmon/audit
+      logs:
+        selector: '{namespace=~"environment-.+"}'
+        minLevel: WARN
+```
+
+Choose what the archive receives with the [reduction fields](#destination-reduction).
+Without them, it receives every log line the gateway processes.
+
+`profiles/s3-worm.values.yaml` sets up this destination with a bounded queue.
+For what to decide before you archive, such as the retention mode and what to keep out,
+see [Log compliance](../../operating/production-best-practices/log-compliance/).
+
+#### Prepare the bucket
+
+The chart writes objects; it can't create the bucket or verify its lock.
+Turn Object Lock on when you create the bucket, and set a default retention in compliance mode:
+
+```bash
+aws s3api create-bucket --bucket example-audit-logs --object-lock-enabled-for-bucket
+aws s3api put-object-lock-configuration --bucket example-audit-logs \
+  --object-lock-configuration '{"ObjectLockEnabled":"Enabled","Rule":{"DefaultRetention":{"Mode":"COMPLIANCE","Days":365}}}'
+```
+
+In compliance mode, no user, the root account included, can shorten the retention or delete an object before it ends.
+Test with a short retention in a scratch bucket first.
+
+Every upload carries a checksum, which S3 requires for an upload into a bucket with Object Lock.
+
+#### Grant the gateway write access
+
+The gateway authenticates with its ambient AWS identity:
+
+- **On EKS,** annotate the gateway's ServiceAccount with an IAM role (IRSA), through `alloy-gateway.serviceAccount.annotations`.
+- **Elsewhere,** put `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the
+  [gateway Secret](../../metrics/storing/#supplying-credentials-the-gateway-secret).
+
+The identity needs `s3:PutObject` on the bucket and prefix, and nothing else.
+To write to a bucket in another account, set `roleArn` to a role there that the gateway's identity can assume.
+
+For an S3-compatible store, set `url` to its endpoint and `forcePathStyle: true`.
+An `http://` URL turns TLS off for that endpoint.
+
+#### What lands in the bucket
+
+The exporter writes one object per batch, gzip-compressed, at `<prefix>/year=YYYY/month=MM/day=DD/hour=HH/minute=MM/logs_<uuid>.json.gz`.
+The key ends in a UUIDv7, which in practice no two objects share.
+A UUIDv7 starts with a millisecond timestamp, so keys within a partition sort by when they were written.
+The time partitions are UTC unless `partitionTimezone` says otherwise.
+A batch closes after `batch.timeout` (default `1m`) or `batch.size` records (default `8192`), whichever comes first,
+so a quiet minute writes no object.
+
+Each object is OTLP JSON.
+A record's body is the log line, and its stream labels, such as `namespace` and `level`, are attributes.
+`marshaler: body` writes the lines alone, without labels.
+
+#### When the archive drops a record
+
+Like the other OTLP-family destinations, an `s3` destination drops records rather than holding back the gateway's other destinations.
+It drops a record when its queue is full, or when S3 refuses it after retries.
+Either way, the `log-archive-drops` alert fires, and the record is missing from the archive.
+
+Each batch gets about five minutes of retries, so an S3 outage longer than that drops records.
+The batch in progress and the queue live in the gateway's memory, so a gateway that's killed, for example by the OOM killer, loses them uncounted.
+`queue.queueSize` caps how many batches wait in memory.
+Alloy's default, 1000, can outgrow the gateway's memory limit on a busy install.
 
 ## Object storage
 
@@ -5308,6 +5568,8 @@ Loki has **no native snapshot** mechanism — recovery is a property of the obje
 - **Durability and versioning.** Chunks are immutable once written; enabling object versioning protects against accidental overwrite or deletion.
 - **Cross-region replication.** Replicating the bucket to a second region gives you a recovery point if the primary region is lost.
 - **Tamper evidence.** Object Lock / WORM (compliance mode) makes stored logs immutable for a fixed window — important when logs must serve as evidence in a security or audit event.
+  Locking Loki's own bucket also stops its compactor and retention from deleting chunks,
+  so for a write-once copy, [archive logs to a separate bucket](#worm-archive).
 - **Restore.** Recovery is "repoint Loki at the bucket." The WAL is ephemeral and the index is rebuilt from object storage, so there is no separate database to restore.
 
 > [!INFO]
@@ -7697,7 +7959,8 @@ It removes the ones whose `PrometheusRule` is gone and leaves every other namesp
 
 Every gateway replica runs the sync; the writes set whole rule groups, so the replicas converge on the same set.
 The gateway addresses the Service that serves the ruler in Loki's deployment mode: `loki-ruler` when distributed, `loki-backend` when simple-scalable, and `loki` for a single binary.
-It uses the scheme and TLS settings of its Loki destination, `pipeline.logging.gateway.destination.loki.tls`, and the chart's Loki certificate names `loki-ruler`.
+It uses the scheme and TLS settings of the gateway's destination that writes to the bundled Loki, `pipeline.destinations.loki.tls` by default.
+The chart's Loki certificate names `loki-ruler`.
 
 A log-derived rule installs only where the release runs the Loki ruler and the gateway, and where the ruler's rule store accepts writes.
 A `local` store does not; that is what a filesystem-only Loki gets, such as the `loki-test` profile.
@@ -8867,6 +9130,12 @@ Skip one of these and someone outside the trust boundary can read your data or c
   not keys: an IRSA role or EKS Pod Identity association for the `alertmanager` ServiceAccount, allowing `sns:Publish`
   on the topic (plus `kms:GenerateDataKey*` and `kms:Decrypt` for an encrypted topic).
   SNS is the only integration that can use one; SES and Azure Communication Services email authenticate over SMTP with a credential in the Secret.
+- [ ] `[operator]` [Secret filtering](../secret-filtering/#at-the-source): **Keep credentials out of logs at the source.**
+  A credential a component logs is in Loki for the tenant's full retention, readable by anyone who can query it.
+  The gateway's secret filter is an extra layer of protection, and a healthy install gives it no credential to find.
+  When it redacts one, the raw line is still in the container's log file on the node and in `kubectl logs`, so fix
+  the component and rotate the credential.
+  Check the value first: the rules also replace some values that only look like credentials.
 
 <details>
 <summary>What the chart already does</summary>
@@ -8933,7 +9202,8 @@ Skip one of these and part of the stack stops working without an error, so nothi
   Edits there are untracked and lost on the next render.
 - [ ] `[operator]` [Alloy](../alloy/#cardinality): Alert on the pipeline's own shedding (`drop_counter_reason`), so a
   rate limit that's dropping lines is visible rather than silent data loss.
-  The shipped `alloy-log-drops` alert covers only entries `loki.write` fails to deliver.
+  The shipped `alloy-log-drops` alert covers only entries `loki.write` fails to deliver,
+  and `log-archive-drops` covers only records an `s3` destination drops.
 - [ ] `[operator]` [Alloy](../alloy/#agent-placement) and [node-exporter](../node-exporter/#coverage): **Verify coverage after any node-pool change.**
   The agent's pod count and `count(up{job="node-exporter"})` should both equal `count(kube_node_info)`.
   A persistent gap is a pool the DaemonSets aren't reaching.
@@ -9028,7 +9298,8 @@ Skip one of these and part of the stack stops working without an error, so nothi
 - [x] `[chart]` [Alloy](../alloy/): ServiceMonitor or PodMonitor (or GCP `PodMonitoring`) for both roles, scraping
   Alloy's own component metrics: received and sent bytes, dropped lines, and write failures.
 - [x] `[chart]` [Alerting](../../../alerting/architecture/): The rule set ships `alloy-log-drops` (entries `loki.write`
-  drops), `loki-push-err-high` (Loki push errors, including 429 rate limits), and `logging-collection-down`, all on by default.
+  drops), `log-archive-drops` (records an `s3` archive destination drops), `loki-push-err-high` (Loki push errors,
+  including 429 rate limits), and `logging-collection-down`, all on by default.
 - [x] `[chart]` [node-exporter](../node-exporter/#scraping): ServiceMonitor enabled, and `prometheus.io/scrape: "false"`
   on the Service so annotation-based discovery can't scrape it a second time under another `job` label.
 - [x] `[chart]` [Loki](../loki/): ServiceMonitor for the Loki components, with the plaintext exporters scraped
@@ -9383,12 +9654,23 @@ Skip one of these and the stack runs short of resources, or costs more than it n
 Skip one of these and nothing breaks.
 Each adds defense in depth, or extra signal where your environment calls for it.
 
+- [ ] `[operator]` [Log compliance](../log-compliance/): **If a requirement says logs must be kept unaltered,
+  archive them to a bucket with S3 Object Lock in compliance mode**, with `profiles/s3-worm.values.yaml`.
+  Loki deletes on retention and on request, so it isn't that record.
+  Turn on the secret filter first, narrow the archive with `logs.selector`, and route `log-archive-drops` to the team that owns the requirement.
+
 - [ ] `[operator]` [Network policies](../stack-wide/#network-policies): **Narrow the `0.0.0.0/0` egress rules where your infrastructure lets you.**
   `kube-state-metrics` and `grafana-operator` reach the API server on `443` and `6443` to everywhere, because a chart
   can't derive the control plane's address, and Loki reaches object storage the same way.
   A VPC endpoint's CIDR, or Cilium's `toFQDNs`, is the tighter form; for Loki, see [Object-storage egress](../loki/#object-storage-egress).
 - [ ] `[operator]` [TLS](../../securing/#gaps): Turn on in-cluster TLS where your environment requires it.
   Certificates and the mTLS profiles ship off by default.
+- [ ] `[operator]` [Secret filtering](../secret-filtering/#turn-it-on): **Turn on the secret filter** for an extra
+  layer of protection behind keeping credentials out of logs: set `pipeline.logging.secretFilter.mode` to `"on"`, or
+  `secret_filter = "on"` with the Terraform module.
+  It ships off.
+  Run it in [shadow mode](../secret-filtering/#shadow) first, to see what it would replace in your logs.
+  Then alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`, and check each one: a redaction is usually a credential a component logged.
 - [ ] `[operator]` [Alertmanager](../../../alerting/architecture/#tls): **TLS on the API port** comes with the mTLS
   profiles: `alerting.server.tls` moves 9093 to TLS, and the profiles move the probes, the reloader, the scrape, both
   rulers, and the Grafana data source with it.
@@ -9760,13 +10042,196 @@ To add others, use the Terraform module's `tolerations`, which appends rather th
 
 ## Delivery to Loki {#delivery}
 
-The gateway's write endpoint is set with `GATEWAY_LOKI_DEST`, and its ingress port with `ALLOY_LOKI_PORT`.
-To authenticate to a secured or remote destination, set `pipeline.logging.gateway.destination.loki.authType` to
-`basicAuth`, `bearer`, `oauth2`, or `sigv4`, with the matching credentials block.
+The gateway writes to each destination in `pipeline.destinations`, and its ingress port is `ALLOY_LOKI_PORT`.
+To authenticate to a secured or remote destination, set the destination's `authType` to `basicAuth` or `bearer`, with the matching credentials block.
+When the gateway writes to more than one destination, set `queue.blockOnOverflow: false` on every destination except the one whose copy must be complete.
+For more information, see [Where the gateway writes logs](../../../logs-and-events/storing/#destinations).
 
 To send your own logs, target the gateway's OTLP ports, `:4317` for gRPC or `:4318` for HTTP.
 To chain gateways, point the upstream writer at the downstream gateway's `:3100`.
 For more information, see [Sending your own logs to the gateway](../../../logs-and-events/collecting/#sending-your-own-logs-to-the-gateway).
+
+
+--------------------------------------------------------------------------------
+title: "Secret filtering"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-prometheus-postgres-exporter-8-x/operating/production-best-practices/secret-filtering/index.md
+--------------------------------------------------------------------------------
+
+# Secret filtering
+
+The gateway can scan every log line for credentials and replace each one it finds with a placeholder before the line is stored.
+This page is for you if you operate the stack and decide whether to turn that filter on, and what to do when it catches something.
+What to do about it is in the [production checklist](../checklist/).
+
+{{< rfc-2119 >}}
+
+## Keep credentials out of logs at the source {#at-the-source}
+
+**The filter is an extra layer of protection, not the control.**
+In a healthy install it SHOULD NOT find a credential.
+A redaction usually means a component wrote a credential to its log.
+The rules also replace some values that only look like credentials, which [the limits](#what-it-does) list.
+
+The filter protects only what's downstream of the gateway.
+The raw line stays where the component wrote it:
+
+- in the container's log file on the node, until log rotation removes it;
+- in `kubectl logs`, for anyone allowed to read the component's pod logs;
+- in any other agent or tool that reads those files.
+
+So you MUST NOT rely on the filter in place of configuring each component not to log credentials.
+Treat a credential the filter redacted as exposed.
+
+When the filter redacts something, take the following steps:
+
+1. Find the line in Loki and the component that wrote it, as [Watch what it catches](#watch) describes.
+2. Decide whether the replaced value was a credential.
+   The placeholder names the rule, the rest of the line usually shows what the field held, and `kubectl logs` shows the raw line until log rotation removes it.
+   If it wasn't a credential, nothing was exposed.
+3. Fix the source, so the component stops logging the credential.
+4. Rotate the credential.
+
+## What the filter does {#what-it-does}
+
+The filter runs in the gateway after a multi-line record such as a panic is reassembled, and before the gateway parses the line.
+So the structured metadata the gateway derives from a line, such as `msg` and `error`, comes from text that's already redacted.
+
+Each credential becomes `<redacted:RULE_ID>`, where `RULE_ID` names the rule that matched.
+The placeholder carries no part of the credential and no hash of it.
+It contains no quote, backslash, space, or `=`, so a redacted JSON or logfmt line still parses.
+Alloy replaces a credential everywhere it occurs in the line, so the same text in another field is replaced too.
+
+The rules are [Alloy's bundled Gitleaks rules](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.secretfilter/), which cover provider-issued credentials such as cloud access keys, tokens, and JSON Web Tokens.
+The chart adds rules for credentials that Materialize deployments carry and the bundled rules miss:
+
+- passwords in connection URLs, such as the metadata database's `metadata_backend_url`;
+- password fields, including human-chosen passwords and values inside escaped JSON or Rust `Debug` output;
+- `Authorization` and `Proxy-Authorization` header values;
+- signatures and tokens in URL query strings, such as a presigned URL's `X-Amz-Signature`;
+- private keys whose PEM block was cut off before its `END` line;
+- base64-encoded `postgres://` URLs, as in a logged Kubernetes Secret;
+- Materialize app passwords (`mzp_…`).
+
+Identifier fields whose names say they aren't credentials, such as `token_id`, are exempt by name.
+The bundled defaults change with each Alloy release; the project runs a corpus of positive and negative lines through the pinned Alloy version before each one ships.
+
+The filter scans the line and nothing else, so it has the following limits:
+
+- **Labels and structured metadata aren't scanned.**
+  A Loki or OTLP push client that sends a credential as structured metadata or as a label stores it as sent.
+- **Some credentials don't look like credentials.**
+  A short or low-randomness value after a key such as `api_key` or `token` can pass, and so can a password of fewer than four characters.
+  A numeric password after a JSON key passes too, because a placeholder in its place, or in place of the same digits elsewhere in the line, would break the line's JSON.
+  The filter decodes nothing, so an encoded credential passes unless a rule matches its encoded form, as one does for base64 `postgres://` URLs.
+- **Some identifiers look like credentials.**
+  A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
+
+## Try it in shadow mode first {#shadow}
+
+Shadow mode shows what the rules match on your own logs without changing what's stored.
+The gateway scans a copy of every line and stores only the lines the filter would have redacted, already redacted, with the label `secretfilter="shadow"`.
+Use it to find the values the rules would replace by mistake before you turn the filter on.
+
+To turn shadow mode on, set the mode to `shadow`:
+
+```yaml
+pipeline:
+  logging:
+    secretFilter:
+      mode: shadow
+```
+
+If you install with the [Terraform module](../../../getting-started/terraform/), set `secret_filter = "shadow"` instead.
+The mode changes the gateway's config, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+Shadow mode costs the same CPU as turning the filter on, because it scans every line.
+Off, the chart doesn't wire it, so it costs nothing.
+
+To read what it found, query the label:
+
+```logql
+{secretfilter="shadow"}
+```
+
+Each line has `<redacted:RULE_ID>` where a value was replaced, and the rest of the line shows which field held it.
+`loki_secretfilter_secrets_redacted_by_category_total{component_id="loki.secretfilter.shadow"}` counts the matches by rule and by container.
+
+The stored lines are a sample, and the counter is the full count:
+
+- The gateway stores up to 100 shadow lines per second from each namespace, with bursts of up to 1,000.
+  Shadow lines have this limit to themselves, so they don't use up the rate limits that apply to your other lines.
+- A copy that runs past `GATEWAY_SECRETFILTER_TIMEOUT` isn't stored, because it might be only partly redacted.
+  `loki_secretfilter_lines_timed_out_total{component_id="loki.secretfilter.shadow"}` counts it.
+
+Shadow lines go to every log destination, like any other line.
+Each one is redacted, and while the filter is off its original goes to the same destinations unchanged, so a shadow line exposes nothing new.
+After you turn the filter on, turn shadow mode off: the stored lines then carry the placeholders themselves.
+
+## Turn it on {#turn-it-on}
+
+The filter ships off.
+Each false positive permanently replaces a value in your own logs, so the defaults wait on measurement against real logs.
+<!-- TODO(DEP-313): rewrite this section once shadow mode has run and the filter is on by default. -->
+
+To turn it on, set the mode to `on`:
+
+```yaml
+pipeline:
+  logging:
+    secretFilter:
+      mode: "on"
+```
+
+If you install with the Terraform module, set `secret_filter = "on"` instead.
+The [call-home profile](../../call-home/#secret-filter) turns the filter on for you, because it sends logs to Materialize.
+The gateway has to restart to pick the mode up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+
+The filter runs as two instances, and `on` sets both of their scan rates to `1`.
+`GATEWAY_SECRETFILTER_RATE` is the fraction of lines the main instance scans, and `GATEWAY_SECRETFILTER_BULK_RATE` is the fraction of `DEBUG` and `TRACE` lines, the levels most able to outrun the filter.
+At `0`, an instance forwards every line unscanned.
+A rate you set in `pipeline.env` takes precedence over the mode.
+
+The following settings change what the filter costs:
+
+`pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE`
+: Below `1`, the bulk instance scans that fraction of `DEBUG` and `TRACE` lines and stores the rest unscanned.
+  Lower it only when the gateway can't keep up with its input at `1`.
+
+`pipeline.env.GATEWAY_SECRETFILTER_TIMEOUT`
+: The most time the filter spends on one line, such as `50ms`.
+  The default, `0s`, sets no limit.
+  A line that runs past it is stored with whatever the filter redacted in time, and with the label `secretfilter="timed-out"`.
+
+Both instances load their rules when the gateway starts, which costs about 35 MiB of memory per gateway pod whether or not they scan.
+
+## Watch what it catches {#watch}
+
+The gateway exports the following metrics:
+
+`loki_secretfilter_secrets_redacted_by_category_total`
+: Redactions, by `rule` and by `origin`, the container that logged the line.
+  An increase usually means a component logged a credential; check the line before you act on it.
+
+`loki_secretfilter_entries_bypassed_total`
+: Lines an instance forwarded unscanned because of its rate.
+
+`loki_secretfilter_lines_timed_out_total`
+: Lines that ran past `GATEWAY_SECRETFILTER_TIMEOUT`.
+
+`loki_secretfilter_processing_duration_seconds`
+: Time spent per line. Its high quantiles are where to start when you set the timeout.
+
+The bundled Thanos keeps these metrics.
+A remote-write destination that filters by `minMetricImportance` drops them, because the query registry doesn't grade them.
+No alert ships for redactions, so to be told about one, alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`.
+<!-- TODO(DEP-316): link the shipped alerts and the dashboard row here. -->
+
+To find the redacted lines in Loki, query for the placeholder:
+
+```logql
+{level=~".+"} |= "<redacted:"
+```
+
+For how the filter is placed in the pipeline and tested, see the [logging pipeline reference](../../../reference/development/pipelines/logging/#secret-filter).
 
 
 --------------------------------------------------------------------------------
@@ -10676,7 +11141,7 @@ The zone rule sets no `minDomains`, so single-zone clusters schedule.
 It sets no `matchLabelKeys` either, because that would let the upgrade from one replica to two place both in one zone.
 On a cluster whose nodes carry no zone label at all, see [Fewer than two zones](../stack-wide/#fewer-than-two-zones).
 
-Readiness uses `/-/ready` and liveness uses `/-/healthy`, rather than the subchart's `/`, which serves the UI.
+Readiness uses `/-/ready` and liveness uses `/-/healthy`.
 A replica joins the mesh and pulls its peer's state before it serves, so a rollout that replaces one replica at a time loses no silences.
 
 ## State {#state}
@@ -10720,6 +11185,133 @@ The render fails when a `baseURL` has a path and the pin has been removed.
 - [Maintenance windows](../../../alerting/maintenance/): silences, mute windows, and inhibition.
 - [Alertmanager configuration reference](https://prometheus.io/docs/alerting/latest/configuration/) (official): every
   receiver integration and route option.
+
+
+--------------------------------------------------------------------------------
+title: "Log compliance"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-prometheus-postgres-exporter-8-x/operating/production-best-practices/log-compliance/index.md
+--------------------------------------------------------------------------------
+
+# Log compliance
+
+This page is for you if a security or compliance requirement says logs must be kept, unaltered, for a set period.
+It covers how to keep that record with the stack, and what the record does and doesn't hold.
+For the setup itself, see [Archive logs to write-once storage](../../../logs-and-events/storing/#worm-archive).
+What to do about it is in the [production checklist](../checklist/).
+
+{{< rfc-2119 >}}
+
+## Keep the record outside Loki {#outside-loki}
+
+The bundled Loki is the operational copy of your logs, and it isn't a tamper-proof record.
+Its compactor deletes logs when their retention ends, and its deletion API removes them on request.
+The identity Loki writes with needs permission to delete objects for both, so it can delete any chunk.
+
+For a record that must survive unchanged, you SHOULD archive a second copy through an `s3` destination,
+into an S3 bucket with Object Lock in compliance mode.
+In compliance mode, no one can delete or overwrite an object version, or shorten its retention, until the retention ends.
+`profiles/s3-worm.values.yaml` adds the destination.
+
+The archive MUST use a bucket of its own, not Loki's.
+A lock on Loki's bucket keeps every object Loki deletes until its retention ends, so the bucket's storage grows without bound.
+
+## Separate who can change the archive {#separation-of-duties}
+
+Compliance mode stops anyone from deleting an object version.
+It doesn't stop an administrator of the bucket's account from changing the bucket policy, or from stopping new writes.
+
+- You SHOULD keep the archive bucket in an AWS account that the people who operate the monitoring stack don't administer.
+  The gateway writes there through a role in that account, which it assumes with `roleArn`.
+- The gateway's identity MUST have `s3:PutObject` on the bucket and prefix, and nothing else.
+  An identity that can delete can hide an object behind a delete marker, which Object Lock allows because the locked version stays underneath.
+
+## Choose the retention mode and period {#retention}
+
+The chart doesn't set a retention on the objects it writes.
+The bucket's default retention is what protects each one, so set it on the bucket, in compliance mode, for the period your requirement names.
+
+Governance mode lets an identity with `s3:BypassGovernanceRetention` remove a lock.
+You MAY use it while you validate the archive, but you SHOULD NOT treat a governance-mode bucket as a compliance record.
+
+You SHOULD try the whole path in a scratch bucket with a one-day retention first.
+A compliance-mode retention can't be shortened after it's set, so a mistake in the period costs storage until the period ends.
+
+## Decide what goes in before it goes in {#before-archiving}
+
+A line in the archive can't be redacted or removed until its retention ends.
+That holds for a credential a component logged by mistake, and for personal data.
+
+- You SHOULD [turn on the secret filter](../secret-filtering/#turn-it-on) before the archive receives anything.
+  The filter runs before the gateway hands a line to any destination, so it redacts the archive's copy as well.
+- You SHOULD narrow the archive to the streams your requirement names, with `logs.selector`.
+  Without a selector, the archive receives every line the gateway forwards.
+- If a regulation lets people ask for their personal data to be erased, confirm with your compliance team that the archived streams can't contain any.
+  Loki's deletion API can honor an erasure request, and the archive can't.
+
+## Know what the archive doesn't hold {#gaps}
+
+The archive is a copy of what the gateway forwards.
+It differs from a complete record of what your workloads logged in the following ways:
+
+- **Processing.** The archive holds each line after the gateway processes it, the same line the bundled Loki stores.
+  Levels are normalized, secrets the filter finds are redacted, and lines longer than the gateway's limit are cut.
+- **Drops.** The archive drops a record when its queue is full, or when S3 still refuses the batch after about five minutes of retries.
+  Each drop fires `log-archive-drops`, and the record is missing for good.
+- **A killed gateway.** The batch in progress and the queue live in the gateway's memory.
+  A gateway that's killed, for example by the OOM killer or a node failure, loses them, and no counter records the loss.
+- **Lines that never reach the gateway.** A line lost upstream is missing from every destination.
+  A node that fails before its agent ships a line loses it this way.
+
+You SHOULD route `log-archive-drops` to the team that owns the requirement, because each firing marks a window with records missing:
+
+```yaml
+alerting:
+  routes:
+    extra:
+      - matchers: ['alertname="log-archive-drops"']
+        receiver: COMPLIANCE_RECEIVER
+        continue: true
+```
+
+Replace `COMPLIANCE_RECEIVER` with a receiver defined under `alerting.receivers`.
+For more information, see [Extra routes](../../../alerting/channels/#extra-routes).
+
+## Keep the queue inside the gateway's memory {#queue}
+
+While S3 is slow or unreachable, batches wait in the gateway's memory, up to `queue.queueSize` of them.
+Alloy's default is 1000 batches.
+On a busy install, that many can outgrow the gateway's memory limit, and the OOM killer then restarts the gateway, which interrupts every destination.
+
+The profile sets `queueSize` to 20, so at most 20 batches of `batch.size` records wait.
+Past that, the archive drops new batches and counts them.
+You SHOULD raise `queueSize` only together with `alloy-gateway.alloy.resources`; for more information, see [Gateway memory](../alloy/#gateway-memory).
+
+A longer queue doesn't lengthen the outage the archive survives.
+Each batch is retried for about five minutes after its first attempt, and then dropped.
+
+## Check the archive {#check}
+
+After you install, confirm that objects land in the bucket and carry the lock:
+
+```bash
+aws s3api list-objects-v2 --bucket ARCHIVE_BUCKET --prefix PREFIX/ --max-items 1 --query 'Contents[].Key'
+aws s3api get-object-retention --bucket ARCHIVE_BUCKET --key OBJECT_KEY
+```
+
+Replace the following:
+
+- `ARCHIVE_BUCKET`: the archive bucket's name.
+- `PREFIX`: the destination's `prefix`, which is `mzmon/logs` in the profile.
+- `OBJECT_KEY`: a key that the first command returns.
+
+The first object appears within `batch.timeout` of the first archived line, 1 minute by default.
+Its retention shows `"Mode": "COMPLIANCE"`, and a `RetainUntilDate` one retention period after the object was written.
+
+## See also
+
+- [Archive logs to write-once storage](../../../logs-and-events/storing/#worm-archive)
+- [Secret filtering](../secret-filtering/)
+- [Collection (Alloy)](../alloy/)
 
 
 --------------------------------------------------------------------------------
@@ -12547,7 +13139,7 @@ See [Images and registries](../production-best-practices/stack-wide/#images-and-
 
 Data that reaches the stack is stored as it arrives.
 
-- [ ] `[operator]` **Keep secrets out of logs at the source.** The pipeline ships no redaction stage today ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)), so a token an application logs is a token in Loki, searchable for the tenant's full retention.
+- [ ] `[operator]` **Keep secrets out of logs at the source.** A token an application logs is a token in Loki, searchable for the tenant's full retention. The gateway's [secret filter](../production-best-practices/secret-filtering/) can replace credentials before they're stored, but it ships off, and it's a backstop rather than the control: the raw line stays in the container's log on the node.
 - [ ] `[operator]` **Set retention deliberately.** It is the only bound on how long anything that did leak stays queryable. Retention and compaction are covered in [Logs & Events > Storing](../../logs-and-events/storing/) and [Metrics > Storing](../../metrics/storing/).
 - [ ] `[consumer]` Enable server-side encryption and access logging on the buckets. The Terraform modules enable versioning; encryption policy is yours, and bucket versioning means a deleted object is not necessarily gone.
 - [ ] `[operator]` Remember that **isolation within a Loki tenant is label-based**, not enforced. Per-environment separation via `environment_id` is a query convention; the hard boundary is a separate install. See [Tenancy & auth](../production-best-practices/loki/#tenancy).
@@ -12633,7 +13225,8 @@ helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
 ```
 
 **It is a profile rather than a switch because the change is not one setting.**
-Turning on Loki's listener is one key; keeping the deployment working is six, spread across three subcharts and two of this chart's own trees — the writer, the reader, the kubelet probes, the metrics scrape, and the canary all dial the port that just moved.
+Turning on Loki's listener is one key, and keeping the deployment working takes settings across three subcharts and two of this chart's own trees.
+The writer, the reader, the kubelet probes, the metrics scrape, the canary, and Loki's own query frontend all dial the port that just moved.
 Every one of them fails quietly, and none of the symptoms names TLS:
 
 | Left behind | What you see |
@@ -12644,6 +13237,7 @@ Every one of them fails quietly, and none of the symptoms names TLS:
 | The Grafana datasource URL | Every log panel renders empty, with no error on the dashboard |
 | The Loki gateway's `nginxConfig.schema`, `ssl` and probe scheme | The same empty panels, from the hop between Grafana and Loki; or both gateway replicas unready |
 | The canary's flags | The end-to-end check reports the log store as broken when it is not |
+| The query frontend's `tail_proxy_url` and `tail_tls_config` | Every live tail fails with `websocket: bad handshake`, the canary's included, and the querier logs `client sent an HTTP request to an HTTPS server` |
 
 The render refuses each of those rather than letting you find out, which is most of what the chart contributes here.
 
@@ -12772,6 +13366,131 @@ The design for the first three is written up in the [TLS and authentication desi
 - [Logs & Events > Storing](../../logs-and-events/storing/) — object storage, workload identity, and retention for logs.
 - [Metrics > Storing](../../metrics/storing/) — the same for metrics.
 - [Helm values reference](../../reference/helm/materialize-monitoring-values/) — every key named on this page, with the reasoning next to it.
+
+
+--------------------------------------------------------------------------------
+title: "Call-home"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-prometheus-postgres-exporter-8-x/operating/call-home/index.md
+--------------------------------------------------------------------------------
+
+# Call-home
+
+Call-home sends a reduced copy of your install's metrics and logs to Materialize,
+so Materialize can see what's running and what's wrong without a support ticket.
+Your own Loki and Thanos keep the full copy, and nothing is sent unless you turn call-home on.
+This page is for the operator of a `materialize-monitoring` install who decides whether to turn it on, and how much to send.
+
+<!-- more -->
+
+Call-home is one profile, `profiles/call-home.values.yaml`.
+It adds a single destination, `controlPlane`, to [`pipeline.destinations`](../../logs-and-events/storing/#destinations), turns the gateway's [secret filter](#secret-filter) on, and changes nothing else.
+Bring Your Own Cloud stacks apply the same profile.
+The only difference between the two is how the client certificate is issued, which happens outside this chart.
+
+## What the profile sends {#what-crosses}
+
+The following table lists what the profile sends as written, and the setting under `pipeline.destinations.controlPlane` that controls each part:
+
+| Signal | Sent | Setting |
+|---|---|---|
+| Metrics | The `essential` tier | `metrics.minMetricImportance` |
+| Logs | `WARN` and above | `logs.minLevel` |
+| Logs | At most 500 lines per second per gateway replica | `logs.rateLimit` |
+| Logs | Not lines whose level the gateway couldn't determine | `logs.keepUnknown` |
+
+The metric tiers are listed in [Controlling what each destination stores](../../metrics/storing/#controlling-what-each-destination-stores).
+
+The gateway levels most lines, including Rust and Go panics, which arrive as `CRITICAL`.
+A line it can't level is `UNKNOWN`, and the profile doesn't send those.
+To send them as well, set `logs.keepUnknown` to `true`.
+
+## Turn on call-home {#enable}
+
+Before you begin, get a client certificate for your install from Materialize.
+Its URI SAN, `spiffe://c.materialize.cloud/stack/CLIENT_STACK`, is your install's identity.
+The control plane reads your identity from the certificate, so the gateway sends no identity of its own.
+
+1. Create a `kubernetes.io/tls` Secret named `mzmon-alloy-gateway-destination-tls` in the gateway's namespace:
+
+   ```bash
+   kubectl create secret tls mzmon-alloy-gateway-destination-tls \
+     --namespace NAMESPACE --cert CERT_FILE --key KEY_FILE
+   ```
+
+   Replace the following:
+
+   - `NAMESPACE`: the namespace the Alloy gateway runs in.
+   - `CERT_FILE` and `KEY_FILE`: the certificate and private key Materialize issued.
+
+   The gateway mounts the Secret at `/etc/mzmon/destination-tls`.
+   Without it, the gateway fails to load its configuration and names the missing file.
+
+1. Add the profile to your install, after the profiles you already use.
+
+   With Helm, add it to the `-f` list of your upgrade command.
+   The profiles ship inside the chart package; for more information, see [Get the profiles](../../getting-started/helm/#get-the-profiles).
+
+   ```bash
+   helm upgrade RELEASE oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring \
+     --version VERSION --namespace NAMESPACE \
+     -f YOUR_VALUES.yaml \
+     -f materialize-monitoring/profiles/call-home.values.yaml
+   ```
+
+   With the Terraform module, append the profile's contents to `additional_values`, for example with `file()`.
+
+1. Confirm the gateway is sending.
+   After the gateway restarts, `otelcol_exporter_sent_metric_points_total` and `otelcol_exporter_sent_log_records_total` rise
+   for `component_id="otelcol.exporter.otlphttp.dest_controlPlane"`.
+
+The certificate is re-read every five minutes, so a renewed certificate in the Secret is picked up without a restart.
+
+## Credentials are redacted before anything is sent {#secret-filter}
+
+The profile sets `pipeline.logging.secretFilter.mode` to `on`.
+The gateway then replaces each credential it finds in a log line with `<redacted:RULE_ID>`, before it copies anything out of the line or sends it anywhere.
+Neither your own Loki nor the control plane's copy holds a credential the filter caught.
+
+Keep the filter on while logs are sent.
+The render warns if `controlPlane` sends logs with the mode set to anything else; shadow mode doesn't count, because it redacts only the copies it stores.
+The filter is an extra layer of protection, not the control: configure your components not to log credentials in the first place.
+For what the filter catches and what it costs, see [Secret filtering](../production-best-practices/secret-filtering/).
+
+## Choose how much to send {#levels}
+
+Override the profile's settings in your own values file, after the profile.
+The following example sends errors and above, and recommended metrics:
+
+```yaml
+pipeline:
+  destinations:
+    controlPlane:
+      logs:
+        minLevel: ERROR
+      metrics:
+        minMetricImportance: recommended
+```
+
+To send metrics and no logs, set `pipeline.destinations.controlPlane.logs.enabled` to `false`.
+
+Each setting only reduces what the control plane receives.
+Your own Loki and Thanos keep everything.
+
+## Turn off call-home {#disable}
+
+Remove the profile from your install, or set `pipeline.destinations.controlPlane.enabled` to `false`.
+The gateway stops sending at its next restart, which the upgrade triggers.
+
+## When the control plane is unreachable {#unreachable}
+
+The control plane's copy is the only one that loses data.
+When the gateway can't reach it, the destination's queue fills and then drops entries, and delivery to your own Loki and Thanos continues.
+The drops are counted in `otelcol_exporter_enqueue_failed_log_records_total` and `otelcol_exporter_enqueue_failed_metric_points_total`.
+
+## See more
+
+- [Where the gateway writes logs](../../logs-and-events/storing/#destinations): every field a destination takes.
+- [Call-Home design](../../reference/development/design-docs/20260917-call-home-self-managed/): the consent model this profile is a first step toward.
 
 
 --------------------------------------------------------------------------------
@@ -14199,13 +14918,13 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.15.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.15.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.3.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 20.2.2 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.4.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.0.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.4.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.1 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.3 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 5.0.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.4 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
 
 ## Values {#values}
@@ -15113,6 +15832,7 @@ point rather than a researched one.
     "services": [
       "loki-distributor",
       "loki-gateway",
+      "loki-querier",
       "loki-query-frontend",
       "loki-ruler"
     ]
@@ -15683,6 +16403,127 @@ release instances.
   </tbody>
 </table>
 
+#### Destinations
+
+The gateway's named destinations, as a map of name to destination.
+
+**One entry is one wire**: an endpoint, its credentials, and its queue.
+The signals an entry carries are switched on in their own blocks.
+A backend that takes only logs needs nothing switched off,
+and one that takes several signals has one entry and one credential.
+
+Each entry has a `type`:
+
+- `loki`: logs, pushed through `loki.write`. Logs are on unless `logs.enabled` is `false`.
+- `otlp`: logs, metrics, or both, sent through one OTLP exporter over HTTP or gRPC.
+- `googleCloud`: metrics, to Google Cloud Managed Service for Prometheus through the Telemetry API,
+  authenticated with the gateway's Google identity. Metrics are on unless `metrics.enabled` is `false`.
+- `datadog`: logs, metrics, or both, through Datadog's exporter, authenticated with an API key.
+- `prometheus`: metrics, through Prometheus remote write. Metrics are on unless `metrics.enabled` is `false`.
+- `s3`: logs, archived to S3 objects, for example into a bucket with S3 Object Lock for write-once retention.
+
+On a type that carries several signals, a signal is on when its block is present,
+so an `otlp` or `datadog` entry sends nothing until it has a `logs` or `metrics` block.
+
+The default map holds `loki`, the bundled Loki, and `thanos`, the bundled Thanos Receive.
+`pipeline.metrics.gateway.destination.prometheusRemoteWrite` and `pipeline.metrics.gateway.destination.otel`
+are deprecated in favor of these types.
+
+Add an entry to write somewhere else as well; set `enabled: false` on `loki` or `thanos` to stop writing to a bundled backend.
+
+**Each destination is its own failure domain.**
+Every log entry is handed to each destination in turn,
+so a destination that blocks when its queue fills holds back the others while it is stalled.
+A `loki` destination blocks by default; every other type drops by default.
+Leave one destination blocking (the copy that must be complete), and set `queue.blockOnOverflow: false` on any other `loki` entry.
+A dropping destination counts what it drops, in `loki_write_dropped_entries_total` or `otelcol_exporter_enqueue_failed_*`.
+The render warns when more than one log destination blocks.
+
+**Names become Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
+`egress` and `destination` are reserved.
+A name that breaks either rule fails at render.
+`loki` and `prometheus` components take the bare name; every other type's components are labeled `dest_<name>`.
+
+**Fields are optional.** Anything an entry omits falls back to the defaults below.
+Environment variable names derive from the name,
+such as `GATEWAY_CONTROLPLANE_DEST` and `GATEWAY_CONTROLPLANE_DEST_PASSWORD`.
+You can name them yourself where a caller wants to choose them.
+
+The following table lists each field, the types it applies to, and its default:
+
+| Field | Types | Default | Meaning |
+| --- | --- | --- | --- |
+| `type` | all | — | `loki`, `otlp`, `googleCloud`, `datadog`, `prometheus`, or `s3`. Required. |
+| `enabled` | all | `true` | Write to this destination. |
+| `url` | all but `datadog` | — | Endpoint, required when the entry carries a signal. `otlp`: a base URL over HTTP, `host:port` over gRPC. `s3`: optional, an S3-compatible endpoint. |
+| `url` | `googleCloud` | `https://telemetry.googleapis.com` | Override for a Private Service Connect endpoint. |
+| `urlEnv` | all | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint. |
+| `logs.enabled` | `loki`, `otlp`, `datadog`, `s3` | on for `loki`, `s3`; on when `logs` is present otherwise | Send logs here. |
+| `logs.url` / `metrics.url` | `otlp` over HTTP, `datadog` | derived | One signal's own endpoint. `datadog` derives both from `site`. |
+| `logs.selector` | `loki`, `otlp`, `datadog`, `s3` | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
+| `logs.minLevel` | `loki`, `otlp`, `datadog`, `s3` | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. |
+| `logs.keepUnknown` | `loki`, `otlp`, `datadog`, `s3` | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
+| `logs.sampleRate` | `loki`, `otlp`, `datadog`, `s3` | `1` | Fraction of entries kept, above 0 and at most 1. |
+| `logs.rateLimit` | `loki`, `otlp`, `datadog`, `s3` | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
+| `metrics.enabled` | `otlp`, `googleCloud`, `datadog`, `prometheus` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
+| `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
+| `protocol` | `otlp` | `http` | `http` or `grpc`. |
+| `compression` | `otlp`, `googleCloud`, `s3` | `gzip` | Request or object compression; `s3` also takes `none`. |
+| `project` / `location` | `googleCloud` | detected on GKE | The project and location every series is filed under. Required off GKE. |
+| `site` | `datadog` | `datadoghq.com` | Your Datadog site, such as `datadoghq.eu`. |
+| `apiKey` | `datadog` | `keyEnv: GATEWAY_<NAME>_DEST_API_KEY` | The API key, inline as `key` (written to a ConfigMap) or through `keyEnv`. |
+| `hostMetadata` | `datadog` | `false` | Send the gateway's host metadata. |
+| `externalLabels` | `prometheus` | `cluster` from `CLUSTER_NAME` | The remote write's `external_labels`. Values are Alloy expressions. |
+| `bucket` / `region` | `s3` | — | The bucket and its region. Required. |
+| `prefix` | `s3` | `logs` | Key prefix inside the bucket. Objects land under `<prefix>/<partition>/`. |
+| `partitionFormat` / `partitionTimezone` | `s3` | minute partitions, `UTC` | `strftime` key partitioning, and its time zone. |
+| `marshaler` | `s3` | `otlp_json` | `otlp_json` keeps labels as attributes; also `otlp_proto` or `body` (the line alone). |
+| `batch` | `s3` | `timeout: 1m`, `size: 8192` | One object per batch: how long and how many records before writing one. |
+| `filePrefix` / `storageClass` | `s3` | — | Object name prefix, and the S3 storage class. |
+| `roleArn` / `forcePathStyle` | `s3` | — | A role to assume beyond the gateway's own, and path-style requests. |
+| `retries` | `loki` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
+| `queue` | `loki` | Alloy's defaults | `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
+| `queue` | `otlp`, `googleCloud`, `datadog`, `s3` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
+| `authType` | `loki`, `otlp`, `prometheus` | `none` | `none`, `basicAuth`, `bearer`; also `sigv4` on `otlp`, `prometheus`, `headers` on `otlp`. |
+| `basicAuth` / `bearer` | `loki`, `otlp`, `prometheus` | derived | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
+| `headers` | `otlp` | — | For `authType: headers`: a list of `key` with `value` (rendered inline) or `valueEnv`. |
+| `sigv4` | `otlp`, `prometheus` | — | `region`, and `roleArn` to assume a role beyond the gateway's own; `service` on `otlp`. |
+| `tls` | `loki`, `otlp`, `prometheus` | off | `enabled`, `verify`, the `*File` carriers, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
+
+**A client certificate for a destination** goes in the Secret `mzmon-alloy-gateway-destination-tls`, which you create.
+The gateway mounts it at `/etc/mzmon/destination-tls`, so set `tls.certFile` and `tls.keyFile` to files there.
+
+**The `logs` reduction fields apply to one destination's copy only**, in a `loki.process "dest_<name>"` in front of its writer.
+They run in table order, and each drop is counted in `loki_process_dropped_lines_total` under its own `reason`.
+`minLevel` doesn't drop `UNKNOWN`, the level of an entry the gateway couldn't parse; `keepUnknown: false` does.
+A panic is one of those entries.
+
+For example, a second, external Loki that must never slow the bundled one down:
+
+```yaml
+pipeline:
+  destinations:
+    archive:
+      type: loki
+      url: https://logs.example.com/loki/api/v1/push
+      authType: bearer
+      queue:
+        capacity: 64MiB
+        blockOnOverflow: false
+```
+
+An OTLP backend that takes only logs, on its own endpoint:
+
+```yaml
+pipeline:
+  destinations:
+    opensearch:
+      type: otlp
+      url: http://data-prepper.logging.svc:21890
+      logs:
+        url: http://data-prepper.logging.svc:21892/v1/logs
+```
+
 #### Log configuration
 
 Configuration for log behavior
@@ -15904,158 +16745,22 @@ established it.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Enable writing to a loki destination. By default, we use the in-cluster loki
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.url</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://loki-distributor.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100/loki/api/v1/push"</code></td>
-      <td class="helm-value-desc">Loki push endpoint URL.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.retries</td>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-{
-  "maxBackoffPeriod": "5m",
-  "maxBackoffRetries": 10,
-  "minBackoffPeriod": "1s",
-  "retryOnHttp429": true
-}</pre>
+{}</pre>
 </td>
-      <td class="helm-value-desc">Retry configuration.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.authType</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"none"</code></td>
-      <td class="helm-value-desc">Type of authentication to use with the loki endpoint. Use none if no authentication is required. Use basicAuth for username/password. Use bearer for bearer token. Use oauth2 for OAuth2 client credentials.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.basicAuth</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "password": "",
-  "passwordEnv": "GATEWAY_LOKI_DEST_PASSWORD",
-  "username": "",
-  "usernameEnv": "GATEWAY_LOKI_DEST_USERNAME"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for auth when using authType=basicAuth You will need to provide alloy-gateway.alloy.agent.extraEnv TODO: add a check for this
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.bearer</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "token": "",
-  "tokenEnv": "GATEWAY_LOKI_DEST_BEARER_TOKEN"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for bearer token when using authType=bearer This is used for bearer type tokens.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.oauth2</td>
-      <td class="helm-value-type">object</td>
-      <td class="helm-value-default"><pre>
-{
-  "clientId": "",
-  "clientIdEnv": "GATEWAY_LOKI_DEST_OAUTH2_CLIENT_ID",
-  "clientSecret": "",
-  "clientSecretEnv": "GATEWAY_LOKI_DEST_OAUTH2_CLIENT_SECRET",
-  "scopes": [],
-  "tokenUrl": "",
-  "tokenUrlEnv": "GATEWAY_LOKI_DEST_OAUTH2_TOKEN_URL"
-}</pre>
-</td>
-      <td class="helm-value-desc">Configuration for OAuth2 when using authType=oauth2
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Whether to enable TLS for the loki destination.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.verify</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Whether to verify the TLS certificate for the loki destination.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.ca</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Certificate Authority (CA) PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.cert</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client certificate PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.key</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Client private key PEM contents for TLS.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.caFile</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Paths to certificate material on disk, and the preferred carrier for anything cert-manager renews.
-The inline `ca`/`cert`/`key` above travel through **environment
-variables**, which are captured once at process start. cert-manager
-renews by rewriting the Secret in place, so an env-carried PEM works
-for exactly one certificate lifetime and then fails on every hop at
-once, months after the change that caused it and with no deploy
-nearby to blame.
+      <td class="helm-value-desc">Deprecated. Use `pipeline.destinations.loki` instead.
 
-A mounted file does not have that problem: the kubelet refreshes
-Secret contents atomically, and Alloy's client paths pick up the new
-material on the next connection. Set these to paths under
-`/etc/mzmon/tls`, which is where the chart mounts the
-certificate it issues for this component.
-
-Inline PEM stays supported as the bring-your-own-PKI escape hatch.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.serverName</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Alternative SNI (Server Name Indication) to specify.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.loki<wbr>.tls<wbr>.minVersion</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"TLS13"</code></td>
-      <td class="helm-value-desc">Minimum TLS version to allow. Use TLS12 if you need better compat. TLS11 and TLS10 are not recommended for production.
+Keys set here still apply: the chart folds them onto `pipeline.destinations.loki` and warns at render.
+Move each one across, so `pipeline.logging.gateway.destination.loki.url` becomes `pipeline.destinations.loki.url`.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.logging<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to an OpenTelemetry/OTLP destination. By default, we do not use the OTLP destination. NOTE: This is configured in the pipeline.metrics.gateway.destination.otlp block, not the logging block.
+      <td class="helm-value-desc">Deprecated. Send logs to the logs-capable exporters under `pipeline.metrics.gateway.destination.otel`. Use a `logs` block on a `pipeline.destinations` entry of type `otlp` or `datadog` instead.
 </td>
     </tr>
     <tr>
@@ -16077,6 +16782,38 @@ Inline PEM stays supported as the bring-your-own-PKI escape hatch.
 }</pre>
 </td>
       <td class="helm-value-desc">Type of tenancy used to write logs. Use static to write to the staticTenant value (recommended). Use byEnvironment to separate by the environment name. Use byNamespace to use the namespace of the source pod as the tenant. Use byLabel to use a label (tenantLabel) to specifically identify the tenant. Use none to disable tenancy (only use if loki does not have tenancy).
+</td>
+    </tr>
+  </tbody>
+</table>
+
+##### Secret filter.
+
+The gateway's secret filter.
+The gateway can replace credentials in log lines before they're stored.
+The filter itself is off by default. For what it does and how to turn it
+on, see Production best practices > Secret filtering.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.secretFilter<wbr>.mode</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"off"</code></td>
+      <td class="helm-value-desc">What the secret filter does with the gateway's log lines: `off`, `shadow`, or `on`.
+
+| Mode | Effect |
+| --- | --- |
+| `off` | Lines are stored as they arrive. |
+| `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. What's stored otherwise doesn't change. |
+| `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored. |
+
+`shadow` and `on` each cost a scan of every line. Use `shadow` to see what
+the rules match on your logs before you turn the filter on. In `on`, set
+`pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE` below `"1"` to scan only
+that fraction of `DEBUG` and `TRACE` lines.
 </td>
     </tr>
   </tbody>
@@ -16714,69 +17451,39 @@ established it.
   </tbody>
 </table>
 
-##### Prometheus remote-write destinations.
+##### Prometheus remote-write destinations (deprecated)
 
-Prometheus remote-write destinations, as a map of name to destination.
+Deprecated. Prometheus remote-write destinations, as a map of name to destination.
 
-**A map, not a single destination.** Each key names one destination and
-becomes the label on that destination's Alloy components, so the name is
-visible in `component_id` on the gateway's own metrics and in its UI.
-The default map holds one entry, `thanos`, pointing at the bundled
-in-cluster Thanos Receive.
+**Deprecated: use a `pipeline.destinations` entry of type `prometheus` instead.**
+The bundled Thanos Receive is `pipeline.destinations.thanos`.
 
-Every destination gets its **own** `prometheus.remote_write` component
-rather than a second `endpoint` block on a shared one. That costs a WAL
-per destination and buys the two things a shared component cannot give:
+Entries set here still apply: the chart folds each one onto `pipeline.destinations` as a `prometheus` entry and warns at render.
+Move each across, so `prometheusRemoteWrite.amp.url` becomes `pipeline.destinations.amp.url`, with `type: prometheus`.
+`minMetricImportance` and `unfilteredMetricsEnv` move under `metrics`; every other field keeps its name.
+While an entry stays here, it keeps the credential variable names this map derived, such as
+`GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, and that includes a retune of `thanos`.
+Name them with the `*Env` fields when you move it, if a Secret already uses them.
 
-* **Its own `minMetricImportance`.** The tier filter is a
-  `prometheus.relabel` *upstream* of the component, so a destination on
-  `essential` writes a WAL holding only essential series. A shared
-  component can only filter with `write_relabel_config`, which runs on
-  the way *out* of the WAL — every destination would pay full firehose
-  disk regardless of tier. This is the whole reason the tiers exist:
-  Amazon Managed Prometheus bills per sample ingested and per series.
-* **Its own failure domain.** A destination that stops accepting writes
-  backs up its own WAL and nothing else. On a shared component a stuck
-  endpoint holds back WAL truncation for every other endpoint too.
+##### OpenTelemetry/OTLP destinations (deprecated)
 
-`external_labels` is per destination for the same reason, though the
-default (`cluster` from `CLUSTER_NAME`) is what every destination wants.
+Deprecated. OpenTelemetry/OTLP exporters for metrics (and logging).
 
-**Names are Alloy component labels**, so they must match
-`[a-zA-Z_][a-zA-Z0-9_]*`, and `egress` is reserved — the fan-out seam
-already uses it. A name that breaks either rule fails at render.
+**Deprecated: use an entry in `pipeline.destinations` instead.**
+This block still renders as it always has, and the render warns while any of it is enabled.
+Each exporter maps onto a destination type:
 
-**Fields are optional.** Anything a destination omits falls back to the
-per-destination defaults below, so a second destination is usually three
-lines. Environment variable names are derived from the destination name
-when not given — `GATEWAY_PROM_DEST_AMP`,
-`GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`,
-`GATEWAY_UNFILTERED_PROM_METRICS_AMP` — and can be set explicitly where a
-caller (such as the Terraform module's `mzmon-alloy-gateway-env` Secret)
-wants to choose them.
+| Here | In `pipeline.destinations` |
+| --- | --- |
+| `otlpExporter` | `type: otlp`, with `metrics: {}` and its own `authType` |
+| `googleCloudExporter` | `type: googleCloud` |
+| `datadogExporter` | `type: datadog`, with `apiKey.keyEnv: GATEWAY_OTEL_DEST_DATADOG_API_KEY` to keep the variable |
+| `otel.enabled` | a `metrics` block on the entry |
+| `pipeline.logging.gateway.destination.otel.enabled` | a `logs` block on the entry |
+| `auth` | the entry's own `authType`; `awsSigv4` becomes `sigv4` |
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `enabled` | `true` | Write to this destination. |
-| `url` | — | Remote-write endpoint. Required when enabled. |
-| `minMetricImportance` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
-| `unfilteredMetricsEnv` | `GATEWAY_UNFILTERED_PROM_METRICS_<NAME>` | Env var carrying the tier allowlist regex. |
-| `urlEnv` | `GATEWAY_PROM_DEST_<NAME>` | Env var carrying the endpoint URL. |
-| `externalLabels` | `{cluster: CLUSTER_NAME}` | `external_labels` on the component. Values are Alloy expressions. |
-| `authType` | `none` | `none`, `basicAuth`, `bearer`, `oauth2`, or `sigv4`. |
-| `basicAuth` / `bearer` / `oauth2` / `sigv4` | see below | Credentials for the chosen `authType`. |
-| `tls` | off | Client TLS for this hop. |
-
-A worked two-destination example — full fidelity in Thanos, only the
-alerting metrics in AMP — is in
-[`profiles/aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml).
-
-##### OpenTelemetry/OTLP destinations.
-
-OpenTelemetry/OTLP destination configuration for metrics (and logging).
-
-This supports several components and allows further customization of endpoints.
-Multiple exporters can be enabled at once.
+The raw `config`, `handlers`, and `auth.custom` overrides have no equivalent.
+A destination that needs one of those can stay here until the block is removed in a major version.
 
 <table class="helm-values">
   <thead>
@@ -19207,6 +19914,11 @@ arguments against it.
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/destination-tls",
+      "name": "mzmon-destination-tls",
+      "readOnly": true
     }
   ],
   "varlog": false
@@ -19244,6 +19956,26 @@ there is no Secret to wait for and the pod would never start.
 
 The kubelet refreshes the contents in place on renewal, which is why
 the `tls.*File` carriers are preferred over the inline PEMs.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.mounts<wbr>.extra[2]</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "mountPath": "/etc/mzmon/destination-tls",
+  "name": "mzmon-destination-tls",
+  "readOnly": true
+}</pre>
+</td>
+      <td class="helm-value-desc">A client certificate for a `pipeline.destinations` entry.
+The Secret named in the paired volume, `mzmon-alloy-gateway-destination-tls`,
+is yours to create, for a destination that authenticates with a
+client certificate, such as the call-home control plane
+(`profiles/call-home.values.yaml`). Point the destination's
+`tls.certFile` and `tls.keyFile` at files under this path. It is
+optional for the same reason as `mzmon-tls`: an install with no such
+destination starts with the mount empty.
 </td>
     </tr>
     <tr>
@@ -20600,7 +21332,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "kiwigrid/k8s-sidecar",
-  "tag": "2.14.1"
+  "tag": "2.14.3"
 }</pre>
 </td>
       <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
@@ -20633,7 +21365,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "extraArgs":["-labelvalue=$(POD_NAMESPACE)", "-streamname=container", "-streamvalue=canary", "-query-append=| pod=\"$(POD_NAME)\" | stream=\"stdout\""], "extraEnv":[{"name":"POD_NAMESPACE", "valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}], "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "labelname":"namespace", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}, "tenant":{"name":"loki"}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -20648,6 +21380,42 @@ unconditional so the two modes share one code path.
 }</pre>
 </td>
       <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.tenant</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "name": "loki"
+}</pre>
+</td>
+      <td class="helm-value-desc">The tenant the canary reads its own lines back from.
+The canary writes to stdout, and the Alloy agent and gateway carry its
+lines to Loki like any pod's, so they land in the tenant the gateway
+assigns the canary's namespace: `pipeline.logging.tenancy.staticTenant`
+under the default `static` tenancy. Keep the two in step; the render
+refuses a canary tenant that does not match. The subchart's own default,
+`self-monitoring`, is a tenant nothing writes to here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.labelname</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"namespace"</code></td>
+      <td class="helm-value-desc">How the canary finds its own lines, with labels the gateway keeps.
+The subchart's default selector, `{stream="stdout", pod="<pod>"}`, names
+two labels the gateway stores as structured metadata, so it matches
+nothing. The canary instead selects its namespace and container, and
+filters on structured metadata with `-query-append`: `pod`, so each
+canary pod reads only its own lines, and `stream`, so it reads only the
+entries it writes to stdout. Without the second, its own stderr log lines
+come back as invalid entries, which it logs, which come back again. The
+subchart passes `-labelvalue=$(POD_NAME)`; the later `-labelvalue` here
+wins.
+
+`extraArgs` is a list, so a values file that sets it replaces these.
+`profiles/mtls.values.yaml` restates them beside its TLS arguments.
 </td>
     </tr>
     <tr>
@@ -22921,7 +23689,7 @@ and turning `alerting.server.tls` on changes no volume.
   ],
   "image": {
     "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
-    "tag": "v0.94.2"
+    "tag": "v0.95.1"
   },
   "resources": {
     "limits": {
@@ -22963,11 +23731,9 @@ directly. Every profile under `profiles/registry/` repoints it.
       <td class="helm-value-key">alertmanager<wbr>.podAnnotations</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-{
-  "kubectl.kubernetes.io/default-container": "alertmanager"
-}</pre>
+{}</pre>
 </td>
-      <td class="helm-value-desc">Pod annotations. The subchart puts the reloader sidecar first, so this makes `kubectl logs` and `kubectl exec` land in Alertmanager rather than in the sidecar.
+      <td class="helm-value-desc">Pod annotations. The subchart already sets `kubectl.kubernetes.io/default-container` to Alertmanager, so don't add it here: a second copy renders a duplicate key.
 </td>
     </tr>
     <tr>
@@ -23009,8 +23775,7 @@ directly. Every profile under `profiles/registry/` repoints it.
 
 A read-only root filesystem is safe: Alertmanager writes only under
 `--storage.path`, which is the volume, and reads its configuration and
-credentials from mounts. The subchart ships `readOnlyRootFilesystem` commented
-out, and a validator warns when it is turned off.
+credentials from mounts. A validator warns when it is turned off.
 </td>
     </tr>
     <tr>
@@ -23048,7 +23813,7 @@ needs no annotation. See
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Liveness on `/-/healthy` rather than the subchart's `/`, which serves the UI.
+      <td class="helm-value-desc">Liveness on `/-/healthy`.
 </td>
     </tr>
     <tr>
@@ -23790,10 +24555,13 @@ is the better trade, and `monitoring-critical` covers the ordering.
     "drop": [
       "ALL"
     ]
+  },
+  "seccompProfile": {
+    "type": "RuntimeDefault"
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Container security context, merged over the subchart's read-only root. The exporter runs as UID 65534 and needs no capability to read the host's `/proc`, `/sys` and `/`.
+      <td class="helm-value-desc">Container security context, merged over the subchart's read-only root. The exporter runs as UID 65534 and needs no capability to read the host's `/proc`, `/sys` and `/`. The subchart sets these same defaults; the chart pins them so that the lockdown doesn't depend on subchart defaults.
 </td>
     </tr>
     <tr>
@@ -24339,8 +25107,8 @@ of typing rather than isolating it: no increase.
 -->
 
 Everything above `prometheus.relabel "egress"` is shared; everything below it is per destination.
-`pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a map keyed by name, and each entry renders **two** components labelled with that name: a `prometheus.relabel` carrying its importance-tier `keep` rule, feeding a `prometheus.remote_write` carrying its endpoint, auth, and TLS.
-The default map holds one entry, `thanos`.
+Each `pipeline.destinations` entry of type `prometheus` renders **two** components labelled with its name: a `prometheus.relabel` carrying its importance-tier `keep` rule, feeding a `prometheus.remote_write` carrying its endpoint, auth, and TLS.
+The default map holds one such entry, `thanos`.
 
 The filter is upstream of the component rather than a `write_relabel_config` inside its endpoint, which is the whole reason for one component per destination rather than one component with several `endpoint` blocks.
 `write_relabel_config` runs on the way *out* of the write-ahead log, so a shared component would buffer the full firehose to disk for every destination whatever tier it asked for — and a stuck endpoint would hold back WAL truncation for all the others.
@@ -24350,7 +25118,7 @@ The cost is a WAL per destination, sized to what that destination actually takes
 
 This is the important boundary.
 Only the **processing** pipeline (`gateway.yaml` → `pre-rendered/pipelines/gateway.alloy`) goes through `mz-monitoring-build`, so only it gets JSONSchema validation and typed rendering.
-The **destination** — the `otelcol.processor.filter "egress"` (metrics) and `loki.process "egress"` (logs) swap seams, the prometheus tail (`prometheus.relabel "egress"` → the per-destination `prometheus.relabel "<name>"` → `prometheus.remote_write "<name>"`), and the `loki.write "destination"` sink — is rendered by the Helm helper `charts/materialize-monitoring/templates/_alloy_helpers.tpl` at install time, driven by `.Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite` (and the `logging.*.loki` analog).
+The **destination** — the `otelcol.processor.filter "egress"` (metrics) and `loki.process "egress"` (logs) swap seams, the prometheus tail (`prometheus.relabel "egress"` → the per-destination `prometheus.relabel "<name>"` → `prometheus.remote_write "<name>"`), and the per-destination writers and exporters — is rendered by the Helm helpers in `charts/materialize-monitoring/templates/_alloy_helpers.tpl` and `_destination_helpers.tpl` at install time, driven by `.Values.pipeline.destinations`.
 
 That templated alloy text **never passes through our schema**.
 Its only safety net is the pre-validate jobs (`charts/.../templates/pipelines/validator/job-validate-gateway.yaml`), which run `alloy validate` on the assembled configMap at deploy time.
@@ -24362,8 +25130,10 @@ Keep the stub roughly in step with the helper, but the helper is the source of t
 ### Destination auth
 
 The metrics `remote_write` helper (`mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest`) supports `authType` of `none`, `basicAuth`, `bearer`, and `sigv4` (secrets sourced from env vars), **per destination**.
-Every destination resolves through `mzmon.alloyGateway.promDest.resolve`, which is the one place the per-destination defaults and the derived environment variable names (`GATEWAY_PROM_DEST_<NAME>`, `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, `GATEWAY_UNFILTERED_PROM_METRICS_<NAME>`) are written down — the env ConfigMap and the pipeline both read it, so they cannot disagree about a name.
-It resolves each field with `dig` rather than `mergeOverwrite` on purpose: `mergeOverwrite` will not override with a zero value, so `enabled: false` and `tls.verify: false` would both be silently discarded.
+Every destination resolves through `mzmon.destinations.resolve`, which is the one place the per-destination defaults and the derived environment variable names (`GATEWAY_<NAME>_DEST`, `GATEWAY_<NAME>_DEST_PASSWORD`, `GATEWAY_<NAME>_DEST_METRICS_ALLOWLIST`) are written down.
+`mzmon.alloyGateway.promDests` adapts the `prometheus` entries to the shape the remote-write helper and the Thanos-hop validators read, and `mzmon.destinations.envEntries` is the one list the env ConfigMap writes, so the two sides cannot disagree about a name.
+The resolver reads each field with `dig` rather than `mergeOverwrite` on purpose: `mergeOverwrite` will not override with a zero value, so `enabled: false` and `tls.verify: false` would both be silently discarded.
+The deprecated `prometheusRemoteWrite` map folds onto the same list in `mzmon.destinations.legacyPrometheus`, keeping its own derived names (`GATEWAY_PROM_DEST_<NAME>`, `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`) for an entry with no counterpart.
 `sigv4` targets Amazon Managed Prometheus: set `authType: sigv4` + `sigv4.region` (optional `roleArn`) and bind the gateway ServiceAccount via IRSA — the AWS default credential chain then picks up the injected web-identity token, so no static keys.
 See the user-facing [Storing](../../../../metrics/storing/) page for the values.
 (In a *hand-authored* pipeline — outside the chart destination — the same is reachable via a `raw:` `sigv4` block nested in the endpoint; see below.)
@@ -24566,7 +25336,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
         * `metrics/`: `metric-tiers.yaml`
       * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`, `_postgres_exporter_helpers.tpl`, and others)
-      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), and `adhoc`, the whole stack in one file. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
+      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), `adhoc`, the whole stack in one file, `call-home`, the opt-in control-plane destination that self-managed installs and Bring Your Own Cloud stacks apply, and `s3-worm`, a compliance archive in a bucket with S3 Object Lock. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
       * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect, each checked with `amtool check-config` and rendered with `amtool template render`
     * `materialize-monitoring-dashboards/`: the Materialize environment dashboards, as a chart and release of their own.
@@ -25528,9 +26298,10 @@ Getting it wrong is a 403 from the intake, not a routing error.
 `all` — and each tier includes the ones below it. This is a cost control, and a sharper one than
 for most backends: Datadog bills per custom metric, so `all` is rarely what you want.
 
-`metric_endpoint` and `logs_endpoint` override the intake URLs the exporter derives from `site`.
-Leave them null unless you are routing through a proxy or PrivateLink — a hand-written endpoint
-that disagrees with `site` fails at the intake rather than at plan time.
+`metric_endpoint` overrides the metrics intake URL the exporter derives from `site`. Leave it
+null unless you are routing through a proxy or PrivateLink — a hand-written endpoint that
+disagrees with `site` fails at the intake rather than at plan time. `logs_endpoint` has no
+effect: this input exports metrics only.
 </td>
         <td class="tf-var-schema"><pre><code>object({
     site            = optional(string, "datadoghq.com")
@@ -26158,6 +26929,29 @@ chart's values, so the two cannot disagree.
     password     = optional(string)
     bearer_token = optional(string)
   }))</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="secret_filter" href="#secret_filter">secret_<wbr>filter</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">What the gateway's secret filter does with log lines. Sets the chart's
+`pipeline.logging.secretFilter.mode`.
+
+| Value | Effect |
+|---|---|
+| `off` | Lines are stored as they arrive |
+| `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. Nothing else that's stored changes |
+| `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored |
+
+`shadow` and `on` each cost a scan of every log line the gateway handles.
+Run `shadow` first, to see what the rules would replace in your logs. The
+filter is an extra layer of protection, not the control: configure each
+component not to log credentials in the first place.
+
+The call-home profile sets the mode to `on`, because it sends logs to
+Materialize. Passed through `additional_values`, which comes after this,
+it turns the filter on whatever this input says.
+</td>
+        <td class="tf-var-default"><code>off</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="sizing" href="#sizing">sizing</a></td>
@@ -26813,7 +27607,9 @@ The `raw:` escape (see [Authoring](../authoring/)) remains available and is curr
 
 These are the conventions a contributor must preserve when editing the gateway `loki.process` pipeline:
 
-- **Level normalization.** A per-application `stage.match` extracts the level, then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. A heuristic regex backfills `UNKNOWN` levels, and the success/failure of that heuristic is recorded as structured metadata.
+- **Level normalization.** A per-application `stage.match` extracts the level,
+  then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`.
+  A line no parser leveled is `UNKNOWN` until the [level detectors](#level-detectors) try it.
 - **Drops and limits.** Lines older than the ingestion backlog window are dropped.
   Oversized lines are cut rather than dropped, as [Size limits](#size-limits) describes.
   Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
@@ -26824,6 +27620,42 @@ These are the conventions a contributor must preserve when editing the gateway `
 > [!WARNING]
 >   The label-vs-structured-metadata split is the dominant cost-and-stability lever.
 >   Adding a new Loki label multiplies [cardinality](../../../../o11y-glossary/#observability-foundations) — default to structured metadata and promote to a label only when it is low-cardinality and used as a selector.
+
+### Level detectors {#level-detectors}
+
+A line that no per-application parser leveled reaches a sequence of detectors as `UNKNOWN`.
+Each detector recognizes one shape of line and sets its level, and the first one to match wins.
+The `levelheuristic` structured metadata names the detector that leveled the line, or `none`.
+With it, you can group what remains `UNKNOWN`, and audit a leveled line by where its level came from.
+
+The following table lists the detectors in the order they run:
+
+| `levelheuristic` | Matches | Level |
+|---|---|---|
+| `canary` | The Loki canary's payloads and its per-entry reports | `TRACE` for payloads, `DEBUG` for reports |
+| `klog` | `I1108 19:59:31.736880  1 file.go:314] ...`, from any component | `I`, `W`, `E`, or `F` |
+| `panic` | `panic: `, `fatal error: `, or `goroutine N [` opening the line, or `panicked at ` anywhere | `CRITICAL` |
+| `level_prefix` | A level word opening the line, bare or bracketed, after an optional timestamp and a space or tab | The word |
+| `access_log` | An HTTP access log line: common or combined format, or the status first | `ERROR` for 5xx, `WARN` for 4xx, otherwise `INFO` |
+| `keyvalue` | A `level=` or `"severity":` pair anywhere in the line | The value |
+| `journal_priority` | A journal entry, which carries journald's priority as `journal_priority` | The priority |
+| `stacktrace` | A Go, Java, or Python stack-trace frame, including Go's `created by` lines | `ERROR` |
+| `keyword` | `error`, `failed`, `failure`, `fatal`, or `exception` as a word, or else `warn`, `warning`, or `deprecated` | `ERROR`, or else `WARN` |
+| `go_log` | Go's standard `log` format, `2026/11/08 20:07:09 ...` | `INFO` |
+| `fluent_bit_plugin` | A fluent-bit output plugin's trace, `[flb-<plugin>] ...` | `DEBUG` |
+
+The detectors that read a level the line carries run first.
+The ones that read severity from the content run next, and the defaults for formats known to carry no level run last.
+A line in no recognized format stays `UNKNOWN` rather than being guessed `INFO`.
+
+The agent copies journald's priority keyword to the `journal_priority` label, because a label starting with `__` never leaves the agent.
+The gateway drops `journal_priority` after the detectors, so it never becomes a stream label.
+
+Every selector carries a line filter, rendered through YAML, Alloy, and LogQL escaping.
+A detector with an escaping mistake still validates and never matches,
+so `packages/alloy-pipelines/levels.corpus.yaml` holds a line for every detector.
+`packages/mzmon-lib/tests/gateway_level_corpus.rs` runs `inputProcessor` on the pinned Alloy against it, in the `pipelines` CI job.
+Add a fixture when you add or change a detector.
 
 ### Multi-line records
 
@@ -26875,6 +27707,69 @@ That level is exempt from both per-level rate limits.
 Classification runs after the per-application blocks, because those set `msg` from JSON that a panic does not contain.
 The regular expression is anchored at the start of the entry, so a log line that merely quotes a panic is not mistaken for one.
 
+### Secret filter
+
+The gateway runs a secret filter between two `loki.process` components.
+`loki.secretfilter` scans the line and nothing else: never labels and never structured metadata.
+So it runs before any stage that copies text out of the line, and everything the gateway stores is derived from redacted text.
+
+An entry passes through the following components in order:
+
+1. `inputPrefilter` merges multi-line records, drops lines older than the backlog window, clamps the line, and applies the global rate limit.
+   It then sniffs the level and applies the limit on unlevelled lines to the bulk tier.
+2. `loki.relabel.tierFull` and `loki.relabel.tierBulk` each keep one tier.
+   They're relabel components rather than `loki.process` drops, so the other tier's lines don't count in `loki_process_dropped_lines_total`.
+3. `loki.secretfilter.ingest` scans the full tier, and `loki.secretfilter.ingestBulk` scans the bulk tier: `DEBUG` and `TRACE`.
+4. `inputProcessor` parses the line and sets labels and structured metadata.
+
+Every source forwards to `inputPrefilter`, and only the two filter instances forward to `inputProcessor`.
+The debug tap is fed by `inputProcessor`, so it never sees a line before the filter does.
+`packages/mzmon-lib/tests/gateway_secret_filter.rs` fails if a log source can reach a sink without passing a filter, or if anything else forwards to `inputProcessor`.
+
+The `level` label is set only after parsing, so the sniff reads the level field of the three formats the stack emits: tracing JSON, tracing's plain text, and logfmt.
+Each pattern is anchored where its format puts the level.
+A line the sniff can't classify goes to the full tier, so a miss costs a scan rather than coverage.
+
+A third instance, `loki.secretfilter.shadow`, measures the rules without enforcing them.
+When `pipeline.logging.secretFilter.mode` is `shadow`, `inputPrefilter` also forwards every line to it, and `loki.process.secretfilterShadow` keeps only the lines it redacted, labels them `secretfilter="shadow"`, and passes them to `inputProcessor`.
+It drops the rest under the reason `secretfilter shadow`.
+Copies skip `inputProcessor`'s rate limits and have a per-namespace limit of their own in `secretfilterShadow`, 100 lines per second with a burst of 1,000.
+That way a rule that matches most of a namespace's lines can't spend the budget its originals need.
+The Alloy dashboard's guard-drops panel excludes everything `secretfilterShadow` drops, by component, because its limit drops under the same reason as the main path's.
+The label is `secretfilter` rather than `job`, because `inputProcessor` parses some sources by `job`.
+In any other mode, the chart removes the shadow receiver from `inputPrefilter`'s `forward_to` as it renders the gateway config, and fails the render if that entry stops matching.
+An idle branch would still cost about 6% of the log path's CPU in the copy and the drop.
+
+Both instances replace each secret with `<redacted:RULE_ID>`, where `RULE_ID` is the ID of the Gitleaks rule that matched.
+The placeholder carries no hash, because Alloy's `$SECRET_HASH` is an unsalted SHA-1 that confirms any guessed secret.
+A line that runs past `GATEWAY_SECRETFILTER_TIMEOUT` is forwarded with whatever was redacted and the label `secretfilter="timed-out"`.
+The shadow instance drops such a copy instead, because once labeled `shadow` it would read as a complete result.
+
+Both instances ship with `rate` set to `0`, which forwards every line unscanned and counts it in `loki_secretfilter_entries_bypassed_total`.
+The mode `on` sets `GATEWAY_SECRETFILTER_RATE` and `GATEWAY_SECRETFILTER_BULK_RATE` to `1` in the gateway's env ConfigMap, unless `pipeline.env` already sets them.
+The Terraform module's `secret_filter` input sets the mode.
+<!-- TODO(DEP-313): drop the rate-0 paragraph once shadow mode has run and the default rate is 1. -->
+
+#### Rule files
+
+Both instances read `packages/alloy-pipelines/secretfilter/ingest.toml`: the Gitleaks defaults that Alloy bundles, plus Materialize's own rules.
+`make pipelines` copies it to `pre-rendered/secretfilter/`, and the chart adds each rule file to the gateway's ConfigMap as `secretfilter-<name>`.
+The subchart mounts that ConfigMap at `/etc/alloy/`, so the rules sit beside the config that reads them, and overriding the gateway's extra mounts can't drop them.
+Alloy doesn't start without the file.
+
+`packages/mzmon-lib/tests/secretfilter_corpus.rs` runs each rule file through the Alloy binary against `ingest.corpus.yaml`.
+The corpus lists lines that must be redacted, with the rule that fires on each, and lines that must pass untouched.
+The pipelines CI job runs it on the pinned Alloy version, including on every Alloy upgrade, because the default rules change between releases.
+When you change a rule, add a fixture that the change makes pass.
+Elsewhere the test skips when `alloy` isn't on your `PATH`; set `MZMON_REQUIRE_ALLOY=1` to make it fail instead.
+
+Keep every shipped rule file flat: one `[extend]` section holding only `useDefault = true`.
+Gitleaks follows two levels of `[extend]`, and a third loads without the default rules, so the one level left over belongs to the customer.
+Two instances in one Alloy process that load a file extending another by `path` race at startup, and one of them can come up with no rules at all.
+`gateway_secret_filter.rs` fails if an instance reads anything but a shipped rule file.
+
+For the design and the layers that follow, see [Secret Filtering](../../design-docs/20260924-log-secret-filtering/).
+
 ### Size limits
 
 Neither pipeline drops a line for its size.
@@ -26887,7 +27782,7 @@ The following table lists the rules in the order an entry meets them:
 | Where | Cuts | Limit | Suffix |
 |---|---|---|---|
 | Agent, last stage of `node_logs` and `pod_logs` | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
-| Gateway, `inputProcessor`, after the multi-line merge | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
+| Gateway, `inputPrefilter`, after the multi-line merge | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
 | Gateway, last stage of `inputProcessor` | The line | `GATEWAY_LOG_LINE_SIZE_LIMIT`, default `240KiB` | `[TRUNCATED:LINE]` |
 | Gateway, last stage of `inputProcessor` | The line | `250KiB`, fixed | `[TRUNCATED:FIELDS]` |
 | Gateway, last stage of `inputProcessor` | Every label value | `2KiB`, fixed | `[TRUNCATED:FIELDS]` |
@@ -26955,11 +27850,16 @@ The `oversized-log-lines` alert in `dev-alerts.yaml` fires on line cuts, for the
 
 `inputProcessor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
 
-- **Logs → Loki.** The default stub wires `loki.process "egress"` → `loki.write "destination"` to the bundled Loki distributor; the endpoint is configurable via `GATEWAY_LOKI_DEST` (falling back to an in-cluster default). Auth (`basic_auth`) is deferred. In the [remote-only topology](../../../../logs-and-events/architecture/#alternative-topologies), point `GATEWAY_LOKI_DEST` at an external OTLP/Loki destination.
+- **Logs → destinations.** The chart renders one writer per log destination in `pipeline.destinations` and lists each one in `loki.process "egress"`'s `forward_to`.
+  A `loki` destination is a `loki.write` labeled with its name.
+  An `otlp` destination is `otelcol.receiver.loki` → `otelcol.processor.batch` → an OTLP exporter, all labeled `dest_<name>`, and its metrics come off `otelcol.processor.filter "egress"` through its own tier filter.
+  The helpers are in `charts/materialize-monitoring/templates/_destination_helpers.tpl`.
+  The stub wires `loki.process "egress"` to `loki.write "loki"`, the default destination's label, reading `GATEWAY_LOKI_DEST` with an in-cluster fallback, and leaves auth out.
+  Each destination reads its URL from `GATEWAY_<NAME>_DEST`, so the default `loki` destination keeps `GATEWAY_LOKI_DEST`.
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
 - **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/architecture/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
 
-Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`), `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`).
+Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`), `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`), `GATEWAY_SECRETFILTER_RATE` and `GATEWAY_SECRETFILTER_BULK_RATE` (default `0`, no scanning), `GATEWAY_SECRETFILTER_TIMEOUT` (default `0s`, no limit).
 
 ## Attribution and adoption status
 
@@ -29785,7 +30685,6 @@ Designed in [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byo
 
 | Item | Status |
 |---|---|
-| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane | ⬜ |
 | [DEP-220] Sanitize telemetry before control-plane egress | ⬜ |
 | [DEP-236] A trust bundle for a private CA: the roots a corporate proxy or an on-premise object store needs, merged with the internal issuer's | ⬜ |
 | [DEP-287] `oauth2.tls` on the destination schema: certificate-authenticated token exchange, shared with call-home | ⬜ |
@@ -29807,17 +30706,13 @@ Each control-plane branch runs a second, stricter filter immediately before its 
 
 | Item | Status |
 |---|---|
-| [DEP-307] Typed `loki.secretfilter` and `stage.luhn` in the pipeline schema | ⬜ |
-| [DEP-308] The ingest filter ahead of parsing, with the bulk tier ahead of the scan | ⬜ |
-| [DEP-309] Close the two raw-line paths: the `sampleDebug` tap and live debugging | ⬜ |
+| [DEP-309] Close the remaining raw-line path: live debugging on the filter | ⬜ |
 | [DEP-310] Card-number redaction with `stage.luhn` | ⬜ |
-| [DEP-311] Rule files: the Materialize rules, the name allowlist, and the egress file | ⬜ |
-| [DEP-312] A corpus harness on the pinned Alloy binary, run on every Alloy bump | ⬜ |
-| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces | ⬜ |
-| [DEP-314] The values surface and fail-open validators | ⬜ |
+| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces, then the ingest filter on by default | 🔨 |
+| [DEP-314] The values surface and fail-open validators, with the customer's rules rendered into a flat file | ⬜ |
 | [DEP-315] `mz-monitoring-canary`, a canary producer per layer | ⬜ |
 | [DEP-316] Alerts, runbooks and a dashboard row | ⬜ |
-| [DEP-317] A strict, fail-closed egress filter on each control-plane branch | ⬜ |
+| [DEP-317] A strict, fail-closed egress filter on each control-plane branch, with its rule file and the `secretfilter="bulk"` stamp it drops on | ⬜ |
 | [DEP-318] A backstop overlay for the control-plane gateway | ⬜ |
 | [DEP-320] A customer-facing secret-filtering page, and the design's revisions | ⬜ |
 
@@ -29992,7 +30887,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-111]: https://linear.app/materializeinc/issue/DEP-111
 [DEP-115]: https://linear.app/materializeinc/issue/DEP-115
 [DEP-118]: https://linear.app/materializeinc/issue/DEP-118
-[DEP-124]: https://linear.app/materializeinc/issue/DEP-124
 [DEP-125]: https://linear.app/materializeinc/issue/DEP-125
 [DEP-126]: https://linear.app/materializeinc/issue/DEP-126
 [DEP-157]: https://linear.app/materializeinc/issue/DEP-157
@@ -30049,12 +30943,8 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-303]: https://linear.app/materializeinc/issue/DEP-303
 [DEP-304]: https://linear.app/materializeinc/issue/DEP-304
 [DEP-306]: https://linear.app/materializeinc/issue/DEP-306
-[DEP-307]: https://linear.app/materializeinc/issue/DEP-307
-[DEP-308]: https://linear.app/materializeinc/issue/DEP-308
 [DEP-309]: https://linear.app/materializeinc/issue/DEP-309
 [DEP-310]: https://linear.app/materializeinc/issue/DEP-310
-[DEP-311]: https://linear.app/materializeinc/issue/DEP-311
-[DEP-312]: https://linear.app/materializeinc/issue/DEP-312
 [DEP-313]: https://linear.app/materializeinc/issue/DEP-313
 [DEP-314]: https://linear.app/materializeinc/issue/DEP-314
 [DEP-315]: https://linear.app/materializeinc/issue/DEP-315
@@ -31818,8 +32708,8 @@ The pieces below are shipped and in use, and the design deliberately builds on t
 | Auth types on destinations | ✅ Shipped | `none` / `basicAuth` / `bearer` / `oauth2` / `sigv4` |
 | Multi-tenancy for logs | ✅ Shipped | `pipeline.logging.tenancy.tenantMap` — `static` / `byEnvironment` / `byNamespace` / `byLabel` / `none` |
 | Redaction primitives | ✅ In schema, unused | `stage.replace`, `stage.drop`, `stage.limit`, `stage.sampling`, `stage.label_drop`, `stage.structured_metadata_drop`, `stage.match` |
-| **Logs to more than one destination** | ❌ **Missing** | One `loki.write "destination"`, one `egress` seam |
-| **Per-destination log processing** | ❌ **Missing** | `inputProcessor` is global; everything downstream of it is identical |
+| Logs to more than one destination | ✅ Shipped | `pipeline.destinations`: one `loki.write` and one queue per destination, each free to drop when full ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
+| Per-destination log processing | ✅ Shipped | `logs.selector`, `minLevel`, `sampleRate`, and `rateLimit` on each destination, in a `loki.process` of its own |
 | **Receiver-side (server) TLS / mTLS** | ⚠️ `raw` only | `grpc` / `http` nested blocks accept only the `raw` escape hatch in the schema |
 | **Certificate issuance** | ⬜ Planned | cert-manager integration, [DEP-195](https://linear.app/materializeinc/issue/DEP-195), OO-M1 |
 
@@ -32146,16 +33036,16 @@ Work in **this** repo. Ordered roughly by dependency.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **Map-shaped log destinations** — `pipeline.logging.gateway.destination.loki` becomes a named map, rendered as N `loki.process` → `loki.write` pairs off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | **Blocking** — nothing dual-destination ships without it |
-| **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | **Blocking** |
-| **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | **Blocking** |
+| **Map-shaped log destinations** — a named map of destinations, rendered as one writer per destination off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | ✅ Shipped as `pipeline.destinations` ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). The map is signal-agnostic: one entry is one wire, and each signal it carries has its own block, so the control plane is one `otlp` entry with one credential, carrying logs and tier-filtered metrics over mTLS |
+| **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | ✅ Class, level, sampling, and rate limit, as `logs.selector`, `minLevel`, `sampleRate`, and `rateLimit` in a `loki.process "dest_<name>"` per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). Class is a LogQL selector rather than a new taxonomy. Redaction attaches to the same component ([DEP-317](https://linear.app/materializeinc/issue/DEP-317)) |
+| **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | ✅ Bounded and droppable: `queue.capacity` and `queue.blockOnOverflow: false` on each destination, measured to keep the local copy whole while another destination is unreachable. The per-destination `wal` is not wired |
 | **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | **Blocking** for the control-plane gateway |
 | **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | **Blocking** |
 | **`otelcol.processor.transform` before the log bridge** ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) | Label ↔ resource-attribute fidelity across the OTLP round trip. Already an open TODO in `gateway.yaml`; shared with the agent OTLP work | **Blocking** — silent label loss is worse than delivery failure |
 | **Redaction stage set** composed from existing primitives, allowlist-shaped, fail-closed | [DEP-220](https://linear.app/materializeinc/issue/DEP-220). Primitives exist; the composition and the values surface do not | **Blocking** for log egress |
 | **Generated log-class / field allowlist artifact**, alongside `metric-tiers.yaml` | The customer-readable egress schedule, and the thing that stops the allowlist drifting on a rename | Should land with redaction |
-| **File-mounted certificate material** for gateway destinations, inline PEM retained as escape hatch | Env-var PEMs break renewal fleet-wide at one certificate lifetime. Shared with [cert-manager work](https://linear.app/materializeinc/issue/DEP-195) | **Blocking** for any renewing credential |
-| **`byoc` profile** composing control-plane destination, reduction tiers, redaction defaults, Grafana ingress and persistence | The assembled shape the stack deployer applies | Blocking for delivery |
+| **File-mounted certificate material** for gateway destinations, inline PEM retained as escape hatch | Env-var PEMs break renewal fleet-wide at one certificate lifetime. Shared with [cert-manager work](https://linear.app/materializeinc/issue/DEP-195) | ✅ `tls.caFile` / `certFile` / `keyFile` on every destination. An `otlp` destination takes only the file carriers, and `tls.reloadInterval` re-reads them. The inline carriers never reached the env ([DEP-465](https://linear.app/materializeinc/issue/DEP-465)) |
+| **`byoc` profile** composing control-plane destination, reduction tiers, redaction defaults, Grafana ingress and persistence | The assembled shape the stack deployer applies | ✅ `profiles/call-home.values.yaml`, shared with self-managed call-home: an `otlp` destination to `telemetry.c.<appHost>` over mTLS, with the client certificate from the Secret `mzmon-alloy-gateway-destination-tls`, logs at `WARN` and above rate limited, and `essential` metrics. Redaction is [DEP-317](https://linear.app/materializeinc/issue/DEP-317)'s. Grafana ingress and persistence stay with the cloud profiles the deployer already composes |
 | **Control-plane values overlay** — OTLP mTLS ingress on, kubelet and events collection off, egress to our backends | Lets the control-plane gateway be this repo's artifact rather than a fork | Blocking for the control plane |
 | **NetworkPolicy for the gateway** ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) | The receiver cannot check revocation, so "the LB is the only path" must be enforced rather than assumed | **Partly landed.** `alloy-gateway.networkPolicy` ships on by default, but its ingest ports (`3100`, `4317`, `4318`, `9090`) accept any pod in the cluster — correct for a customer-side install, where those endpoints exist for the customer's own workloads, and not the guarantee this needs. The control-plane overlay has to replace that first ingress rule with one naming the load balancer, which is a values change rather than new chart machinery |
 | **Per-tenant Loki limits** in the control-plane overlay | One environment's crash loop must not degrade ingestion for the fleet | Blocking for the control plane |
@@ -32187,10 +33077,13 @@ The kind tiers extend to cover this, and two of the assertions are genuinely new
 
 - [ ] **Certificate lifetime and renewal path.** Short-lived with a bootstrap exchange (option 1), medium-lived reissued with the license (option 2), or license-lifetime (option 3)? This depends on control-plane issuance capability outside this repo, and it is the single largest security decision in the doc.
 - [ ] What exactly is the tenant identity in the certificate — subject CN, a SAN URI, or a custom OID — and does it carry both customer and environment, or only environment with the mapping held control-plane side?
+  Proposed: a URI SAN, `spiffe://c.materialize.cloud/stack/<clientStack>`, where `<clientStack>` is usually `byoc-<uuid>`. The identity is per stack, with the mapping to customer held control-plane side.
 - [ ] Which L7 load balancer, and does the chosen one support CRL *and* OCSP, with a documented refresh interval? "Supports revocation" is not sufficient; a CRL refreshed daily is a one-day revocation window.
+  Proposed: an AWS Application Load Balancer per control plane, named `telemetry.c.<appHost>` (`telemetry.c.cloud.materialize.com`, `telemetry.c.staging.cloud.materialize.com`, `telemetry.c.<personalStack>.dev.cloud.materialize.com`). Its revocation behavior is still to confirm.
 - [ ] Does the LB terminate and re-originate TLS to the gateway, and if so what authenticates that second hop? An internal issuer certificate is the obvious answer and should be stated rather than assumed.
 - [ ] Should the control-plane gateway accept `loki.source.api` at all, or OTLP exclusively? Exclusively is a smaller attack surface; accepting both eases migration for anything already pushing Loki-native.
-- [ ] Log class taxonomy: extend the existing `tenantMap` classes (`default` / `infra` / `audit` / `environment`), or introduce an explicit egress-class label? Extending is cheaper and reuses a shipped concept; a separate axis is more honest if the two classifications diverge.
+- [x] Log class taxonomy: extend the existing `tenantMap` classes (`default` / `infra` / `audit` / `environment`), or introduce an explicit egress-class label? Extending is cheaper and reuses a shipped concept; a separate axis is more honest if the two classifications diverge.
+  Resolved as neither: each destination takes a LogQL stream selector (`logs.selector`), which selects on the labels the gateway already promotes and adds no classification to keep in step.
 - [ ] Is `WARN` and above the right default level for control-plane log egress? It is a defensible starting point, but the tuning signal after launch is how often support asks for a bundle — measure before hardening it.
 - [ ] Does redaction belong at the customer gateway (before the wire) or the control-plane gateway (after)? **Strong lean: the customer gateway**, so unredacted data never crosses the boundary at all — but the control-plane side is the one *we* can fix without a customer upgrade, and version skew makes that argument non-trivial. Possibly both, with the control-plane side as a backstop.
 - [ ] How does the control plane handle a pipeline version older than its own expectations, given self-managed customers upgrade on their own schedule? Plain OTLP plus the existing label contract should make this a non-event, but it needs an explicit compatibility statement.
@@ -35009,7 +35902,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | Alert **definitions** | ✅ Shipped as documentation | `packages/queries/materialize-alerts.yaml`, `infra-alerts.yaml`, rendered to [Common Alerts](../../../common-alerts/) |
 | **Alert rule evaluation** | ❌ **Absent** | `templates/alerts/` is empty, nothing reads `config.rules.prometheus.enabled`, `pre-rendered/rules/prometheus/` holds only a `.gitkeep`, and `thanos.ruler.enabled` is `false` |
 | **Alertmanager** | ⚠️ Bundled, off | `tags.alertmanager: false`; routing is [DEP-216](https://linear.app/materializeinc/issue/DEP-216), unstarted |
-| **Logs to more than one destination** | ❌ Missing | One `loki.write "destination"`, one `egress` seam — [BYOC's blocking row](../20260813-byoc-observability/#chart-side-prerequisites) |
+| Logs to more than one destination | ✅ Shipped | `pipeline.destinations`, one writer and one queue per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
 | **Per-destination log processing and redaction** | ❌ Missing | `inputProcessor` is global — same row |
 | **A trust bundle for non-public CAs** | ❌ Not shipped | [DEP-236](https://linear.app/materializeinc/issue/DEP-236). Needed for any customer whose egress proxy presents a corporate certificate |
 | **`oauth2.tls` on destinations** | ❌ Missing | Named by the [query-API doc](../20260916-tenant-query-api/#the-blocker-stated-precisely); blocks exchanging a certificate for a token |
@@ -35108,7 +36001,7 @@ A chart upgrade that starts sending anything is the single failure that would en
 This belongs in a render assertion, not in review discipline.
 
 **The levels are assembled by profiles, not by the operator.**
-Consistent with [profiles as documentation](../20260803-terraform-modules/#profiles-are-documentation-with-one-exception), each level is a composable overlay — `callhome-heartbeat`, `callhome-alerts`, and so on — that sets the destination, the tier floor, the redaction chain and the budget together.
+Consistent with [profiles as documentation](../20260803-terraform-modules/#profiles-are-documentation-with-one-exception), each level is a composable overlay — `call-home-heartbeat`, `call-home-alerts`, and so on — that sets the destination, the tier floor, the redaction chain and the budget together.
 An operator who assembles a level by hand will get four of the five settings right, which is the failure mode the [mTLS validator work](../20260816-tls-authentication/#per-component-notes) already found on a different feature.
 
 **Every level publishes a generated schedule and a measured envelope.**
@@ -35406,7 +36299,7 @@ None of it is ticketed yet.
 | **All [BYOC blocking prerequisites](../20260813-byoc-observability/#chart-side-prerequisites)** — map-shaped log destinations, per-destination processing, per-destination queue and drop policy, the tenant overwrite, the log-bridge transform, and the redaction stage set | This design is defaults and consent on top of that channel. Nothing above level 3 exists without them | **Blocking**, inherited |
 | **Rule evaluation actually shipping** — a template that emits the bundled rules, and an evaluator enabled by default in the bundled shape | Nothing evaluates alerting rules today, so the alerts level would forward an empty set that reads as good news | **Blocking** for levels 2 and up |
 | **Alert state reaching the gateway** — whatever evaluates metric rules remote-writes to `prometheus.receive_http`, as Loki's ruler already does | The fan-out happens at the gateway. Series that land in Thanos without traversing it cannot be forwarded | **Blocking** for the alerts level |
-| **The `callHome.level` values surface**, defaulting `off`, with the level profiles that assemble each rung | The feature. A level assembled by hand is a level with four of five settings right | **Blocking** |
+| **The `callHome.level` values surface**, defaulting `off`, with the level profiles that assemble each rung | The feature. A level assembled by hand is a level with four of five settings right | **Blocking**. `profiles/call-home.values.yaml` is the first profile, shared with BYOC: off unless applied, and the `metrics` and `diagnostics` rungs through `logs.enabled`, `logs.minLevel`, `logs.keepUnknown` and `metrics.minMetricImportance` on one destination. The single key selecting a rung, and the `heartbeat` and `alerts` rungs, are not built |
 | **A render assertion that the default sends nothing**, re-checked on every values change | A default that drifts to on in a refactor is the one failure that ends the programme | **Blocking** |
 | **`previewOnly` on the call-home destination** — full chain, counted and sampled locally, dropped before the writer | The compliance artifact a generated schedule cannot be, because it runs on the customer's own data | **Blocking** for the review story |
 | **A byte-rate ceiling per level**, shed rather than queued, with the shed event reported | Selection bounds kind, not volume, and volume spikes during exactly the incidents this exists for | **Blocking** |
