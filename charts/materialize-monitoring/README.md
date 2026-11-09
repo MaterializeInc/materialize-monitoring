@@ -52,7 +52,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.3.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.0.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.4.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
@@ -8822,11 +8822,9 @@ directly. Every profile under `profiles/registry/` repoints it.
       <td class="helm-value-key">alertmanager<wbr>.podAnnotations</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-{
-  "kubectl.kubernetes.io/default-container": "alertmanager"
-}</pre>
+{}</pre>
 </td>
-      <td class="helm-value-desc">Pod annotations. The subchart puts the reloader sidecar first, so this makes `kubectl logs` and `kubectl exec` land in Alertmanager rather than in the sidecar.
+      <td class="helm-value-desc">Pod annotations. The subchart already sets `kubectl.kubernetes.io/default-container` to Alertmanager, so don't add it here: a second copy renders a duplicate key.
 </td>
     </tr>
     <tr>
@@ -8868,8 +8866,7 @@ directly. Every profile under `profiles/registry/` repoints it.
 
 A read-only root filesystem is safe: Alertmanager writes only under
 `--storage.path`, which is the volume, and reads its configuration and
-credentials from mounts. The subchart ships `readOnlyRootFilesystem` commented
-out, and a validator warns when it is turned off.
+credentials from mounts. A validator warns when it is turned off.
 </td>
     </tr>
     <tr>
@@ -8907,7 +8904,7 @@ needs no annotation. See
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Liveness on `/-/healthy` rather than the subchart's `/`, which serves the UI.
+      <td class="helm-value-desc">Liveness on `/-/healthy`.
 </td>
     </tr>
     <tr>
