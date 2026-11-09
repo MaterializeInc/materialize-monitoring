@@ -18,55 +18,57 @@ If you keep the bundled Thanos, it persists blocks to object storage — see [Th
 
 ## The remote-write destinations {#the-remote-write-destinations}
 
-`pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a **map keyed by destination name**.
-The chart ships one entry, `thanos`, pointing at the bundled in-cluster Thanos Receive; adding a key adds a destination.
+A Prometheus remote-write store is an entry of type `prometheus` in `pipeline.destinations`, the map of everything the gateway writes to.
+The chart ships one such entry, `thanos`, pointing at the bundled in-cluster Thanos Receive; adding an entry adds a destination.
 
-Each destination takes these values:
+A `prometheus` entry takes the following values:
 
 | Value | Purpose |
 |---|---|
+| `type` | `prometheus`. Required on an entry you add; `thanos` already has it. |
 | `enabled` | Write to this destination (default `true`). |
 | `url` | Remote-write endpoint. Required, except on `thanos`, which defaults to the in-cluster Receive. |
-| `minMetricImportance` | Which [tier](#the-importance-tiers) this destination receives (default `all`). |
-| `authType` | `none` (default), `basicAuth`, `bearer`, `oauth2`, or `sigv4`. |
-| `sigv4` | AWS SigV4 signing config — for [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa). |
+| `metrics.minMetricImportance` | Which [tier](#the-importance-tiers) this destination receives (default `all`). |
+| `authType` | `none` (default), `basicAuth`, `bearer`, or `sigv4`. |
+| `sigv4` | AWS SigV4 signing config, for [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa). |
 | `tls` | Client TLS for this hop. |
 | `externalLabels` | Extra labels stamped on every sample this destination receives. |
+
+For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
 
 Point the bundled destination at an external store instead:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          thanos:
-            url: https://<your-remote-write-endpoint>/api/v1/write
+  destinations:
+    thanos:
+      url: https://<your-remote-write-endpoint>/api/v1/write
 ```
 
 Or write to two backends at once, each on its own tier:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          # Everything, to storage you already pay for.
-          thanos:
-            minMetricImportance: all
-          # Alerting metrics only, to a backend that bills per sample.
-          amp:
-            url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
-            minMetricImportance: essential
-            authType: sigv4
-            sigv4:
-              region: us-east-1
+  destinations:
+    # Everything, to storage you already pay for.
+    thanos:
+      metrics:
+        minMetricImportance: all
+    # Alerting metrics only, to a backend that bills per sample.
+    amp:
+      type: prometheus
+      url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
+      metrics:
+        minMetricImportance: essential
+      authType: sigv4
+      sigv4:
+        region: us-east-1
 ```
 
-The name is more than a label in `values`: it becomes the **Alloy component label**, so it appears as `prometheus.remote_write.<name>` in the gateway's own metrics and in its UI, and it is the fragment the [credential environment variables](#credential-environment-variables) are derived from.
-It must match `[a-zA-Z_][a-zA-Z0-9_]*` — no dashes or dots — and `egress` is reserved for the fan-out seam.
+The name is more than a label in `values`.
+It becomes the **Alloy component label**, so it appears as `prometheus.remote_write.<name>` in the gateway's own metrics and in its UI.
+It's also the fragment the [credential environment variables](#credential-environment-variables) are derived from.
+It must match `[a-zA-Z_][a-zA-Z0-9_]*`, with no dashes or dots, and `egress` and `destination` are reserved.
 Both rules fail at render rather than at gateway startup.
 
 ### One component per destination, and why it matters {#one-component-per-destination}
@@ -99,38 +101,54 @@ Add labels for one destination only with its `externalLabels` map, which is usef
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          amp:
-            externalLabels:
-              account: "012345678901"
+  destinations:
+    amp:
+      externalLabels:
+        account: "012345678901"
 ```
 
 Setting `cluster` in `externalLabels` replaces the environment-derived one for that destination.
 
-### Upgrading from the single-destination shape
+### Upgrading from `prometheusRemoteWrite` {#upgrading-from-prometheusremotewrite}
 
-`prometheusRemoteWrite` used to *be* one destination, with `url`, `authType`, and the rest directly under it.
-Those keys now live one level down, under a name.
-An install that never overrode them upgrades with no change at all — the default `thanos` destination writes to the same endpoint on the same tier.
+Remote-write destinations used to be configured under `pipeline.metrics.gateway.destination.prometheusRemoteWrite`, a map of the same shape.
+That map is deprecated.
+Each entry you still set there applies as a `prometheus` entry of `pipeline.destinations`, and the render warns.
 
-An install that did override them **fails at render** with a message naming the keys to move.
-That is deliberate rather than unfriendly: Helm merges maps, so a leftover `prometheusRemoteWrite.url` would land *beside* `thanos` rather than replacing it.
-The setting would apply to nothing, the default endpoint would keep receiving, and there would be no error and no metric gap to notice.
-Move each key under a name — `thanos` to keep the bundled Receive:
+To move an entry, apply the following changes:
+
+- Put it under `pipeline.destinations`, with `type: prometheus`.
+- Move `minMetricImportance` and `unfilteredMetricsEnv` under `metrics`.
+  Every other field keeps its name.
+- Check the credential variable names.
+  While an entry stays in the old map, it keeps the credential names that map derived, such as `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
+  That includes a retune of `thanos`.
+  Once moved, it derives `GATEWAY_AMP_DEST_PASSWORD`.
+  If a Secret already uses the old names, keep them with the `*Env` fields, such as `basicAuth.passwordEnv`.
+  The URL and allowlist variables are written by the chart itself, so their new names need nothing from you.
+
+The following example moves an entry:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          thanos:                       # was: directly under prometheusRemoteWrite
-            url: https://metrics.example.com/api/v1/write
-            authType: bearer
+  destinations:
+    amp:                                  # was: prometheusRemoteWrite.amp
+      type: prometheus
+      url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
+      metrics:
+        minMetricImportance: essential    # was: minMetricImportance
+      authType: sigv4
+      sigv4:
+        region: us-east-1
 ```
+
+An entry named after a destination of another type, such as `loki`, fails at render rather than turning that destination into a remote write.
+
+The map's older shape, with `url`, `authType`, and the rest directly under `prometheusRemoteWrite` rather than under a name,
+**fails at render** with a message naming the keys to move.
+Helm merges maps, so a leftover `prometheusRemoteWrite.url` would otherwise apply to nothing,
+and the default endpoint would keep receiving with no error.
+Move those keys onto `pipeline.destinations.thanos` to keep the bundled Receive.
 
 ## Authentication
 
@@ -140,7 +158,6 @@ Set `authType` and fill in the matching block:
 - **`none`** — no auth (the in-cluster Thanos default).
 - **`basicAuth`** — username / password from env.
 - **`bearer`** — bearer token from env.
-- **`oauth2`** — OAuth2 client credentials from env.
 - **`sigv4`** — AWS SigV4 signing, derived from IRSA (see [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa) below).
 
 An `otlp` destination in `pipeline.destinations` takes `none`, `basicAuth`, `bearer`, `headers`, or `sigv4`; see [Generic OTLP](#otlp).
@@ -184,22 +201,22 @@ The Secret's keys are injected as environment variables next to the ConfigMap's,
 
 Populate only the rows for the destinations and auth methods you enable:
 
-`<NAME>` below is the destination's key in its map, uppercased with anything outside `A-Z0-9` folded to `_`.
-The `amp` remote-write destination reads `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`, and a `pipeline.destinations` entry named `datadog` reads `GATEWAY_DATADOG_DEST_API_KEY`.
+`<NAME>` below is the destination's key in `pipeline.destinations`, uppercased with anything outside `A-Z0-9` folded to `_`.
+A `prometheus` destination named `amp` reads `GATEWAY_AMP_DEST_PASSWORD`,
+and a `datadog` destination named `datadog` reads `GATEWAY_DATADOG_DEST_API_KEY`.
 Every row is per destination, so two destinations on `basicAuth` need two pairs of keys.
 
 | Destination · method | `values` block | Secret keys (env vars) |
 |---|---|---|
-| Prometheus remote-write · `basicAuth` | `…prometheusRemoteWrite.<name>.basicAuth` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_<NAME>_PASSWORD` |
-| Prometheus remote-write · `bearer` | `…prometheusRemoteWrite.<name>.bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_BEARER_TOKEN` |
-| Prometheus remote-write · `oauth2` | `…prometheusRemoteWrite.<name>.oauth2` | `GATEWAY_PROMETHEUS_DEST_<NAME>_OAUTH2_CLIENT_ID`, `…_CLIENT_SECRET`, `…_TOKEN_URL` |
-| Prometheus remote-write · client TLS | `…prometheusRemoteWrite.<name>.tls` | `GATEWAY_PROMETHEUS_DEST_<NAME>_TLS_CA`, `…_TLS_CERT`, `…_TLS_KEY` |
-| `otlp` · `basicAuth` | `pipeline.destinations.<name>.basicAuth` | `GATEWAY_<NAME>_DEST_USERNAME`, `GATEWAY_<NAME>_DEST_PASSWORD` |
-| `otlp` · `bearer` | `pipeline.destinations.<name>.bearer` | `GATEWAY_<NAME>_DEST_BEARER_TOKEN` |
+| `prometheus` or `otlp` · `basicAuth` | `pipeline.destinations.<name>.basicAuth` | `GATEWAY_<NAME>_DEST_USERNAME`, `GATEWAY_<NAME>_DEST_PASSWORD` |
+| `prometheus` or `otlp` · `bearer` | `pipeline.destinations.<name>.bearer` | `GATEWAY_<NAME>_DEST_BEARER_TOKEN` |
 | `otlp` · `headers` | `pipeline.destinations.<name>.headers` | whatever each header's `valueEnv` names; you choose |
 | `datadog` | `pipeline.destinations.<name>.apiKey` | `GATEWAY_<NAME>_DEST_API_KEY` |
-| SigV4: AMP, or `otlp` with `sigv4` | `…prometheusRemoteWrite.<name>.sigv4` / `pipeline.destinations.<name>.sigv4` | none; uses the pod's IRSA identity |
+| `prometheus` or `otlp` · `sigv4` | `pipeline.destinations.<name>.sigv4` | none; uses the pod's IRSA identity |
+| Deprecated `prometheusRemoteWrite` | `basicAuth`/`bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN` |
 | Deprecated `otel` block | `…otel.auth.*`, `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN`, `…_DATADOG_API_KEY` |
+
+The deprecated `prometheusRemoteWrite` row covers every entry still set there, a retune of `thanos` included.
 
 SigV4 and the cloud-native exporters (GCM via Workload Identity) carry no secret keys — they authenticate with the gateway pod's ambient cloud identity, so those rows stay out of the Secret entirely.
 
@@ -235,8 +252,8 @@ The defaults lean permissive for cheap local storage and frugal for metered SaaS
 
 | Destination | Default `minMetricImportance` |
 |---|---|
-| `prometheusRemoteWrite.thanos` (bundled Thanos) | `all` |
-| `prometheusRemoteWrite.<name>` (any you add) | `all` |
+| `pipeline.destinations.thanos` (bundled Thanos) | `all` |
+| `pipeline.destinations` entry of type `prometheus` | `all` |
 | `pipeline.destinations` entry of type `otlp` | `all` |
 | `pipeline.destinations` entry of type `googleCloud` | `recommended` |
 | `pipeline.destinations` entry of type `datadog` | `recommended` |
@@ -267,7 +284,7 @@ See [One component per destination](#one-component-per-destination).
 ### How the allowlist is built
 
 Tier membership is generated from the query registry into `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml` (via `mz-monitoring-build gen-metric-tiers`, or `make metric-tiers`).
-At render time the chart reads that file, unions the tiers at or above each destination's `minMetricImportance`, and hands the gateway the result as an allowlist regex — one environment variable per destination, such as `GATEWAY_UNFILTERED_PROM_METRICS_AMP` for a remote-write destination named `amp`.
+At render time the chart reads that file, unions the tiers at or above each destination's `minMetricImportance`, and hands the gateway the result as an allowlist regex — one environment variable per destination, such as `GATEWAY_AMP_DEST_METRICS_ALLOWLIST` for a destination named `amp`.
 `all` skips the file entirely and uses `.*`.
 Do not edit `metric-tiers.yaml` by hand: reclassify metrics in the registry and regenerate.
 
@@ -313,7 +330,7 @@ otlp_metrics = {
 otlp_auth_header_secrets = { "x-honeycomb-team" = var.honeycomb_api_key }
 ```
 
-Remote-write destinations go through `prometheus_remote_write`, which is the same map keyed by name.
+Remote-write destinations go through `prometheus_remote_write`, keyed by name; each key becomes a `pipeline.destinations` entry of type `prometheus`.
 A key of `thanos` **retunes** the bundled destination rather than adding a second one, so dropping local fidelity and adding AMP is one input:
 
 ```hcl
@@ -334,7 +351,8 @@ gateway_service_account_annotations = {
 ```
 
 `basicAuth` and `bearer` destinations take their credentials from `prometheus_remote_write_credentials`, keyed by the same destination name.
-The module derives the environment variable names from that name and writes them into the chart's values, so the Secret it creates and the config the gateway reads cannot disagree.
+The module derives the environment variable names from that name, as `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD` and so on,
+and writes them into the chart's values, so the Secret it creates and the config the gateway reads cannot disagree.
 
 Credentials do **not** go through the Helm values — the module puts them in the gateway Secret instead, and rolls the gateway when one changes.
 See the [module README](https://github.com/MaterializeInc/materialize-monitoring/blob/main/terraform/modules/materialize-monitoring/README.md#metric-destinations) for the environment variables each input becomes.
@@ -515,7 +533,7 @@ See [Metrics Architecture](../architecture/) for how the roles connect.
 
 Two families of backend sit alongside the bundled Thanos, and both fan out *in addition to* it rather than replacing it.
 
-**More remote-write stores** — Amazon Managed Prometheus, Mimir, Grafana Cloud, another Thanos — are added as further entries in the [`prometheusRemoteWrite` map](#the-remote-write-destinations).
+**More remote-write stores** — Amazon Managed Prometheus, Mimir, Grafana Cloud, another Thanos — are added as further [`prometheus` entries](#the-remote-write-destinations).
 Nothing on this page is an either/or with the in-cluster Thanos: keeping full fidelity locally while shipping a filtered slice to a metered backend is the shape the map exists for.
 
 **OpenTelemetry (OTLP) backends** are entries in `pipeline.destinations`, the map that also holds the gateway's log destinations.
@@ -713,6 +731,8 @@ To move each one to `pipeline.destinations`, use the following table:
 | `pipeline.logging.gateway.destination.otel.enabled` | A `logs` block on each `otlp` or `datadog` entry |
 | `otel.auth` | The entry's own `authType`. `awsSigv4` becomes `sigv4`, and the `headers.headers` list becomes `headers` |
 
+For the deprecated `prometheusRemoteWrite` map, see [Upgrading from `prometheusRemoteWrite`](#upgrading-from-prometheusremotewrite).
+
 The raw `config`, `handlers`, and `auth.custom` overrides have no equivalent in `pipeline.destinations`.
 A destination that relies on one can stay in the `otel` block, which is removed only in a major version.
 
@@ -722,25 +742,25 @@ To push to Amazon Managed Prometheus (AMP), sign requests with SigV4 and let the
 
 AMP is a remote-write destination like any other, so this **adds** to the bundled Thanos rather than replacing it.
 Running both is the usual choice: AMP bills per sample ingested and per active series, so the pairing below keeps everything in local storage you already pay for and sends only the alerting metrics to AMP.
-To send metrics *only* to AMP, drop the `thanos` entry and set `thanos.enabled: false` on the bundled backend.
+To send metrics *only* to AMP, set `enabled: false` on the `thanos` destination and on the bundled backend.
 
 1. Add a destination pointing at your workspace's remote-write URL, with `sigv4`:
 
    ```yaml
    pipeline:
-     metrics:
-       gateway:
-         destination:
-           prometheusRemoteWrite:
-             thanos:
-               minMetricImportance: all
-             amp:
-               url: https://aps-workspaces.<region>.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write
-               minMetricImportance: essential
-               authType: sigv4
-               sigv4:
-                 region: <region>
-                 # roleArn: optional — only to assume a *different* role than IRSA grants
+     destinations:
+       thanos:
+         metrics:
+           minMetricImportance: all
+       amp:
+         type: prometheus
+         url: https://aps-workspaces.<region>.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write
+         metrics:
+           minMetricImportance: essential
+         authType: sigv4
+         sigv4:
+           region: <region>
+           # roleArn: optional — only to assume a *different* role than IRSA grants
    ```
 
 2. Grant an IAM role `aps:RemoteWrite` on the workspace, and bind it to the gateway with IRSA by annotating the `alloy-gateway` ServiceAccount:
