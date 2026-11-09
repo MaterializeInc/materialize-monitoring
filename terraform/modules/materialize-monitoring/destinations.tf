@@ -136,10 +136,11 @@ locals {
 # Prometheus remote-write
 # ------------------------------------------------------------------------------
 # Unlike the three above, this one is not a *new* destination — the chart already
-# remote-writes to the bundled Thanos, and this fans out beside it. The chart's
-# value is a map keyed by name, so a key of `thanos` deep-merges over the chart's
-# own default destination and any other key adds one. That is what makes
-# "retune Thanos" and "add AMP" the same input rather than two.
+# remote-writes to the bundled Thanos, and this fans out beside it. Each key
+# becomes a `pipeline.destinations` entry of type `prometheus`, so a key of
+# `thanos` deep-merges over the chart's own default destination and any other
+# key adds one. That is what makes "retune Thanos" and "add AMP" the same input
+# rather than two.
 #
 # Each destination becomes its own `prometheus.remote_write` component with its
 # own importance filter upstream of it, so `min_importance` is genuinely per
@@ -176,49 +177,45 @@ locals {
 
   prometheus_remote_write_document = length(var.prometheus_remote_write) == 0 ? [] : [yamlencode({
     pipeline = {
-      metrics = {
-        gateway = {
-          destination = {
-            prometheusRemoteWrite = {
-              for name, dest in var.prometheus_remote_write :
-              name => merge(
-                {
-                  enabled             = dest.enabled
-                  minMetricImportance = dest.min_importance
-                  authType            = dest.auth_type
-                },
-                # Omitted when null so the chart's own default survives. This is
-                # what lets `thanos = { min_importance = "recommended" }` retune
-                # the bundled destination without restating its URL.
-                dest.url == null ? {} : { url = dest.url },
-                length(dest.external_labels) == 0 ? {} : { externalLabels = dest.external_labels },
-                # SigV4 carries no credentials at all: the AWS SDK signs from
-                # the pod's IRSA identity. `role_arn` is the cross-account case,
-                # where the gateway's own role assumes another one.
-                dest.auth_type != "sigv4" ? {} : {
-                  sigv4 = merge(
-                    dest.sigv4_region == null ? {} : { region = dest.sigv4_region },
-                    dest.sigv4_role_arn == null ? {} : { roleArn = dest.sigv4_role_arn },
-                  )
-                },
-                # Only the env-var *names*; the values are in the Secret. The
-                # chart derives the same names by default, but naming them is
-                # what makes the pair unable to drift if either rule changes.
-                dest.auth_type != "basicAuth" ? {} : {
-                  basicAuth = {
-                    usernameEnv = "GATEWAY_PROMETHEUS_DEST_${local.prom_dest_slug[name]}_USERNAME"
-                    passwordEnv = "GATEWAY_PROMETHEUS_DEST_${local.prom_dest_slug[name]}_PASSWORD"
-                  }
-                },
-                dest.auth_type != "bearer" ? {} : {
-                  bearer = {
-                    tokenEnv = "GATEWAY_PROMETHEUS_DEST_${local.prom_dest_slug[name]}_BEARER_TOKEN"
-                  }
-                },
-              )
+      destinations = {
+        for name, dest in var.prometheus_remote_write :
+        name => merge(
+          {
+            type     = "prometheus"
+            enabled  = dest.enabled
+            metrics  = { minMetricImportance = dest.min_importance }
+            authType = dest.auth_type
+          },
+          # Omitted when null so the chart's own default survives. This is
+          # what lets `thanos = { min_importance = "recommended" }` retune
+          # the bundled destination without restating its URL.
+          dest.url == null ? {} : { url = dest.url },
+          length(dest.external_labels) == 0 ? {} : { externalLabels = dest.external_labels },
+          # SigV4 carries no credentials at all: the AWS SDK signs from
+          # the pod's IRSA identity. `role_arn` is the cross-account case,
+          # where the gateway's own role assumes another one.
+          dest.auth_type != "sigv4" ? {} : {
+            sigv4 = merge(
+              dest.sigv4_region == null ? {} : { region = dest.sigv4_region },
+              dest.sigv4_role_arn == null ? {} : { roleArn = dest.sigv4_role_arn },
+            )
+          },
+          # Only the env-var *names*; the values are in the Secret. The
+          # chart would derive GATEWAY_<NAME>_DEST_* by default; naming them
+          # keeps the Secret this module has always written, and is what
+          # makes the pair unable to drift if either rule changes.
+          dest.auth_type != "basicAuth" ? {} : {
+            basicAuth = {
+              usernameEnv = "GATEWAY_PROMETHEUS_DEST_${local.prom_dest_slug[name]}_USERNAME"
+              passwordEnv = "GATEWAY_PROMETHEUS_DEST_${local.prom_dest_slug[name]}_PASSWORD"
             }
-          }
-        }
+          },
+          dest.auth_type != "bearer" ? {} : {
+            bearer = {
+              tokenEnv = "GATEWAY_PROMETHEUS_DEST_${local.prom_dest_slug[name]}_BEARER_TOKEN"
+            }
+          },
+        )
       }
     }
   })]

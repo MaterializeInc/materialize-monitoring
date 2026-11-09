@@ -22,7 +22,7 @@ set:
   # Off-cluster destinations: auth is only interesting against an external
   # backend, and it keeps the reachability checks (covered separately) quiet.
   pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
-  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
+  pipeline.destinations.thanos.url: https://metrics.example.com/api/v1/receive
 tests:
   # --- credentials ----------------------------------------------------------
 
@@ -88,12 +88,12 @@ tests:
   # sigv4 signs from ambient AWS credentials, so it needs no env plumbing.
   - it: does not require env credentials for sigv4
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.authType: sigv4
+      pipeline.destinations.thanos.authType: sigv4
       alloy-gateway.alloy.envFrom: null
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
-          pattern: "prometheusRemoteWrite.*set by neither"
+          pattern: "destinations.thanos.*set by neither"
         not: true
 
   # --- otel headers auth ----------------------------------------------------
@@ -222,7 +222,7 @@ tests:
 
   - it: warns when every metric destination is disabled
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+      pipeline.destinations.thanos.enabled: false
     template: NOTES.txt
     asserts:
       - matchRegexRaw:

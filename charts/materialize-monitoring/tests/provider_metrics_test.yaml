@@ -20,7 +20,7 @@ set:
   tags.default: false
   tags.pipeline: true
   pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
-  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
+  pipeline.destinations.thanos.url: https://metrics.example.com/api/v1/receive
 tests:
   # --- default ---------------------------------------------------------------
 
@@ -735,36 +735,42 @@ tests:
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     set:
       <<: [*cloudwatch, *gcp]
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.extended:
+      pipeline.destinations.extended:
+        type: prometheus
         url: https://extended.example.com/api/v1/write
-        minMetricImportance: extended
+        metrics:
+          minMetricImportance: extended
     asserts:
       - matchRegex:
-          path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
+          path: data.GATEWAY_EXTENDED_DEST_METRICS_ALLOWLIST
           pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|aws_ec2_\.\*\|aws_autoscaling_\.\*\|aws_usage_\.\*\|aws_networkelb_\.\*\|aws_natgateway_\.\*\|stackdriver_cloudsql_database_\.\*\|stackdriver_gcs_bucket_\.\*\|stackdriver_compute_googleapis_com_location_\.\*\|stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_\.\*\|stackdriver_internal_\(tcp\|udp\)_lb_rule_\.\*\|stackdriver_nat_gateway_\.\*$'
 
   - it: should admit Azure families to a destination at their tier
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     set:
       <<: *azure
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.extended:
+      pipeline.destinations.extended:
+        type: prometheus
         url: https://extended.example.com/api/v1/write
-        minMetricImportance: extended
+        metrics:
+          minMetricImportance: extended
     asserts:
       - matchRegex:
-          path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
+          path: data.GATEWAY_EXTENDED_DEST_METRICS_ALLOWLIST
           pattern: '\|azure_microsoft_dbforpostgresql_flexibleservers_\.\*\|azure_microsoft_storage_storageaccounts_blobservices_\.\*\|azure_microsoft_containerservice_managedclusters_\.\*\|azure_microsoft_compute_virtualmachinescalesets_\.\*\|azure_microsoft_network_loadbalancers_\.\*\|azure_microsoft_network_natgateways_\.\*$'
 
   - it: should keep provider families out of a stricter destination
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     set:
       <<: *cloudwatch
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.strict:
+      pipeline.destinations.strict:
+        type: prometheus
         url: https://strict.example.com/api/v1/write
-        minMetricImportance: recommended
+        metrics:
+          minMetricImportance: recommended
     asserts:
       - notMatchRegex:
-          path: data.GATEWAY_UNFILTERED_PROM_METRICS_STRICT
+          path: data.GATEWAY_STRICT_DEST_METRICS_ALLOWLIST
           pattern: 'aws_rds_|aws_s3_|aws_ec2_|aws_autoscaling_|aws_usage_|aws_networkelb_|aws_natgateway_'
 
   - it: should follow a raised importance into the stricter destination
@@ -772,12 +778,14 @@ tests:
     set:
       <<: *cloudwatch
       pipeline.metrics.provider.cloudwatch.metricImportance: recommended
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.strict:
+      pipeline.destinations.strict:
+        type: prometheus
         url: https://strict.example.com/api/v1/write
-        minMetricImportance: recommended
+        metrics:
+          minMetricImportance: recommended
     asserts:
       - matchRegex:
-          path: data.GATEWAY_UNFILTERED_PROM_METRICS_STRICT
+          path: data.GATEWAY_STRICT_DEST_METRICS_ALLOWLIST
           pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|aws_ec2_\.\*\|aws_autoscaling_\.\*\|aws_usage_\.\*\|aws_networkelb_\.\*\|aws_natgateway_\.\*$'
 
   # A disabled provider must not widen any allowlist with its families.
@@ -791,12 +799,14 @@ tests:
   - it: should add no provider family to the allowlist when no provider is enabled
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.extended:
+      pipeline.destinations.extended:
+        type: prometheus
         url: https://extended.example.com/api/v1/write
-        minMetricImportance: diagnostic
+        metrics:
+          minMetricImportance: diagnostic
     asserts:
       - notMatchRegex:
-          path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
+          path: data.GATEWAY_EXTENDED_DEST_METRICS_ALLOWLIST
           pattern: 'aws_[a-z0-9]+_\.\*|stackdriver_[a-z_]+\.\*|azure_[a-z_]+\.\*'
 
   # --- validation --------------------------------------------------------------

@@ -600,22 +600,19 @@ variable "prometheus_remote_write" {
   validation {
     condition = alltrue([
       for name, _ in var.prometheus_remote_write : !contains(
-        # `egress` is the fan-out seam's own component label. The rest are the
-        # keys the pre-map single-destination shape used, which the chart reads
-        # as a leftover override rather than as a destination.
-        ["egress", "enabled", "url", "urlEnv", "minMetricImportance", "unfilteredMetricsEnv",
-        "externalLabels", "authType", "basicAuth", "bearer", "oauth2", "sigv4", "tls"],
+        # `egress` and `destination` are names the chart reserves. The rest are
+        # the other entries of the chart's `pipeline.destinations` map, which
+        # this input shares: a key of the same name would merge into that
+        # destination and turn it into a remote write.
+        ["egress", "destination", "loki", "googleCloud", "datadog", "otlp"],
         name,
       )
     ])
     error_message = <<-EOT
-      A prometheus_remote_write key may not be `egress`, nor any of the chart's pre-map
-      single-destination keys (`enabled`, `url`, `authType`, `basicAuth`, `bearer`, `oauth2`,
-      `sigv4`, `tls`, `externalLabels`, `urlEnv`, `minMetricImportance`, `unfilteredMetricsEnv`).
-
-      Both are render-time failures the chart raises and `terraform validate` cannot: `egress`
-      collides with the fan-out seam's component label, and the rest are read as a leftover
-      override of the old singular shape.
+      A prometheus_remote_write key may not be `egress` or `destination`, which the chart reserves,
+      nor `loki`, `googleCloud`, `datadog`, or `otlp`, the other destinations on the chart's
+      `pipeline.destinations` map. A key of the same name merges into that destination and turns it
+      into a remote write.
     EOT
   }
 

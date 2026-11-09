@@ -14,7 +14,7 @@ release:
 set:
   tags.default: false
   pipeline.destinations.loki.enabled: false
-  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+  pipeline.destinations.thanos.enabled: false
 templates:
   - templates/scrapers/monitor-cni.yaml
 tests:

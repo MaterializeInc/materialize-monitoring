@@ -33,9 +33,9 @@ const IDENTITY_ANNOTATIONS: &[&str] = &[
 /// Every declared Prometheus remote-write destination lands, with its own tier
 /// filter.
 ///
-/// `pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a **map**,
-/// and Helm deep-merges maps: a module writing to a mistyped path adds a key
-/// beside the chart's `thanos` rather than replacing anything. So each
+/// Each is a `pipeline.destinations` entry of type `prometheus`. That is a
+/// **map**, and Helm deep-merges maps: a module writing to a mistyped path adds
+/// a key beside the chart's `thanos` rather than replacing anything. So each
 /// destination is checked in three places, because each fails differently and
 /// only the first is visible in the config at all:
 ///
@@ -65,7 +65,7 @@ pub fn remote_write(ctx: &Ctx) -> Result<()> {
     // the half most likely to be wrong.
     let empty = Map::new();
     let composed = ctx
-        .composed("pipeline.metrics.gateway.destination.prometheusRemoteWrite")
+        .composed("pipeline.destinations")
         .and_then(Value::as_object)
         .unwrap_or(&empty);
     let annotations = ctx
@@ -88,8 +88,7 @@ pub fn remote_write(ctx: &Ctx) -> Result<()> {
         }
         let Some(composed) = composed.get(name) else {
             problems.push(format!(
-                "{name}: the module composed no \
-                 pipeline.metrics.gateway.destination.prometheusRemoteWrite.{name} document"
+                "{name}: the module composed no pipeline.destinations.{name} document"
             ));
             continue;
         };
@@ -112,7 +111,7 @@ pub fn remote_write(ctx: &Ctx) -> Result<()> {
     }
     report(
         problems,
-        "See destinations.tf and the prometheusRemoteWrite map in the chart.",
+        "See destinations.tf and the chart's pipeline.destinations map.",
     )
 }
 
@@ -232,7 +231,7 @@ fn env_problems(
     env: &BTreeMap<String, String>,
     problems: &mut Vec<String>,
 ) {
-    let url_env = format!("GATEWAY_PROM_DEST_{}", slug(name));
+    let url_env = format!("GATEWAY_{}_DEST", slug(name));
     match (env.get(&url_env), str_at(composed, "url")) {
         (None, _) => problems.push(format!(
             "{name}: the gateway env ConfigMap sets no {url_env}"
@@ -243,7 +242,7 @@ fn env_problems(
         _ => {}
     }
 
-    let tier_env = format!("GATEWAY_UNFILTERED_PROM_METRICS_{}", slug(name));
+    let tier_env = format!("GATEWAY_{}_DEST_METRICS_ALLOWLIST", slug(name));
     let want_tier = str_at(declared, "min_importance").unwrap_or("all");
     match env.get(&tier_env).map(String::as_str) {
         None => problems.push(format!(

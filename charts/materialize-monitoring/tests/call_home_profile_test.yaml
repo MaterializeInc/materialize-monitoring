@@ -17,7 +17,7 @@ set:
   tags.default: false
   tags.pipeline: true
   pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
-  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
+  pipeline.destinations.thanos.url: https://metrics.example.com/api/v1/receive
 tests:
   - it: should send to the production control plane by default
     template: templates/pipelines/cm-alloy-gateway-env.yaml

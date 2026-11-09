@@ -17,17 +17,13 @@
 # — pick whatever you like and name it in `valueEnv` below.
 
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        # Keep the default in-cluster Thanos remote-write sink on if you also want
-        # cheap, full-fidelity local storage; set enabled: false to send metrics
-        # only to OTLP.
-        prometheusRemoteWrite:
-          thanos:
-            enabled: true
-
   destinations:
+    # Keep the default in-cluster Thanos remote-write sink on if you also want
+    # cheap, full-fidelity local storage; set enabled: false to send metrics
+    # only to OTLP.
+    thanos:
+      enabled: true
+
     honeycomb:
       type: otlp
       # Host:port over gRPC. Over `protocol: http`, a URL such as
