@@ -621,13 +621,25 @@ Labels:
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>otelcol_exporter_enqueue_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        otelcol_exporter_enqueue_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>        otelcol_exporter_enqueue_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">5m</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>otelcol_exporter_enqueue_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>otelcol_exporter_send_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        otelcol_exporter_send_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>        otelcol_exporter_send_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">5m</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>otelcol_exporter_send_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
