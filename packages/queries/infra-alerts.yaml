@@ -823,6 +823,47 @@ alerts:
         avg(last_2m):(
           sum:loki_write_dropped_entries_total{*} by {namespace,service,reason}.as_rate().rollup(sum, 60)
         ) > 0
+  - alert: log-archive-drops
+    group: loki
+    stability: best-effort
+    enabledByDefault: true
+    for: 1m
+    labels:
+      severity: warning
+      component: alloy
+    description:
+      summary: An S3 log archive destination is dropping log records, so the archive has a gap.
+      degraded: |
+        An `s3` destination in `pipeline.destinations` drops a record when its queue
+        is full or when S3 refuses it after retries, by design, so that an S3
+        outage never holds back the install's other log destinations. For a
+        compliance archive each drop is a missing record. Check the gateway's logs
+        for `otelcol.exporter.awss3` errors: an AccessDenied points at the bucket
+        policy or the gateway's AWS identity, and a timeout at the network path. A
+        queue that fills while S3 is healthy needs a larger `queue.queueSize` or a
+        larger `batch.size`.
+    query:
+      id: infra.alloy.log_archive_drops
+      stability: best-effort
+      description:
+        summary: Rate of log records an S3 archive destination dropped, by destination.
+      promQL: |
+        (
+          sum by (namespace, job, component_id) (
+            rate(otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
+          ) > 0
+        )
+        or
+        (
+          sum by (namespace, job, component_id) (
+            rate(otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
+          ) > 0
+        )
+      datadogQuery: |
+        avg(last_5m):(
+          default_zero(sum:otelcol_exporter_enqueue_failed_log_records_total{component_id:otelcol.exporter.awss3.*} by {namespace,service,component_id}.as_rate().rollup(sum, 60))
+          + default_zero(sum:otelcol_exporter_send_failed_log_records_total{component_id:otelcol.exporter.awss3.*} by {namespace,service,component_id}.as_rate().rollup(sum, 60))
+        ) > 0
   - alert: loki-push-err-high
     group: loki
     stability: best-effort

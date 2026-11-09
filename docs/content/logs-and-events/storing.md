@@ -24,6 +24,10 @@ An entry's `type` sets how the gateway writes to it:
 : Sends logs, metrics, or both over one OTLP connection, through components labeled `dest_<name>`.
   A signal is on when its block is present.
 
+`s3`
+: Archives logs as objects in an S3 bucket, through components labeled `dest_<name>`.
+  See [Archive logs to write-once storage](#worm-archive).
+
 To write logs somewhere else as well, add an entry.
 The following example adds an external Loki that never slows down delivery to the bundled one:
 
@@ -105,7 +109,7 @@ The types differ in their default:
   Set `queue.blockOnOverflow: false` on every `loki` destination except the one whose copy must be complete.
   It then drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
   `queue.capacity` sets how far it can fall behind before it drops.
-- An `otlp` destination drops.
+- Every other type drops.
   It counts what it drops in `otelcol_exporter_enqueue_failed_log_records_total`, and `queue.queueSize` sets how many requests it holds.
 
 The render warns when more than one log destination blocks.
@@ -114,6 +118,81 @@ The render warns when more than one log destination blocks.
 >   `pipeline.logging.gateway.destination.loki` is deprecated.
 >   Keys you still set there apply to `pipeline.destinations.loki`, and the render warns.
 >   Move each key across, so `pipeline.logging.gateway.destination.loki.url` becomes `pipeline.destinations.loki.url`.
+
+### Archive logs to write-once storage {#worm-archive}
+
+An `s3` destination writes a copy of selected logs to an S3 bucket.
+With S3 Object Lock in compliance mode on that bucket, no one can delete or overwrite the objects until their retention period ends,
+which is what a compliance archive needs.
+The archive is separate from Loki's own bucket, so Loki's compactor and retention keep working on the operational copy.
+
+The following example archives warnings and above from Materialize's environments:
+
+```yaml
+pipeline:
+  destinations:
+    worm:
+      type: s3
+      bucket: example-audit-logs
+      region: us-east-1
+      prefix: mzmon/audit
+      logs:
+        selector: '{namespace=~"environment-.+"}'
+        minLevel: WARN
+```
+
+Choose what the archive receives with the [reduction fields](#destination-reduction).
+Without them, it receives every log line the gateway processes.
+
+#### Prepare the bucket
+
+The chart writes objects; it can't create the bucket or verify its lock.
+Turn Object Lock on when you create the bucket, and set a default retention in compliance mode:
+
+```bash
+aws s3api create-bucket --bucket example-audit-logs --object-lock-enabled-for-bucket
+aws s3api put-object-lock-configuration --bucket example-audit-logs \
+  --object-lock-configuration '{"ObjectLockEnabled":"Enabled","Rule":{"DefaultRetention":{"Mode":"COMPLIANCE","Days":365}}}'
+```
+
+In compliance mode, no user, the root account included, can shorten the retention or delete an object before it ends.
+Test with a short retention in a scratch bucket first.
+
+Every upload carries a checksum, which S3 requires for an upload into a bucket with Object Lock.
+
+#### Grant the gateway write access
+
+The gateway authenticates with its ambient AWS identity:
+
+- **On EKS,** annotate the gateway's ServiceAccount with an IAM role (IRSA), through `alloy-gateway.serviceAccount.annotations`.
+- **Elsewhere,** put `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the
+  [gateway Secret](../../metrics/storing/#supplying-credentials-the-gateway-secret).
+
+The identity needs `s3:PutObject` on the bucket and prefix, and nothing else.
+To write to a bucket in another account, set `roleArn` to a role there that the gateway's identity can assume.
+
+For an S3-compatible store, set `url` to its endpoint and `forcePathStyle: true`.
+An `http://` URL turns TLS off for that endpoint.
+
+#### What lands in the bucket
+
+The exporter writes one object per batch, gzip-compressed, at `<prefix>/year=YYYY/month=MM/day=DD/hour=HH/minute=MM/logs_<n>.json.gz`.
+The time partitions are UTC unless `partitionTimezone` says otherwise.
+A batch closes after `batch.timeout` (default `1m`) or `batch.size` records (default `8192`), whichever comes first,
+so a quiet minute writes no object.
+
+Each object is OTLP JSON.
+A record's body is the log line, and its stream labels, such as `namespace` and `level`, are attributes.
+`marshaler: body` writes the lines alone, without labels.
+
+#### When the archive drops a record
+
+Like the other OTLP-family destinations, an `s3` destination drops records rather than holding back the gateway's other destinations.
+It drops a record when its queue is full, or when S3 refuses it after retries.
+Either way, the `log-archive-drops` alert fires, and the record is missing from the archive.
+
+The gateway keeps its queue in memory, so a restart also loses what is queued.
+`queue.queueSize` and `batch.size` set how long an S3 outage the archive can ride out.
 
 ## Object storage
 
@@ -327,6 +406,8 @@ Loki has **no native snapshot** mechanism — recovery is a property of the obje
 - **Durability and versioning.** Chunks are immutable once written; enabling object versioning protects against accidental overwrite or deletion.
 - **Cross-region replication.** Replicating the bucket to a second region gives you a recovery point if the primary region is lost.
 - **Tamper evidence.** Object Lock / WORM (compliance mode) makes stored logs immutable for a fixed window — important when logs must serve as evidence in a security or audit event.
+  Locking Loki's own bucket also stops its compactor and retention from deleting chunks,
+  so for a write-once copy, [archive logs to a separate bucket](#worm-archive).
 - **Restore.** Recovery is "repoint Loki at the bucket." The WAL is ephemeral and the index is rebuilt from object storage, so there is no separate database to restore.
 
 > [!INFO]

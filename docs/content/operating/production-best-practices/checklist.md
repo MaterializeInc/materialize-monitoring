@@ -225,7 +225,8 @@ Skip one of these and part of the stack stops working without an error, so nothi
   Edits there are untracked and lost on the next render.
 - [ ] `[operator]` [Alloy](../alloy/#cardinality): Alert on the pipeline's own shedding (`drop_counter_reason`), so a
   rate limit that's dropping lines is visible rather than silent data loss.
-  The shipped `alloy-log-drops` alert covers only entries `loki.write` fails to deliver.
+  The shipped `alloy-log-drops` alert covers only entries `loki.write` fails to deliver,
+  and `log-archive-drops` covers only records an `s3` destination drops.
 - [ ] `[operator]` [Alloy](../alloy/#agent-placement) and [node-exporter](../node-exporter/#coverage): **Verify coverage after any node-pool change.**
   The agent's pod count and `count(up{job="node-exporter"})` should both equal `count(kube_node_info)`.
   A persistent gap is a pool the DaemonSets aren't reaching.
@@ -320,7 +321,8 @@ Skip one of these and part of the stack stops working without an error, so nothi
 - [x] `[chart]` [Alloy](../alloy/): ServiceMonitor or PodMonitor (or GCP `PodMonitoring`) for both roles, scraping
   Alloy's own component metrics: received and sent bytes, dropped lines, and write failures.
 - [x] `[chart]` [Alerting](../../../alerting/architecture/): The rule set ships `alloy-log-drops` (entries `loki.write`
-  drops), `loki-push-err-high` (Loki push errors, including 429 rate limits), and `logging-collection-down`, all on by default.
+  drops), `log-archive-drops` (records an `s3` archive destination drops), `loki-push-err-high` (Loki push errors,
+  including 429 rate limits), and `logging-collection-down`, all on by default.
 - [x] `[chart]` [node-exporter](../node-exporter/#scraping): ServiceMonitor enabled, and `prometheus.io/scrape: "false"`
   on the Service so annotation-based discovery can't scrape it a second time under another `job` label.
 - [x] `[chart]` [Loki](../loki/): ServiceMonitor for the Loki components, with the plaintext exporters scraped

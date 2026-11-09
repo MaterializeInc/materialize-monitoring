@@ -35,6 +35,7 @@ Usage:
       "googleCloud" ( list "metrics" )
       "datadog" ( list "logs" "metrics" )
       "prometheus" ( list "metrics" )
+      "s3" ( list "logs" )
     | toYaml }}
 {{- end }}
 
@@ -66,6 +67,8 @@ Usage:
                     "authTypes" ( list "apiKey" ) )
       "prometheus" ( dict "url" "" "urlRequired" true "minMetricImportance" "all"
                     "authTypes" ( list "none" "basicAuth" "bearer" "sigv4" ) )
+      "s3" ( dict "url" "" "urlRequired" false "minMetricImportance" "all"
+                    "authTypes" ( list "none" ) )
     | toYaml }}
 {{- end }}
 
@@ -86,6 +89,7 @@ Usage:
       "googleCloud" $otel
       "datadog" $otel
       "prometheus" list
+      "s3" $otel
     | toYaml }}
 {{- end }}
 
@@ -99,7 +103,7 @@ Usage:
   {{- $blocks := index ( include "mzmon.destinations.blocksByDefault" $ | fromYaml ) $type }}
 */}}
 {{- define "mzmon.destinations.blocksByDefault" }}
-  {{- dict "loki" true "otlp" false "googleCloud" false "datadog" false "prometheus" false | toYaml }}
+  {{- dict "loki" true "otlp" false "googleCloud" false "datadog" false "prometheus" false "s3" false | toYaml }}
 {{- end }}
 
 
@@ -444,6 +448,19 @@ Usage:
     "hostMetadata" ( dig "hostMetadata" false $raw )
     "project" ( dig "project" "" $raw | toString )
     "externalLabels" ( dig "externalLabels" dict $raw )
+    "bucket" ( dig "bucket" "" $raw | toString )
+    "region" ( dig "region" "" $raw | toString )
+    "prefix" ( dig "prefix" "logs" $raw | toString )
+    "partitionFormat" ( dig "partitionFormat" "" $raw | toString )
+    "partitionTimezone" ( dig "partitionTimezone" "UTC" $raw | toString )
+    "filePrefix" ( dig "filePrefix" "" $raw | toString )
+    "storageClass" ( dig "storageClass" "" $raw | toString )
+    "marshaler" ( dig "marshaler" "otlp_json" $raw | toString )
+    "forcePathStyle" ( dig "forcePathStyle" false $raw )
+    "roleArn" ( dig "roleArn" "" $raw | toString )
+    "batch" ( dict
+      "timeout" ( dig "batch" "timeout" "" $raw | toString )
+      "size" ( dig "batch" "size" 0 $raw ) )
     "location" ( dig "location" "" $raw | toString )
     "tls" ( dict
       "enabled" $tlsEnabled
@@ -643,7 +660,7 @@ Usage:
   {{- $out := list }}
   {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
     {{- $at := printf "pipeline.destinations.%s" $dest.name }}
-    {{- if $dest.urlRequired }}
+    {{- if or $dest.urlRequired $dest.url }}
       {{- $out = append $out ( dict
             "key" $dest.urlEnv
             "value" ( include "mzmon.alloy.destUrl" ( dict "url" ( tpl $dest.url $ ) "tls" $dest.tls ) )
@@ -848,6 +865,27 @@ Usage:
         {{- if index $dest.tls $field }}
           {{- $errors = append $errors ( printf "%s.%s.tls.%s does not apply to a googleCloud destination, which reaches Google's public endpoint with Google's own credentials." $path $name $field ) }}
         {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- if eq $dest.type "s3" }}
+      {{- range $field := list "ca" "cert" "key" "caFile" "certFile" "keyFile" }}
+        {{- if index $dest.tls $field }}
+          {{- $errors = append $errors ( printf "%s.%s.tls.%s does not apply to an s3 destination, which authenticates with the gateway's AWS credentials. An http:// url turns TLS off for an S3-compatible endpoint." $path $name $field ) }}
+        {{- end }}
+      {{- end }}
+      {{- if $dest.active }}
+        {{- range $field := list "bucket" "region" }}
+          {{- if not ( index $dest $field ) }}
+            {{- $errors = append $errors ( printf "%s.%s.%s is required on an s3 destination." $path $name $field ) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if not ( has $dest.marshaler ( list "otlp_json" "otlp_proto" "body" ) ) }}
+        {{- $errors = append $errors ( printf "%s.%s.marshaler is %q. Supported values are: otlp_json, otlp_proto, body." $path $name $dest.marshaler ) }}
+      {{- end }}
+      {{- if not ( has $dest.compression ( list "none" "gzip" ) ) }}
+        {{- $errors = append $errors ( printf "%s.%s.compression is %q. Supported values are: none, gzip." $path $name $dest.compression ) }}
       {{- end }}
     {{- end }}
 

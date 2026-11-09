@@ -314,3 +314,90 @@ tests:
       - matchRegexRaw:
           pattern: "destination.otel is deprecated"
         not: true
+
+  # --- s3 ---------------------------------------------------------------------
+  # A log archive, typically into a bucket with S3 Object Lock for WORM
+  # retention. One object per batch, so the batch is sized for S3.
+  - it: should archive logs to S3 through a batch sized for objects
+    set:
+      pipeline.destinations.worm:
+        type: s3
+        bucket: example-audit-logs
+        region: us-east-1
+        prefix: mzmon/audit
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "egress" \{[^}]*otelcol\.receiver\.loki\.dest_worm\.receiver'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.batch "dest_worm" \{\s*timeout\s*= "1m"\s*send_batch_size\s*= 8192\s*send_batch_max_size = 16384\s*output \{\s*logs = \[otelcol\.exporter\.awss3\.dest_worm\.input\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.awss3 "dest_worm" \{\s*s3_uploader \{\s*region\s*= "us-east-1"\s*s3_bucket\s*= "example-audit-logs"\s*s3_prefix\s*= "mzmon/audit"\s*s3_partition_timezone = "UTC"\s*compression\s*= "gzip"\s*\}\s*marshaler \{\s*type = "otlp_json"'
+
+  - it: should point an s3 destination at an S3-compatible endpoint
+    set:
+      pipeline.destinations.worm:
+        type: s3
+        bucket: audit-logs
+        region: us-east-1
+        url: http://rustfs.storage.svc:9000
+        forcePathStyle: true
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'endpoint\s*= sys\.env\("GATEWAY_WORM_DEST"\)\s*disable_ssl\s*= true\s*s3_force_path_style = true'
+        template: templates/pipelines/cm-alloy-gateway.yaml
+      - equal:
+          path: data.GATEWAY_WORM_DEST
+          value: http://rustfs.storage.svc:9000
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+
+  # Without a url there is no endpoint variable to write.
+  - it: should write no endpoint variable for AWS's own S3
+    set:
+      pipeline.destinations.worm:
+        type: s3
+        bucket: example-audit-logs
+        region: us-east-1
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - notExists:
+          path: data.GATEWAY_WORM_DEST
+
+  - it: should require a bucket and a region
+    set:
+      pipeline.destinations.worm:
+        type: s3
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.worm.bucket is required on an s3 destination"
+
+  - it: should refuse a marshaler that cannot compress
+    set:
+      pipeline.destinations.worm:
+        type: s3
+        bucket: example-audit-logs
+        region: us-east-1
+        marshaler: sumo_ic
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pipeline.destinations.worm.marshaler is "sumo_ic"'
+
+  # Like every OTLP-family destination, an archive drops rather than stalls
+  # the install's other copies; log-archive-drops is what makes a drop loud.
+  - it: should not count a default s3 destination as blocking
+    set:
+      pipeline.destinations.worm:
+        type: s3
+        bucket: example-audit-logs
+        region: us-east-1
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "block when their queue fills"
+        not: true

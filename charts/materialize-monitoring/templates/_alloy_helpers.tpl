@@ -432,12 +432,12 @@ Usage:
          otelcol.processor.filter "egress" seam by their own tier filter. Only
          `loki` carries no metrics, and the validator refuses metrics on it. */}}
   {{- range $dest := ( include "mzmon.destinations.metrics" $ | fromYamlArray ) }}
-    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" ) }}
+    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" "s3" ) }}
       {{- $metricsForward = append $metricsForward ( printf "otelcol.processor.transform.%s.input" $dest.label ) }}
     {{- end }}
   {{- end }}
   {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
-    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" ) }}
+    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" "s3" ) }}
       {{- include "mzmon.alloyGateway.pipeline.otel.dest" ( dict "context" $ "dest" $dest ) }}
     {{- end }}
   {{- end }}
@@ -723,6 +723,8 @@ Usage:
     {{- $exporter = ternary "otlp" "otlphttp" ( eq $dest.protocol "grpc" ) }}
   {{- else if eq $dest.type "datadog" }}
     {{- $exporter = "datadog" }}
+  {{- else if eq $dest.type "s3" }}
+    {{- $exporter = "awss3" }}
   {{- end }}
   {{- $exporterInput := printf "otelcol.exporter.%s.%s.input" $exporter $label }}
   {{- $metricsTarget := $exporterInput }}
@@ -781,6 +783,14 @@ otelcol.receiver.loki {{ $label | quote }} {
 }
 
 otelcol.processor.batch {{ $label | quote }} {
+    {{- if eq $dest.type "s3" }}
+    {{- /* One S3 object per batch, so the batch is the object size. The
+           default 200ms would write thousands of small objects an hour. */}}
+    timeout             = {{ $dest.batch.timeout | default "1m" | quote }}
+    send_batch_size     = {{ $dest.batch.size | default 8192 | int }}
+    send_batch_max_size = {{ mul ( $dest.batch.size | default 8192 | int ) 2 }}
+
+    {{- end }}
     output {
         logs = [{{ $exporterInput }}]
     }
@@ -802,6 +812,43 @@ otelcol.processor.batch {{ $label | quote }} {
           "location" $dest.location
           "compression" $dest.compression
           "queue" $dest.queue ) }}
+  {{- else if eq $dest.type "s3" }}
+
+otelcol.exporter.awss3 {{ $label | quote }} {
+    s3_uploader {
+        region              = {{ $dest.region | quote }}
+        s3_bucket           = {{ $dest.bucket | quote }}
+        s3_prefix           = {{ $dest.prefix | quote }}
+    {{- with $dest.partitionFormat }}
+        s3_partition_format = {{ . | quote }}
+    {{- end }}
+        s3_partition_timezone = {{ $dest.partitionTimezone | quote }}
+    {{- with $dest.filePrefix }}
+        file_prefix         = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.storageClass }}
+        storage_class       = {{ . | quote }}
+    {{- end }}
+        compression         = {{ $dest.compression | quote }}
+    {{- with $dest.roleArn }}
+        role_arn            = {{ . | quote }}
+    {{- end }}
+    {{- if $dest.url }}
+        endpoint            = sys.env({{ $dest.urlEnv | quote }})
+      {{- if hasPrefix "http://" ( tpl $dest.url $root ) }}
+        disable_ssl         = true
+      {{- end }}
+    {{- end }}
+    {{- if $dest.forcePathStyle }}
+        s3_force_path_style = true
+    {{- end }}
+    }
+
+    marshaler {
+        type = {{ $dest.marshaler | quote }}
+    }
+    {{- include "mzmon.alloyGateway.otel.sendingQueue" $dest.queue }}
+}
   {{- else if eq $dest.type "datadog" }}
 
 otelcol.exporter.datadog {{ $label | quote }} {

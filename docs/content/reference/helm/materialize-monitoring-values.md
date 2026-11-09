@@ -1544,6 +1544,7 @@ Each entry has a `type`:
   authenticated with the gateway's Google identity. Metrics are on unless `metrics.enabled` is `false`.
 - `datadog`: logs, metrics, or both, through Datadog's exporter, authenticated with an API key.
 - `prometheus`: metrics, through Prometheus remote write. Metrics are on unless `metrics.enabled` is `false`.
+- `s3`: logs, archived to S3 objects, for example into a bucket with S3 Object Lock for write-once retention.
 
 On a type that carries several signals, a signal is on when its block is present,
 so an `otlp` or `datadog` entry sends nothing until it has a `logs` or `metrics` block.
@@ -1576,7 +1577,7 @@ The following table lists each field, the types it applies to, and its default:
 
 | Field | Types | Default | Meaning |
 | --- | --- | --- | --- |
-| `type` | all | — | `loki`, `otlp`, `googleCloud`, `datadog`, or `prometheus`. Required. |
+| `type` | all | — | `loki`, `otlp`, `googleCloud`, `datadog`, `prometheus`, or `s3`. Required. |
 | `enabled` | all | `true` | Write to this destination. |
 | `url` | all but `datadog` | — | Endpoint, required when the entry carries a signal. `otlp`: a base URL over HTTP, `host:port` over gRPC. |
 | `url` | `googleCloud` | `https://telemetry.googleapis.com` | Override for a Private Service Connect endpoint. |
@@ -1591,15 +1592,22 @@ The following table lists each field, the types it applies to, and its default:
 | `metrics.enabled` | all but `loki` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
 | `metrics.minMetricImportance` | all but `loki` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
-| `compression` | `otlp`, `googleCloud` | `gzip` | Request compression. |
+| `compression` | `otlp`, `googleCloud`, `s3` | `gzip` | Request or object compression; `s3` also takes `none`. |
 | `project` / `location` | `googleCloud` | detected on GKE | The project and location every series is filed under. Required off GKE. |
 | `site` | `datadog` | `datadoghq.com` | Your Datadog site, such as `datadoghq.eu`. |
 | `apiKey` | `datadog` | `keyEnv: GATEWAY_<NAME>_DEST_API_KEY` | The API key, inline as `key` (written to a ConfigMap) or through `keyEnv`. |
 | `hostMetadata` | `datadog` | `false` | Send the gateway's host metadata. |
 | `externalLabels` | `prometheus` | `cluster` from `CLUSTER_NAME` | The remote write's `external_labels`. Values are Alloy expressions. |
+| `bucket` / `region` | `s3` | — | The bucket and its region. Required. |
+| `prefix` | `s3` | `logs` | Key prefix inside the bucket. Objects land under `<prefix>/<partition>/`. |
+| `partitionFormat` / `partitionTimezone` | `s3` | minute partitions, `UTC` | `strftime` key partitioning, and its time zone. |
+| `marshaler` | `s3` | `otlp_json` | `otlp_json` keeps labels as attributes; also `otlp_proto` or `body` (the line alone). |
+| `batch` | `s3` | `timeout: 1m`, `size: 8192` | One object per batch: how long and how many records before writing one. |
+| `filePrefix` / `storageClass` | `s3` | — | Object name prefix, and the S3 storage class. |
+| `roleArn` / `forcePathStyle` | `s3` | — | A role to assume beyond the gateway's own, and path-style requests. |
 | `retries` | `loki` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
 | `queue` | `loki` | Alloy's defaults | `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
-| `queue` | `otlp`, `googleCloud`, `datadog` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
+| `queue` | `otlp`, `googleCloud`, `datadog`, `s3` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
 | `authType` | `loki`, `otlp`, `prometheus` | `none` | `none`, `basicAuth`, `bearer`; also `sigv4` on `otlp`, `prometheus`, `headers` on `otlp`. |
 | `basicAuth` / `bearer` | `loki`, `otlp`, `prometheus` | derived | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
 | `headers` | `otlp` | — | For `authType: headers`: a list of `key` with `value` (rendered inline) or `valueEnv`. |
