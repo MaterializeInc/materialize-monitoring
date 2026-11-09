@@ -169,6 +169,8 @@ tests:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault
 
   - it: runs the pre-validate job under RuntimeDefault seccomp, like the cleanup job
     set:

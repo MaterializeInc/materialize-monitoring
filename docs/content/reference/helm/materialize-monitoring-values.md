@@ -9639,10 +9639,13 @@ is the better trade, and `monitoring-critical` covers the ordering.
     "drop": [
       "ALL"
     ]
+  },
+  "seccompProfile": {
+    "type": "RuntimeDefault"
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Container security context, merged over the subchart's read-only root. The exporter runs as UID 65534 and needs no capability to read the host's `/proc`, `/sys` and `/`.
+      <td class="helm-value-desc">Container security context, merged over the subchart's read-only root. The exporter runs as UID 65534 and needs no capability to read the host's `/proc`, `/sys` and `/`. The subchart sets these same defaults; the chart pins them so that the lockdown doesn't depend on subchart defaults.
 </td>
     </tr>
     <tr>
