@@ -101,8 +101,8 @@ of typing rather than isolating it: no increase.
 -->
 
 Everything above `prometheus.relabel "egress"` is shared; everything below it is per destination.
-`pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a map keyed by name, and each entry renders **two** components labelled with that name: a `prometheus.relabel` carrying its importance-tier `keep` rule, feeding a `prometheus.remote_write` carrying its endpoint, auth, and TLS.
-The default map holds one entry, `thanos`.
+Each `pipeline.destinations` entry of type `prometheus` renders **two** components labelled with its name: a `prometheus.relabel` carrying its importance-tier `keep` rule, feeding a `prometheus.remote_write` carrying its endpoint, auth, and TLS.
+The default map holds one such entry, `thanos`.
 
 The filter is upstream of the component rather than a `write_relabel_config` inside its endpoint, which is the whole reason for one component per destination rather than one component with several `endpoint` blocks.
 `write_relabel_config` runs on the way *out* of the write-ahead log, so a shared component would buffer the full firehose to disk for every destination whatever tier it asked for — and a stuck endpoint would hold back WAL truncation for all the others.
@@ -112,7 +112,7 @@ The cost is a WAL per destination, sized to what that destination actually takes
 
 This is the important boundary.
 Only the **processing** pipeline (`gateway.yaml` → `pre-rendered/pipelines/gateway.alloy`) goes through `mz-monitoring-build`, so only it gets JSONSchema validation and typed rendering.
-The **destination** — the `otelcol.processor.filter "egress"` (metrics) and `loki.process "egress"` (logs) swap seams, the prometheus tail (`prometheus.relabel "egress"` → the per-destination `prometheus.relabel "<name>"` → `prometheus.remote_write "<name>"`), and the `loki.write "destination"` sink — is rendered by the Helm helper `charts/materialize-monitoring/templates/_alloy_helpers.tpl` at install time, driven by `.Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite` (and the `logging.*.loki` analog).
+The **destination** — the `otelcol.processor.filter "egress"` (metrics) and `loki.process "egress"` (logs) swap seams, the prometheus tail (`prometheus.relabel "egress"` → the per-destination `prometheus.relabel "<name>"` → `prometheus.remote_write "<name>"`), and the per-destination writers and exporters — is rendered by the Helm helpers in `charts/materialize-monitoring/templates/_alloy_helpers.tpl` and `_destination_helpers.tpl` at install time, driven by `.Values.pipeline.destinations`.
 
 That templated alloy text **never passes through our schema**.
 Its only safety net is the pre-validate jobs (`charts/.../templates/pipelines/validator/job-validate-gateway.yaml`), which run `alloy validate` on the assembled configMap at deploy time.
@@ -124,8 +124,10 @@ Keep the stub roughly in step with the helper, but the helper is the source of t
 ### Destination auth
 
 The metrics `remote_write` helper (`mzmon.alloyGateway.pipeline.prometheusRemoteWrite.dest`) supports `authType` of `none`, `basicAuth`, `bearer`, and `sigv4` (secrets sourced from env vars), **per destination**.
-Every destination resolves through `mzmon.alloyGateway.promDest.resolve`, which is the one place the per-destination defaults and the derived environment variable names (`GATEWAY_PROM_DEST_<NAME>`, `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, `GATEWAY_UNFILTERED_PROM_METRICS_<NAME>`) are written down — the env ConfigMap and the pipeline both read it, so they cannot disagree about a name.
-It resolves each field with `dig` rather than `mergeOverwrite` on purpose: `mergeOverwrite` will not override with a zero value, so `enabled: false` and `tls.verify: false` would both be silently discarded.
+Every destination resolves through `mzmon.destinations.resolve`, which is the one place the per-destination defaults and the derived environment variable names (`GATEWAY_<NAME>_DEST`, `GATEWAY_<NAME>_DEST_PASSWORD`, `GATEWAY_<NAME>_DEST_METRICS_ALLOWLIST`) are written down.
+`mzmon.alloyGateway.promDests` adapts the `prometheus` entries to the shape the remote-write helper and the Thanos-hop validators read, and `mzmon.destinations.envEntries` is the one list the env ConfigMap writes, so the two sides cannot disagree about a name.
+The resolver reads each field with `dig` rather than `mergeOverwrite` on purpose: `mergeOverwrite` will not override with a zero value, so `enabled: false` and `tls.verify: false` would both be silently discarded.
+The deprecated `prometheusRemoteWrite` map folds onto the same list in `mzmon.destinations.legacyPrometheus`, keeping its own derived names (`GATEWAY_PROM_DEST_<NAME>`, `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`) for an entry with no counterpart.
 `sigv4` targets Amazon Managed Prometheus: set `authType: sigv4` + `sigv4.region` (optional `roleArn`) and bind the gateway ServiceAccount via IRSA — the AWS default credential chain then picks up the injected web-identity token, so no static keys.
 See the user-facing [Storing](../../../../metrics/storing/) page for the values.
 (In a *hand-authored* pipeline — outside the chart destination — the same is reachable via a `raw:` `sigv4` block nested in the endpoint; see below.)
