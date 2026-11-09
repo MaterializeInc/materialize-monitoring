@@ -1942,6 +1942,7 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
 | `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last. On an existing install, delete the four StatefulSets first; see [StatefulSet fields that cannot be patched](../../operating/upgrading/#statefulset-fields-that-cannot-be-patched) |
 | `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/stack-wide/#fewer-than-two-zones) |
+| `profiles/s3-worm.values.yaml` | archive a copy of the logs to an S3 bucket with Object Lock, for compliance retention. The bucket and its lock are yours to create; the header has the steps, and see [Log compliance](../../operating/production-best-practices/log-compliance/) |
 | `profiles/s3-compatible.values.yaml` | Ceph RGW, MinIO, or another S3-compatible store with static keys, for both backends. The keys come from two Secrets you create; the header has the commands |
 | `profiles/adhoc.values.yaml` | the whole stack in one file: one replica of everything, no volumes, no NetworkPolicies. For troubleshooting, not production; see [Ad-hoc install](../adhoc/) |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/stack-wide/#namespace-layout) |
@@ -5177,6 +5178,10 @@ An entry's `type` sets how the gateway writes to it:
 : Sends logs, metrics, or both over one OTLP connection, through components labeled `dest_<name>`.
   A signal is on when its block is present.
 
+`s3`
+: Archives logs as objects in an S3 bucket, through components labeled `dest_<name>`.
+  See [Archive logs to write-once storage](#worm-archive).
+
 To write logs somewhere else as well, add an entry.
 The following example adds an external Loki that never slows down delivery to the bundled one:
 
@@ -5223,7 +5228,7 @@ Set any of the following fields in the destination's `logs` block:
 |---|---|
 | `selector` | Keeps only entries matching a LogQL stream selector, such as `{namespace=~"environment-.+"}`. Line filters are allowed after it. |
 | `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. |
-| `keepUnknown` | Set to `false` to drop entries with an `UNKNOWN` level, which `minLevel` keeps. A panic arrives without a level the gateway can parse, so it is `UNKNOWN`. Defaults to `true`. |
+| `keepUnknown` | Set to `false` to drop entries with an `UNKNOWN` level, which `minLevel` keeps. The gateway gives a panic the level `CRITICAL`, so a level floor never drops one. Defaults to `true`. |
 | `sampleRate` | Keeps a fraction of entries, above 0 and at most 1. |
 | `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst` whole lines. `burst` defaults to `rate`, rounded up, and can be lower than it. |
 
@@ -5258,7 +5263,7 @@ The types differ in their default:
   Set `queue.blockOnOverflow: false` on every `loki` destination except the one whose copy must be complete.
   It then drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
   `queue.capacity` sets how far it can fall behind before it drops.
-- An `otlp` destination drops.
+- Every other type drops.
   It counts what it drops in `otelcol_exporter_enqueue_failed_log_records_total`, and `queue.queueSize` sets how many requests it holds.
 
 The render warns when more than one log destination blocks.
@@ -5267,6 +5272,89 @@ The render warns when more than one log destination blocks.
 >   `pipeline.logging.gateway.destination.loki` is deprecated.
 >   Keys you still set there apply to `pipeline.destinations.loki`, and the render warns.
 >   Move each key across, so `pipeline.logging.gateway.destination.loki.url` becomes `pipeline.destinations.loki.url`.
+
+### Archive logs to write-once storage {#worm-archive}
+
+An `s3` destination writes a copy of selected logs to an S3 bucket.
+With S3 Object Lock in compliance mode on that bucket, no one can delete or overwrite the objects until their retention period ends,
+which is what a compliance archive needs.
+The archive is separate from Loki's own bucket, so Loki's compactor and retention keep working on the operational copy.
+
+The following example archives warnings and above from Materialize's environments:
+
+```yaml
+pipeline:
+  destinations:
+    worm:
+      type: s3
+      bucket: example-audit-logs
+      region: us-east-1
+      prefix: mzmon/audit
+      logs:
+        selector: '{namespace=~"environment-.+"}'
+        minLevel: WARN
+```
+
+Choose what the archive receives with the [reduction fields](#destination-reduction).
+Without them, it receives every log line the gateway processes.
+
+`profiles/s3-worm.values.yaml` sets up this destination with a bounded queue.
+For what to decide before you archive, such as the retention mode and what to keep out,
+see [Log compliance](../../operating/production-best-practices/log-compliance/).
+
+#### Prepare the bucket
+
+The chart writes objects; it can't create the bucket or verify its lock.
+Turn Object Lock on when you create the bucket, and set a default retention in compliance mode:
+
+```bash
+aws s3api create-bucket --bucket example-audit-logs --object-lock-enabled-for-bucket
+aws s3api put-object-lock-configuration --bucket example-audit-logs \
+  --object-lock-configuration '{"ObjectLockEnabled":"Enabled","Rule":{"DefaultRetention":{"Mode":"COMPLIANCE","Days":365}}}'
+```
+
+In compliance mode, no user, the root account included, can shorten the retention or delete an object before it ends.
+Test with a short retention in a scratch bucket first.
+
+Every upload carries a checksum, which S3 requires for an upload into a bucket with Object Lock.
+
+#### Grant the gateway write access
+
+The gateway authenticates with its ambient AWS identity:
+
+- **On EKS,** annotate the gateway's ServiceAccount with an IAM role (IRSA), through `alloy-gateway.serviceAccount.annotations`.
+- **Elsewhere,** put `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the
+  [gateway Secret](../../metrics/storing/#supplying-credentials-the-gateway-secret).
+
+The identity needs `s3:PutObject` on the bucket and prefix, and nothing else.
+To write to a bucket in another account, set `roleArn` to a role there that the gateway's identity can assume.
+
+For an S3-compatible store, set `url` to its endpoint and `forcePathStyle: true`.
+An `http://` URL turns TLS off for that endpoint.
+
+#### What lands in the bucket
+
+The exporter writes one object per batch, gzip-compressed, at `<prefix>/year=YYYY/month=MM/day=DD/hour=HH/minute=MM/logs_<uuid>.json.gz`.
+The key ends in a UUIDv7, which in practice no two objects share.
+A UUIDv7 starts with a millisecond timestamp, so keys within a partition sort by when they were written.
+The time partitions are UTC unless `partitionTimezone` says otherwise.
+A batch closes after `batch.timeout` (default `1m`) or `batch.size` records (default `8192`), whichever comes first,
+so a quiet minute writes no object.
+
+Each object is OTLP JSON.
+A record's body is the log line, and its stream labels, such as `namespace` and `level`, are attributes.
+`marshaler: body` writes the lines alone, without labels.
+
+#### When the archive drops a record
+
+Like the other OTLP-family destinations, an `s3` destination drops records rather than holding back the gateway's other destinations.
+It drops a record when its queue is full, or when S3 refuses it after retries.
+Either way, the `log-archive-drops` alert fires, and the record is missing from the archive.
+
+Each batch gets about five minutes of retries, so an S3 outage longer than that drops records.
+The batch in progress and the queue live in the gateway's memory, so a gateway that's killed, for example by the OOM killer, loses them uncounted.
+`queue.queueSize` caps how many batches wait in memory.
+Alloy's default, 1000, can outgrow the gateway's memory limit on a busy install.
 
 ## Object storage
 
@@ -5480,6 +5568,8 @@ Loki has **no native snapshot** mechanism — recovery is a property of the obje
 - **Durability and versioning.** Chunks are immutable once written; enabling object versioning protects against accidental overwrite or deletion.
 - **Cross-region replication.** Replicating the bucket to a second region gives you a recovery point if the primary region is lost.
 - **Tamper evidence.** Object Lock / WORM (compliance mode) makes stored logs immutable for a fixed window — important when logs must serve as evidence in a security or audit event.
+  Locking Loki's own bucket also stops its compactor and retention from deleting chunks,
+  so for a write-once copy, [archive logs to a separate bucket](#worm-archive).
 - **Restore.** Recovery is "repoint Loki at the bucket." The WAL is ephemeral and the index is rebuilt from object storage, so there is no separate database to restore.
 
 > [!INFO]
@@ -9112,7 +9202,8 @@ Skip one of these and part of the stack stops working without an error, so nothi
   Edits there are untracked and lost on the next render.
 - [ ] `[operator]` [Alloy](../alloy/#cardinality): Alert on the pipeline's own shedding (`drop_counter_reason`), so a
   rate limit that's dropping lines is visible rather than silent data loss.
-  The shipped `alloy-log-drops` alert covers only entries `loki.write` fails to deliver.
+  The shipped `alloy-log-drops` alert covers only entries `loki.write` fails to deliver,
+  and `log-archive-drops` covers only records an `s3` destination drops.
 - [ ] `[operator]` [Alloy](../alloy/#agent-placement) and [node-exporter](../node-exporter/#coverage): **Verify coverage after any node-pool change.**
   The agent's pod count and `count(up{job="node-exporter"})` should both equal `count(kube_node_info)`.
   A persistent gap is a pool the DaemonSets aren't reaching.
@@ -9207,7 +9298,8 @@ Skip one of these and part of the stack stops working without an error, so nothi
 - [x] `[chart]` [Alloy](../alloy/): ServiceMonitor or PodMonitor (or GCP `PodMonitoring`) for both roles, scraping
   Alloy's own component metrics: received and sent bytes, dropped lines, and write failures.
 - [x] `[chart]` [Alerting](../../../alerting/architecture/): The rule set ships `alloy-log-drops` (entries `loki.write`
-  drops), `loki-push-err-high` (Loki push errors, including 429 rate limits), and `logging-collection-down`, all on by default.
+  drops), `log-archive-drops` (records an `s3` archive destination drops), `loki-push-err-high` (Loki push errors,
+  including 429 rate limits), and `logging-collection-down`, all on by default.
 - [x] `[chart]` [node-exporter](../node-exporter/#scraping): ServiceMonitor enabled, and `prometheus.io/scrape: "false"`
   on the Service so annotation-based discovery can't scrape it a second time under another `job` label.
 - [x] `[chart]` [Loki](../loki/): ServiceMonitor for the Loki components, with the plaintext exporters scraped
@@ -9561,6 +9653,11 @@ Skip one of these and the stack runs short of resources, or costs more than it n
 
 Skip one of these and nothing breaks.
 Each adds defense in depth, or extra signal where your environment calls for it.
+
+- [ ] `[operator]` [Log compliance](../log-compliance/): **If a requirement says logs must be kept unaltered,
+  archive them to a bucket with S3 Object Lock in compliance mode**, with `profiles/s3-worm.values.yaml`.
+  Loki deletes on retention and on request, so it isn't that record.
+  Turn on the secret filter first, narrow the archive with `logs.selector`, and route `log-archive-drops` to the team that owns the requirement.
 
 - [ ] `[operator]` [Network policies](../stack-wide/#network-policies): **Narrow the `0.0.0.0/0` egress rules where your infrastructure lets you.**
   `kube-state-metrics` and `grafana-operator` reach the API server on `443` and `6443` to everywhere, because a chart
@@ -11088,6 +11185,133 @@ The render fails when a `baseURL` has a path and the pin has been removed.
 - [Maintenance windows](../../../alerting/maintenance/): silences, mute windows, and inhibition.
 - [Alertmanager configuration reference](https://prometheus.io/docs/alerting/latest/configuration/) (official): every
   receiver integration and route option.
+
+
+--------------------------------------------------------------------------------
+title: "Log compliance"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-k8s-openapi-0-x/operating/production-best-practices/log-compliance/index.md
+--------------------------------------------------------------------------------
+
+# Log compliance
+
+This page is for you if a security or compliance requirement says logs must be kept, unaltered, for a set period.
+It covers how to keep that record with the stack, and what the record does and doesn't hold.
+For the setup itself, see [Archive logs to write-once storage](../../../logs-and-events/storing/#worm-archive).
+What to do about it is in the [production checklist](../checklist/).
+
+{{< rfc-2119 >}}
+
+## Keep the record outside Loki {#outside-loki}
+
+The bundled Loki is the operational copy of your logs, and it isn't a tamper-proof record.
+Its compactor deletes logs when their retention ends, and its deletion API removes them on request.
+The identity Loki writes with needs permission to delete objects for both, so it can delete any chunk.
+
+For a record that must survive unchanged, you SHOULD archive a second copy through an `s3` destination,
+into an S3 bucket with Object Lock in compliance mode.
+In compliance mode, no one can delete or overwrite an object version, or shorten its retention, until the retention ends.
+`profiles/s3-worm.values.yaml` adds the destination.
+
+The archive MUST use a bucket of its own, not Loki's.
+A lock on Loki's bucket keeps every object Loki deletes until its retention ends, so the bucket's storage grows without bound.
+
+## Separate who can change the archive {#separation-of-duties}
+
+Compliance mode stops anyone from deleting an object version.
+It doesn't stop an administrator of the bucket's account from changing the bucket policy, or from stopping new writes.
+
+- You SHOULD keep the archive bucket in an AWS account that the people who operate the monitoring stack don't administer.
+  The gateway writes there through a role in that account, which it assumes with `roleArn`.
+- The gateway's identity MUST have `s3:PutObject` on the bucket and prefix, and nothing else.
+  An identity that can delete can hide an object behind a delete marker, which Object Lock allows because the locked version stays underneath.
+
+## Choose the retention mode and period {#retention}
+
+The chart doesn't set a retention on the objects it writes.
+The bucket's default retention is what protects each one, so set it on the bucket, in compliance mode, for the period your requirement names.
+
+Governance mode lets an identity with `s3:BypassGovernanceRetention` remove a lock.
+You MAY use it while you validate the archive, but you SHOULD NOT treat a governance-mode bucket as a compliance record.
+
+You SHOULD try the whole path in a scratch bucket with a one-day retention first.
+A compliance-mode retention can't be shortened after it's set, so a mistake in the period costs storage until the period ends.
+
+## Decide what goes in before it goes in {#before-archiving}
+
+A line in the archive can't be redacted or removed until its retention ends.
+That holds for a credential a component logged by mistake, and for personal data.
+
+- You SHOULD [turn on the secret filter](../secret-filtering/#turn-it-on) before the archive receives anything.
+  The filter runs before the gateway hands a line to any destination, so it redacts the archive's copy as well.
+- You SHOULD narrow the archive to the streams your requirement names, with `logs.selector`.
+  Without a selector, the archive receives every line the gateway forwards.
+- If a regulation lets people ask for their personal data to be erased, confirm with your compliance team that the archived streams can't contain any.
+  Loki's deletion API can honor an erasure request, and the archive can't.
+
+## Know what the archive doesn't hold {#gaps}
+
+The archive is a copy of what the gateway forwards.
+It differs from a complete record of what your workloads logged in the following ways:
+
+- **Processing.** The archive holds each line after the gateway processes it, the same line the bundled Loki stores.
+  Levels are normalized, secrets the filter finds are redacted, and lines longer than the gateway's limit are cut.
+- **Drops.** The archive drops a record when its queue is full, or when S3 still refuses the batch after about five minutes of retries.
+  Each drop fires `log-archive-drops`, and the record is missing for good.
+- **A killed gateway.** The batch in progress and the queue live in the gateway's memory.
+  A gateway that's killed, for example by the OOM killer or a node failure, loses them, and no counter records the loss.
+- **Lines that never reach the gateway.** A line lost upstream is missing from every destination.
+  A node that fails before its agent ships a line loses it this way.
+
+You SHOULD route `log-archive-drops` to the team that owns the requirement, because each firing marks a window with records missing:
+
+```yaml
+alerting:
+  routes:
+    extra:
+      - matchers: ['alertname="log-archive-drops"']
+        receiver: COMPLIANCE_RECEIVER
+        continue: true
+```
+
+Replace `COMPLIANCE_RECEIVER` with a receiver defined under `alerting.receivers`.
+For more information, see [Extra routes](../../../alerting/channels/#extra-routes).
+
+## Keep the queue inside the gateway's memory {#queue}
+
+While S3 is slow or unreachable, batches wait in the gateway's memory, up to `queue.queueSize` of them.
+Alloy's default is 1000 batches.
+On a busy install, that many can outgrow the gateway's memory limit, and the OOM killer then restarts the gateway, which interrupts every destination.
+
+The profile sets `queueSize` to 20, so at most 20 batches of `batch.size` records wait.
+Past that, the archive drops new batches and counts them.
+You SHOULD raise `queueSize` only together with `alloy-gateway.alloy.resources`; for more information, see [Gateway memory](../alloy/#gateway-memory).
+
+A longer queue doesn't lengthen the outage the archive survives.
+Each batch is retried for about five minutes after its first attempt, and then dropped.
+
+## Check the archive {#check}
+
+After you install, confirm that objects land in the bucket and carry the lock:
+
+```bash
+aws s3api list-objects-v2 --bucket ARCHIVE_BUCKET --prefix PREFIX/ --max-items 1 --query 'Contents[].Key'
+aws s3api get-object-retention --bucket ARCHIVE_BUCKET --key OBJECT_KEY
+```
+
+Replace the following:
+
+- `ARCHIVE_BUCKET`: the archive bucket's name.
+- `PREFIX`: the destination's `prefix`, which is `mzmon/logs` in the profile.
+- `OBJECT_KEY`: a key that the first command returns.
+
+The first object appears within `batch.timeout` of the first archived line, 1 minute by default.
+Its retention shows `"Mode": "COMPLIANCE"`, and a `RetainUntilDate` one retention period after the object was written.
+
+## See also
+
+- [Archive logs to write-once storage](../../../logs-and-events/storing/#worm-archive)
+- [Secret filtering](../secret-filtering/)
+- [Collection (Alloy)](../alloy/)
 
 
 --------------------------------------------------------------------------------
@@ -16196,6 +16420,7 @@ Each entry has a `type`:
   authenticated with the gateway's Google identity. Metrics are on unless `metrics.enabled` is `false`.
 - `datadog`: logs, metrics, or both, through Datadog's exporter, authenticated with an API key.
 - `prometheus`: metrics, through Prometheus remote write. Metrics are on unless `metrics.enabled` is `false`.
+- `s3`: logs, archived to S3 objects, for example into a bucket with S3 Object Lock for write-once retention.
 
 On a type that carries several signals, a signal is on when its block is present,
 so an `otlp` or `datadog` entry sends nothing until it has a `logs` or `metrics` block.
@@ -16228,30 +16453,37 @@ The following table lists each field, the types it applies to, and its default:
 
 | Field | Types | Default | Meaning |
 | --- | --- | --- | --- |
-| `type` | all | — | `loki`, `otlp`, `googleCloud`, `datadog`, or `prometheus`. Required. |
+| `type` | all | — | `loki`, `otlp`, `googleCloud`, `datadog`, `prometheus`, or `s3`. Required. |
 | `enabled` | all | `true` | Write to this destination. |
-| `url` | all but `datadog` | — | Endpoint, required when the entry carries a signal. `otlp`: a base URL over HTTP, `host:port` over gRPC. |
+| `url` | all but `datadog` | — | Endpoint, required when the entry carries a signal. `otlp`: a base URL over HTTP, `host:port` over gRPC. `s3`: optional, an S3-compatible endpoint. |
 | `url` | `googleCloud` | `https://telemetry.googleapis.com` | Override for a Private Service Connect endpoint. |
 | `urlEnv` | all | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint. |
-| `logs.enabled` | all | on for `loki`; on when `logs` is present for `otlp` | Send logs here. |
+| `logs.enabled` | `loki`, `otlp`, `datadog`, `s3` | on for `loki`, `s3`; on when `logs` is present otherwise | Send logs here. |
 | `logs.url` / `metrics.url` | `otlp` over HTTP, `datadog` | derived | One signal's own endpoint. `datadog` derives both from `site`. |
-| `logs.selector` | all | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
-| `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. |
-| `logs.keepUnknown` | all | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
-| `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
-| `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
-| `metrics.enabled` | all but `loki` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
-| `metrics.minMetricImportance` | all but `loki` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
+| `logs.selector` | `loki`, `otlp`, `datadog`, `s3` | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
+| `logs.minLevel` | `loki`, `otlp`, `datadog`, `s3` | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. |
+| `logs.keepUnknown` | `loki`, `otlp`, `datadog`, `s3` | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
+| `logs.sampleRate` | `loki`, `otlp`, `datadog`, `s3` | `1` | Fraction of entries kept, above 0 and at most 1. |
+| `logs.rateLimit` | `loki`, `otlp`, `datadog`, `s3` | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
+| `metrics.enabled` | `otlp`, `googleCloud`, `datadog`, `prometheus` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
+| `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
-| `compression` | `otlp`, `googleCloud` | `gzip` | Request compression. |
+| `compression` | `otlp`, `googleCloud`, `s3` | `gzip` | Request or object compression; `s3` also takes `none`. |
 | `project` / `location` | `googleCloud` | detected on GKE | The project and location every series is filed under. Required off GKE. |
 | `site` | `datadog` | `datadoghq.com` | Your Datadog site, such as `datadoghq.eu`. |
 | `apiKey` | `datadog` | `keyEnv: GATEWAY_<NAME>_DEST_API_KEY` | The API key, inline as `key` (written to a ConfigMap) or through `keyEnv`. |
 | `hostMetadata` | `datadog` | `false` | Send the gateway's host metadata. |
 | `externalLabels` | `prometheus` | `cluster` from `CLUSTER_NAME` | The remote write's `external_labels`. Values are Alloy expressions. |
+| `bucket` / `region` | `s3` | — | The bucket and its region. Required. |
+| `prefix` | `s3` | `logs` | Key prefix inside the bucket. Objects land under `<prefix>/<partition>/`. |
+| `partitionFormat` / `partitionTimezone` | `s3` | minute partitions, `UTC` | `strftime` key partitioning, and its time zone. |
+| `marshaler` | `s3` | `otlp_json` | `otlp_json` keeps labels as attributes; also `otlp_proto` or `body` (the line alone). |
+| `batch` | `s3` | `timeout: 1m`, `size: 8192` | One object per batch: how long and how many records before writing one. |
+| `filePrefix` / `storageClass` | `s3` | — | Object name prefix, and the S3 storage class. |
+| `roleArn` / `forcePathStyle` | `s3` | — | A role to assume beyond the gateway's own, and path-style requests. |
 | `retries` | `loki` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
 | `queue` | `loki` | Alloy's defaults | `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
-| `queue` | `otlp`, `googleCloud`, `datadog` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
+| `queue` | `otlp`, `googleCloud`, `datadog`, `s3` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
 | `authType` | `loki`, `otlp`, `prometheus` | `none` | `none`, `basicAuth`, `bearer`; also `sigv4` on `otlp`, `prometheus`, `headers` on `otlp`. |
 | `basicAuth` / `bearer` | `loki`, `otlp`, `prometheus` | derived | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
 | `headers` | `otlp` | — | For `authType: headers`: a list of `key` with `value` (rendered inline) or `valueEnv`. |
@@ -25104,7 +25336,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
         * `metrics/`: `metric-tiers.yaml`
       * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`, `_postgres_exporter_helpers.tpl`, and others)
-      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), `adhoc`, the whole stack in one file, and `call-home`, the opt-in control-plane destination that self-managed installs and Bring Your Own Cloud stacks apply. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
+      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), `adhoc`, the whole stack in one file, `call-home`, the opt-in control-plane destination that self-managed installs and Bring Your Own Cloud stacks apply, and `s3-worm`, a compliance archive in a bucket with S3 Object Lock. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
       * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect, each checked with `amtool check-config` and rendered with `amtool template render`
     * `materialize-monitoring-dashboards/`: the Materialize environment dashboards, as a chart and release of their own.
