@@ -1,0 +1,61 @@
+# Profile: s3-worm. Archives a copy of the gateway's logs to an S3 bucket with
+# Object Lock in compliance mode, where no one can delete or change an object
+# until its retention ends.
+#
+# Nothing is archived unless you apply this profile. It adds one destination,
+# `worm`, and touches nothing else, so compose it with the cloud and sizing
+# profiles the install already uses. The bundled Loki keeps its own copy, with
+# its own retention. The operator pages are "Archive logs to write-once
+# storage" in docs/content/logs-and-events/storing.md, and
+# docs/content/operating/production-best-practices/log-compliance.md.
+#
+# Before installing:
+#
+#   1. Create the bucket with Object Lock and a COMPLIANCE default retention.
+#      The chart can't create the bucket or check its lock. Try a one-day
+#      retention in a scratch bucket first: in compliance mode no one, the
+#      root account included, can shorten a retention after it is set.
+#   2. Give the gateway `s3:PutObject` on the bucket and prefix, and nothing
+#      else. On EKS, add it to the IAM role on the gateway's ServiceAccount
+#      (`alloy-gateway.serviceAccount.annotations`). That ServiceAccount takes
+#      one role, which Amazon Managed Prometheus and CloudWatch use as well, so
+#      this profile doesn't set one. For a bucket in another account, set
+#      `roleArn` to a role there that the gateway's role can assume.
+#   3. Turn on the secret filter: set `GATEWAY_SECRETFILTER_RATE` and
+#      `GATEWAY_SECRETFILTER_BULK_RATE` to "1" in `pipeline.env`. A credential
+#      that reaches the archive stays there until its retention ends.
+#
+# Replace each <PLACEHOLDER>. As written, the profile archives every log line
+# the gateway forwards, which is what the bundled Loki receives by default.
+# Narrow it to the streams your requirement names with `logs.selector`.
+#
+# The archive drops records rather than hold back the install's other log
+# destinations: when its queue is full, and when S3 still refuses a batch after
+# about five minutes of retries. Each drop fires the `log-archive-drops` alert.
+pipeline:
+  destinations:
+    worm:
+      type: s3
+      bucket: <ARCHIVE_BUCKET>
+      region: <REGION>
+      # Objects land under <prefix>/year=…/month=…/day=…/hour=…/minute=…/, in UTC.
+      prefix: mzmon/logs
+      # A role in the bucket's account, when the bucket is in another one.
+      # roleArn: arn:aws:iam::<ACCOUNT_ID>:role/<ARCHIVE_WRITER_ROLE>
+      logs:
+        # Archive only the streams your requirement names. For example:
+        # selector: '{namespace=~"environment-.+"}'
+        # Lines whose level the gateway couldn't determine. An archive keeps
+        # them unless the requirement says otherwise.
+        keepUnknown: true
+      # One object per batch: whichever comes first.
+      batch:
+        timeout: 1m
+        size: 8192
+      queue:
+        # At most this many batches wait in the gateway's memory while S3 is
+        # slow or unreachable; past it, the archive drops new batches and
+        # counts them. Alloy's default, 1000, can outgrow the gateway's memory
+        # limit on a busy install. Raise it together with
+        # alloy-gateway.alloy.resources.
+        queueSize: 20

@@ -609,9 +609,9 @@ The levels a log destination's `minLevel` can name, lowest first, and the
 levels it drops for each.
 
 `UNKNOWN` is not on the ladder, so no floor drops it; `logs.keepUnknown`
-decides it on its own. A Rust panic arrives with no level the gateway can
-parse, so it is `UNKNOWN`, and a floor that dropped it would drop the one line
-an escalation needs most. `keepUnknown` defaults to true for that reason.
+decides it on its own, and defaults to true, so a line the gateway couldn't
+level is dropped only when a destination asks. Panics are not `UNKNOWN`: the
+gateway levels them `CRITICAL`.
 
 Usage:
   {{- $below := index ( include "mzmon.destinations.levelsBelow" $ | fromYaml ) "WARN" }}
