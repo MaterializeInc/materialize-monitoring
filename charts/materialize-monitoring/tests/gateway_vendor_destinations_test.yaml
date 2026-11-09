@@ -335,7 +335,7 @@ tests:
           pattern: 'otelcol\.processor\.batch "dest_worm" \{\s*timeout\s*= "1m"\s*send_batch_size\s*= 8192\s*send_batch_max_size = 16384\s*output \{\s*logs = \[otelcol\.exporter\.awss3\.dest_worm\.input\]'
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.exporter\.awss3 "dest_worm" \{\s*s3_uploader \{\s*region\s*= "us-east-1"\s*s3_bucket\s*= "example-audit-logs"\s*s3_prefix\s*= "mzmon/audit"\s*s3_partition_timezone = "UTC"\s*compression\s*= "gzip"\s*\}\s*marshaler \{\s*type = "otlp_json"'
+          pattern: 'otelcol\.exporter\.awss3 "dest_worm" \{\s*s3_uploader \{\s*region\s*= "us-east-1"\s*s3_bucket\s*= "example-audit-logs"\s*s3_prefix\s*= "mzmon/audit"\s*s3_partition_timezone = "UTC"\s*compression\s*= "gzip"\s*unique_key_func_name = "uuidv7"\s*\}\s*marshaler \{\s*type = "otlp_json"'
 
   - it: should point an s3 destination at an S3-compatible endpoint
     set:

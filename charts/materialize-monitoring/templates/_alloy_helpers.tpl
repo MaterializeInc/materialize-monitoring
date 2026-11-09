@@ -832,6 +832,12 @@ otelcol.exporter.awss3 {{ $label | quote }} {
         storage_class       = {{ . | quote }}
     {{- end }}
         compression         = {{ $dest.compression | quote }}
+    {{- /* The default key suffix is a random nine-digit number, so two
+           objects in one partition can share a key. On a versioned bucket the
+           earlier one becomes a noncurrent version that a plain listing
+           doesn't show; on an unversioned one it's overwritten. A UUIDv7
+           can't collide in practice, and sorts by write time. */}}
+        unique_key_func_name = "uuidv7"
     {{- with $dest.roleArn }}
         role_arn            = {{ . | quote }}
     {{- end }}
