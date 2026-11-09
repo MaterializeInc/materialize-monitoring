@@ -10038,6 +10038,13 @@ To read what it found, query the label:
 Each line has `<redacted:RULE_ID>` where a value was replaced, and the rest of the line shows which field held it.
 `loki_secretfilter_secrets_redacted_by_category_total{component_id="loki.secretfilter.shadow"}` counts the matches by rule and by container.
 
+The stored lines are a sample, and the counter is the full count:
+
+- The gateway stores up to 100 shadow lines per second from each namespace, with bursts of up to 1,000.
+  Shadow lines have this limit to themselves, so they don't use up the rate limits that apply to your other lines.
+- A copy that runs past `GATEWAY_SECRETFILTER_TIMEOUT` isn't stored, because it might be only partly redacted.
+  `loki_secretfilter_lines_timed_out_total{component_id="loki.secretfilter.shadow"}` counts it.
+
 Shadow lines go to every log destination, like any other line.
 Each one is redacted, and while the filter is off its original goes to the same destinations unchanged, so a shadow line exposes nothing new.
 After you turn the filter on, turn shadow mode off: the stored lines then carry the placeholders themselves.
@@ -14656,7 +14663,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.15.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.3.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 20.2.2 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.0.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.0 |
@@ -21102,7 +21109,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "kiwigrid/k8s-sidecar",
-  "tag": "2.14.1"
+  "tag": "2.14.3"
 }</pre>
 </td>
       <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
@@ -23459,7 +23466,7 @@ and turning `alerting.server.tls` on changes no volume.
   ],
   "image": {
     "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
-    "tag": "v0.94.2"
+    "tag": "v0.95.1"
   },
   "resources": {
     "limits": {
@@ -27496,7 +27503,10 @@ A line the sniff can't classify goes to the full tier, so a miss costs a scan ra
 
 A third instance, `loki.secretfilter.shadow`, measures the rules without enforcing them.
 When `pipeline.logging.secretFilter.mode` is `shadow`, `inputPrefilter` also forwards every line to it, and `loki.process.secretfilterShadow` keeps only the lines it redacted, labels them `secretfilter="shadow"`, and passes them to `inputProcessor`.
-It drops the rest under the reason `secretfilter shadow`, which the Alloy dashboard counts as deliberate.
+It drops the rest under the reason `secretfilter shadow`.
+Copies skip `inputProcessor`'s rate limits and have a per-namespace limit of their own in `secretfilterShadow`, 100 lines per second with a burst of 1,000.
+That way a rule that matches most of a namespace's lines can't spend the budget its originals need.
+The Alloy dashboard's guard-drops panel excludes everything `secretfilterShadow` drops, by component, because its limit drops under the same reason as the main path's.
 The label is `secretfilter` rather than `job`, because `inputProcessor` parses some sources by `job`.
 In any other mode, the chart removes the shadow receiver from `inputPrefilter`'s `forward_to` as it renders the gateway config, and fails the render if that entry stops matching.
 An idle branch would still cost about 6% of the log path's CPU in the copy and the drop.
@@ -27504,6 +27514,7 @@ An idle branch would still cost about 6% of the log path's CPU in the copy and t
 Both instances replace each secret with `<redacted:RULE_ID>`, where `RULE_ID` is the ID of the Gitleaks rule that matched.
 The placeholder carries no hash, because Alloy's `$SECRET_HASH` is an unsalted SHA-1 that confirms any guessed secret.
 A line that runs past `GATEWAY_SECRETFILTER_TIMEOUT` is forwarded with whatever was redacted and the label `secretfilter="timed-out"`.
+The shadow instance drops such a copy instead, because once labeled `shadow` it would read as a complete result.
 
 Both instances ship with `rate` set to `0`, which forwards every line unscanned and counts it in `loki_secretfilter_entries_bypassed_total`.
 The mode `on` sets `GATEWAY_SECRETFILTER_RATE` and `GATEWAY_SECRETFILTER_BULK_RATE` to `1` in the gateway's env ConfigMap, unless `pipeline.env` already sets them.

@@ -108,6 +108,13 @@ To read what it found, query the label:
 Each line has `<redacted:RULE_ID>` where a value was replaced, and the rest of the line shows which field held it.
 `loki_secretfilter_secrets_redacted_by_category_total{component_id="loki.secretfilter.shadow"}` counts the matches by rule and by container.
 
+The stored lines are a sample, and the counter is the full count:
+
+- The gateway stores up to 100 shadow lines per second from each namespace, with bursts of up to 1,000.
+  Shadow lines have this limit to themselves, so they don't use up the rate limits that apply to your other lines.
+- A copy that runs past `GATEWAY_SECRETFILTER_TIMEOUT` isn't stored, because it might be only partly redacted.
+  `loki_secretfilter_lines_timed_out_total{component_id="loki.secretfilter.shadow"}` counts it.
+
 Shadow lines go to every log destination, like any other line.
 Each one is redacted, and while the filter is off its original goes to the same destinations unchanged, so a shadow line exposes nothing new.
 After you turn the filter on, turn shadow mode off: the stored lines then carry the placeholders themselves.

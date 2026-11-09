@@ -76,12 +76,14 @@ name. The debug tap in both pipelines forks a copy of the stream, keeps about
 1% of it, and drops the rest with reasons <code>sampleDebug</code>, <code>skip self</code> and
 <code>skip loki</code>. The gateway also drops Alloy&rsquo;s own <code>loki.echo</code> output with reason
 <code>alloy loki.echo</code>, which stops the tap re-collecting itself. The secret
-filter&rsquo;s shadow mode scans a copy of every gateway line and drops, with reason
-<code>secretfilter shadow</code>, each copy it found nothing in. None of those lines were
-bound for a store. Every other reason is a guard on the main path, and a line
-dropped there is lost. <code>infra.alloy.log_pipeline.guard_drops</code> excludes the
-deliberate reasons by name, so a reason added to a pipeline later shows up as
-a loss until it is classified here.</p>
+filter&rsquo;s shadow mode scans a copy of every gateway line.
+<code>loki.process.secretfilterShadow</code> drops each copy it found nothing in, with
+reason <code>secretfilter shadow</code>, and the copies over its own rate limit, with
+reason <code>ratelimit_drop_stage</code>. None of those lines were bound for a store.
+Every other drop is a guard on the main path, and a line dropped there is
+lost. <code>infra.alloy.log_pipeline.guard_drops</code> excludes the deliberate reasons
+by name and the shadow branch by component, so a reason added to a pipeline
+later shows up as a loss until it is classified here.</p>
 
 <h4 id="infra.alloy.health.agents_missing">infra.alloy.health.agents_missing
   <a class="anchor" href="#infra.alloy.health.agents_missing">#</a>
@@ -1046,7 +1048,8 @@ by reason.
 </span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
 </span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
 </span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
-</span></span><span style="display:flex;"><span>      reason<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">sampleDebug|skip self|skip loki|alloy loki.echo|secretfilter shadow</span>&#34;
+</span></span><span style="display:flex;"><span>      reason<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">sampleDebug|skip self|skip loki|alloy loki.echo</span>&#34;,
+</span></span><span style="display:flex;"><span>      component_id<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">loki.process.secretfilterShadow</span>&#34;
 </span></span><span style="display:flex;"><span>    }
 </span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
@@ -1070,7 +1073,7 @@ by reason.
             
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>cutoff_min<span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_process_dropped_lines_total{
-</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">reason</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(sampledebug</span>,<span style="color:#960050;background-color:#1e0010">skip_self</span>,<span style="color:#960050;background-color:#1e0010">skip_loki</span>,<span style="color:#960050;background-color:#1e0010">alloy_loki.echo</span>,<span style="color:#960050;background-color:#1e0010">secretfilter_shadow)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">reason</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(sampledebug</span>,<span style="color:#960050;background-color:#1e0010">skip_self</span>,<span style="color:#960050;background-color:#1e0010">skip_loki</span>,<span style="color:#960050;background-color:#1e0010">alloy_loki.echo)</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">component_id:loki.process.secretfiltershadow</span>
 </span></span><span style="display:flex;"><span>  } <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">app</span>,<span style="color:#960050;background-color:#1e0010">reason</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>,
 </span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">e</span><span style="color:#ae81ff">-9</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
