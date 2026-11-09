@@ -679,6 +679,11 @@ blocks:
   #
   # The label is `secretfilter`, not `job`: inputProcessor parses some sources
   # by `job`, and a shadow copy should parse like its original.
+  #
+  # A copy that runs past GATEWAY_SECRETFILTER_TIMEOUT is dropped, unlike a
+  # main-stream line. It would carry only the redactions finished in time, and
+  # once labeled `shadow` it would read as a complete result.
+  # loki_secretfilter_lines_timed_out_total still counts it.
   - loki.secretfilter:
       label: shadow
       forward_to: ["loki.process.secretfilterShadow.receiver"]
@@ -689,8 +694,7 @@ blocks:
         arguments:
           - env: GATEWAY_SECRETFILTER_TIMEOUT
           - "0s"
-      drop_on_timeout: false
-      label_timed_out: true
+      drop_on_timeout: true
       origin_label: container
   - loki.process:
       label: secretfilterShadow
@@ -709,6 +713,15 @@ blocks:
             selector: '{secretfilter="shadow"} != "<redacted:"'
             action: drop
             drop_counter_reason: "secretfilter shadow"
+        # The copies' own budget. inputProcessor's rate limits skip them, so a
+        # rule that matches most of a namespace's lines can't spend the budget
+        # its originals need. The per-rule counters still count every match;
+        # the stored copies are a sample for context.
+        - stage.limit:
+            rate: 100
+            burst: 1000
+            drop: true
+            by_label_name: namespace
 
   # --- main processing pipeline -----------
   # Receives only lines that passed a secret filter instance.
@@ -1645,25 +1658,30 @@ blocks:
                       - "__meta_kubernetes_pod_label_app_kubernetes_io_name"
 
         # --- per-level rate limits ------------------------------------------
+        # Shadow copies skip these. secretfilterShadow limits them on a budget
+        # of their own, so a copy never spends one its original needs.
         - stage.match:
-            selector: '{level="INFO"}'
+            selector: '{level="INFO", secretfilter!="shadow"}'
             blocks:
               - stage.limit:
                   rate: 1000
                   burst: 20000
                   drop: false
         - stage.match:
-            selector: '{level!~"(CRITICAL|ERROR|WARN|INFO)"}'
+            selector: '{level!~"(CRITICAL|ERROR|WARN|INFO)", secretfilter!="shadow"}'
             blocks:
               - stage.limit:
                   rate: 1000
                   burst: 5000
                   drop: true
                   by_label_name: namespace
-        - stage.limit:
-            rate: 10000
-            burst: 100000
-            drop: false
+        - stage.match:
+            selector: '{level=~".+", secretfilter!="shadow"}'
+            blocks:
+              - stage.limit:
+                  rate: 10000
+                  burst: 100000
+                  drop: false
 
         # --- final label/metadata shaping -----------------------------------
         - stage.drop:

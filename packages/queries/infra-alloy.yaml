@@ -62,12 +62,14 @@ description: |
   1% of it, and drops the rest with reasons `sampleDebug`, `skip self` and
   `skip loki`. The gateway also drops Alloy's own `loki.echo` output with reason
   `alloy loki.echo`, which stops the tap re-collecting itself. The secret
-  filter's shadow mode scans a copy of every gateway line and drops, with reason
-  `secretfilter shadow`, each copy it found nothing in. None of those lines were
-  bound for a store. Every other reason is a guard on the main path, and a line
-  dropped there is lost. `infra.alloy.log_pipeline.guard_drops` excludes the
-  deliberate reasons by name, so a reason added to a pipeline later shows up as
-  a loss until it is classified here.
+  filter's shadow mode scans a copy of every gateway line.
+  `loki.process.secretfilterShadow` drops each copy it found nothing in, with
+  reason `secretfilter shadow`, and the copies over its own rate limit, with
+  reason `ratelimit_drop_stage`. None of those lines were bound for a store.
+  Every other drop is a guard on the main path, and a line dropped there is
+  lost. `infra.alloy.log_pipeline.guard_drops` excludes the deliberate reasons
+  by name and the shadow branch by component, so a reason added to a pipeline
+  later shows up as a loss until it is classified here.
 
 metricImportanceHint: recommended
 
@@ -1050,10 +1052,12 @@ queries:
         2hr old` are lines older than the store accepts, most often a backlog
         draining after an outage. Each of these lines is lost.
       notes: |
-        Excludes the debug tap's sampling, its echo suppression, and the
-        secret filter's shadow copies, which drop copies that were never bound
-        for a store. A reason not listed above is
-        new, and counts as a loss until it is classified.
+        Excludes the debug tap's sampling, its echo suppression, and every
+        drop in the secret filter's shadow branch, which drop copies that were
+        never bound for a store. The shadow branch is excluded by component,
+        because its rate limit drops under `ratelimit_drop_stage` like the main
+        path's. A reason not listed above is new, and counts as a loss until it
+        is classified.
 
         A flat zero means the collectors reported and there was nothing to
         show. No data means nothing was collected at all.
@@ -1064,7 +1068,8 @@ queries:
             app=~"$alloyRole",
             namespace=~"$alloyNamespace",
             pod=~"$alloyPod",
-            reason!~"sampleDebug|skip self|skip loki|alloy loki.echo|secretfilter shadow"
+            reason!~"sampleDebug|skip self|skip loki|alloy loki.echo",
+            component_id!="loki.process.secretfilterShadow"
           }
           %%{interval}
         )
@@ -1082,11 +1087,12 @@ queries:
       )
     # Datadog can't merge in the zero line from the PromQL's `or` arm, so a quiet
     # install reads no data here rather than zero. Datadog writes the spaces in a
-    # reason as underscores, so `skip self` is `skip_self`.
+    # reason as underscores, so `skip self` is `skip_self`, and lowercases tag
+    # values, so the shadow component is `loki.process.secretfiltershadow`.
     datadogQuery: |
       cutoff_min(
         sum:loki_process_dropped_lines_total{
-          $alloyRole AND $alloyNamespace AND $alloyPod AND reason NOT IN (sampledebug,skip_self,skip_loki,alloy_loki.echo,secretfilter_shadow)
+          $alloyRole AND $alloyNamespace AND $alloyPod AND reason NOT IN (sampledebug,skip_self,skip_loki,alloy_loki.echo) AND NOT component_id:loki.process.secretfiltershadow
         } by {app,reason}.as_rate().rollup(sum, 60),
         1e-9
       )

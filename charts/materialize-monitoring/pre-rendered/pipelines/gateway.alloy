@@ -452,8 +452,7 @@ loki.secretfilter "shadow" {
 	gitleaks_config = "/etc/alloy/secretfilter-ingest.toml"
 	redact_with = "<redacted:$SECRET_NAME>"
 	processing_timeout = coalesce(sys.env("GATEWAY_SECRETFILTER_TIMEOUT"), "0s")
-	drop_on_timeout = false
-	label_timed_out = true
+	drop_on_timeout = true
 	origin_label = "container"
 }
 
@@ -478,6 +477,13 @@ loki.process "secretfilterShadow" {
 		selector            = "{secretfilter=\"shadow\"} != \"<redacted:\""
 		action              = "drop"
 		drop_counter_reason = "secretfilter shadow"
+	}
+
+	stage.limit {
+		rate          = 100
+		burst         = 1000
+		drop          = true
+		by_label_name = "namespace"
 	}
 }
 
@@ -2172,7 +2178,7 @@ loki.process "inputProcessor" {
 	}
 
 	stage.match {
-		selector = "{level=\"INFO\"}"
+		selector = "{level=\"INFO\", secretfilter!=\"shadow\"}"
 
 		stage.limit {
 			rate  = 1000
@@ -2182,7 +2188,7 @@ loki.process "inputProcessor" {
 	}
 
 	stage.match {
-		selector = "{level!~\"(CRITICAL|ERROR|WARN|INFO)\"}"
+		selector = "{level!~\"(CRITICAL|ERROR|WARN|INFO)\", secretfilter!=\"shadow\"}"
 
 		stage.limit {
 			rate          = 1000
@@ -2192,10 +2198,14 @@ loki.process "inputProcessor" {
 		}
 	}
 
-	stage.limit {
-		rate  = 10000
-		burst = 100000
-		drop  = false
+	stage.match {
+		selector = "{level=~\".+\", secretfilter!=\"shadow\"}"
+
+		stage.limit {
+			rate  = 10000
+			burst = 100000
+			drop  = false
+		}
 	}
 
 	stage.drop {
