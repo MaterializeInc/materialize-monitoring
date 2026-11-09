@@ -41,7 +41,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.15.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.3.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 20.2.2 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.0.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.4.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.0 |
@@ -6455,7 +6455,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "kiwigrid/k8s-sidecar",
-  "tag": "2.14.1"
+  "tag": "2.14.3"
 }</pre>
 </td>
       <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
@@ -8812,7 +8812,7 @@ and turning `alerting.server.tls` on changes no volume.
   ],
   "image": {
     "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
-    "tag": "v0.94.2"
+    "tag": "v0.95.1"
   },
   "resources": {
     "limits": {
@@ -8854,11 +8854,9 @@ directly. Every profile under `profiles/registry/` repoints it.
       <td class="helm-value-key">alertmanager<wbr>.podAnnotations</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-{
-  "kubectl.kubernetes.io/default-container": "alertmanager"
-}</pre>
+{}</pre>
 </td>
-      <td class="helm-value-desc">Pod annotations. The subchart puts the reloader sidecar first, so this makes `kubectl logs` and `kubectl exec` land in Alertmanager rather than in the sidecar.
+      <td class="helm-value-desc">Pod annotations. The subchart already sets `kubectl.kubernetes.io/default-container` to Alertmanager, so don't add it here: a second copy renders a duplicate key.
 </td>
     </tr>
     <tr>
@@ -8900,8 +8898,7 @@ directly. Every profile under `profiles/registry/` repoints it.
 
 A read-only root filesystem is safe: Alertmanager writes only under
 `--storage.path`, which is the volume, and reads its configuration and
-credentials from mounts. The subchart ships `readOnlyRootFilesystem` commented
-out, and a validator warns when it is turned off.
+credentials from mounts. A validator warns when it is turned off.
 </td>
     </tr>
     <tr>
@@ -8939,7 +8936,7 @@ needs no annotation. See
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Liveness on `/-/healthy` rather than the subchart's `/`, which serves the UI.
+      <td class="helm-value-desc">Liveness on `/-/healthy`.
 </td>
     </tr>
     <tr>
