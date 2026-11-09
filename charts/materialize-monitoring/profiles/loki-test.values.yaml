@@ -25,11 +25,9 @@ tags:
 # which routes to the single `loki` Service in this mode.
 # (The canary reads through `loki-query-frontend`, but it is disabled below.)
 pipeline:
-  logging:
-    gateway:
-      destination:
-        loki:
-          url: 'http://loki.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
+  destinations:
+    loki:
+      url: 'http://loki.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
 
 loki:
   # -- Single-process Loki for hermetic tests.

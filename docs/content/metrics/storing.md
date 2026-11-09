@@ -18,55 +18,57 @@ If you keep the bundled Thanos, it persists blocks to object storage — see [Th
 
 ## The remote-write destinations {#the-remote-write-destinations}
 
-`pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a **map keyed by destination name**.
-The chart ships one entry, `thanos`, pointing at the bundled in-cluster Thanos Receive; adding a key adds a destination.
+A Prometheus remote-write store is an entry of type `prometheus` in `pipeline.destinations`, the map of everything the gateway writes to.
+The chart ships one such entry, `thanos`, pointing at the bundled in-cluster Thanos Receive; adding an entry adds a destination.
 
-Each destination takes these values:
+A `prometheus` entry takes the following values:
 
 | Value | Purpose |
 |---|---|
+| `type` | `prometheus`. Required on an entry you add; `thanos` already has it. |
 | `enabled` | Write to this destination (default `true`). |
 | `url` | Remote-write endpoint. Required, except on `thanos`, which defaults to the in-cluster Receive. |
-| `minMetricImportance` | Which [tier](#the-importance-tiers) this destination receives (default `all`). |
-| `authType` | `none` (default), `basicAuth`, `bearer`, `oauth2`, or `sigv4`. |
-| `sigv4` | AWS SigV4 signing config — for [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa). |
+| `metrics.minMetricImportance` | Which [tier](#the-importance-tiers) this destination receives (default `all`). |
+| `authType` | `none` (default), `basicAuth`, `bearer`, or `sigv4`. |
+| `sigv4` | AWS SigV4 signing config, for [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa). |
 | `tls` | Client TLS for this hop. |
 | `externalLabels` | Extra labels stamped on every sample this destination receives. |
+
+For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
 
 Point the bundled destination at an external store instead:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          thanos:
-            url: https://<your-remote-write-endpoint>/api/v1/write
+  destinations:
+    thanos:
+      url: https://<your-remote-write-endpoint>/api/v1/write
 ```
 
 Or write to two backends at once, each on its own tier:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          # Everything, to storage you already pay for.
-          thanos:
-            minMetricImportance: all
-          # Alerting metrics only, to a backend that bills per sample.
-          amp:
-            url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
-            minMetricImportance: essential
-            authType: sigv4
-            sigv4:
-              region: us-east-1
+  destinations:
+    # Everything, to storage you already pay for.
+    thanos:
+      metrics:
+        minMetricImportance: all
+    # Alerting metrics only, to a backend that bills per sample.
+    amp:
+      type: prometheus
+      url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
+      metrics:
+        minMetricImportance: essential
+      authType: sigv4
+      sigv4:
+        region: us-east-1
 ```
 
-The name is more than a label in `values`: it becomes the **Alloy component label**, so it appears as `prometheus.remote_write.<name>` in the gateway's own metrics and in its UI, and it is the fragment the [credential environment variables](#credential-environment-variables) are derived from.
-It must match `[a-zA-Z_][a-zA-Z0-9_]*` — no dashes or dots — and `egress` is reserved for the fan-out seam.
+The name is more than a label in `values`.
+It becomes the **Alloy component label**, so it appears as `prometheus.remote_write.<name>` in the gateway's own metrics and in its UI.
+It's also the fragment the [credential environment variables](#credential-environment-variables) are derived from.
+It must match `[a-zA-Z_][a-zA-Z0-9_]*`, with no dashes or dots, and `egress` and `destination` are reserved.
 Both rules fail at render rather than at gateway startup.
 
 ### One component per destination, and why it matters {#one-component-per-destination}
@@ -99,38 +101,54 @@ Add labels for one destination only with its `externalLabels` map, which is usef
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          amp:
-            externalLabels:
-              account: "012345678901"
+  destinations:
+    amp:
+      externalLabels:
+        account: "012345678901"
 ```
 
 Setting `cluster` in `externalLabels` replaces the environment-derived one for that destination.
 
-### Upgrading from the single-destination shape
+### Upgrading from `prometheusRemoteWrite` {#upgrading-from-prometheusremotewrite}
 
-`prometheusRemoteWrite` used to *be* one destination, with `url`, `authType`, and the rest directly under it.
-Those keys now live one level down, under a name.
-An install that never overrode them upgrades with no change at all — the default `thanos` destination writes to the same endpoint on the same tier.
+Remote-write destinations used to be configured under `pipeline.metrics.gateway.destination.prometheusRemoteWrite`, a map of the same shape.
+That map is deprecated.
+Each entry you still set there applies as a `prometheus` entry of `pipeline.destinations`, and the render warns.
 
-An install that did override them **fails at render** with a message naming the keys to move.
-That is deliberate rather than unfriendly: Helm merges maps, so a leftover `prometheusRemoteWrite.url` would land *beside* `thanos` rather than replacing it.
-The setting would apply to nothing, the default endpoint would keep receiving, and there would be no error and no metric gap to notice.
-Move each key under a name — `thanos` to keep the bundled Receive:
+To move an entry, apply the following changes:
+
+- Put it under `pipeline.destinations`, with `type: prometheus`.
+- Move `minMetricImportance` and `unfilteredMetricsEnv` under `metrics`.
+  Every other field keeps its name.
+- Check the credential variable names.
+  While an entry stays in the old map, it keeps the credential names that map derived, such as `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
+  That includes a retune of `thanos`.
+  Once moved, it derives `GATEWAY_AMP_DEST_PASSWORD`.
+  If a Secret already uses the old names, keep them with the `*Env` fields, such as `basicAuth.passwordEnv`.
+  The URL and allowlist variables are written by the chart itself, so their new names need nothing from you.
+
+The following example moves an entry:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        prometheusRemoteWrite:
-          thanos:                       # was: directly under prometheusRemoteWrite
-            url: https://metrics.example.com/api/v1/write
-            authType: bearer
+  destinations:
+    amp:                                  # was: prometheusRemoteWrite.amp
+      type: prometheus
+      url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-.../api/v1/remote_write
+      metrics:
+        minMetricImportance: essential    # was: minMetricImportance
+      authType: sigv4
+      sigv4:
+        region: us-east-1
 ```
+
+An entry named after a destination of another type, such as `loki`, fails at render rather than turning that destination into a remote write.
+
+The map's older shape, with `url`, `authType`, and the rest directly under `prometheusRemoteWrite` rather than under a name,
+**fails at render** with a message naming the keys to move.
+Helm merges maps, so a leftover `prometheusRemoteWrite.url` would otherwise apply to nothing,
+and the default endpoint would keep receiving with no error.
+Move those keys onto `pipeline.destinations.thanos` to keep the bundled Receive.
 
 ## Authentication
 
@@ -140,16 +158,16 @@ Set `authType` and fill in the matching block:
 - **`none`** — no auth (the in-cluster Thanos default).
 - **`basicAuth`** — username / password from env.
 - **`bearer`** — bearer token from env.
-- **`oauth2`** — OAuth2 client credentials from env.
 - **`sigv4`** — AWS SigV4 signing, derived from IRSA (see [Amazon Managed Prometheus](#amazon-managed-prometheus-sigv4--irsa) below).
 
-The OpenTelemetry destinations have their own auth block, `destination.otel.auth`, whose `authType` is one of `none`, `basic`, `bearer`, `headers`, `awsSigv4`, or `custom`.
+An `otlp` destination in `pipeline.destinations` takes `none`, `basicAuth`, `bearer`, `headers`, or `sigv4`; see [Generic OTLP](#otlp).
+A `googleCloud` destination uses the gateway's Google identity, and a `datadog` destination its API key.
 
 Whichever destination and method you choose, the gateway reads the actual secret from an environment variable at runtime (`sys.env(...)`).
 There are two ways to populate that variable:
 
 - **Inline in `values`** — the Prometheus remote-write and Loki destinations accept the credential directly (`basicAuth.password`, `bearer.token`, …). When set, the value is baked into the gateway ConfigMap in plaintext, so this is convenient for a quick start but weaker for production.
-- **From a Secret** — leave the inline field blank and provide the same env var through a Secret. This is the preferred path, and the only option for the OpenTelemetry and Datadog destinations, which have no inline field.
+- **From a Secret** — leave the inline field blank and provide the same env var through a Secret. This is the preferred path for every destination.
 
 Both are described next.
 
@@ -161,13 +179,13 @@ The gateway loads its environment from two objects that share one name — `mzmo
 - a **Secret** *you* create — the credential values in the table below, kept out of the rendered manifests.
 
 The chart does **not** create the Secret; it is mounted `optional: true`, so you populate it out-of-band with only the keys your enabled destinations need.
-A bearer-authenticated OTLP endpoint plus a Datadog API key — the pairing in the reference `mzmon-gcp` install — is just two keys:
+For example, a bearer-authenticated `otlp` destination named `collector` and a `datadog` destination named `datadog` need two keys:
 
 ```bash
 kubectl create secret generic mzmon-alloy-gateway-env \
   --namespace monitoring \
-  --from-literal=GATEWAY_OTEL_DEST_BEARER_TOKEN='<token>' \
-  --from-literal=GATEWAY_OTEL_DEST_DATADOG_API_KEY='<api-key>'
+  --from-literal=GATEWAY_COLLECTOR_DEST_BEARER_TOKEN='<token>' \
+  --from-literal=GATEWAY_DATADOG_DEST_API_KEY='<api-key>'
 ```
 
 The Secret's keys are injected as environment variables next to the ConfigMap's, so the key names **are** the env-var names in the table below.
@@ -183,24 +201,26 @@ The Secret's keys are injected as environment variables next to the ConfigMap's,
 
 Populate only the rows for the destinations and auth methods you enable:
 
-`<NAME>` below is the destination's key in the `prometheusRemoteWrite` map, uppercased with anything outside `A-Z0-9` folded to `_` — the `amp` destination reads `GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`.
-Every remote-write row is per destination, so two destinations on `basicAuth` need two pairs of keys.
+`<NAME>` below is the destination's key in `pipeline.destinations`, uppercased with anything outside `A-Z0-9` folded to `_`.
+A `prometheus` destination named `amp` reads `GATEWAY_AMP_DEST_PASSWORD`,
+and a `datadog` destination named `datadog` reads `GATEWAY_DATADOG_DEST_API_KEY`.
+Every row is per destination, so two destinations on `basicAuth` need two pairs of keys.
 
 | Destination · method | `values` block | Secret keys (env vars) |
 |---|---|---|
-| Prometheus remote-write · `basicAuth` | `…prometheusRemoteWrite.<name>.basicAuth` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_<NAME>_PASSWORD` |
-| Prometheus remote-write · `bearer` | `…prometheusRemoteWrite.<name>.bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_BEARER_TOKEN` |
-| Prometheus remote-write · `oauth2` | `…prometheusRemoteWrite.<name>.oauth2` | `GATEWAY_PROMETHEUS_DEST_<NAME>_OAUTH2_CLIENT_ID`, `…_CLIENT_SECRET`, `…_TOKEN_URL` |
-| Prometheus remote-write · client TLS | `…prometheusRemoteWrite.<name>.tls` | `GATEWAY_PROMETHEUS_DEST_<NAME>_TLS_CA`, `…_TLS_CERT`, `…_TLS_KEY` |
-| OTLP · `basic` | `…otel.auth.basic` | `GATEWAY_OTEL_DEST_USERNAME`, `GATEWAY_OTEL_DEST_PASSWORD` |
-| OTLP · `bearer` | `…otel.auth.bearer` | `GATEWAY_OTEL_DEST_BEARER_TOKEN` |
-| OTLP · `headers` | `…otel.auth.headers` | whatever each header's `valueEnv` names — you choose |
-| Datadog | `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_DATADOG_API_KEY` |
-| SigV4 — AMP or OTLP `awsSigv4` | `…prometheusRemoteWrite.<name>.sigv4` / `…otel.auth.awsSigv4` | — none; uses the pod's IRSA identity |
+| `prometheus` or `otlp` · `basicAuth` | `pipeline.destinations.<name>.basicAuth` | `GATEWAY_<NAME>_DEST_USERNAME`, `GATEWAY_<NAME>_DEST_PASSWORD` |
+| `prometheus` or `otlp` · `bearer` | `pipeline.destinations.<name>.bearer` | `GATEWAY_<NAME>_DEST_BEARER_TOKEN` |
+| `otlp` · `headers` | `pipeline.destinations.<name>.headers` | whatever each header's `valueEnv` names; you choose |
+| `datadog` | `pipeline.destinations.<name>.apiKey` | `GATEWAY_<NAME>_DEST_API_KEY` |
+| `prometheus` or `otlp` · `sigv4` | `pipeline.destinations.<name>.sigv4` | none; uses the pod's IRSA identity |
+| Deprecated `prometheusRemoteWrite` | `basicAuth`/`bearer` | `GATEWAY_PROMETHEUS_DEST_<NAME>_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN` |
+| Deprecated `otel` block | `…otel.auth.*`, `…otel.datadogExporter` | `GATEWAY_OTEL_DEST_USERNAME`, `…_PASSWORD`, `…_BEARER_TOKEN`, `…_DATADOG_API_KEY` |
+
+The deprecated `prometheusRemoteWrite` row covers every entry still set there, a retune of `thanos` included.
 
 SigV4 and the cloud-native exporters (GCM via Workload Identity) carry no secret keys — they authenticate with the gateway pod's ambient cloud identity, so those rows stay out of the Secret entirely.
 
-Each remote-write destination can also name its own variables — `basicAuth.usernameEnv`, `bearer.tokenEnv`, and so on — where the derived name is inconvenient or a Secret already uses another.
+Each destination can also name its own variables, such as `basicAuth.usernameEnv`, `bearer.tokenEnv`, or `apiKey.keyEnv`, where the derived name is inconvenient or a Secret already uses another.
 The Terraform module sets them explicitly for this reason; see [Through Terraform](#through-terraform).
 
 ## Controlling what each destination stores
@@ -232,22 +252,21 @@ The defaults lean permissive for cheap local storage and frugal for metered SaaS
 
 | Destination | Default `minMetricImportance` |
 |---|---|
-| `prometheusRemoteWrite.thanos` (bundled Thanos) | `all` |
-| `prometheusRemoteWrite.<name>` (any you add) | `all` |
-| `otlpExporter` (generic OTLP) | `all` |
-| `googleCloudExporter` (GCM) | `recommended` |
-| `datadogExporter` | `recommended` |
+| `pipeline.destinations.thanos` (bundled Thanos) | `all` |
+| `pipeline.destinations` entry of type `prometheus` | `all` |
+| `pipeline.destinations` entry of type `otlp` | `all` |
+| `pipeline.destinations` entry of type `googleCloud` | `recommended` |
+| `pipeline.destinations` entry of type `datadog` | `recommended` |
 
 Set it per destination:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        otel:
-          datadogExporter:
-            minMetricImportance: essential   # ship only alerting metrics to Datadog
+  destinations:
+    datadog:
+      type: datadog
+      metrics:
+        minMetricImportance: essential   # ship only alerting metrics to Datadog
 ```
 
 The series the chart's recording rules write, such as the `ext:*` series for the metadata database, have tiers too.
@@ -265,7 +284,7 @@ See [One component per destination](#one-component-per-destination).
 ### How the allowlist is built
 
 Tier membership is generated from the query registry into `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml` (via `mz-monitoring-build gen-metric-tiers`, or `make metric-tiers`).
-At render time the chart reads that file, unions the tiers at or above each destination's `minMetricImportance`, and hands the gateway the result as an allowlist regex — one environment variable per destination, such as `GATEWAY_UNFILTERED_PROM_METRICS_AMP` for a remote-write destination named `amp`.
+At render time the chart reads that file, unions the tiers at or above each destination's `minMetricImportance`, and hands the gateway the result as an allowlist regex — one environment variable per destination, such as `GATEWAY_AMP_DEST_METRICS_ALLOWLIST` for a destination named `amp`.
 `all` skips the file entirely and uses `.*`.
 Do not edit `metric-tiers.yaml` by hand: reclassify metrics in the registry and regenerate.
 
@@ -311,7 +330,7 @@ otlp_metrics = {
 otlp_auth_header_secrets = { "x-honeycomb-team" = var.honeycomb_api_key }
 ```
 
-Remote-write destinations go through `prometheus_remote_write`, which is the same map keyed by name.
+Remote-write destinations go through `prometheus_remote_write`, keyed by name; each key becomes a `pipeline.destinations` entry of type `prometheus`.
 A key of `thanos` **retunes** the bundled destination rather than adding a second one, so dropping local fidelity and adding AMP is one input:
 
 ```hcl
@@ -332,7 +351,8 @@ gateway_service_account_annotations = {
 ```
 
 `basicAuth` and `bearer` destinations take their credentials from `prometheus_remote_write_credentials`, keyed by the same destination name.
-The module derives the environment variable names from that name and writes them into the chart's values, so the Secret it creates and the config the gateway reads cannot disagree.
+The module derives the environment variable names from that name, as `GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD` and so on,
+and writes them into the chart's values, so the Secret it creates and the config the gateway reads cannot disagree.
 
 Credentials do **not** go through the Helm values — the module puts them in the gateway Secret instead, and rolls the gateway when one changes.
 See the [module README](https://github.com/MaterializeInc/materialize-monitoring/blob/main/terraform/modules/materialize-monitoring/README.md#metric-destinations) for the environment variables each input becomes.
@@ -546,90 +566,113 @@ See [Metrics Architecture](../architecture/) for how the roles connect.
 
 Two families of backend sit alongside the bundled Thanos, and both fan out *in addition to* it rather than replacing it.
 
-**More remote-write stores** — Amazon Managed Prometheus, Mimir, Grafana Cloud, another Thanos — are added as further entries in the [`prometheusRemoteWrite` map](#the-remote-write-destinations).
+**More remote-write stores** — Amazon Managed Prometheus, Mimir, Grafana Cloud, another Thanos — are added as further [`prometheus` entries](#the-remote-write-destinations).
 Nothing on this page is an either/or with the in-cluster Thanos: keeping full fidelity locally while shipping a filtered slice to a metered backend is the shape the map exists for.
 
-**OpenTelemetry (OTLP) destinations** are configured under the `otel` block, described below.
+**OpenTelemetry (OTLP) backends** are entries in `pipeline.destinations`, the map that also holds the gateway's log destinations.
+Each entry is one connection with its own credentials, metric tier, and queue, and it can carry logs as well as metrics.
+The following types send metrics:
 
-Enable the OTLP path with `pipeline.metrics.gateway.destination.otel.enabled: true`, then turn on one or more exporters — `otlpExporter` (generic), `googleCloudExporter`, and `datadogExporter` can all run at once, each with its own `minMetricImportance`.
+`otlp`
+: Any OTLP endpoint, such as Honeycomb, Grafana Cloud, or your own OpenTelemetry Collector.
 
-> [!WARNING]
->   The `otel` block is shared with the logs pipeline.
->   If you enable the OTLP *logs* destination, this block is still used for exporter configuration even when `otel.enabled` is `false` for metrics.
+`googleCloud`
+: Google Cloud Managed Service for Prometheus, through the Telemetry API.
+
+`datadog`
+: Datadog, through its own exporter.
+
+A metrics-carrying entry gets its own tier filter, set by `metrics.minMetricImportance`, so each backend receives only the tiers you choose.
+For the full list of fields, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
+
+> [!NOTE]
+>   The exporters under `pipeline.metrics.gateway.destination.otel` are deprecated.
+>   They still render as before, and the render warns while any is enabled.
+>   See [Move off the deprecated `otel` block](#otel-migration).
 
 ### Generic OTLP (Honeycomb, Grafana Cloud, collectors) {#otlp}
 
-`otlpExporter` is the generic OTLP push exporter — point it at any OTLP-compatible endpoint, whether a vendor (Honeycomb, Grafana Cloud) or your own OpenTelemetry Collector:
+An `otlp` entry sends to any OTLP-compatible endpoint:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        otel:
-          enabled: true
-          otlpExporter:
-            enabled: true
-            url: <host>:4317        # host[:port], no http:// or https:// prefix
-            protocol: grpc          # grpc → otlp, http → otlphttp
-            compression: gzip       # gzip for compatibility, snappy for speed
-          auth:
-            authType: bearer        # none | basic | bearer | headers | awsSigv4 | custom
+  destinations:
+    collector:
+      type: otlp
+      url: collector.example.com:4317
+      protocol: grpc
+      tls:
+        enabled: true
+      metrics:
+        minMetricImportance: recommended
 ```
 
-`url` takes a `host[:port]` with no scheme; `protocol: grpc` selects the OTLP/gRPC exporter and `protocol: http` selects OTLP/HTTP.
-Authentication is configured once under `otel.auth` (shared by the OTLP exporter): pick `authType` and fill the matching block.
-The credential values themselves come from the gateway Secret — see [Supplying credentials](#supplying-credentials-the-gateway-secret) for the env-var keys.
+Over gRPC, `url` is a `host:port`.
+Over `protocol: http`, the default, `url` is a base URL such as `https://otlp.example.com`, and the exporter appends `/v1/metrics`.
+Turn `tls.enabled` on for any endpoint that serves TLS; with it off, the gRPC exporter connects in plaintext.
+
+Set `authType` to authenticate:
+
+| `authType` | Credentials |
+|---|---|
+| `basicAuth` | `basicAuth.username` and `basicAuth.password`, or the variables `basicAuth.usernameEnv` and `basicAuth.passwordEnv` name |
+| `bearer` | `bearer.token`, or the variable `bearer.tokenEnv` names |
+| `headers` | `headers`, a list of request headers |
+| `sigv4` | The gateway's AWS identity, with `sigv4.region`, `sigv4.service`, and an optional `sigv4.roleArn` to assume |
+
+The credential values come from the gateway Secret.
+For the variable names, see [Supplying credentials](#supplying-credentials-the-gateway-secret).
 
 #### API-key headers {#otlp-headers}
 
-Several OTLP vendors authenticate with a custom request header rather than a bearer token — Honeycomb's `x-honeycomb-team`, for one.
-`authType: headers` covers that case without dropping to raw Alloy config:
-
-```yaml
-          auth:
-            authType: headers
-            headers:
-              headers:
-                - key: x-honeycomb-team
-                  valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
-                - key: x-honeycomb-dataset
-                  value: mzmon
-```
-
-Each header sets exactly one of `value` or `valueEnv`.
-`value` renders into the gateway's pipeline ConfigMap in plaintext, so keep it for non-secret routing headers such as a dataset or tenant name; `valueEnv` names an environment variable the gateway reads at startup, which is where a credential belongs.
-The variable name is yours to pick — nothing else in the chart depends on it — so name it after the backend rather than reusing another destination's key.
-
-The chart checks the shape at render time: an empty header list, a header missing its `key`, a header setting both `value` and `valueEnv` or neither, and a `valueEnv` no `extraEnv` or `envFrom` source could supply all fail the install rather than authenticating with an empty header at run time.
-
-For a ready-made starting point — generic OTLP to Honeycomb, including the header auth above — copy the annotated [`otlp-metrics-honeycomb.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otlp-metrics-honeycomb.values.yaml) profile.
-
-### Google Cloud Monitoring (GCM) {#gcm}
-
-`googleCloudExporter` writes OTLP to Google's [Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview) (`telemetry.googleapis.com`).
-The Telemetry API stores the series in Cloud Monitoring as Google Cloud Managed Service for Prometheus metrics, under `prometheus.googleapis.com/`, where PromQL reads them.
-
-> [!NOTE]
->   Before v0.31.0 this destination wrote `workload.googleapis.com/mzmon/<name>` through `otelcol.exporter.googlecloud`.
->   Upgrading moves every series to `prometheus.googleapis.com/<name>/<kind>`, so dashboards and alerting policies reading the old metric types stop receiving data.
->   The project needs the `telemetry.googleapis.com` API enabled, and `prefix` no longer exists.
+Several OTLP vendors authenticate with a custom request header rather than a bearer token, such as Honeycomb's `x-honeycomb-team`.
+`authType: headers` covers that case:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        otel:
-          enabled: true
-          googleCloudExporter:
-            enabled: true
-            minMetricImportance: recommended
+  destinations:
+    honeycomb:
+      type: otlp
+      url: api.honeycomb.io:443
+      protocol: grpc
+      tls:
+        enabled: true
+      metrics: {}
+      authType: headers
+      headers:
+        - key: x-honeycomb-team
+          valueEnv: GATEWAY_HONEYCOMB_API_KEY
+        - key: x-honeycomb-dataset
+          value: mzmon
+```
+
+Each header sets exactly one of `value` or `valueEnv`.
+A `value` renders into the gateway's pipeline ConfigMap in plaintext, so keep it for non-secret routing headers such as a dataset or tenant name.
+A `valueEnv` names an environment variable the gateway reads at startup, which is where a credential belongs.
+The variable name is yours to pick, so name it after the backend.
+
+The chart checks the shape at render time.
+An empty header list, a header with no `key`, a header that sets both `value` and `valueEnv` or neither, and a `valueEnv` that no `extraEnv` or `envFrom` source could supply all fail the install.
+
+For a ready-made starting point, copy the annotated [`otlp-metrics-honeycomb.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otlp-metrics-honeycomb.values.yaml) profile.
+
+### Google Cloud Monitoring (GCM) {#gcm}
+
+A `googleCloud` entry writes OTLP to Google's [Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview) (`telemetry.googleapis.com`).
+The Telemetry API stores the series in Cloud Monitoring as Google Cloud Managed Service for Prometheus metrics, under `prometheus.googleapis.com/`, where PromQL reads them.
+
+```yaml
+pipeline:
+  destinations:
+    googleCloud:
+      type: googleCloud
+      metrics:
+        minMetricImportance: recommended
 ```
 
 The project needs the `telemetry.googleapis.com` API enabled.
-Authentication uses **Workload Identity**: the `alloy-gateway` ServiceAccount is annotated with a Google service account, and `otelcol.auth.google` takes the ambient identity with no credentials in the config.
-The token-exchange mechanics are the same as [Thanos on GCS](#granting-object-storage-access-workload-identity) above, but on the gateway's ServiceAccount rather than Thanos's.
+Authentication uses **Workload Identity**: the `alloy-gateway` ServiceAccount is annotated with a Google service account, and the gateway takes that ambient identity with no credentials in the config.
+The token exchange works the same way as for [Thanos on GCS](#granting-object-storage-access-workload-identity), but on the gateway's ServiceAccount rather than Thanos's.
 That identity needs `roles/monitoring.metricWriter` on the project.
 
 #### What it costs
@@ -664,8 +707,8 @@ Cloud Monitoring files every series under a `prometheus_target` resource.
 
 | Label | Value |
 |---|---|
-| `project_id` | The project the gateway runs in, or `googleCloudExporter.project` |
-| `location` | The GKE cluster's region or zone, or `googleCloudExporter.location` |
+| `project_id` | The project the gateway runs in, or the destination's `project` |
+| `location` | The GKE cluster's region or zone, or the destination's `location` |
 | `cluster` | The series' own `cluster` label, or else `CLUSTER_NAME`, which is the `cluster` every other destination carries |
 | `namespace` | The series' own `namespace` label, as in Thanos |
 | `job`, `instance` | The scrape target's |
@@ -679,32 +722,52 @@ The gateway takes each series' first point as its baseline and does not send it.
 A counter's raw value in Cloud Monitoring therefore differs from Thanos, while `rate()` and `increase()` agree.
 
 Off GKE there is no metadata server to supply the project and the location, and the Telemetry API refuses a point without a location.
-`googleCloudExporter.project` and `googleCloudExporter.location` supply them.
+The destination's `project` and `location` supply them.
 
 Because the destination is metered, it defaults to `minMetricImportance: recommended`.
 `essential` writes less; a lower floor keeps more there.
 
 ### Datadog {#datadog}
 
-`datadogExporter` writes metrics (and logs) to Datadog:
+A `datadog` entry writes metrics, logs, or both to Datadog:
 
 ```yaml
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        otel:
-          enabled: true
-          datadogExporter:
-            enabled: true
-            url: datadoghq.com          # your Datadog site
-            minMetricImportance: recommended
+  destinations:
+    datadog:
+      type: datadog
+      site: datadoghq.eu
+      metrics:
+        minMetricImportance: recommended
 ```
 
-The API key is read from the `GATEWAY_OTEL_DEST_DATADOG_API_KEY` environment variable — source it from a Secret; never inline it in values.
-Set `url` to your Datadog site (for example `datadoghq.com` or `datadoghq.eu`); `metricEndpoint` and `logsEndpoint` default to the matching intake URLs.
+Set `site` to your Datadog site, such as `datadoghq.com` or `datadoghq.eu`.
+The exporter derives its intake endpoints from the site, and `metrics.url` or `logs.url` overrides one for a proxy or PrivateLink.
+The API key is read from `GATEWAY_<NAME>_DEST_API_KEY`, `GATEWAY_DATADOG_DEST_API_KEY` for the entry above.
+Supply it from the gateway Secret, or name another variable in `apiKey.keyEnv`.
 Like Google Cloud, it defaults to `minMetricImportance: recommended`.
-The [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile shows Datadog and GCM enabled together, each on its own tier.
+To send logs too, add a `logs` block.
+
+The [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile shows Datadog and Google Cloud together, each on its own tier.
+
+### Move off the deprecated `otel` block {#otel-migration}
+
+The exporters under `pipeline.metrics.gateway.destination.otel` still render as before.
+To move each one to `pipeline.destinations`, use the following table:
+
+| Deprecated | Replacement |
+|---|---|
+| `otlpExporter` | An entry of `type: otlp`, with a `metrics` block. Its `url` was a bare `host:port`; over `protocol: http`, add the scheme. Set `tls.enabled: true` for a TLS endpoint |
+| `googleCloudExporter` | An entry of `type: googleCloud`. `endpoint` becomes `url` |
+| `datadogExporter` | An entry of `type: datadog`. `url` becomes `site`, and `metricEndpoint` and `logsEndpoint` become `metrics.url` and `logs.url`. Set `apiKey.keyEnv: GATEWAY_OTEL_DEST_DATADOG_API_KEY` to keep reading the same variable |
+| `otel.enabled` | A `metrics` block on each entry |
+| `pipeline.logging.gateway.destination.otel.enabled` | A `logs` block on each `otlp` or `datadog` entry |
+| `otel.auth` | The entry's own `authType`. `awsSigv4` becomes `sigv4`, and the `headers.headers` list becomes `headers` |
+
+For the deprecated `prometheusRemoteWrite` map, see [Upgrading from `prometheusRemoteWrite`](#upgrading-from-prometheusremotewrite).
+
+The raw `config`, `handlers`, and `auth.custom` overrides have no equivalent in `pipeline.destinations`.
+A destination that relies on one can stay in the `otel` block, which is removed only in a major version.
 
 ### Amazon Managed Prometheus (SigV4 + IRSA)
 
@@ -712,25 +775,25 @@ To push to Amazon Managed Prometheus (AMP), sign requests with SigV4 and let the
 
 AMP is a remote-write destination like any other, so this **adds** to the bundled Thanos rather than replacing it.
 Running both is the usual choice: AMP bills per sample ingested and per active series, so the pairing below keeps everything in local storage you already pay for and sends only the alerting metrics to AMP.
-To send metrics *only* to AMP, drop the `thanos` entry and set `thanos.enabled: false` on the bundled backend.
+To send metrics *only* to AMP, set `enabled: false` on the `thanos` destination and on the bundled backend.
 
 1. Add a destination pointing at your workspace's remote-write URL, with `sigv4`:
 
    ```yaml
    pipeline:
-     metrics:
-       gateway:
-         destination:
-           prometheusRemoteWrite:
-             thanos:
-               minMetricImportance: all
-             amp:
-               url: https://aps-workspaces.<region>.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write
-               minMetricImportance: essential
-               authType: sigv4
-               sigv4:
-                 region: <region>
-                 # roleArn: optional — only to assume a *different* role than IRSA grants
+     destinations:
+       thanos:
+         metrics:
+           minMetricImportance: all
+       amp:
+         type: prometheus
+         url: https://aps-workspaces.<region>.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write
+         metrics:
+           minMetricImportance: essential
+         authType: sigv4
+         sigv4:
+           region: <region>
+           # roleArn: optional — only to assume a *different* role than IRSA grants
    ```
 
 2. Grant an IAM role `aps:RemoteWrite` on the workspace, and bind it to the gateway with IRSA by annotating the `alloy-gateway` ServiceAccount:

@@ -412,7 +412,7 @@ deployed, and a Query Frontend deployed that nothing reads through.
            so an external host that happens to be named
            `thanos-receive.<domain>` is not flagged. */}}
     {{- range $dest := ( include "mzmon.alloyGateway.promDests.thanos" $ | fromYamlArray ) }}
-      {{- $path := printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s.url" $dest.name }}
+      {{- $path := printf "pipeline.destinations.%s.url" $dest.name }}
       {{- if not $enabled }}
         {{- $errors = append $errors ( printf "%s points at the bundled Thanos (%s) but Thanos is not enabled. Metrics would be written to a Service that does not exist." $path $dest.resolvedUrl ) }}
       {{- else if not ( dig "receive" "enabled" false $values ) }}

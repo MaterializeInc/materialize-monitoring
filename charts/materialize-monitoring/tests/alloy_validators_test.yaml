@@ -3,7 +3,7 @@
 # Tests for the Alloy validators in `_alloy_helpers.tpl`.
 #
 # The credential checks close the TODO left in values.yaml beside
-# `pipeline.logging.gateway.destination.loki.basicAuth`: the rendered pipeline
+# `pipeline.destinations.loki.basicAuth`: the rendered pipeline
 # reads every credential through `sys.env(...)`, but the env ConfigMap only sets
 # those variables when an inline value is present. Anything else has to arrive
 # via `extraEnv`/`envFrom`, and nothing verified it — so a typo produced an empty
@@ -21,14 +21,14 @@ set:
   tags.pipeline: true
   # Off-cluster destinations: auth is only interesting against an external
   # backend, and it keeps the reachability checks (covered separately) quiet.
-  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
-  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
+  pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.destinations.thanos.url: https://metrics.example.com/api/v1/receive
 tests:
   # --- credentials ----------------------------------------------------------
 
   - it: errors when a credential can come from nowhere
     set:
-      pipeline.logging.gateway.destination.loki.authType: basicAuth
+      pipeline.destinations.loki.authType: basicAuth
       alloy-gateway.alloy.envFrom: null
     asserts:
       - failedTemplate:
@@ -39,7 +39,7 @@ tests:
   # envFrom is opaque at render time, so this can only ever be a warning.
   - it: warns when a credential must come from an envFrom source
     set:
-      pipeline.logging.gateway.destination.loki.authType: basicAuth
+      pipeline.destinations.loki.authType: basicAuth
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
@@ -47,7 +47,7 @@ tests:
 
   - it: stays quiet when extraEnv supplies the credential
     set:
-      pipeline.logging.gateway.destination.loki.authType: bearer
+      pipeline.destinations.loki.authType: bearer
       alloy-gateway.alloy.envFrom: null
       alloy-gateway.alloy.extraEnv:
         - name: GATEWAY_LOKI_DEST_BEARER_TOKEN
@@ -61,8 +61,8 @@ tests:
   # Inline secrets land in a ConfigMap, not a Secret.
   - it: warns that an inline secret renders into a ConfigMap in plaintext
     set:
-      pipeline.logging.gateway.destination.loki.authType: bearer
-      pipeline.logging.gateway.destination.loki.bearer.token: s3cr3t
+      pipeline.destinations.loki.authType: bearer
+      pipeline.destinations.loki.bearer.token: s3cr3t
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
@@ -70,8 +70,8 @@ tests:
 
   - it: does not warn about a non-secret field set inline
     set:
-      pipeline.logging.gateway.destination.loki.authType: basicAuth
-      pipeline.logging.gateway.destination.loki.basicAuth.username: mzmon
+      pipeline.destinations.loki.authType: basicAuth
+      pipeline.destinations.loki.basicAuth.username: mzmon
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
@@ -88,12 +88,12 @@ tests:
   # sigv4 signs from ambient AWS credentials, so it needs no env plumbing.
   - it: does not require env credentials for sigv4
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.authType: sigv4
+      pipeline.destinations.thanos.authType: sigv4
       alloy-gateway.alloy.envFrom: null
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
-          pattern: "prometheusRemoteWrite.*set by neither"
+          pattern: "destinations.thanos.*set by neither"
         not: true
 
   # --- otel headers auth ----------------------------------------------------
@@ -205,7 +205,7 @@ tests:
 
   - it: errors when the gateway writes to a bundled Loki that is disabled
     set:
-      pipeline.logging.gateway.destination.loki.url: http://loki-distributor.test-monitoring.svc:3100/loki/api/v1/push
+      pipeline.destinations.loki.url: http://loki-distributor.test-monitoring.svc:3100/loki/api/v1/push
     asserts:
       - failedTemplate:
           errorPattern: "points at the bundled Loki.*but Loki is not enabled"
@@ -214,7 +214,7 @@ tests:
 
   - it: warns when every log destination is disabled
     set:
-      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.destinations.loki.enabled: false
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
@@ -222,7 +222,7 @@ tests:
 
   - it: warns when every metric destination is disabled
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+      pipeline.destinations.thanos.enabled: false
     template: NOTES.txt
     asserts:
       - matchRegexRaw:

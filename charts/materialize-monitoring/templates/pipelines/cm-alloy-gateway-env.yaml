@@ -20,59 +20,14 @@ data:
   GATEWAY_KUBELET_TLS_INSECURE: {{ $kubelet.tlsInsecureSkipVerify | toJson | quote }}
   {{- $kubeProxy := .Values.pipeline.metrics.kubeProxy }}
   GATEWAY_KUBE_PROXY_SCRAPE_INTERVAL: {{ $kubeProxy.scrapeInterval | quote }}
-  {{- $lokiDest := .Values.pipeline.logging.gateway.destination.loki }}
-  {{- if $lokiDest.enabled }}
-  GATEWAY_LOKI_DEST: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $lokiDest.url $ ) "tls" $lokiDest.tls ) | quote }}
-    {{- if eq $lokiDest.authType "none" }}
-    {{- else if eq $lokiDest.authType "basicAuth" }}
-      {{- if $lokiDest.basicAuth.username }}
-  {{ $lokiDest.basicAuth.usernameEnv }}: {{ tpl $lokiDest.basicAuth.username $ | quote }}
-      {{- end }}
-      {{- if $lokiDest.basicAuth.password }}
-  {{ $lokiDest.basicAuth.passwordEnv }}: {{ tpl $lokiDest.basicAuth.password $ | quote }}
-      {{- end }}
-    {{- else if eq $lokiDest.authType "bearer" }}
-      {{- if $lokiDest.bearer.token }}
-  {{ $lokiDest.bearer.tokenEnv }}: {{ tpl $lokiDest.bearer.token $ | quote }}
-      {{- end }}
-    {{- else }}
-      {{- printf "Unsupported .Values.pipeline.logging.gateway.destination.loki.authType (%s)" $lokiDest.authType | fail }}
-    {{- end }}
+  {{- /* The destinations' variables, from the helper the validator checks for
+         duplicate keys. */}}
+  {{- range $entry := ( include "mzmon.destinations.envEntries" $ | fromYamlArray ) }}
+  {{ $entry.key }}: {{ $entry.value | quote }}
   {{- end }}
-  {{- /* </lokiDest> */}}
+  {{- /* </logDests> */}}
 
-  {{- /* One block of variables per named remote-write destination. The names are
-         resolved by the same helper the pipeline uses, so the variable this
-         writes and the variable `sys.env(...)` reads cannot drift. */}}
-  {{- range $promDest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
-    {{- if $promDest.enabled }}
-  {{ $promDest.urlEnv }}: {{ include "mzmon.alloy.destUrl" ( dict "url" ( tpl $promDest.url $ ) "tls" $promDest.tls ) | quote }}
-      {{- if eq $promDest.authType "none" }}
-      {{- else if eq $promDest.authType "basicAuth" }}
-        {{- if $promDest.basicAuth.username }}
-  {{ $promDest.basicAuth.usernameEnv }}: {{ tpl $promDest.basicAuth.username $ | quote }}
-        {{- end }}
-        {{- if $promDest.basicAuth.password }}
-  {{ $promDest.basicAuth.passwordEnv }}: {{ tpl $promDest.basicAuth.password $ | quote }}
-        {{- end }}
-      {{- else if eq $promDest.authType "bearer" }}
-        {{- if $promDest.bearer.token }}
-  {{ $promDest.bearer.tokenEnv }}: {{ tpl $promDest.bearer.token $ | quote }}
-        {{- end }}
-      {{- else if eq $promDest.authType "sigv4" }}
-        {{- /* SigV4 signs with ambient AWS credentials (IRSA); region/roleArn go
-               straight into the alloy config, so no env secrets are needed here. */}}
-      {{- else }}
-        {{- printf "Unsupported .Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s.authType (%s)" $promDest.name $promDest.authType | fail }}
-      {{- end }}
 
-  {{ $promDest.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict
-      "context" $
-      "minMetricImportance" $promDest.minMetricImportance
-    ) | quote }}
-    {{- end }}
-  {{- end }}
-  {{- /* </promDests> */}}
 
   {{- $tenancy := $.Values.pipeline.logging.tenancy | required "pipeline.logging.tenancy is required" }}
   GATEWAY_STATIC_TENANT: {{ $tenancy.staticTenant | quote }}

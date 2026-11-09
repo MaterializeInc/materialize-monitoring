@@ -109,7 +109,7 @@ dependencies:
       - pipeline
       - alloy-gateway
   - name: loki
-    version: "20.2.2"
+    version: "21.0.0"
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: loki.enabled
     tags:
@@ -141,7 +141,7 @@ dependencies:
       - managed-grafana
       - grafana-operator
   - name: alertmanager
-    version: "1.43.3"
+    version: "2.4.0"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: alertmanager.enabled
     tags:

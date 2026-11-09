@@ -21,8 +21,8 @@ tests:
       # anything to do with what this test asserts.
       loki.enabled: false
       thanos.enabled: false
-      pipeline.logging.gateway.destination.loki.enabled: false
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+      pipeline.destinations.loki.enabled: false
+      pipeline.destinations.thanos.enabled: false
     template: ../charts/node-exporter/templates/daemonset.yaml
     asserts:
       - containsDocument:

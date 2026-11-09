@@ -29,6 +29,14 @@ loki.relabel "journal" {
 		]
 		target_label = "unit"
 	}
+
+	rule {
+		action = "replace"
+		source_labels = [
+			"__journal_priority_keyword",
+		]
+		target_label = "journal_priority"
+	}
 }
 
 loki.process "node_logs" {

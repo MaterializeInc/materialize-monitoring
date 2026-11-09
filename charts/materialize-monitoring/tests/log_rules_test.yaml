@@ -174,8 +174,8 @@ tests:
   - it: reaches the ruler over TLS when the Loki destination does
     template: templates/pipelines/cm-alloy-gateway.yaml
     set:
-      pipeline.logging.gateway.destination.loki.tls.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.loki.tls.enabled: true
+      pipeline.destinations.loki.tls.caFile: /etc/mzmon/tls/ca.crt
     asserts:
       - matchRegex:
           path: data["config.alloy"]
@@ -196,7 +196,7 @@ tests:
     template: templates/alerts/lokirules.yaml
     set:
       loki.enabled: false
-      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.destinations.loki.enabled: false
     asserts:
       - hasDocuments:
           count: 0
@@ -205,7 +205,7 @@ tests:
     template: templates/pipelines/cm-alloy-gateway.yaml
     set:
       loki.enabled: false
-      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.destinations.loki.enabled: false
     asserts:
       - notMatchRegex:
           path: data["config.alloy"]
@@ -215,7 +215,7 @@ tests:
     template: templates/NOTES.txt
     set:
       loki.enabled: false
-      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.destinations.loki.enabled: false
       rules.selected: [trace-logging-enabled]
     asserts:
       - matchRegexRaw:
@@ -340,6 +340,9 @@ tests:
     template: templates/pipelines/cm-alloy-gateway.yaml
     set:
       pipeline.logging.tenancy.staticTenant: logs
+      # The canary reads its lines from the static tenant too, and the render
+      # refuses one left behind.
+      loki.lokiCanary.tenant.name: logs
     asserts:
       - matchRegex:
           path: data["config.alloy"]

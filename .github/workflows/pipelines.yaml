@@ -46,6 +46,7 @@ jobs:
               - packages/mz-monitoring-build/**
               - packages/prometheus-scrapers/**
               - charts/materialize-monitoring/pre-rendered/pipelines/**
+              - charts/materialize-monitoring/pre-rendered/secretfilter/**
               - charts/materialize-monitoring/pre-rendered/scrapers/**
               - docs/assets/prometheus-scrapers/**
               - docs/assets/metrics/labels.yaml
@@ -96,7 +97,8 @@ jobs:
       # make the freshness check below vacuous.
       - name: make pipelines
         run: |
-          rm -f charts/materialize-monitoring/pre-rendered/pipelines/*.alloy
+          rm -f charts/materialize-monitoring/pre-rendered/pipelines/*.alloy \
+            charts/materialize-monitoring/pre-rendered/secretfilter/*.toml
           make pipelines
       # The rendered .alloy files are checked in; assert they match a fresh
       # render so a YAML/schema/renderer change can't merge with stale output.
@@ -104,12 +106,28 @@ jobs:
       # caught too, not just modifications to already-tracked files.
       - name: rendered pipelines are up to date
         run: |
-          dir=charts/materialize-monitoring/pre-rendered/pipelines
-          if [ -n "$(git status --porcelain -- "$dir")" ]; then
-            echo "::error::Rendered .alloy output is stale or uncommitted. Run 'make pipelines' locally and commit."
-            git status --porcelain -- "$dir"
+          set -- charts/materialize-monitoring/pre-rendered/pipelines \
+            charts/materialize-monitoring/pre-rendered/secretfilter
+          if [ -n "$(git status --porcelain -- "$@")" ]; then
+            echo "::error::Rendered pipelines or secret-filter rules are stale or uncommitted. Run 'make pipelines' locally and commit."
+            git status --porcelain -- "$@"
             exit 1
           fi
+      # Runs pipeline behavior that only a real Alloy can check, on this job's
+      # pinned binary. MZMON_REQUIRE_ALLOY turns each test's skip-without-alloy
+      # into a failure.
+      #   * secretfilter_corpus: the secret filter's rule files against
+      #     packages/alloy-pipelines/secretfilter/ingest.corpus.yaml. The default
+      #     Gitleaks rules change between Alloy releases, so a Renovate bump of
+      #     ALLOY_VERSION runs this too.
+      #   * gateway_level_corpus: the gateway's inputProcessor against
+      #     packages/alloy-pipelines/levels.corpus.yaml. Each line must leave with
+      #     its level and the detector that set it; a detector whose escaping is
+      #     wrong still validates and never matches, so only a run catches it.
+      - name: alloy corpora
+        env:
+          MZMON_REQUIRE_ALLOY: "1"
+        run: cargo test -p mzmon-lib --test secretfilter_corpus --test gateway_level_corpus
       # metric-tiers.yaml is generated from the query registry and checked in, the
       # same freshness contract as the pipelines above.
       - name: make metrics

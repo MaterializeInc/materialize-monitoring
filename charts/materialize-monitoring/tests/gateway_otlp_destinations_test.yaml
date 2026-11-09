@@ -1,0 +1,362 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# `otlp` destinations in `pipeline.destinations` (DEP-124).
+#
+# One entry carries logs, metrics, or both over one exporter and one credential.
+# What this suite guards renders valid Alloy and loads when it is wrong; what
+# breaks is the data path:
+#
+#   1. A signal that renders components but is not forwarded to, or the
+#      reverse. An orphan component never receives anything.
+#   2. TLS that otelcol rejects silently. It spells the minimum version `1.3`
+#      and goes unhealthy on `TLS13`, and its TLS block encrypts by default,
+#      so a plaintext destination needs `insecure = true`.
+#   3. A per-signal endpoint override that never reaches the exporter.
+#   4. A label that collides with one of the gateway's own otelcol components.
+suite: alloy-gateway otlp destinations
+release:
+  name: test-mon
+  namespace: monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.destinations.thanos.url: https://metrics.example.com/api/v1/receive
+tests:
+  # --- logs -------------------------------------------------------------------
+  - it: should bridge logs into an OTLP/HTTP exporter labeled dest_<name>
+    set:
+      pipeline.destinations.opensearch:
+        type: otlp
+        url: http://data-prepper.logging.svc:21890
+        logs: {}
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.receiver\.loki "dest_opensearch" \{\s*output \{\s*logs = \[otelcol\.processor\.batch\.dest_opensearch\.input\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.batch "dest_opensearch" \{\s*output \{\s*logs = \[otelcol\.exporter\.otlphttp\.dest_opensearch\.input\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "dest_opensearch" \{\s*client \{\s*endpoint = sys\.env\("GATEWAY_OPENSEARCH_DEST"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "egress" \{[^}]*otelcol\.receiver\.loki\.dest_opensearch\.receiver'
+      # Logs only: no metric filter and no edge from the metric seam.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.transform "dest_opensearch"'
+
+  # --- metrics ----------------------------------------------------------------
+  - it: should filter metrics to the destination's tier in front of its exporter
+    set:
+      pipeline.destinations.controlPlane:
+        type: otlp
+        url: https://ingest.example.com
+        metrics:
+          minMetricImportance: essential
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "egress" \{\s*output \{\s*metrics = \[[^\]]*otelcol\.processor\.transform\.dest_controlPlane\.input'
+        template: templates/pipelines/cm-alloy-gateway.yaml
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "dest_controlPlane" \{[\s\S]*?GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST[\s\S]*?metrics = \[\s*otelcol\.exporter\.otlphttp\.dest_controlPlane\.input'
+        template: templates/pipelines/cm-alloy-gateway.yaml
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.receiver\.loki "dest_controlPlane"'
+        template: templates/pipelines/cm-alloy-gateway.yaml
+      # The tier is resolved to an allowlist, not left as "everything".
+      - notEqual:
+          path: data.GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST
+          value: ".*"
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+
+  - it: should count a metrics-carrying destination as somewhere for metrics to go
+    set:
+      pipeline.destinations.thanos.enabled: false
+      pipeline.destinations.controlPlane:
+        type: otlp
+        url: https://ingest.example.com
+        metrics: {}
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Every gateway metric destination is disabled"
+        not: true
+
+  # --- transport --------------------------------------------------------------
+  - it: should use the gRPC exporter and turn TLS off explicitly
+    set:
+      pipeline.destinations.collector:
+        type: otlp
+        protocol: grpc
+        url: collector.example.com:4317
+        logs: {}
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlp "dest_collector" \{[\s\S]*?tls \{\s*insecure = true\s*\}'
+
+  - it: should render client TLS in otelcol's vocabulary
+    set:
+      pipeline.destinations.controlPlane:
+        type: otlp
+        url: https://ingest.example.com
+        logs: {}
+        tls:
+          enabled: true
+          verify: false
+          caFile: /etc/mzmon/cp/ca.crt
+          certFile: /etc/mzmon/cp/tls.crt
+          keyFile: /etc/mzmon/cp/tls.key
+          serverName: ingest.example.com
+          reloadInterval: 1m
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'tls \{\s*insecure_skip_verify = true\s*ca_file = "/etc/mzmon/cp/ca\.crt"\s*cert_file = "/etc/mzmon/cp/tls\.crt"\s*key_file = "/etc/mzmon/cp/tls\.key"\s*server_name = "ingest\.example\.com"\s*min_version = "1\.3"\s*reload_interval = "1m"\s*\}'
+
+  - it: should send one signal to its own endpoint over HTTP
+    set:
+      pipeline.destinations.opensearch:
+        type: otlp
+        url: http://data-prepper.logging.svc:21890
+        logs:
+          url: http://data-prepper.logging.svc:21892/v1/logs
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "dest_opensearch" \{\s*logs_endpoint = sys\.env\("GATEWAY_OPENSEARCH_DEST_LOGS"\)'
+        template: templates/pipelines/cm-alloy-gateway.yaml
+      - equal:
+          path: data.GATEWAY_OPENSEARCH_DEST_LOGS
+          value: http://data-prepper.logging.svc:21892/v1/logs
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+
+  # --- auth and queue ---------------------------------------------------------
+  - it: should authenticate with a basic auth handler of its own
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://otlp.example.com
+        logs: {}
+        authType: basicAuth
+        basicAuth:
+          username: mzmon
+          password: hunter2
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.auth\.basic "dest_archive" \{\s*client_auth \{\s*username = sys\.env\("GATEWAY_ARCHIVE_DEST_USERNAME"\)\s*password = sys\.env\("GATEWAY_ARCHIVE_DEST_PASSWORD"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'auth = otelcol\.auth\.basic\.dest_archive\.handler'
+
+  - it: should authenticate with a bearer handler of its own
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://otlp.example.com
+        logs: {}
+        authType: bearer
+        bearer:
+          token: s3cr3t
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.auth\.bearer "dest_archive" \{\s*token = sys\.env\("GATEWAY_ARCHIVE_DEST_BEARER_TOKEN"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'auth = otelcol\.auth\.bearer\.dest_archive\.handler'
+
+  - it: should render sending_queue with every field the destination sets
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://otlp.example.com
+        logs: {}
+        queue:
+          queueSize: 500
+          numConsumers: 4
+          blockOnOverflow: false
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'sending_queue \{\s*block_on_overflow = false\s*num_consumers = 4\s*queue_size = 500\s*\}'
+
+  # --- isolation --------------------------------------------------------------
+  # The OTLP exporters drop when their queue is full unless told otherwise, so
+  # an otlp destination beside the bundled Loki is not a second blocker.
+  - it: should not count a default otlp destination as blocking
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://otlp.example.com
+        logs: {}
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "block when their queue fills"
+        not: true
+
+  - it: should count an otlp destination told to block
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://otlp.example.com
+        logs: {}
+        queue:
+          blockOnOverflow: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Log destinations archive, loki all block when their queue fills"
+
+  # --- environment variable collisions ----------------------------------------
+  # `archive`'s allowlist and `unfiltered_archive`'s metrics endpoint once
+  # derived the same variable. Every derived name now shares the
+  # destination's own prefix, so they cannot.
+  - it: should derive distinct variables for names that nest inside each other
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://a.example.com
+        metrics: {}
+      pipeline.destinations.unfiltered_archive:
+        type: otlp
+        url: https://b.example.com
+        metrics:
+          url: https://b.example.com/custom/metrics
+    asserts:
+      - notFailedTemplate: {}
+        template: templates/validate.yaml
+      - equal:
+          path: data.GATEWAY_UNFILTERED_ARCHIVE_DEST_METRICS
+          value: https://b.example.com/custom/metrics
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+      - exists:
+          path: data.GATEWAY_ARCHIVE_DEST_METRICS_ALLOWLIST
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+
+  # Names that differ only in case derive the same per-signal variables, even
+  # when each sets its own urlEnv.
+  - it: should refuse case-distinct names that collide on a derived variable
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://a.example.com
+        metrics: {}
+      pipeline.destinations.Archive:
+        type: otlp
+        url: https://b.example.com
+        urlEnv: GATEWAY_OTHER_DEST
+        metrics: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.Archive.metrics.unfilteredMetricsEnv and pipeline.destinations.archive.metrics.unfilteredMetricsEnv both write GATEWAY_ARCHIVE_DEST_METRICS_ALLOWLIST"
+
+  - it: should refuse an override that collides with a remote-write destination
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://a.example.com
+        metrics:
+          unfilteredMetricsEnv: GATEWAY_THANOS_DEST_METRICS_ALLOWLIST
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.archive.metrics.unfilteredMetricsEnv and pipeline.destinations.thanos.metrics.unfilteredMetricsEnv both write GATEWAY_THANOS_DEST_METRICS_ALLOWLIST"
+
+  # --- validation -------------------------------------------------------------
+  - it: should warn about an otlp destination that carries no signal
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://otlp.example.com
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "pipeline.destinations.archive is enabled but carries no signal"
+
+  - it: should refuse metrics on a loki destination
+    set:
+      pipeline.destinations.loki.metrics: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki turns metrics on, but a loki destination does not carry metrics"
+
+  - it: should refuse a per-signal endpoint over gRPC
+    set:
+      pipeline.destinations.collector:
+        type: otlp
+        protocol: grpc
+        url: collector.example.com:4317
+        logs:
+          url: collector.example.com:4318
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.collector.logs.url overrides the endpoint for one signal, which only the http protocol supports"
+
+  - it: should refuse an unknown protocol
+    set:
+      pipeline.destinations.collector:
+        type: otlp
+        protocol: kafka
+        url: collector.example.com:4317
+        logs: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pipeline.destinations.collector.protocol is "kafka"'
+
+  - it: should refuse a queue field the type does not take
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://otlp.example.com
+        logs: {}
+        queue:
+          capacity: 64MiB
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.archive.queue.capacity does not apply to a otlp destination"
+
+  - it: should refuse inline TLS material on an otlp destination
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://otlp.example.com
+        logs: {}
+        tls:
+          enabled: true
+          ca: "-----BEGIN CERTIFICATE-----"
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.archive.tls.ca is not supported on an otlp destination"
+
+  - it: should refuse an unknown metric importance
+    set:
+      pipeline.destinations.archive:
+        type: otlp
+        url: https://otlp.example.com
+        metrics:
+          minMetricImportance: critical
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "No metrics patterns found for critical"

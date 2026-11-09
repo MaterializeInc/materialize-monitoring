@@ -418,9 +418,10 @@ variable "datadog_metrics" {
     `all` — and each tier includes the ones below it. This is a cost control, and a sharper one than
     for most backends: Datadog bills per custom metric, so `all` is rarely what you want.
 
-    `metric_endpoint` and `logs_endpoint` override the intake URLs the exporter derives from `site`.
-    Leave them null unless you are routing through a proxy or PrivateLink — a hand-written endpoint
-    that disagrees with `site` fails at the intake rather than at plan time.
+    `metric_endpoint` overrides the metrics intake URL the exporter derives from `site`. Leave it
+    null unless you are routing through a proxy or PrivateLink — a hand-written endpoint that
+    disagrees with `site` fails at the intake rather than at plan time. `logs_endpoint` has no
+    effect: this input exports metrics only.
   EOT
   type = object({
     site            = optional(string, "datadoghq.com")
@@ -599,22 +600,19 @@ variable "prometheus_remote_write" {
   validation {
     condition = alltrue([
       for name, _ in var.prometheus_remote_write : !contains(
-        # `egress` is the fan-out seam's own component label. The rest are the
-        # keys the pre-map single-destination shape used, which the chart reads
-        # as a leftover override rather than as a destination.
-        ["egress", "enabled", "url", "urlEnv", "minMetricImportance", "unfilteredMetricsEnv",
-        "externalLabels", "authType", "basicAuth", "bearer", "oauth2", "sigv4", "tls"],
+        # `egress` and `destination` are names the chart reserves. The rest are
+        # the other entries of the chart's `pipeline.destinations` map, which
+        # this input shares: a key of the same name would merge into that
+        # destination and turn it into a remote write.
+        ["egress", "destination", "loki", "googleCloud", "datadog", "otlp"],
         name,
       )
     ])
     error_message = <<-EOT
-      A prometheus_remote_write key may not be `egress`, nor any of the chart's pre-map
-      single-destination keys (`enabled`, `url`, `authType`, `basicAuth`, `bearer`, `oauth2`,
-      `sigv4`, `tls`, `externalLabels`, `urlEnv`, `minMetricImportance`, `unfilteredMetricsEnv`).
-
-      Both are render-time failures the chart raises and `terraform validate` cannot: `egress`
-      collides with the fan-out seam's component label, and the rest are read as a leftover
-      override of the old singular shape.
+      A prometheus_remote_write key may not be `egress` or `destination`, which the chart reserves,
+      nor `loki`, `googleCloud`, `datadog`, or `otlp`, the other destinations on the chart's
+      `pipeline.destinations` map. A key of the same name merges into that destination and turns it
+      into a remote write.
     EOT
   }
 

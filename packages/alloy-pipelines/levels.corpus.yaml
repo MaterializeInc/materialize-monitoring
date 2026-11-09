@@ -1,0 +1,294 @@
+# Lines that packages/mzmon-lib/tests/gateway_level_corpus.rs pushes through the
+# gateway's inputProcessor, on the pinned Alloy binary.
+#
+# Each fixture is one log line and the stream labels it arrives with. `level` is
+# the level it must leave with. `heuristic` is the `levelheuristic` structured
+# metadata the UNKNOWN detectors must record; leave it out for a line a
+# per-application parser levels before the detectors run, which must carry none.
+#
+# The test replaces <<NOW>> with the push time. Use it for a timestamp that a
+# parser makes the entry's own, because inputProcessor drops an entry more than
+# two hours old.
+#
+# The shapes come from a day of an AKS install's UNKNOWN lines, with names and
+# addresses made generic.
+
+# --- a line already leveled is left alone -----------------------------------
+
+- id: parsed-logfmt
+  labels: {namespace: monitoring, app: loki, container: querier, job: monitoring/querier}
+  line: 'level=warn ts=<<NOW>> caller=metrics.go:285 component=querier msg="query slow"'
+  level: WARN
+
+# --- the Loki canary ----------------------------------------------------------
+
+- id: canary-payload
+  labels: {namespace: monitoring, app: loki, container: canary, job: monitoring/canary}
+  line: '1794168045978708054 ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp'
+  level: TRACE
+  heuristic: canary
+
+- id: canary-missing-entry
+  labels: {namespace: monitoring, app: loki, container: canary, job: monitoring/canary}
+  line: 'websocket missing entry: 1794168770978357559'
+  level: DEBUG
+  heuristic: canary
+
+- id: canary-cannot-connect
+  labels: {namespace: monitoring, app: loki, container: canary, job: monitoring/canary}
+  line: 'failed to connect to wss://loki-query-frontend:3100/loki/api/v1/tail?query=%7B%7D with err websocket: bad handshake'
+  level: ERROR
+  heuristic: keyword
+
+# A canary-shaped line from another container is not a canary payload.
+- id: canary-shape-elsewhere
+  labels: {namespace: default, app: probe, container: probe, job: default/probe}
+  line: '1794168045978708054 ppppppppppppppppppppppppppppppppppppppppppppp'
+  level: UNKNOWN
+  heuristic: none
+
+# --- klog ---------------------------------------------------------------------
+
+- id: klog-info
+  labels: {namespace: kube-system, container: azure-iptables-monitor, job: kube-system/azure-iptables-monitor}
+  line: 'I1108 19:59:31.736880       1 iptables_monitor.go:314] Successfully updated label for node-1'
+  level: INFO
+  heuristic: klog
+
+- id: klog-warning
+  labels: {namespace: kube-system, container: example-controller, job: kube-system/example-controller}
+  line: 'W1108 19:59:31.736880       1 reflector.go:569] watch of *v1.Pod ended with: an error on the server'
+  level: WARN
+  heuristic: klog
+
+- id: klog-error
+  labels: {namespace: kube-system, container: metrics-server, job: kube-system/metrics-server}
+  line: 'E1108 19:54:01.453136       1 writers.go:123] "Unhandled Error" err="apiserver was unable to write a JSON response: http: Handler timeout"'
+  level: ERROR
+  heuristic: klog
+
+- id: klog-fatal
+  labels: {namespace: kube-system, container: example-controller, job: kube-system/example-controller}
+  line: 'F1108 19:54:01.453136       1 main.go:42] failed to start: listen tcp :8443: bind: address already in use'
+  level: CRITICAL
+  heuristic: klog
+
+# The klog prefix is the level, whatever words the message carries.
+- id: klog-prefix-beats-message
+  labels: {namespace: kube-system, container: example-controller, job: kube-system/example-controller}
+  line: 'I1108 19:59:31.736880       1 handler.go:12] request finished level=error status=500'
+  level: INFO
+  heuristic: klog
+
+- id: klog-from-journal
+  labels: {job: loki.source.journal.node_logs, unit: kubelet.service, journal_priority: info}
+  line: 'E1108 19:57:57.263389     885 kubelet.go:2412] "Error syncing pod, skipping" err="failed to StartContainer"'
+  level: ERROR
+  heuristic: klog
+
+- id: client-go-warning-from-alloy
+  labels: {namespace: monitoring, app: alloy-gateway, container: alloy, job: monitoring/alloy}
+  line: 'I1108 19:59:28.656210       1 warnings.go:107] "Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice"'
+  level: INFO
+  heuristic: klog
+
+# --- a level word opening the line --------------------------------------------
+
+- id: timestamp-then-level
+  labels: {job: loki.source.journal.node_logs, unit: walinuxagent.service, journal_priority: info}
+  line: '2026-11-08T19:58:00.443333Z INFO TelemetryEventsCollector ExtHandler Collected 9 events'
+  level: INFO
+  heuristic: level_prefix
+
+- id: zap-console-tabs
+  labels: {namespace: monitoring, app: grafana-operator, container: grafana-operator, job: monitoring/grafana-operator}
+  line: "2026-11-08T14:00:50Z\terror\tReconciler error\t{\"controller\": \"grafana\"}"
+  level: ERROR
+  heuristic: level_prefix
+
+- id: fluent-bit-bracketed
+  labels: {namespace: kube-system, container: fluent-bit, job: kube-system/fluent-bit}
+  line: '[2026/11/08 20:00:00] [ warn] [engine] failed to flush chunk'
+  level: WARN
+  heuristic: level_prefix
+
+- id: bracketed-level-no-timestamp
+  labels: {namespace: kube-system, container: coredns, job: kube-system/coredns}
+  line: '[INFO] plugin/reload: Running configuration SHA512 = 0123abcd'
+  level: INFO
+  heuristic: level_prefix
+
+- id: bare-level-word
+  labels: {namespace: default, app: tool, container: tool, job: default/tool}
+  line: 'Error: unable to read /etc/config/app.yaml'
+  level: ERROR
+  heuristic: level_prefix
+
+# --- HTTP access logs ---------------------------------------------------------
+
+- id: access-log-ok
+  labels: {namespace: materialize-environment, app: console, container: console, job: materialize-environment/console}
+  line: '10.0.0.80 - - [08/Nov/2026:20:00:40 +0000] "GET / HTTP/1.1" 200 1583 "-" "kube-probe/1.34" "-"'
+  level: INFO
+  heuristic: access_log
+
+- id: access-log-client-error
+  labels: {namespace: materialize-environment, app: console, container: console, job: materialize-environment/console}
+  line: '10.0.0.80 - - [08/Nov/2026:20:00:40 +0000] "GET /missing HTTP/1.1" 404 153 "-" "curl/8.7.1" "-"'
+  level: WARN
+  heuristic: access_log
+
+- id: access-log-server-error
+  labels: {namespace: materialize-environment, app: console, container: console, job: materialize-environment/console}
+  line: '10.0.0.80 - - [08/Nov/2026:20:00:40 +0000] "GET /api HTTP/1.1" 503 0 "-" "curl/8.7.1" "-"'
+  level: ERROR
+  heuristic: access_log
+
+- id: access-log-status-first
+  labels: {namespace: monitoring, app: loki, container: nginx, job: monitoring/nginx}
+  line: '127.0.0.1 - - [08/Nov/2026:20:00:02 +0000]  400 "GET /loki/api/v1/labels HTTP/1.1" 248 "-" "curl/8.7.1" "-"'
+  level: WARN
+  heuristic: access_log
+
+# --- panics -------------------------------------------------------------------
+
+- id: go-panic
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: 'panic: runtime error: invalid memory address or nil pointer dereference'
+  level: CRITICAL
+  heuristic: panic
+
+- id: go-panic-goroutine
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: 'goroutine 1 [running]:'
+  level: CRITICAL
+  heuristic: panic
+
+- id: rust-panic
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: "thread 'main' panicked at src/main.rs:2:5:"
+  level: CRITICAL
+  heuristic: panic
+
+# A debug stack printed as part of a warning is not a panic.
+- id: quoted-stack-is-not-a-panic
+  labels: {namespace: monitoring, app: alloy-gateway, container: alloy, job: monitoring/alloy}
+  line: "\t>  goroutine 1941 [running]:"
+  level: UNKNOWN
+  heuristic: none
+
+# --- key-value levels ---------------------------------------------------------
+
+- id: logrus-keyvalue
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: 'time="2026-11-08T20:00:00Z" level=warning msg="retrying"'
+  level: WARN
+  heuristic: keyvalue
+
+# Whitespace before the separator is any whitespace, as in the capture.
+- id: json-severity-tab-before-colon
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: "{\"severity\"\t:\"debug\",\"message\":\"previous error recovered\"}"
+  level: DEBUG
+  heuristic: keyvalue
+
+# --- journald priority --------------------------------------------------------
+
+- id: journal-info
+  labels: {job: loki.source.journal.node_logs, unit: init.scope, journal_priority: info}
+  line: 'Finished Emit system cgroup pressure telemetry.'
+  level: INFO
+  heuristic: journal_priority
+
+- id: journal-err
+  labels: {job: loki.source.journal.node_logs, unit: containerd.service, journal_priority: err}
+  line: 'Unable to open the shim socket'
+  level: ERROR
+  heuristic: journal_priority
+
+- id: journal-emerg
+  labels: {job: loki.source.journal.node_logs, unit: systemd-journald.service, journal_priority: emerg}
+  line: 'System is going down'
+  level: CRITICAL
+  heuristic: journal_priority
+
+# --- stack-trace frames -------------------------------------------------------
+
+- id: go-frame-file
+  labels: {namespace: monitoring, app: grafana-operator, container: grafana-operator, job: monitoring/grafana-operator}
+  line: "\tsigs.k8s.io/controller-runtime@v0.24.1/pkg/internal/controller/controller.go:312"
+  level: ERROR
+  heuristic: stacktrace
+
+- id: go-frame-function
+  labels: {namespace: monitoring, app: grafana-operator, container: grafana-operator, job: monitoring/grafana-operator}
+  line: 'sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func1.1'
+  level: ERROR
+  heuristic: stacktrace
+
+- id: go-frame-main
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: 'main.main()'
+  level: ERROR
+  heuristic: stacktrace
+
+# Go panic dumps print each frame's arguments, with spaces between them.
+- id: go-frame-with-arguments
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: 'net/http.(*conn).serve(0xc000123000, {0x123, 0xc000456000})'
+  level: ERROR
+  heuristic: stacktrace
+
+- id: go-frame-created-by
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: 'created by net/http.(*Server).Serve in goroutine 1'
+  level: ERROR
+  heuristic: stacktrace
+
+- id: java-frame
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: "\tat com.example.Service.handle(Service.java:42)"
+  level: ERROR
+  heuristic: stacktrace
+
+- id: python-frame
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: '  File "/app/main.py", line 3, in <module>'
+  level: ERROR
+  heuristic: stacktrace
+
+# --- words in the line --------------------------------------------------------
+
+- id: keyword-error-in-go-log
+  labels: {namespace: monitoring, app: loki, container: querier, job: monitoring/querier}
+  line: '2026/11/08 20:00:48 http: TLS handshake error from 10.0.1.21:42512: client sent an HTTP request to an HTTPS server'
+  level: ERROR
+  heuristic: keyword
+
+- id: keyword-warning
+  labels: {namespace: default, app: service, container: service, job: default/service}
+  line: 'the v1beta1 API is deprecated and will be removed'
+  level: WARN
+  heuristic: keyword
+
+# --- formats that carry no level ----------------------------------------------
+
+- id: go-log
+  labels: {namespace: kube-system, container: cns-container, job: kube-system/cns-container}
+  line: '2026/11/08 20:07:09 [1] No diff observed in fetch, not invoking the consumer'
+  level: INFO
+  heuristic: go_log
+
+- id: fluent-bit-plugin
+  labels: {namespace: kube-system, container: cilium-fluent-bit, job: kube-system/cilium-fluent-bit}
+  line: '[flb-azure-app-insights] Sent trace to App Insights: log msg=140 chars, 23 custom fields'
+  level: DEBUG
+  heuristic: fluent_bit_plugin
+
+# --- nothing to go on -----------------------------------------------------------
+
+- id: plain-text
+  labels: {namespace: monitoring, app: thanos, container: prometheus-rule-importer, job: monitoring/prometheus-rule-importer}
+  line: 'Processing monitoring/thanos-rules'
+  level: UNKNOWN
+  heuristic: none

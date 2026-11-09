@@ -94,8 +94,8 @@ tests:
   - it: should put the agent in the critical tier
     set:
       tags.pipeline: true
-      pipeline.logging.gateway.destination.loki.enabled: false
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+      pipeline.destinations.loki.enabled: false
+      pipeline.destinations.thanos.enabled: false
     template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
     asserts:
       - equal:
@@ -105,8 +105,8 @@ tests:
   - it: should put the gateway in the critical tier
     set:
       tags.pipeline: true
-      pipeline.logging.gateway.destination.loki.enabled: false
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+      pipeline.destinations.loki.enabled: false
+      pipeline.destinations.thanos.enabled: false
     template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
     asserts:
       - equal:
@@ -131,7 +131,7 @@ tests:
       loki.loki.storage.bucketNames.chunks: test-chunks
       loki.loki.storage.bucketNames.ruler: test-ruler
       loki.networkPolicy.enabled: false
-      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.destinations.loki.enabled: false
     template: ../charts/loki/templates/chunks-cache/statefulset.yaml
     asserts:
       - equal:

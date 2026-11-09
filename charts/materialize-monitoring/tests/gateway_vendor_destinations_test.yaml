@@ -1,0 +1,316 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# The vendor destination types in `pipeline.destinations` — `googleCloud` and
+# `datadog` — and the `headers` and `sigv4` auth on `otlp`. They replace the
+# exporters under `pipeline.metrics.gateway.destination.otel`, which stay,
+# deprecated, and render as they did.
+#
+# As with the other destination suites, what breaks here renders and loads:
+# a credential read from a variable nothing writes, an endpoint that ignores the
+# Datadog site, a Google Cloud chain whose labels collide with the tier filter's,
+# or a deprecated block that quietly stopped applying.
+suite: alloy-gateway vendor destinations
+release:
+  name: test-mon
+  namespace: monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.destinations.thanos.url: https://metrics.example.com/api/v1/receive
+tests:
+  # --- googleCloud ------------------------------------------------------------
+  - it: should send a googleCloud destination's metrics through the Telemetry API chain
+    set:
+      pipeline.destinations.gcm:
+        type: googleCloud
+        project: example-project
+        location: us-central1
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      # The tier filter, labeled dest_<name>, off the metric seam ...
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "egress" \{\s*output \{\s*metrics = \[[^\]]*otelcol\.processor\.transform\.dest_gcm\.input'
+      # ... into the chain, labeled gcp_<name> so its own filter and transform
+      # do not collide with the tier filter's.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "dest_gcm" \{[\s\S]*?metrics = \[\s*otelcol\.processor\.filter\.gcp_gcm\.input'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "gcp_gcm" \{\s*client \{\s*endpoint\s*= sys\.env\("GATEWAY_GCM_DEST"\)[\s\S]*?auth\s*= otelcol\.auth\.google\.gcp_gcm\.handler'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'set\(resource\.attributes\[\\"gcp\.project_id\\"\], \\"example-project\\"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.auth\.google "gcp_gcm" \{\s*project = "example-project"'
+
+  # A suffix scheme (dest_<name>_gcp) made the chain's labels equal the tier
+  # filter's for a destination named <name>_gcp, and Alloy refuses a config
+  # that declares a component twice.
+  - it: should not collide with a destination whose name ends in the chain's old suffix
+    set:
+      pipeline.destinations.gcm:
+        type: googleCloud
+      pipeline.destinations.gcm_gcp:
+        type: otlp
+        url: https://otlp.example.com
+        metrics: {}
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "gcp_gcm" \{'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "dest_gcm_gcp" \{'
+      # Exactly one of each: a second declaration would follow the first.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "dest_gcm_gcp" \{[\s\S]*otelcol\.processor\.filter "dest_gcm_gcp" \{'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.transform "dest_gcm_gcp" \{[\s\S]*otelcol\.processor\.transform "dest_gcm_gcp" \{'
+
+  - it: should default a googleCloud destination to the Telemetry API and the recommended tier
+    set:
+      pipeline.destinations.gcm:
+        type: googleCloud
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.GATEWAY_GCM_DEST
+          value: https://telemetry.googleapis.com
+      - notEqual:
+          path: data.GATEWAY_GCM_DEST_METRICS_ALLOWLIST
+          value: ".*"
+
+  - it: should put a googleCloud destination's queue on the chain's exporter
+    set:
+      pipeline.destinations.gcm:
+        type: googleCloud
+        queue:
+          queueSize: 200
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "gcp_gcm" \{[\s\S]*?sending_queue \{\s*queue_size = 200'
+
+  - it: should refuse logs on a googleCloud destination
+    set:
+      pipeline.destinations.gcm:
+        type: googleCloud
+        logs: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.gcm turns logs on, but a googleCloud destination does not carry logs"
+
+  - it: should refuse credentials on a googleCloud destination
+    set:
+      pipeline.destinations.gcm:
+        type: googleCloud
+        authType: bearer
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pipeline.destinations.gcm.authType is "bearer", which a googleCloud destination does not take'
+
+  # --- datadog ----------------------------------------------------------------
+  - it: should send a datadog destination's metrics and logs through one exporter
+    set:
+      pipeline.destinations.datadog:
+        type: datadog
+        site: datadoghq.eu
+        logs: {}
+        metrics: {}
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.datadog "dest_datadog" \{\s*api \{\s*api_key = sys\.env\("GATEWAY_DATADOG_DEST_API_KEY"\)\s*fail_on_invalid_key = true\s*site = "datadoghq\.eu"'
+      # No endpoint unless overridden, so the exporter derives it from the site.
+      # The deprecated exporter always rendered the US endpoint.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.datadog "dest_datadog" \{[^}]*\}\s*metrics \{'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.batch "dest_datadog" \{\s*output \{\s*logs = \[otelcol\.exporter\.datadog\.dest_datadog\.input\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "egress" \{[^}]*otelcol\.receiver\.loki\.dest_datadog\.receiver'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "dest_datadog" \{[\s\S]*?metrics = \[\s*otelcol\.exporter\.datadog\.dest_datadog\.input'
+
+  - it: should override a datadog endpoint through its signal's url
+    set:
+      pipeline.destinations.datadog:
+        type: datadog
+        metrics:
+          url: https://datadog-proxy.example.com
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'metrics \{\s*endpoint = sys\.env\("GATEWAY_DATADOG_DEST_METRICS"\)'
+        template: templates/pipelines/cm-alloy-gateway.yaml
+      - equal:
+          path: data.GATEWAY_DATADOG_DEST_METRICS
+          value: https://datadog-proxy.example.com
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+
+  # Datadog has no `url`: it is not required, and nothing is written for it.
+  - it: should need no url on a datadog destination
+    set:
+      pipeline.destinations.datadog:
+        type: datadog
+        apiKey:
+          key: not-a-real-key
+        metrics: {}
+    asserts:
+      - notFailedTemplate: {}
+        template: templates/validate.yaml
+      - notExists:
+          path: data.GATEWAY_DATADOG_DEST
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+      - equal:
+          path: data.GATEWAY_DATADOG_DEST_API_KEY
+          value: not-a-real-key
+        template: templates/pipelines/cm-alloy-gateway-env.yaml
+
+  - it: should refuse a datadog destination whose API key has no source
+    set:
+      alloy-gateway.alloy.envFrom: null
+      pipeline.destinations.datadog:
+        type: datadog
+        metrics: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pipeline.destinations.datadog.authType is "apiKey" but pipeline.destinations.datadog.apiKey.key is empty and GATEWAY_DATADOG_DEST_API_KEY is set by neither'
+
+  # --- otlp: headers and sigv4 ------------------------------------------------
+  - it: should authenticate an otlp destination with headers, literal or from the environment
+    set:
+      pipeline.destinations.honeycomb:
+        type: otlp
+        protocol: grpc
+        url: api.honeycomb.io:443
+        tls:
+          enabled: true
+        authType: headers
+        headers:
+          - key: x-honeycomb-team
+            valueEnv: GATEWAY_HONEYCOMB_API_KEY
+          - key: x-honeycomb-dataset
+            value: mzmon
+        metrics: {}
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.auth\.headers "dest_honeycomb" \{\s*header \{\s*key\s*= "x-honeycomb-team"\s*value = sys\.env\("GATEWAY_HONEYCOMB_API_KEY"\)\s*\}\s*header \{\s*key\s*= "x-honeycomb-dataset"\s*value = "mzmon"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'auth = otelcol\.auth\.headers\.dest_honeycomb\.handler'
+
+  - it: should authenticate an otlp destination with sigv4, assuming a role
+    set:
+      pipeline.destinations.amp:
+        type: otlp
+        url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1
+        tls:
+          enabled: true
+        authType: sigv4
+        sigv4:
+          region: us-east-1
+          service: aps
+          roleArn: arn:aws:iam::123456789012:role/example
+        metrics: {}
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      # `arn`, not `role_arn`: Alloy refuses the latter at load.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.auth\.sigv4 "dest_amp" \{\s*region = "us-east-1"\s*service = "aps"\s*assume_role \{\s*arn = "arn:aws:iam::123456789012:role/example"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'auth = otelcol\.auth\.sigv4\.dest_amp\.handler'
+
+  - it: should refuse a header with neither a value nor a variable
+    set:
+      pipeline.destinations.honeycomb:
+        type: otlp
+        url: api.honeycomb.io:443
+        authType: headers
+        headers:
+          - key: x-honeycomb-team
+        metrics: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.honeycomb.headers\\[0\\] sets neither value nor valueEnv"
+
+  - it: should refuse a header with both a value and a variable
+    set:
+      pipeline.destinations.honeycomb:
+        type: otlp
+        url: api.honeycomb.io:443
+        authType: headers
+        headers:
+          - key: x-honeycomb-team
+            value: literal
+            valueEnv: GATEWAY_HONEYCOMB_API_KEY
+        metrics: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.honeycomb.headers\\[0\\] sets both value and valueEnv"
+
+  - it: should refuse headers auth with no headers
+    set:
+      pipeline.destinations.honeycomb:
+        type: otlp
+        url: api.honeycomb.io:443
+        authType: headers
+        metrics: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.honeycomb.authType is headers, but pipeline.destinations.honeycomb.headers is empty"
+
+  # --- the deprecated otel block ----------------------------------------------
+  - it: should warn that the otel exporters are deprecated, naming each replacement
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.googleCloudExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.datadogExporter.enabled: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "pipeline.metrics.gateway.destination.otel is deprecated, and still renders as before.*googleCloudExporter becomes an entry of type googleCloud; datadogExporter becomes an entry of type datadog"
+
+  - it: should keep rendering the deprecated exporters
+    set:
+      pipeline.metrics.gateway.destination.otel.enabled: true
+      pipeline.metrics.gateway.destination.otel.googleCloudExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.datadogExporter.enabled: true
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "googleCloud" \{'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.datadog "destination" \{'
+
+  - it: should not warn about the otel exporters by default
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "destination.otel is deprecated"
+        not: true

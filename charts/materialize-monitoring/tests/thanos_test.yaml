@@ -22,7 +22,7 @@ set:
   # Some cases below enable the pipeline to give the reachability checks a
   # writer. Point the log destination off-cluster so only the Thanos-side
   # check under test can fire.
-  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
   # Pin the baseline explicitly: `set` state bleeds between tests in this
   # runner, so a case that does not name extraArgs would otherwise inherit a
   # replication factor from a neighbour. This mirrors the shipped default, so
@@ -293,7 +293,7 @@ tests:
     set:
       tags.pipeline: true
       thanos.receive.enabled: false
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://thanos-receive.example.com/api/v1/receive
+      pipeline.destinations.thanos.url: https://thanos-receive.example.com/api/v1/receive
     template: NOTES.txt
     asserts:
       - matchRegexRaw:

@@ -17,40 +17,33 @@
 # — pick whatever you like and name it in `valueEnv` below.
 
 pipeline:
-  metrics:
-    gateway:
-      destination:
-        # Keep the default in-cluster Thanos remote-write sink on if you also want
-        # cheap, full-fidelity local storage; set enabled: false to send metrics
-        # only to OTLP.
-        prometheusRemoteWrite:
-          thanos:
-            enabled: true
+  destinations:
+    # Keep the default in-cluster Thanos remote-write sink on if you also want
+    # cheap, full-fidelity local storage; set enabled: false to send metrics
+    # only to OTLP.
+    thanos:
+      enabled: true
 
-        otel:
-          enabled: true
-
-          otlpExporter:
-            enabled: true
-            # Host[:port], with no http:// or https:// prefix.
-            url: "api.honeycomb.io"
-            # grpc -> otlp exporter, http -> otlphttp exporter.
-            protocol: grpc
-            # Honeycomb is metered, so ship only the metrics you use. "recommended"
-            # keeps essentials + dashboard metrics; use "all" for everything
-            # scraped, or "essential" for alerting metrics only. (extended and
-            # diagnostic currently resolve to the same set as recommended.)
-            minMetricImportance: recommended
-
-          auth:
-            authType: headers
-            headers:
-              headers:
-                # The API key. `valueEnv` keeps it out of the rendered pipeline
-                # ConfigMap — it is read from the gateway's environment instead.
-                - key: x-honeycomb-team
-                  valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
-                # The target Honeycomb dataset for these metrics. Not a secret, so
-                # it is set inline.
-                - key: x-honeycomb-dataset
-                  value: mzmon
+    honeycomb:
+      type: otlp
+      # Host:port over gRPC. Over `protocol: http`, a URL such as
+      # https://api.honeycomb.io instead.
+      url: "api.honeycomb.io:443"
+      protocol: grpc
+      tls:
+        enabled: true
+      # Honeycomb is metered, so ship only the metrics you use. "recommended"
+      # keeps essentials + dashboard metrics; use "all" for everything
+      # scraped, or "essential" for alerting metrics only.
+      metrics:
+        minMetricImportance: recommended
+      authType: headers
+      headers:
+        # The API key. `valueEnv` keeps it out of the rendered pipeline
+        # ConfigMap — it is read from the gateway's environment instead.
+        - key: x-honeycomb-team
+          valueEnv: GATEWAY_OTEL_DEST_HONEYCOMB_API_KEY
+        # The target Honeycomb dataset for these metrics. Not a secret, so it is
+        # set inline.
+        - key: x-honeycomb-dataset
+          value: mzmon

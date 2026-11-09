@@ -13,21 +13,29 @@ description: |
   before forwarding to a type-neutral egress seam and a local sampled debug tap.
 
   Ingress: loki.source.api (configurable HTTP port via ALLOY_LOKI_PORT, default
-  3100), loki.source.kubernetes_events, and otelcol.receiver.otlp (via an
-  otelcol.exporter.loki bridge) all feed loki.process.inputProcessor. The
-  listeners themselves live in gateway-sources-stub.yaml; every component here
-  is typed and schema-validated, and no `raw:` escape remains in any pipeline.
+  3100), loki.source.kubernetes_events, the agent log sidechannel, and
+  otelcol.receiver.otlp (via an otelcol.exporter.loki bridge) all feed
+  loki.process.inputPrefilter. The listeners themselves live in
+  gateway-sources-stub.yaml; every component here is typed and
+  schema-validated, and no `raw:` escape remains in any pipeline.
 
-  A Rust panic is not one log line, so inputProcessor opens with a
+  inputPrefilter merges, drops, clamps, and rate-limits whole lines, then splits
+  them into a full tier and a DEBUG/TRACE bulk tier, each scanned by its own
+  loki.secretfilter before inputProcessor reads anything out of the line. The
+  filter ships with its rate at 0, so it forwards every line unscanned until
+  GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE are set.
+
+  A Rust panic is not one log line, so inputPrefilter opens with a
   stage.multiline that reassembles one before any stage can drop or reorder it,
-  and closes with a block that gives the merged entry a level, a message, and
-  the thread and source location as structured metadata. Both are commented
-  where they sit.
+  and inputProcessor closes with a block that gives the merged entry a level, a
+  message, and the thread and source location as structured metadata. Both are
+  commented where they sit.
 
-  inputProcessor never drops a line for its size. It clamps every entry to
-  PIPELINE_LOG_LINE_SAFETY_CLAMP (1MiB) on intake, and its last stage cuts the
-  line, labels, and structured metadata to fit Loki's limits, the last on a
-  per-entry budget. Each truncation leaves a suffix saying which rule cut it.
+  Neither component drops a line for its size. inputPrefilter clamps every
+  entry to PIPELINE_LOG_LINE_SAFETY_CLAMP (1MiB) on intake, and the last stage
+  of inputProcessor cuts the line, labels, and structured metadata to fit Loki's
+  limits, the last on a per-entry budget. Each truncation leaves a suffix saying
+  which rule cut it.
 
   Metrics: this file also carries a metrics pipeline, processed primarily in
   otelcol and converted back to Prometheus only on the way out. prometheus
@@ -94,7 +102,7 @@ blocks:
   # Kubernetes events source, feeding the main processor.
   - loki.source.kubernetes_events:
       label: k8sEvents
-      forward_to: ["loki.process.inputProcessor.receiver"]
+      forward_to: ["loki.process.inputPrefilter.receiver"]
 
   # --- agent log sidechannel ------------------------------------------
   #
@@ -183,7 +191,7 @@ blocks:
   - loki.source.kubernetes:
       label: agent_logs
       targets: ["discovery.relabel.agent_pods.output"]
-      forward_to: ["loki.process.inputProcessor.receiver"]
+      forward_to: ["loki.process.inputPrefilter.receiver"]
       blocks:
         # Without this every gateway replica tails every agent pod and each log
         # line lands in Loki once per replica. The gateway is expected to run
@@ -380,16 +388,28 @@ blocks:
   # TODO: otelcol.processor.transform before bridging (to handle resource attributes)
   - otelcol.exporter.loki:
       label: bridge
-      forward_to: ["loki.process.inputProcessor.receiver"]
+      forward_to: ["loki.process.inputPrefilter.receiver"]
 
-  # --- main processing pipeline -----------
-
+  # --- ingest: prefilter, tier split, and secret filter ---------------------
+  #
+  # loki.secretfilter scans the line and nothing else: never labels, never
+  # structured metadata. inputProcessor copies text out of the line into
+  # structured metadata (`orig_entry`, `msg`, `error`, `path`, …), so the filter
+  # runs before it, and every value inputProcessor derives comes from redacted
+  # text. inputPrefilter holds the stages that keep, drop, merge, or cut whole
+  # lines without reading fields out of them; inputProcessor starts at the first
+  # stage that does. Every source forwards to inputPrefilter, never to
+  # inputProcessor.
+  #
+  # The filter ships with `rate` 0, which forwards every line unscanned and
+  # counts it in loki_secretfilter_entries_bypassed_total. Set
+  # GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE to 1 to scan.
+  # TODO(DEP-313): default both to 1 after shadow mode has run on real logs.
   - loki.process:
-      label: inputProcessor
+      label: inputPrefilter
       forward_to:
-        # egress seam lives in gateway-dest-stub.yaml (swappable destination)
-        - "loki.process.egress.receiver"
-        - "loki.process.sampleDebug.receiver"
+        - "loki.relabel.tierFull.receiver"
+        - "loki.relabel.tierBulk.receiver"
       blocks:
         # --- multi-line records: Rust panics --------------------------------
         #
@@ -455,7 +475,7 @@ blocks:
         #   * The safety clamp below applies to the merged entry, not to its
         #     lines. A pathological panic that dumps multi-MiB lines keeps its
         #     first 1MiB — the header and the message — rather than being lost,
-        #     and the size limits at the end of this pipeline cut it again.
+        #     and the size limits at the end of inputProcessor cut it again.
         #
         # `max_wait_time` is the mechanism that actually delivers a panic, not
         # a timeout that rarely fires. While a container is alive each new
@@ -500,12 +520,12 @@ blocks:
         #
         # It clamps rather than drops, which keeps the start of a pathological
         # line: usually the part that says what it is. The cost is parsing. A
-        # clamped JSON or logfmt line no longer parses below, so it arrives
-        # without its fields; the heuristic level scan can still find a level
-        # near the start of the line.
+        # clamped JSON or logfmt line no longer parses in inputProcessor, so it
+        # arrives without its fields; the heuristic level scan can still find a
+        # level near the start of the line.
         #
-        # This bounds what the stages below work on, not what Loki stores; the
-        # size limits at the end of this pipeline do that. Shares
+        # This bounds what the secret filter and inputProcessor work on, not what
+        # Loki stores; the size limits at the end of inputProcessor do that. Shares
         # PIPELINE_LOG_LINE_SAFETY_CLAMP with the agent, which needs a unit
         # (`1MiB`, `512KiB`): a bare number fails the config load.
         - stage.truncate:
@@ -523,6 +543,129 @@ blocks:
             drop: true
             by_label_name: namespace
 
+        # --- level sniff: the secret filter's bulk tier ---------------------
+        #
+        # DEBUG and TRACE are the highest-volume levels, so they form a bulk
+        # tier the filter can scan at a lower rate than everything else. The
+        # `level` label is set only after parsing, so this reads the level
+        # field of the three shapes this stack emits, anchored where each
+        # format puts it:
+        #
+        #   * tracing JSON (environmentd, clusterd):
+        #       {"timestamp":"…","level":"DEBUG","fields":…
+        #   * tracing's plain text (balancerd, the operator):
+        #       2026-11-08T16:49:20.826176Z DEBUG HTTP request{…}: …
+        #   * logfmt (Alloy, Go services): ts=… level=debug …
+        #
+        # A line that matches none of them goes to the full tier, so a miss
+        # costs a scan rather than coverage. The anchors keep a message that
+        # only mentions `level=debug` out of the bulk tier, where the limit
+        # below could drop it.
+        - stage.regex:
+            expression: '^(?:\{"timestamp":"[^"]*","level":"|\d{4}-\d{2}-\d{2}T\S+\s+|(?:ts|time|t)=\S+\s+level=)(?P<sniffed_level>DEBUG|TRACE|debug|trace)(?:"|\s|$)'
+        - stage.labels:
+            values:
+              sniffed_level: ""
+        # inputProcessor's limit on unlevelled lines, applied to the bulk tier
+        # ahead of the scan too, so the filter skips most of what that limit
+        # drops anyway. Keep the two in step. The copy in inputProcessor still
+        # bounds every unlevelled line, including bulk lines the sniff misses.
+        - stage.match:
+            selector: '{sniffed_level=~".+"}'
+            blocks:
+              - stage.limit:
+                  rate: 1000
+                  burst: 5000
+                  drop: true
+                  by_label_name: namespace
+
+  # Alloy's forward_to fans out rather than routing, so the split is two
+  # components that each keep one tier. They are loki.relabel rather than
+  # loki.process drops, so the other tier's lines do not count in
+  # loki_process_dropped_lines_total, which the infra-alloy dashboard reads as
+  # loss.
+  - loki.relabel:
+      label: tierFull
+      forward_to: ["loki.secretfilter.ingest.receiver"]
+      blocks:
+        - rule:
+            source_labels: ["sniffed_level"]
+            regex: ".+"
+            action: drop
+  - loki.relabel:
+      label: tierBulk
+      forward_to: ["loki.secretfilter.ingestBulk.receiver"]
+      blocks:
+        - rule:
+            source_labels: ["sniffed_level"]
+            regex: ".+"
+            action: keep
+        - rule:
+            regex: sniffed_level
+            action: labeldrop
+
+  # Both instances load the rules in packages/alloy-pipelines/secretfilter/,
+  # which the chart ships in this config's ConfigMap as
+  # /etc/alloy/secretfilter-<name>. Keep them on the same
+  # flat file: two instances in one process that load an `[extend] path` chain
+  # race at startup, and one can come up with no rules (DEP-314).
+  #
+  # The placeholder names the rule and carries no hash: `$SECRET_HASH` is an
+  # unsalted SHA-1 of the secret, which confirms any guess. A line that runs
+  # past GATEWAY_SECRETFILTER_TIMEOUT is forwarded, partly redacted, with
+  # `secretfilter="timed-out"`. The raw line is still in the container log on
+  # the node, so dropping it here would cost the customer the line without
+  # removing the exposure. The timeout defaults to `0s`, no limit.
+  - loki.secretfilter:
+      label: ingest
+      forward_to: ["loki.process.inputProcessor.receiver"]
+      gitleaks_config: /etc/alloy/secretfilter-ingest.toml
+      redact_with: "<redacted:$SECRET_NAME>"
+      rate:
+        function: encoding.from_json
+        arguments:
+          - function: coalesce
+            arguments:
+              - env: GATEWAY_SECRETFILTER_RATE
+              - "0"
+      processing_timeout:
+        function: coalesce
+        arguments:
+          - env: GATEWAY_SECRETFILTER_TIMEOUT
+          - "0s"
+      drop_on_timeout: false
+      label_timed_out: true
+      origin_label: container
+  - loki.secretfilter:
+      label: ingestBulk
+      forward_to: ["loki.process.inputProcessor.receiver"]
+      gitleaks_config: /etc/alloy/secretfilter-ingest.toml
+      redact_with: "<redacted:$SECRET_NAME>"
+      rate:
+        function: encoding.from_json
+        arguments:
+          - function: coalesce
+            arguments:
+              - env: GATEWAY_SECRETFILTER_BULK_RATE
+              - "0"
+      processing_timeout:
+        function: coalesce
+        arguments:
+          - env: GATEWAY_SECRETFILTER_TIMEOUT
+          - "0s"
+      drop_on_timeout: false
+      label_timed_out: true
+      origin_label: container
+
+  # --- main processing pipeline -----------
+  # Receives only lines that passed a secret filter instance.
+  - loki.process:
+      label: inputProcessor
+      forward_to:
+        # egress seam lives in gateway-dest-stub.yaml (swappable destination)
+        - "loki.process.egress.receiver"
+        - "loki.process.sampleDebug.receiver"
+      blocks:
         # --- stash the original line as structured metadata -----------------
         - stage.regex:
             expression: '(?P<orig_entry>.*)'
@@ -1111,7 +1254,7 @@ blocks:
 
         # --- Rust panics: level, message, provenance -------------------------
         #
-        # The merge at the top of this pipeline makes a panic one entry; this
+        # The merge in inputPrefilter makes a panic one entry; this
         # makes it a *legible* one. Left here, a panic is the only entry from a
         # Materialize service with no level and no message: it is not JSON, so
         # the per-service `stage.json` above extracts nothing, the msg template
@@ -1166,23 +1309,237 @@ blocks:
               level: level
 
         # --- heuristic level extraction for still-unknown entries -----------
+        # Lines no per-application parser leveled arrive here as UNKNOWN. Each
+        # detector below recognizes one shape of line, sets `level` from it, and
+        # promotes the label at once, so the first detector to match wins and
+        # the rest skip the entry. `levelheuristic` (structured metadata) names
+        # the detector that leveled the entry, or `none`, so what remains
+        # UNKNOWN can be grouped and the leveled lines audited by source.
+        #
+        # The order is: formats that carry a level of their own, then severity
+        # read from the content, then defaults for formats known to carry none.
+        # Each selector carries a line filter, so a detector costs nothing on
+        # lines it cannot match. Measured against a day of an AKS install, where
+        # UNKNOWN was the largest level by more than double; the detectors
+        # leveled about nine lines in ten.
+
+        # Loki canary payloads: a nanosecond timestamp and padding, written to
+        # be read back rather than read.
+        - stage.match:
+            selector: '{level="UNKNOWN", app="loki", container="canary"} |~ "^[0-9]{19} p+$"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: TRACE
+              - stage.template:
+                  source: levelheuristic
+                  template: canary
+              - stage.labels:
+                  values:
+                    level: level
+        # The canary's per-entry reports. Its metrics carry the same signal, so
+        # the lines are detail. A failure to connect is left to the keyword
+        # detector, which makes it an error.
+        - stage.match:
+            selector: '{level="UNKNOWN", app="loki", container="canary"} |~ "^(websocket missing entry|failed to receive entry|failed to find entry|Querying loki for logs|Connecting to loki)"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: DEBUG
+              - stage.template:
+                  source: levelheuristic
+                  template: canary
+              - stage.labels:
+                  values:
+                    level: level
+        # klog, from any component: `I1108 19:59:31.736880  1 file.go:314] ...`.
+        # The per-application klog parsers above cover only the components they
+        # name; this catches the rest, kubelet's journal lines included.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^[IWEF][0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]+ +[0-9]+ [^ ]+\\]"'
+            blocks:
+              - stage.regex:
+                  expression: '^(?P<level>[IWEF])[0-9]{4} '
+              - stage.template:
+                  source: levelheuristic
+                  template: klog
+              - stage.labels:
+                  values:
+                    level: level
+        # Panics, Go's and Rust's, are CRITICAL. They arrive with no level the
+        # parsers can read, and they are the lines an UNKNOWN floor would lose.
+        # Ahead of the level-word detector, which would take Go's `panic: `.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^(panic: |fatal error: |goroutine [0-9]+ \\[)|panicked at "'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: CRITICAL
+              - stage.template:
+                  source: levelheuristic
+                  template: panic
+              - stage.labels:
+                  values:
+                    level: level
+        # A level word opening the line, bare or bracketed, after an optional
+        # timestamp and a space or tab: `2026-11-08T19:58:00Z INFO ...`
+        # (WALinuxAgent), `...Z<TAB>error<TAB>...` (zap's console encoder),
+        # `[2026/11/08 20:00:00] [ info] ...` (fluent-bit), `[INFO] ...` (CoreDNS).
+        # Anchored to the start, so a level word inside a message never matches.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "(?i)^(\\[?[0-9]{4}[-/][0-9]{2}[-/][0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}[^ \\t\\]]*\\]?[ \\t]+)?\\[? *(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic) *\\]?[ \\t:]"'
+            blocks:
+              - stage.regex:
+                  expression: '(?i)^(?:\[?[0-9]{4}[-/][0-9]{2}[-/][0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}[^ \t\]]*\]?[ \t]+)?\[? *(?P<level>trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic) *\]?[ \t:]'
+              - stage.template:
+                  source: levelheuristic
+                  template: level_prefix
+              - stage.labels:
+                  values:
+                    level: level
+        # HTTP access logs: `host ident user [date]`, then the request and the
+        # status (common and combined formats), or the status first (the Loki
+        # gateway's nginx). 5xx is ERROR, 4xx WARN, anything else INFO.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^[^ ]+ [^ ]+ [^ ]+ \\[[^\\]]+\\] +(\"[^\"]*\" )?[1-5][0-9]{2} "'
+            blocks:
+              - stage.regex:
+                  expression: '^\S+ \S+ \S+ \[[^\]]+\] +(?:"[^"]*" )?(?P<http_status>[1-5][0-9]{2}) '
+              - stage.template:
+                  source: level
+                  template: '{{ if hasPrefix "5" .http_status }}ERROR{{ else if hasPrefix "4" .http_status }}WARN{{ else }}INFO{{ end }}'
+              - stage.template:
+                  source: levelheuristic
+                  template: access_log
+              - stage.labels:
+                  values:
+                    level: level
+        # A `level=` or `"severity":` pair anywhere in the line. The filter is
+        # looser than the capture, so only the entries the capture leveled are
+        # tagged.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "(?i)\"?(level|severity)\"?\\s*[:=]"'
+            blocks:
+              - stage.regex:
+                  expression: '(?i)"?(?:level|severity)"?\s*[:=]\s*"?(?P<level>(?:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))"?'
+              - stage.labels:
+                  values:
+                    level: level
+              - stage.match:
+                  selector: '{level!="UNKNOWN"}'
+                  blocks:
+                    - stage.template:
+                        source: levelheuristic
+                        template: keyvalue
+
+        # Journal entries with no level in the text take journald's priority,
+        # which the agent copies to `journal_priority`. It is coarser than the
+        # text detectors above, so it runs after them: kubelet writes every klog
+        # level at the same priority.
+        - stage.match:
+            selector: '{level="UNKNOWN", journal_priority=~".+"}'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: '{{ .journal_priority }}'
+              - stage.template:
+                  source: levelheuristic
+                  template: journal_priority
+              - stage.labels:
+                  values:
+                    level: level
+        # Stack-trace frames, one entry per frame: Go's file lines
+        # (`<TAB>path/file.go:123`), function lines with or without arguments
+        # (`pkg/path.(*Type).Method`, `net/http.(*conn).serve(0xc0, {0x1, 0x2})`,
+        # `main.main()`) and `created by` lines, Java's `at pkg.Class.method(`,
+        # and Python's `File "...", line N`. They accompany an error, so they
+        # are ERROR, and `levelheuristic="stacktrace"` separates them from the
+        # error itself. A function line with arguments has no space before its
+        # opening parenthesis, which keeps an ordinary sentence out.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^\\t[^ ]+\\.go:[0-9]+|^[a-zA-Z0-9_.-]+/[^ \\t]*\\.[a-zA-Z_*(][^ \\t/]*$|^[a-zA-Z0-9_.-]+(/[^ \\t]*)?\\.[a-zA-Z_*(][^ \\t]*\\(.*\\)$|^created by [^ \\t]+|^\\s+at [a-zA-Z0-9_.$]+\\(|^  File \"[^\"]+\", line [0-9]+"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: ERROR
+              - stage.template:
+                  source: levelheuristic
+                  template: stacktrace
+              - stage.labels:
+                  values:
+                    level: level
+        # Severity read from words in the line. Only words that mark a failure
+        # or a warning promote a line.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "(?i)\\b(error|errors|failed|failure|fatal|exception)\\b"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: ERROR
+              - stage.template:
+                  source: levelheuristic
+                  template: keyword
+              - stage.labels:
+                  values:
+                    level: level
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "(?i)\\b(warn|warning|deprecated)\\b"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: WARN
+              - stage.template:
+                  source: levelheuristic
+                  template: keyword
+              - stage.labels:
+                  values:
+                    level: level
+        # Formats that carry no level and have not matched a failure or warning
+        # word above: Go's standard `log` package (`2026/11/08 20:07:09 ...`) is
+        # INFO, and fluent-bit output plugins' traces (`[flb-<plugin>] ...`) are
+        # DEBUG. A line in no known format stays UNKNOWN rather than being
+        # guessed.
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: INFO
+              - stage.template:
+                  source: levelheuristic
+                  template: go_log
+              - stage.labels:
+                  values:
+                    level: level
+        - stage.match:
+            selector: '{level="UNKNOWN"} |~ "^\\[flb-[a-z0-9_-]+\\] "'
+            blocks:
+              - stage.template:
+                  source: level
+                  template: DEBUG
+              - stage.template:
+                  source: levelheuristic
+                  template: fluent_bit_plugin
+              - stage.labels:
+                  values:
+                    level: level
         - stage.match:
             selector: '{level="UNKNOWN"}'
             blocks:
-              - stage.regex:
-                  expression: '(?i)"?(?:level|severity)"?\s*[:=]\s*"?(?P<level>(?:info|warn|warning|err|error|debug|crit|critical|fatal))"?'
-                  labels_from_groups: true
               - stage.template:
                   source: levelheuristic
-                  template: '{{ if eq .level "UNKNOWN" }}failed{{ else }}success{{ end }}'
-              - stage.structured_metadata:
-                  values:
-                    levelheuristic: ""
+                  template: none
+        - stage.structured_metadata:
+            values:
+              levelheuristic: ""
+        # Read by the journal detector, and never a stream label.
+        - stage.label_drop:
+            values: ["journal_priority"]
 
         # --- normalize level values -----------------------------------------
         - stage.replace:
             source: level
-            expression: '(?i)^(fatal|critical|crit|f)$'
+            expression: '(?i)^(fatal|critical|crit|f|panic|emerg|alert)$'
             replace: CRITICAL
         - stage.replace:
             source: level

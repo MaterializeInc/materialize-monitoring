@@ -6,8 +6,114 @@ weight: 20
 # Storing Logs
 
 Loki keeps all durable log data in a single [object storage](../architecture/#storage) backend, maintained by the [Loki Compactor](../architecture/#backend).
-This page covers the storage layout, the index, retention, and disaster recovery.
+This page covers where the gateway writes logs, the storage layout, the index, retention, and disaster recovery.
 See the [logging architecture](../architecture/) for how storage relates to the ingesters that write it and the queriers that read it.
+
+## Where the gateway writes logs {#destinations}
+
+The gateway writes processed logs to each destination in `pipeline.destinations`.
+The map holds one entry by default, `loki`, which writes to the bundled Loki.
+Each entry has its own components and its own queue.
+
+An entry's `type` sets how the gateway writes to it:
+
+`loki`
+: Pushes logs through `loki.write`, labeled with the entry's name.
+
+`otlp`
+: Sends logs, metrics, or both over one OTLP connection, through components labeled `dest_<name>`.
+  A signal is on when its block is present.
+
+To write logs somewhere else as well, add an entry.
+The following example adds an external Loki that never slows down delivery to the bundled one:
+
+```yaml
+pipeline:
+  destinations:
+    archive:
+      type: loki
+      url: https://logs.example.com/loki/api/v1/push
+      authType: bearer
+      queue:
+        capacity: 64MiB
+        blockOnOverflow: false
+```
+
+The following example sends logs to an OTLP backend that takes only logs, on that signal's own endpoint:
+
+```yaml
+pipeline:
+  destinations:
+    opensearch:
+      type: otlp
+      url: http://data-prepper.logging.svc:21890
+      logs:
+        url: http://data-prepper.logging.svc:21892/v1/logs
+```
+
+An `otlp` entry with a `metrics` block also receives metrics, filtered to its own `metrics.minMetricImportance`, over the same connection and credentials.
+Over gRPC, set `protocol: grpc` and write `url` as `host:port`; gRPC serves every signal on one endpoint.
+
+To authenticate to a destination with a client certificate, put the certificate and key in a Secret named `mzmon-alloy-gateway-destination-tls` in the gateway's namespace.
+The gateway mounts it at `/etc/mzmon/destination-tls`, so set the destination's `tls.certFile` and `tls.keyFile` to files there.
+Until the Secret exists, the mount is empty and a destination that names a file in it fails to load.
+
+To stop writing to the bundled Loki, set `pipeline.destinations.loki.enabled` to `false`.
+For every field, see [`pipeline.destinations` in the values reference](../../reference/helm/materialize-monitoring-values/#destinations).
+
+### Reduce what one destination receives {#destination-reduction}
+
+A destination can receive a reduced copy of the logs while every other destination keeps everything.
+Set any of the following fields in the destination's `logs` block:
+
+| Field | What it does |
+|---|---|
+| `selector` | Keeps only entries matching a LogQL stream selector, such as `{namespace=~"environment-.+"}`. Line filters are allowed after it. |
+| `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. |
+| `keepUnknown` | Set to `false` to drop entries with an `UNKNOWN` level, which `minLevel` keeps. A panic arrives without a level the gateway can parse, so it is `UNKNOWN`. Defaults to `true`. |
+| `sampleRate` | Keeps a fraction of entries, above 0 and at most 1. |
+| `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst` whole lines. `burst` defaults to `rate`, rounded up, and can be lower than it. |
+
+The gateway applies them in that order, in a `loki.process` component of the destination's own, `loki.process "dest_<name>"`.
+Each drop is counted in `loki_process_dropped_lines_total`, with `reason` set to `destination_selector`, `destination_level`, `destination_sampling`, or `ratelimit_drop_stage`.
+
+The following example sends only warnings and above from environment namespaces, at most 500 lines per second:
+
+```yaml
+pipeline:
+  destinations:
+    controlPlane:
+      type: otlp
+      url: https://ingest.example.com
+      logs:
+        selector: '{namespace=~"environment-.+"}'
+        minLevel: WARN
+        rateLimit:
+          rate: 500
+```
+
+To send a destination no logs at all, set `logs.enabled` to `false` rather than a sample rate of 0.
+
+### Keep one destination from holding back another {#destination-isolation}
+
+The gateway hands every log entry to each destination in turn.
+A destination that blocks when its queue is full makes the gateway wait for room, and while it's stalled, no other destination receives anything either.
+
+The types differ in their default:
+
+- A `loki` destination blocks.
+  Set `queue.blockOnOverflow: false` on every `loki` destination except the one whose copy must be complete.
+  It then drops entries when its queue is full, and counts them in `loki_write_dropped_entries_total{reason="queue_is_full"}`.
+  `queue.capacity` sets how far it can fall behind before it drops.
+- An `otlp` destination drops.
+  It counts what it drops in `otelcol_exporter_enqueue_failed_log_records_total`, and `queue.queueSize` sets how many requests it holds.
+
+The render warns when more than one log destination blocks.
+
+> [!NOTE]
+>   `pipeline.logging.gateway.destination.loki` is deprecated.
+>   Keys you still set there apply to `pipeline.destinations.loki`, and the render warns.
+>   Move each key across, so `pipeline.logging.gateway.destination.loki.url` becomes `pipeline.destinations.loki.url`.
 
 ## Object storage
 

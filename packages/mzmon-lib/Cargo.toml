@@ -36,5 +36,7 @@ thiserror = "2.0.18"
 datadog = ["dep:datadog-api-client"]
 
 [dev-dependencies]
+# Stamps the level corpus's <<NOW>> placeholder with an RFC 3339 time.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 # Used by the `alloy fmt` oracle test helper to stage rendered output to disk.
 tempfile = "3"

@@ -116,7 +116,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | Alert **definitions** | ✅ Shipped as documentation | `packages/queries/materialize-alerts.yaml`, `infra-alerts.yaml`, rendered to [Common Alerts](../../../common-alerts/) |
 | **Alert rule evaluation** | ❌ **Absent** | `templates/alerts/` is empty, nothing reads `config.rules.prometheus.enabled`, `pre-rendered/rules/prometheus/` holds only a `.gitkeep`, and `thanos.ruler.enabled` is `false` |
 | **Alertmanager** | ⚠️ Bundled, off | `tags.alertmanager: false`; routing is [DEP-216](https://linear.app/materializeinc/issue/DEP-216), unstarted |
-| **Logs to more than one destination** | ❌ Missing | One `loki.write "destination"`, one `egress` seam — [BYOC's blocking row](../20260813-byoc-observability/#chart-side-prerequisites) |
+| Logs to more than one destination | ✅ Shipped | `pipeline.destinations`, one writer and one queue per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
 | **Per-destination log processing and redaction** | ❌ Missing | `inputProcessor` is global — same row |
 | **A trust bundle for non-public CAs** | ❌ Not shipped | [DEP-236](https://linear.app/materializeinc/issue/DEP-236). Needed for any customer whose egress proxy presents a corporate certificate |
 | **`oauth2.tls` on destinations** | ❌ Missing | Named by the [query-API doc](../20260916-tenant-query-api/#the-blocker-stated-precisely); blocks exchanging a certificate for a token |
@@ -215,7 +215,7 @@ A chart upgrade that starts sending anything is the single failure that would en
 This belongs in a render assertion, not in review discipline.
 
 **The levels are assembled by profiles, not by the operator.**
-Consistent with [profiles as documentation](../20260803-terraform-modules/#profiles-are-documentation-with-one-exception), each level is a composable overlay — `callhome-heartbeat`, `callhome-alerts`, and so on — that sets the destination, the tier floor, the redaction chain and the budget together.
+Consistent with [profiles as documentation](../20260803-terraform-modules/#profiles-are-documentation-with-one-exception), each level is a composable overlay — `call-home-heartbeat`, `call-home-alerts`, and so on — that sets the destination, the tier floor, the redaction chain and the budget together.
 An operator who assembles a level by hand will get four of the five settings right, which is the failure mode the [mTLS validator work](../20260816-tls-authentication/#per-component-notes) already found on a different feature.
 
 **Every level publishes a generated schedule and a measured envelope.**
@@ -513,7 +513,7 @@ None of it is ticketed yet.
 | **All [BYOC blocking prerequisites](../20260813-byoc-observability/#chart-side-prerequisites)** — map-shaped log destinations, per-destination processing, per-destination queue and drop policy, the tenant overwrite, the log-bridge transform, and the redaction stage set | This design is defaults and consent on top of that channel. Nothing above level 3 exists without them | **Blocking**, inherited |
 | **Rule evaluation actually shipping** — a template that emits the bundled rules, and an evaluator enabled by default in the bundled shape | Nothing evaluates alerting rules today, so the alerts level would forward an empty set that reads as good news | **Blocking** for levels 2 and up |
 | **Alert state reaching the gateway** — whatever evaluates metric rules remote-writes to `prometheus.receive_http`, as Loki's ruler already does | The fan-out happens at the gateway. Series that land in Thanos without traversing it cannot be forwarded | **Blocking** for the alerts level |
-| **The `callHome.level` values surface**, defaulting `off`, with the level profiles that assemble each rung | The feature. A level assembled by hand is a level with four of five settings right | **Blocking** |
+| **The `callHome.level` values surface**, defaulting `off`, with the level profiles that assemble each rung | The feature. A level assembled by hand is a level with four of five settings right | **Blocking**. `profiles/call-home.values.yaml` is the first profile, shared with BYOC: off unless applied, and the `metrics` and `diagnostics` rungs through `logs.enabled`, `logs.minLevel`, `logs.keepUnknown` and `metrics.minMetricImportance` on one destination. The single key selecting a rung, and the `heartbeat` and `alerts` rungs, are not built |
 | **A render assertion that the default sends nothing**, re-checked on every values change | A default that drifts to on in a refactor is the one failure that ends the programme | **Blocking** |
 | **`previewOnly` on the call-home destination** — full chain, counted and sampled locally, dropped before the writer | The compliance artifact a generated schedule cannot be, because it runs on the customer's own data | **Blocking** for the review story |
 | **A byte-rate ceiling per level**, shed rather than queued, with the shed event reported | Selection bounds kind, not volume, and volume spikes during exactly the incidents this exists for | **Blocking** |

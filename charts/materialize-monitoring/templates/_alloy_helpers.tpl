@@ -268,9 +268,9 @@ Usage:
 */}}
 {{- define "mzmon.alloyGateway.pipeline.lokiRules" }}
   {{- if ( include "mzmon.rules.logRuleSync.enabled" $ ) }}
-    {{- $lokiDest := $.Values.pipeline.logging.gateway.destination.loki }}
+    {{- $lokiTls := include "mzmon.destinations.bundledLokiTls" $ | fromYaml }}
     {{- $ruler := printf "http://%s.%s.svc:3100" ( include "mzmon.loki.ruler.service" $ ) ( include "mzmon.loki.namespace" $ ) }}
-    {{- $address := include "mzmon.alloy.destUrl" ( dict "url" $ruler "tls" $lokiDest.tls ) }}
+    {{- $address := include "mzmon.alloy.destUrl" ( dict "url" $ruler "tls" $lokiTls ) }}
     {{- range $i, $tenant := ( include "mzmon.rules.logTenants" $ | fromYamlArray ) }}
 
 loki.rules.kubernetes {{ printf "tenant_%d" $i | quote }} {
@@ -283,7 +283,7 @@ loki.rules.kubernetes {{ printf "tenant_%d" $i | quote }} {
             {{ include "mzmon.rules.flavorLabel" $ | quote }} = "logql",
         }
     }
-      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $lokiDest.tls "indent" 4 ) }}
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $lokiTls "indent" 4 ) }}
 }
     {{- end }}
   {{- end }}
@@ -304,8 +304,7 @@ Usage:
   {{- $metricTls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
 loki.source.api "gateway" {
     forward_to = [
-        loki.process.sampleDebug.receiver,
-        loki.process.inputProcessor.receiver,
+        loki.process.inputPrefilter.receiver,
     ]
 
     http {
@@ -410,9 +409,37 @@ Usage:
   {{- $logForward := list }}
   {{- $metricsForward := list }}
   {{- $metricsPromForward := list }}
-  {{- if $pipelineValues.logging.gateway.destination.loki.enabled }}
-    {{- $logForward = append $logForward "loki.write.destination.receiver" }}
-    {{- include "mzmon.alloyGateway.pipeline.loki.dest" $ }}
+  {{- /* Each log destination hangs off the shared loki.process "egress" seam
+         by its own writer, so each has its own queue and its own drop policy. */}}
+  {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
+    {{- $writer := "" }}
+    {{- if eq $dest.type "loki" }}
+      {{- $writer = printf "loki.write.%s.receiver" $dest.label }}
+      {{- include "mzmon.alloyGateway.pipeline.loki.dest" ( dict "context" $ "dest" $dest ) }}
+    {{- else }}
+      {{- $writer = printf "otelcol.receiver.loki.%s.receiver" $dest.label }}
+    {{- end }}
+    {{- /* A destination that reduces its logs gets a loki.process of its own
+           between the seam and its writer, so the reduction applies to its
+           copy and no other. */}}
+    {{- if ( include "mzmon.destinations.reducesLogs" $dest ) }}
+      {{- include "mzmon.alloyGateway.pipeline.logReduction" ( dict "context" $ "dest" $dest "forwardTo" $writer ) }}
+      {{- $writer = printf "loki.process.dest_%s.receiver" $dest.name }}
+    {{- end }}
+    {{- $logForward = append $logForward $writer }}
+  {{- end }}
+  {{- /* An OTLP-family destination's metrics hang off the
+         otelcol.processor.filter "egress" seam by their own tier filter. Only
+         `loki` carries no metrics, and the validator refuses metrics on it. */}}
+  {{- range $dest := ( include "mzmon.destinations.metrics" $ | fromYamlArray ) }}
+    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" ) }}
+      {{- $metricsForward = append $metricsForward ( printf "otelcol.processor.transform.%s.input" $dest.label ) }}
+    {{- end }}
+  {{- end }}
+  {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
+    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" ) }}
+      {{- include "mzmon.alloyGateway.pipeline.otel.dest" ( dict "context" $ "dest" $dest ) }}
+    {{- end }}
   {{- end }}
   {{- /* Each remote-write destination hangs off the shared prometheus.relabel
          "egress" seam by its own per-destination tier filter. The OTLP -> prom
@@ -466,58 +493,388 @@ otelcol.processor.filter "egress" {
 {{- end }}
 
 {{/*
-Generate the alloy-gateway loki.write.destination blocks.
+Generate the `loki.write` block for one log destination.
+
+The `queue_config` block appears only when the destination sets a queue field,
+so a destination that leaves the queue alone renders as it always has. Alloy
+marks `queue_config` experimental, which the gateway's stability level allows.
+
+Args:
+  context: the root context.
+  dest: a destination resolved by `mzmon.destinations.resolve`.
 
 Usage:
-  {{- include "mzmon.alloyGateway.pipeline.loki.dest" $ }}
+  {{- include "mzmon.alloyGateway.pipeline.loki.dest" ( dict "context" $ "dest" $dest ) }}
 */}}
 {{- define "mzmon.alloyGateway.pipeline.loki.dest" }}
-  {{- $gatewayLogValues := $.Values.pipeline.logging.gateway }}
-loki.write "destination" {
+  {{- $root := .context }}
+  {{- $dest := .dest }}
+loki.write {{ $dest.label | quote }} {
     endpoint {
-        url = sys.env("GATEWAY_LOKI_DEST")
-        max_backoff_period = {{ $gatewayLogValues.destination.loki.retries.maxBackoffPeriod | quote }}
-        max_backoff_retries = {{ $gatewayLogValues.destination.loki.retries.maxBackoffRetries }}
-        min_backoff_period = {{ $gatewayLogValues.destination.loki.retries.minBackoffPeriod | quote }}
-        retry_on_http_429 = {{ $gatewayLogValues.destination.loki.retries.retryOnHttp429 }}
-  {{- if eq $.Values.pipeline.logging.tenancy.tenantMap.default "static" }}
-        tenant_id = {{ $.Values.pipeline.logging.tenancy.staticTenant | quote }}
+        url = sys.env({{ $dest.urlEnv | quote }})
+        max_backoff_period = {{ $dest.retries.maxBackoffPeriod | quote }}
+        max_backoff_retries = {{ $dest.retries.maxBackoffRetries }}
+        min_backoff_period = {{ $dest.retries.minBackoffPeriod | quote }}
+        retry_on_http_429 = {{ $dest.retries.retryOnHttp429 }}
+  {{- if eq $root.Values.pipeline.logging.tenancy.tenantMap.default "static" }}
+        tenant_id = {{ $root.Values.pipeline.logging.tenancy.staticTenant | quote }}
   {{- end }}
-      {{- if eq $gatewayLogValues.destination.loki.authType "none" }}
-      {{- else if eq $gatewayLogValues.destination.loki.authType "basicAuth" }}
+      {{- if eq $dest.authType "none" }}
+      {{- else if eq $dest.authType "basicAuth" }}
 
         basic_auth {
-            username = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.usernameEnv | required "basicAuth.usernameEnv" | quote }})
-            password = sys.env({{ $gatewayLogValues.destination.loki.basicAuth.passwordEnv | required "basicAuth.passwordEnv" | quote }})
+            username = sys.env({{ $dest.basicAuth.usernameEnv | quote }})
+            password = sys.env({{ $dest.basicAuth.passwordEnv | quote }})
         }
-      {{- else if eq $gatewayLogValues.destination.loki.authType "bearer" }}
+      {{- else if eq $dest.authType "bearer" }}
 
         authorization {
             type = "Bearer"
-            credentials = sys.env({{ $gatewayLogValues.destination.loki.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
+            credentials = sys.env({{ $dest.bearer.tokenEnv | quote }})
         }
       {{- else }}
-        {{- printf "Unsupported authType: %s" $gatewayLogValues.destination.loki.authType | fail }}
+        {{- printf "Unsupported pipeline.destinations.%s.authType (%s)" $dest.name $dest.authType | fail }}
       {{- end }}
-      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $gatewayLogValues.destination.loki.tls "indent" 8 ) }}
+      {{- with $dest.queue }}
+
+        queue_config {
+        {{- if hasKey . "blockOnOverflow" }}
+            block_on_overflow = {{ .blockOnOverflow }}
+        {{- end }}
+        {{- if hasKey . "capacity" }}
+            capacity = {{ .capacity | toString | quote }}
+        {{- end }}
+        {{- if hasKey . "drainTimeout" }}
+            drain_timeout = {{ .drainTimeout | toString | quote }}
+        {{- end }}
+        {{- if hasKey . "minShards" }}
+            min_shards = {{ .minShards | int }}
+        {{- end }}
+        }
+      {{- end }}
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $dest.tls "indent" 8 ) }}
     }
 }
 {{- end }}
 
 
 {{/*
-Reserved Alloy component labels a Prometheus remote-write destination may not use.
+Generate the `loki.process "dest_<name>"` that reduces one destination's logs.
 
-Each destination renders `prometheus.relabel "<name>"` and
-`prometheus.remote_write "<name>"`, so a name colliding with a component this
-pipeline already defines produces a duplicate-label config alloy rejects at load.
-`egress` is the fan-out seam every destination hangs off.
+Rendered only for a destination that sets a reduction field, between the
+`egress` seam and the destination's writer, so the customer's own copy keeps
+everything. The stages run cheapest first, and each drop is counted in
+`loki_process_dropped_lines_total` under its own reason:
+
+  1. **selector**, an allowlist. LogQL cannot negate a stream selector, so every
+     entry is marked `__dest_keep="false"`, entries the selector matches are
+     re-marked `"true"`, and the rest are dropped. The marker is removed before
+     the entry leaves.
+  2. **minLevel**, dropping the levels below it, and `UNKNOWN` as well when
+     `keepUnknown` is false; see `mzmon.destinations.levelsBelow`.
+  3. **sampleRate**, through `stage.sampling`.
+  4. **rateLimit**, through `stage.limit` with `drop = true`. Without `drop` the
+     stage backpressures, which would hold back every other destination.
+
+Args:
+  context: the root context.
+  dest: a destination resolved by `mzmon.destinations.resolve`.
+  forwardTo: the destination writer's receiver.
 
 Usage:
-  {{- if has $name ( include "mzmon.alloyGateway.promDest.reservedNames" $ | fromYamlArray ) }}
+  {{- include "mzmon.alloyGateway.pipeline.logReduction" ( dict "context" $ "dest" $dest "forwardTo" $writer ) }}
 */}}
-{{- define "mzmon.alloyGateway.promDest.reservedNames" }}
-  {{- list "egress" | toYaml }}
+{{- define "mzmon.alloyGateway.pipeline.logReduction" }}
+  {{- $root := .context }}
+  {{- $dest := .dest }}
+  {{- $logs := $dest.logs }}
+
+loki.process {{ printf "dest_%s" $dest.name | quote }} {
+    forward_to = [{{ .forwardTo }}]
+  {{- with $logs.selector }}
+
+    stage.static_labels {
+        values = {
+            "__dest_keep" = "false",
+        }
+    }
+
+    stage.match {
+        selector = {{ . | quote }}
+
+        stage.static_labels {
+            values = {
+                "__dest_keep" = "true",
+            }
+        }
+    }
+
+    stage.match {
+        selector = "{__dest_keep=\"false\"}"
+        action = "drop"
+        drop_counter_reason = "destination_selector"
+    }
+
+    stage.label_drop {
+        values = ["__dest_keep"]
+    }
+  {{- end }}
+  {{- $dropLevels := list }}
+  {{- with $logs.minLevel }}
+    {{- $dropLevels = index ( include "mzmon.destinations.levelsBelow" $root | fromYaml ) . | default list }}
+  {{- end }}
+  {{- if not $logs.keepUnknown }}
+    {{- $dropLevels = append $dropLevels "UNKNOWN" }}
+  {{- end }}
+  {{- if $dropLevels }}
+
+    stage.match {
+        selector = {{ printf "{level=~%q}" ( join "|" $dropLevels ) | quote }}
+        action = "drop"
+        drop_counter_reason = "destination_level"
+    }
+  {{- end }}
+  {{- if lt ( $logs.sampleRate | float64 ) 1.0 }}
+
+    stage.sampling {
+        rate = {{ $logs.sampleRate }}
+        drop_counter_reason = "destination_sampling"
+    }
+  {{- end }}
+  {{- if $logs.rateLimit.configured }}
+
+    stage.limit {
+        rate = {{ $logs.rateLimit.rate }}
+        burst = {{ $logs.rateLimit.burst | int }}
+        drop = true
+    }
+  {{- end }}
+}
+{{- end }}
+
+
+{{/*
+Render a `sending_queue` block from a destination's resolved `queue`, or
+nothing when it sets no field. Shared by every otelcol exporter a destination
+renders; each drops when its queue is full unless `blockOnOverflow` is true.
+
+Usage:
+  {{- include "mzmon.alloyGateway.otel.sendingQueue" $dest.queue }}
+*/}}
+{{- define "mzmon.alloyGateway.otel.sendingQueue" }}
+  {{- with . }}
+
+    sending_queue {
+    {{- if hasKey . "blockOnOverflow" }}
+        block_on_overflow = {{ .blockOnOverflow }}
+    {{- end }}
+    {{- if hasKey . "numConsumers" }}
+        num_consumers = {{ .numConsumers | int }}
+    {{- end }}
+    {{- if hasKey . "queueSize" }}
+        queue_size = {{ .queueSize | int }}
+    {{- end }}
+    }
+  {{- end }}
+{{- end }}
+
+
+{{/*
+Generate the components for one OTLP-family destination: `otlp`, `datadog`, or
+`googleCloud`.
+
+  * The exporter. `otlp` renders `otelcol.exporter.otlphttp`, or
+    `otelcol.exporter.otlp` for gRPC. `datadog` renders
+    `otelcol.exporter.datadog`, with its endpoints only when overridden, so they
+    follow `site`. `googleCloud` renders the Telemetry API chain
+    (`googleCloud.chain`), labeled `gcp_<name>`. Its filter and transform
+    need a label of their own beside the tier filter's `dest_<name>`, and no
+    `dest_` label can equal a `gcp_` one: a suffix such as `dest_<name>_gcp`
+    would be the tier filter's label for a destination named `<name>_gcp`.
+  * For logs, `otelcol.receiver.loki` → `otelcol.processor.batch` in front of
+    the exporter. The receiver converts one entry at a time, and the batch is
+    what turns that back into requests of a useful size.
+  * For metrics, the per-destination tier filter (`otelDest.egressFilter`) in
+    front of the exporter, or of the Google Cloud chain. Metrics are already
+    batched upstream of the seam.
+  * For an `otlp` destination with credentials, an `otelcol.auth.*` handler of
+    its own.
+
+Every component is labeled `dest_<name>` (`$dest.label`).
+
+An `otelcol` TLS block encrypts by default, so an `otlp` destination with TLS
+off renders `insecure = true` rather than nothing: without it a gRPC exporter
+would try TLS against a plaintext listener. otelcol spells the minimum version
+`1.3`, and rejects `TLS13` silently, so the value is translated.
+
+Args:
+  context: the root context.
+  dest: a destination resolved by `mzmon.destinations.resolve`.
+
+Usage:
+  {{- include "mzmon.alloyGateway.pipeline.otel.dest" ( dict "context" $ "dest" $dest ) }}
+*/}}
+{{- define "mzmon.alloyGateway.pipeline.otel.dest" }}
+  {{- $root := .context }}
+  {{- $dest := .dest }}
+  {{- $label := $dest.label }}
+  {{- $exporter := "" }}
+  {{- if eq $dest.type "otlp" }}
+    {{- $exporter = ternary "otlp" "otlphttp" ( eq $dest.protocol "grpc" ) }}
+  {{- else if eq $dest.type "datadog" }}
+    {{- $exporter = "datadog" }}
+  {{- end }}
+  {{- $exporterInput := printf "otelcol.exporter.%s.%s.input" $exporter $label }}
+  {{- $metricsTarget := $exporterInput }}
+  {{- if eq $dest.type "googleCloud" }}
+    {{- $metricsTarget = printf "otelcol.processor.filter.gcp_%s.input" $dest.name }}
+  {{- end }}
+  {{- $authHandler := get ( dict "basicAuth" "basic" "bearer" "bearer" "headers" "headers" "sigv4" "sigv4" ) $dest.authType }}
+  {{- if eq $dest.type "otlp" }}
+    {{- if eq $dest.authType "basicAuth" }}
+
+otelcol.auth.basic {{ $label | quote }} {
+    client_auth {
+        username = sys.env({{ $dest.basicAuth.usernameEnv | quote }})
+        password = sys.env({{ $dest.basicAuth.passwordEnv | quote }})
+    }
+}
+    {{- else if eq $dest.authType "bearer" }}
+
+otelcol.auth.bearer {{ $label | quote }} {
+    token = sys.env({{ $dest.bearer.tokenEnv | quote }})
+}
+    {{- else if eq $dest.authType "headers" }}
+
+otelcol.auth.headers {{ $label | quote }} {
+      {{- range $dest.headers }}
+    header {
+        key   = {{ .key | quote }}
+        value = {{ if .valueEnv }}sys.env({{ .valueEnv | quote }}){{ else }}{{ .value | quote }}{{ end }}
+    }
+      {{- end }}
+}
+    {{- else if eq $dest.authType "sigv4" }}
+
+otelcol.auth.sigv4 {{ $label | quote }} {
+      {{- with $dest.sigv4.region }}
+    region = {{ . | quote }}
+      {{- end }}
+      {{- with $dest.sigv4.service }}
+    service = {{ . | quote }}
+      {{- end }}
+      {{- with $dest.sigv4.roleArn }}
+
+    assume_role {
+        arn = {{ . | quote }}
+    }
+      {{- end }}
+}
+    {{- end }}
+  {{- end }}
+  {{- if $dest.logs.enabled }}
+
+otelcol.receiver.loki {{ $label | quote }} {
+    output {
+        logs = [otelcol.processor.batch.{{ $label }}.input]
+    }
+}
+
+otelcol.processor.batch {{ $label | quote }} {
+    output {
+        logs = [{{ $exporterInput }}]
+    }
+}
+  {{- end }}
+  {{- if $dest.metrics.enabled }}
+    {{- include "mzmon.alloyGateway.otelDest.egressFilter" ( dict
+          "forwardTo" ( list $metricsTarget )
+          "processorName" $label
+          "unfilteredMetricsEnv" $dest.metrics.unfilteredMetricsEnv
+          "root" $root ) | nindent 0 }}
+  {{- end }}
+  {{- if eq $dest.type "googleCloud" }}
+
+    {{- include "mzmon.alloyGateway.googleCloud.chain" ( dict
+          "label" ( printf "gcp_%s" $dest.name )
+          "endpointExpr" ( printf "sys.env(%q)" $dest.urlEnv )
+          "project" $dest.project
+          "location" $dest.location
+          "compression" $dest.compression
+          "queue" $dest.queue ) }}
+  {{- else if eq $dest.type "datadog" }}
+
+otelcol.exporter.datadog {{ $label | quote }} {
+    api {
+        api_key = sys.env({{ $dest.apiKey.keyEnv | quote }})
+        fail_on_invalid_key = true
+        site = {{ $dest.site | quote }}
+    }
+    {{- if and $dest.metrics.enabled $dest.metrics.url }}
+
+    metrics {
+        endpoint = sys.env({{ $dest.metrics.urlEnv | quote }})
+    }
+    {{- end }}
+    {{- if and $dest.logs.enabled $dest.logs.url }}
+
+    logs {
+        endpoint = sys.env({{ $dest.logs.urlEnv | quote }})
+    }
+    {{- end }}
+
+    host_metadata {
+        enabled = {{ $dest.hostMetadata | toString }}
+    }
+    {{- include "mzmon.alloyGateway.otel.sendingQueue" $dest.queue }}
+}
+  {{- else }}
+
+otelcol.exporter.{{ $exporter }} {{ $label | quote }} {
+  {{- if and ( eq $exporter "otlphttp" ) $dest.logs.enabled $dest.logs.url }}
+    logs_endpoint = sys.env({{ $dest.logs.urlEnv | quote }})
+  {{- end }}
+  {{- if and ( eq $exporter "otlphttp" ) $dest.metrics.enabled $dest.metrics.url }}
+    metrics_endpoint = sys.env({{ $dest.metrics.urlEnv | quote }})
+  {{- end }}
+    client {
+        endpoint = sys.env({{ $dest.urlEnv | quote }})
+        compression = {{ $dest.compression | quote }}
+  {{- with $authHandler }}
+        auth = otelcol.auth.{{ . }}.{{ $label }}.handler
+  {{- end }}
+
+        tls {
+  {{- if not $dest.tls.enabled }}
+            insecure = true
+  {{- else }}
+    {{- if not $dest.tls.verify }}
+            insecure_skip_verify = true
+    {{- end }}
+    {{- with $dest.tls.caFile }}
+            ca_file = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.tls.certFile }}
+            cert_file = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.tls.keyFile }}
+            key_file = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.tls.serverName }}
+            server_name = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.tls.minVersion }}
+            min_version = {{ get ( dict "TLS10" "1.0" "TLS11" "1.1" "TLS12" "1.2" "TLS13" "1.3" ) ( . | toString | trimPrefix "Version" ) | default . | quote }}
+    {{- end }}
+    {{- with $dest.tls.reloadInterval }}
+            reload_interval = {{ . | quote }}
+    {{- end }}
+  {{- end }}
+        }
+    }
+  {{- include "mzmon.alloyGateway.otel.sendingQueue" $dest.queue }}
+}
+  {{- end }}
 {{- end }}
 
 
@@ -541,146 +898,36 @@ Usage:
 
 
 {{/*
-Resolve one Prometheus remote-write destination against the per-destination defaults.
-
-A destination in values carries only what differs, so every consumer would
-otherwise have to `dig` each field with the same default — and the env
-ConfigMap and the pipeline disagreeing on one of those defaults is a
-misconfiguration neither side can detect. This is the single place they are
-written down.
-
-Fields are resolved with `dig` rather than `mergeOverwrite`, deliberately.
-`mergeOverwrite` is mergo's `WithOverride`, which does not override with a
-*zero* value — so `enabled: false` and `tls.verify: false` would both be
-silently discarded and the destination would stay on. Every boolean here has a
-`true` default or a caller who needs to turn it off, so that failure mode is not
-hypothetical.
-
-Environment variable names are derived from the destination name when not given.
-The caller can still name them, which is what the Terraform module's
-`mzmon-alloy-gateway-env` Secret needs (see DEP-204): the Secret supplies the
-value, the values supply the name, and the two cannot drift.
-
-Args:
-  name: the destination's key in the map — also its Alloy component label.
-  dest: the raw values for that destination.
-
-Usage:
-  {{- $d := include "mzmon.alloyGateway.promDest.resolve" ( dict
-        "name" $name "dest" $raw ) | fromYaml }}
-*/}}
-{{- define "mzmon.alloyGateway.promDest.resolve" }}
-  {{- $name := .name | required "name is required" | toString }}
-  {{- /* Not `| default dict`: a destination set to an explicit `null` (how Helm
-         records a cleared key) and a leftover scalar from the pre-map shape both
-         arrive here as a non-map, and `dig` panics on those with a Go type error
-         rather than anything an operator can act on. `mzmon.alloy.validate.promDests`
-         is what reports the leftover scalar properly. */}}
-  {{- $raw := .dest }}
-  {{- if not ( kindIs "map" $raw ) }}
-    {{- $raw = dict }}
-  {{- end }}
-  {{- /* Component labels allow more than env var names do, so the env fragment
-         is the name with everything else folded to `_`. */}}
-  {{- $slug := $name | regexReplaceAll "[^A-Za-z0-9]" "_" | upper }}
-
-  {{- $tls := dig "tls" dict $raw }}
-  {{- if not ( kindIs "map" $tls ) }}
-    {{- $tls = dict }}
-  {{- end }}
-
-  {{- /* The three booleans whose default is `true`, resolved by hand rather
-         than with `dig`. `dig` treats an explicit `null` as a *value* and
-         returns empty for it, and `null` is exactly how Helm records a key a
-         later values file cleared — so `enabled: null` would read as
-         `enabled: false` and silently take the destination off the fan-out.
-         Absent and null both have to mean "use the default"; only a real
-         `false` may switch it off. */}}
-  {{- $enabled := true }}
-  {{- if and ( hasKey $raw "enabled" ) ( not ( kindIs "invalid" ( index $raw "enabled" ) ) ) }}
-    {{- $enabled = index $raw "enabled" }}
-  {{- end }}
-  {{- $tlsEnabled := false }}
-  {{- if and ( hasKey $tls "enabled" ) ( not ( kindIs "invalid" ( index $tls "enabled" ) ) ) }}
-    {{- $tlsEnabled = index $tls "enabled" }}
-  {{- end }}
-  {{- $tlsVerify := true }}
-  {{- if and ( hasKey $tls "verify" ) ( not ( kindIs "invalid" ( index $tls "verify" ) ) ) }}
-    {{- $tlsVerify = index $tls "verify" }}
-  {{- end }}
-
-  {{- dict
-    "name" $name
-    "enabled" $enabled
-    "url" ( dig "url" "" $raw | toString )
-    "urlEnv" ( dig "urlEnv" ( printf "GATEWAY_PROM_DEST_%s" $slug ) $raw | toString )
-    "minMetricImportance" ( dig "minMetricImportance" "all" $raw | toString )
-    "unfilteredMetricsEnv" ( dig "unfilteredMetricsEnv" ( printf "GATEWAY_UNFILTERED_PROM_METRICS_%s" $slug ) $raw | toString )
-    "externalLabels" ( dig "externalLabels" dict $raw )
-    "authType" ( dig "authType" "none" $raw | toString )
-    "basicAuth" ( dict
-      "username" ( dig "basicAuth" "username" "" $raw | toString )
-      "usernameEnv" ( dig "basicAuth" "usernameEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_USERNAME" $slug ) $raw | toString )
-      "password" ( dig "basicAuth" "password" "" $raw | toString )
-      "passwordEnv" ( dig "basicAuth" "passwordEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_PASSWORD" $slug ) $raw | toString ) )
-    "bearer" ( dict
-      "token" ( dig "bearer" "token" "" $raw | toString )
-      "tokenEnv" ( dig "bearer" "tokenEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_BEARER_TOKEN" $slug ) $raw | toString ) )
-    "oauth2" ( dict
-      "clientId" ( dig "oauth2" "clientId" "" $raw | toString )
-      "clientIdEnv" ( dig "oauth2" "clientIdEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_OAUTH2_CLIENT_ID" $slug ) $raw | toString )
-      "clientSecret" ( dig "oauth2" "clientSecret" "" $raw | toString )
-      "clientSecretEnv" ( dig "oauth2" "clientSecretEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_OAUTH2_CLIENT_SECRET" $slug ) $raw | toString )
-      "scopes" ( dig "oauth2" "scopes" list $raw )
-      "tokenUrl" ( dig "oauth2" "tokenUrl" "" $raw | toString )
-      "tokenUrlEnv" ( dig "oauth2" "tokenUrlEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_OAUTH2_TOKEN_URL" $slug ) $raw | toString ) )
-    "sigv4" ( dict
-      "region" ( dig "sigv4" "region" "" $raw | toString )
-      "roleArn" ( dig "sigv4" "roleArn" "" $raw | toString ) )
-    "tls" ( dict
-      "enabled" $tlsEnabled
-      "verify" $tlsVerify
-      "ca" ( dig "ca" "" $tls | toString )
-      "caEnv" ( dig "caEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_TLS_CA" $slug ) $tls | toString )
-      "cert" ( dig "cert" "" $tls | toString )
-      "certEnv" ( dig "certEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_TLS_CERT" $slug ) $tls | toString )
-      "key" ( dig "key" "" $tls | toString )
-      "keyEnv" ( dig "keyEnv" ( printf "GATEWAY_PROMETHEUS_DEST_%s_TLS_KEY" $slug ) $tls | toString )
-      "caFile" ( dig "caFile" "" $tls | toString )
-      "certFile" ( dig "certFile" "" $tls | toString )
-      "keyFile" ( dig "keyFile" "" $tls | toString )
-      "serverName" ( dig "serverName" "" $tls | toString )
-      "minVersion" ( dig "minVersion" "TLS13" $tls | toString ) )
-    | toYaml }}
-{{- end }}
-
-
-{{/*
 Every Prometheus remote-write destination, resolved, in a stable order.
 
-Returns a YAML list of resolved destinations — enabled and disabled alike, each
-carrying its own `name` — so a caller filters on `.enabled` rather than
-re-reading values. Sorted by name, because Go map iteration is randomized and an
-unsorted list would reorder the rendered components on every render, rolling the
-gateway for no reason (the pod template hashes the pipeline ConfigMap).
+The `prometheus` entries of `pipeline.destinations` (with the deprecated
+`prometheusRemoteWrite` map folded in by `mzmon.destinations.raw`), in the
+shape the remote-write render and the Thanos-hop validators read. Returns
+enabled and disabled alike, each carrying its own `name`, sorted by name.
+
+`enabled` is the destination's `active`: enabled, and carrying metrics.
 
 Usage:
   {{- range include "mzmon.alloyGateway.promDests" $ | fromYamlArray }}
     {{- if .enabled }}
 */}}
 {{- define "mzmon.alloyGateway.promDests" }}
-  {{- $dests := $.Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite | default dict }}
-  {{- $legacy := include "mzmon.alloyGateway.promDest.legacyKeys" $ | fromYamlArray }}
   {{- $out := list }}
-  {{- range $name := ( keys $dests | sortAlpha ) }}
-    {{- /* A leftover key from the pre-map shape is not a destination. Skipped
-           rather than rendered as one, so the render reaches
-           `mzmon.alloy.validate.promDests` and fails with the migration
-           instruction instead of on a nonsense component named `url`. */}}
-    {{- if not ( has $name $legacy ) }}
-      {{- $out = append $out ( include "mzmon.alloyGateway.promDest.resolve" ( dict
-            "name" $name
-            "dest" ( index $dests $name ) ) | fromYaml ) }}
+  {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
+    {{- if eq $dest.type "prometheus" }}
+      {{- $out = append $out ( dict
+            "name" $dest.name
+            "enabled" $dest.active
+            "url" $dest.url
+            "urlEnv" $dest.urlEnv
+            "minMetricImportance" $dest.metrics.minMetricImportance
+            "unfilteredMetricsEnv" $dest.metrics.unfilteredMetricsEnv
+            "externalLabels" ( $dest.externalLabels | default dict )
+            "authType" $dest.authType
+            "basicAuth" $dest.basicAuth
+            "bearer" $dest.bearer
+            "sigv4" $dest.sigv4
+            "tls" $dest.tls ) }}
     {{- end }}
   {{- end }}
   {{- $out | toYaml }}
@@ -787,7 +1034,7 @@ prometheus.remote_write {{ $dest.name | quote }} {
             credentials = sys.env({{ $dest.bearer.tokenEnv | required "bearer.tokenEnv" | quote }})
         }
       {{- else }}
-        {{- printf "Unsupported authType for pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s: %s" $dest.name $dest.authType | fail }}
+        {{- printf "Unsupported authType for pipeline.destinations.%s: %s" $dest.name $dest.authType | fail }}
       {{- end }}
       {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $dest.tls "indent" 8 ) }}
     }
@@ -927,14 +1174,24 @@ in Alloy's components:
   batch               the Telemetry API's 200 points per request
   otlphttp            with otelcol.auth.google (ADC; Workload Identity on GKE)
 
-Every component is labelled `googleCloud`, so none collides with the OTLP
-destination's `otelcol.exporter.otlphttp "destination"`.
+Every component takes the one `label`, so the chain is one unit and two
+chains never collide: the deprecated `googleCloudExporter` renders it as
+`googleCloud`, a `googleCloud` destination as `gcp_<name>`.
+
+Args:
+  label: the label every component in the chain takes.
+  endpointExpr: the exporter's endpoint, as a rendered Alloy expression.
+  project, location: overrides for the detected project and location.
+  compression: the request compression.
+  queue: optional `sending_queue` fields, as `mzmon.destinations.resolve`
+    resolves them.
 
 Usage:
-  {{ include "mzmon.alloyGateway.otelDest.googleCloud" $ }}
+  {{- include "mzmon.alloyGateway.googleCloud.chain" ( dict "label" "x" "endpointExpr" "\"https://…\"" … ) }}
 */}}
-{{- define "mzmon.alloyGateway.otelDest.googleCloud" }}
-  {{- $gcm := $.Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter }}
+{{- define "mzmon.alloyGateway.googleCloud.chain" }}
+  {{- $label := .label | required "label is required" }}
+  {{- $gcm := . }}
   {{- $cluster := `\"" + sys.env("CLUSTER_NAME") + "\"` }}
 // Google Cloud Managed Service for Prometheus, over OTLP to the Telemetry API.
 //
@@ -942,7 +1199,7 @@ Usage:
 // one from each Prometheus staleness marker: a series that disappears ends with
 // one, and so does every series of a target that moves to another gateway
 // replica. Google's own exporters drop them the same way.
-otelcol.processor.filter "googleCloud" {
+otelcol.processor.filter {{ $label | quote }} {
     metric_conditions {
         context = "datapoint"
         conditions = [
@@ -951,7 +1208,7 @@ otelcol.processor.filter "googleCloud" {
     }
 
     output {
-        metrics = [otelcol.processor.resourcedetection.googleCloud.input]
+        metrics = [otelcol.processor.resourcedetection.{{ $label }}.input]
     }
 }
 
@@ -959,7 +1216,7 @@ otelcol.processor.filter "googleCloud" {
 // cloud.availability_zone), from GKE's metadata server. Off GKE this finds
 // nothing, and `project` and `location` supply them. The host attributes
 // describe the gateway's own node, not the series, and are left off.
-otelcol.processor.resourcedetection "googleCloud" {
+otelcol.processor.resourcedetection {{ $label | quote }} {
     detectors = ["gcp"]
     override  = false
 
@@ -984,11 +1241,11 @@ otelcol.processor.resourcedetection "googleCloud" {
     }
 
     output {
-        metrics = [otelcol.processor.transform.googleCloud.input]
+        metrics = [otelcol.processor.transform.{{ $label }}.input]
     }
 }
 
-otelcol.processor.transform "googleCloud" {
+otelcol.processor.transform {{ $label | quote }} {
     error_mode = "ignore"
 
     // The Telemetry API refuses a resource without `gcp.project_id` ("Resource
@@ -1057,7 +1314,7 @@ otelcol.processor.transform "googleCloud" {
     }
 
     output {
-        metrics = [otelcol.processor.groupbyattrs.googleCloud.input]
+        metrics = [otelcol.processor.groupbyattrs.{{ $label }}.input]
     }
 }
 
@@ -1065,11 +1322,11 @@ otelcol.processor.transform "googleCloud" {
 // Telemetry API reads prometheus_target's labels. Left on the series they
 // would collide with those labels; renamed, every query filtering on
 // `namespace` would stop matching.
-otelcol.processor.groupbyattrs "googleCloud" {
+otelcol.processor.groupbyattrs {{ $label | quote }} {
     keys = ["namespace", "cluster"]
 
     output {
-        metrics = [otelcol.processor.metric_start_time.googleCloud.input]
+        metrics = [otelcol.processor.metric_start_time.{{ $label }}.input]
     }
 }
 
@@ -1077,38 +1334,57 @@ otelcol.processor.groupbyattrs "googleCloud" {
 // Each series' first point becomes its baseline and is not sent; later points
 // are sent relative to it. Stateful, per gateway replica: clustering keeps a
 // target on one replica, and a target that moves restarts from a new baseline.
-otelcol.processor.metric_start_time "googleCloud" {
+otelcol.processor.metric_start_time {{ $label | quote }} {
     strategy = "subtract_initial_point"
 
     output {
-        metrics = [otelcol.processor.batch.googleCloud.input]
+        metrics = [otelcol.processor.batch.{{ $label }}.input]
     }
 }
 
 // The Telemetry API takes at most 200 points per request.
-otelcol.processor.batch "googleCloud" {
+otelcol.processor.batch {{ $label | quote }} {
     send_batch_size     = 200
     send_batch_max_size = 200
     timeout             = "5s"
 
     output {
-        metrics = [otelcol.exporter.otlphttp.googleCloud.input]
+        metrics = [otelcol.exporter.otlphttp.{{ $label }}.input]
     }
 }
 
-otelcol.exporter.otlphttp "googleCloud" {
+otelcol.exporter.otlphttp {{ $label | quote }} {
     client {
-        endpoint    = {{ $gcm.endpoint | required "pipeline.metrics.gateway.destination.otel.googleCloudExporter.endpoint must be set" | quote }}
+        endpoint    = {{ $gcm.endpointExpr }}
         compression = {{ $gcm.compression | quote }}
-        auth        = otelcol.auth.google.googleCloud.handler
+        auth        = otelcol.auth.google.{{ $label }}.handler
     }
+  {{- include "mzmon.alloyGateway.otel.sendingQueue" ( $gcm.queue | default dict ) }}
 }
 
-otelcol.auth.google "googleCloud" {
+otelcol.auth.google {{ $label | quote }} {
   {{- with $gcm.project }}
     project = {{ . | quote }}
   {{- end }}
 }
+{{- end }}
+
+
+{{/*
+The deprecated `googleCloudExporter`'s chain, from its own values. The default
+`googleCloudExporter.config` calls this.
+
+Usage:
+  {{ include "mzmon.alloyGateway.otelDest.googleCloud" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.otelDest.googleCloud" }}
+  {{- $gcm := $.Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter }}
+  {{- include "mzmon.alloyGateway.googleCloud.chain" ( dict
+        "label" "googleCloud"
+        "endpointExpr" ( $gcm.endpoint | required "pipeline.metrics.gateway.destination.otel.googleCloudExporter.endpoint must be set" | quote )
+        "project" $gcm.project
+        "location" $gcm.location
+        "compression" $gcm.compression ) }}
 {{- end }}
 
 {{/*
@@ -1449,33 +1725,24 @@ Usage:
   {{- end }}
 
   {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
-    {{- $gw := $.Values.pipeline }}
-    {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
-          "context" $
-          "role" "alloy-gateway"
-          "path" "pipeline.logging.gateway.destination.loki"
-          "dest" $gw.logging.gateway.destination.loki
-          "enabled" $gw.logging.gateway.destination.loki.enabled ) | fromYaml }}
+    {{- $res := include "mzmon.destinations.validate" $ | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
+
+    {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
+      {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
+            "context" $
+            "role" "alloy-gateway"
+            "path" ( printf "pipeline.destinations.%s" $dest.name )
+            "dest" $dest
+            "enabled" $dest.active ) | fromYaml }}
+      {{- $errors = concat $errors $res.errors | default list }}
+      {{- $warnings = concat $warnings $res.warnings | default list }}
+    {{- end }}
 
     {{- $res := include "mzmon.alloy.validate.promDests" $ | fromYaml }}
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
-
-    {{- /* Auth is checked per destination against the *resolved* destination,
-           so a credential left to a derived env var name is checked under the
-           name the pipeline will actually read. */}}
-    {{- range $dest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
-      {{- $res := include "mzmon.alloy.validate.destAuth" ( dict
-            "context" $
-            "role" "alloy-gateway"
-            "path" ( printf "pipeline.metrics.gateway.destination.prometheusRemoteWrite.%s" $dest.name )
-            "dest" $dest
-            "enabled" $dest.enabled ) | fromYaml }}
-      {{- $errors = concat $errors $res.errors | default list }}
-      {{- $warnings = concat $warnings $res.warnings | default list }}
-    {{- end }}
 
     {{- if ( include "mzmon.alloyGateway.otelDest.authEnabled" $ ) }}
       {{- $res := include "mzmon.alloy.validate.otelDestAuth" $ | fromYaml }}
@@ -1550,15 +1817,9 @@ Validate that the agent has a gateway to write to.
   {{- end }}
 
   {{- /* The bundled Loki is the gateway's default log destination. */}}
-  {{- if $gatewayOn }}
-    {{- $lokiDest := $.Values.pipeline.logging.gateway.destination.loki }}
-    {{- if $lokiDest.enabled }}
-      {{- $url := tpl ( $lokiDest.url | toString ) $ }}
-      {{- /* Require the in-cluster Service shape so an external host that
-             happens to start with `loki-` is not flagged. */}}
-      {{- if and ( contains "loki-" $url ) ( contains ".svc" $url ) ( not ( include "mzmon.loki.enabled" $ ) ) }}
-        {{- $errors = append $errors ( printf "pipeline.logging.gateway.destination.loki.url points at the bundled Loki (%s) but Loki is not enabled. Logs would be written to a Service that does not exist." $url ) }}
-      {{- end }}
+  {{- if and $gatewayOn ( not ( include "mzmon.loki.enabled" $ ) ) }}
+    {{- range $dest := ( include "mzmon.destinations.bundledLoki" $ | fromYamlArray ) }}
+      {{- $errors = append $errors ( printf "pipeline.destinations.%s.url points at the bundled Loki (%s) but Loki is not enabled. Logs would be written to a Service that does not exist. Set pipeline.destinations.%s.enabled: false, or enable Loki." $dest.name $dest.resolvedUrl $dest.name ) }}
     {{- end }}
   {{- end }}
 
@@ -1574,20 +1835,14 @@ Validate that each signal has somewhere to go.
   {{- $warnings := list }}
 
   {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
-    {{- $logging := $.Values.pipeline.logging.gateway.destination }}
-    {{- if and ( not $logging.loki.enabled ) ( not $logging.otel.enabled ) }}
-      {{- $warnings = append $warnings "Every gateway log destination is disabled (pipeline.logging.gateway.destination.loki.enabled and .otel.enabled are both false). Logs are processed and then discarded." }}
+    {{- $logDests := include "mzmon.destinations.logs" $ | fromYamlArray }}
+    {{- if and ( not $logDests ) ( not $.Values.pipeline.logging.gateway.destination.otel.enabled ) }}
+      {{- $warnings = append $warnings "Every gateway log destination is disabled (no pipeline.destinations entry carries logs, and pipeline.logging.gateway.destination.otel.enabled is false). Logs are processed and then discarded." }}
     {{- end }}
 
-    {{- $metrics := $.Values.pipeline.metrics.gateway.destination }}
-    {{- $anyPromDest := false }}
-    {{- range $dest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
-      {{- if $dest.enabled }}
-        {{- $anyPromDest = true }}
-      {{- end }}
-    {{- end }}
-    {{- if and ( not $anyPromDest ) ( not $metrics.otel.enabled ) }}
-      {{- $warnings = append $warnings "Every gateway metric destination is disabled (no pipeline.metrics.gateway.destination.prometheusRemoteWrite entry is enabled, and .otel.enabled is false). Metrics are scraped and then discarded." }}
+    {{- $metricDests := include "mzmon.destinations.metrics" $ | fromYamlArray }}
+    {{- if and ( not $metricDests ) ( not $.Values.pipeline.metrics.gateway.destination.otel.enabled ) }}
+      {{- $warnings = append $warnings "Every gateway metric destination is disabled (no pipeline.destinations entry carries metrics, and pipeline.metrics.gateway.destination.otel.enabled is false). Metrics are scraped and then discarded." }}
     {{- end }}
   {{- end }}
 
@@ -1596,24 +1851,14 @@ Validate that each signal has somewhere to go.
 {{- end }}
 
 {{- /*
-Validate the shape of the Prometheus remote-write destination map.
+Refuse the single-destination keys of the deprecated remote-write map.
 
-Three failures this catches, all of which otherwise present as a working install
-that quietly writes somewhere other than where it was told to:
-
-  1. **A pre-map override.** `prometheusRemoteWrite` used to be one destination.
-     Helm deep-merges, so an old `prometheusRemoteWrite.url` lands beside
-     `thanos` rather than replacing it: the key applies to nothing, the default
-     Thanos endpoint keeps receiving, and nothing errors. Refused by name, with
-     the destination-scoped path to move it to.
-
-  2. **A name Alloy cannot use as a component label**, or one this pipeline has
-     already taken. Alloy rejects the config at load with a parse error naming a
-     line number, which is a long way from the values key that caused it.
-
-  3. **An enabled destination with no URL.** `sys.env` of an unset variable is
-     the empty string, and `prometheus.remote_write` accepts an empty endpoint
-     URL at load, so this surfaces only as writes failing at run time.
+`prometheusRemoteWrite` used to be one destination. Helm deep-merges, so an old
+`prometheusRemoteWrite.url` lands beside the named entries rather than
+replacing anything: the key applies to nothing, the default Thanos endpoint
+keeps receiving, and nothing errors. Refused by name, with the path to move it
+to. The entries themselves are destinations, folded onto `pipeline.destinations`
+and checked there by `mzmon.destinations.validate`.
 
 Usage:
   {{- $res := include "mzmon.alloy.validate.promDests" $ | fromYaml }}
@@ -1622,13 +1867,14 @@ Usage:
   {{- $errors := list }}
   {{- $warnings := list }}
   {{- $path := "pipeline.metrics.gateway.destination.prometheusRemoteWrite" }}
-  {{- $dests := $.Values.pipeline.metrics.gateway.destination.prometheusRemoteWrite | default dict }}
+  {{- $dests := dig "metrics" "gateway" "destination" "prometheusRemoteWrite" dict ( $.Values.pipeline | default dict ) }}
+  {{- if not ( kindIs "map" $dests ) }}
+    {{- $dests = dict }}
+  {{- end }}
   {{- $legacy := include "mzmon.alloyGateway.promDest.legacyKeys" $ | fromYamlArray }}
-  {{- $reserved := include "mzmon.alloyGateway.promDest.reservedNames" $ | fromYamlArray }}
 
-  {{- $names := keys $dests | sortAlpha }}
   {{- $legacyFound := list }}
-  {{- range $name := $names }}
+  {{- range $name := ( keys $dests | sortAlpha ) }}
     {{- if has $name $legacy }}
       {{- $legacyFound = append $legacyFound $name }}
     {{- end }}
@@ -1636,25 +1882,20 @@ Usage:
 
   {{- if $legacyFound }}
     {{- /* One error rather than one per key: they are a single mistake, and
-           the migration is the same move for all of them. */}}
-    {{- $errors = append $errors ( printf "%s is now a map of named destinations, but it still carries the single-destination key(s) %s. Helm merges those alongside the named destinations instead of replacing them, so they would apply to nothing and the install would keep writing to the default endpoint with no error. Move them under a name — %s.<name>.%s — choosing `thanos` to keep the bundled Thanos Receive." $path ( join ", " $legacyFound ) $path ( first $legacyFound ) ) }}
-  {{- end }}
-
-  {{- range $dest := ( include "mzmon.alloyGateway.promDests" $ | fromYamlArray ) }}
-    {{- $name := $dest.name }}
-    {{- if has $name $legacy }}
-      {{- /* Already reported above; do not also complain about its shape. */}}
-    {{- else }}
-      {{- if not ( regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" $name ) }}
-        {{- $errors = append $errors ( printf "%s.%s is not a usable name. It becomes an Alloy component label, so it must match [a-zA-Z_][a-zA-Z0-9_]* — no dashes, dots, or leading digits." $path $name ) }}
-      {{- else if has $name $reserved }}
-        {{- $errors = append $errors ( printf "%s.%s uses a name this pipeline has already taken (%s). Two components cannot share a label, so alloy would refuse the whole config at load. Pick another name." $path $name ( join ", " $reserved ) ) }}
-      {{- end }}
-
-      {{- if and $dest.enabled ( not $dest.url ) }}
-        {{- $errors = append $errors ( printf "%s.%s is enabled but has no url. The rendered pipeline reads sys.env(%q), which would resolve empty — alloy accepts that at load and every remote write fails at run time." $path $name $dest.urlEnv ) }}
+           the migration is the same move for all of them. Each key is named
+           with its target, because two of them move under `metrics`, and a
+           key moved to the same name there would apply to nothing. */}}
+    {{- $moves := list }}
+    {{- range $key := $legacyFound }}
+      {{- if has $key ( list "minMetricImportance" "unfilteredMetricsEnv" ) }}
+        {{- $moves = append $moves ( printf "%s to pipeline.destinations.thanos.metrics.%s" $key $key ) }}
+      {{- else if eq $key "oauth2" }}
+        {{- $moves = append $moves "oauth2 has no replacement: it never rendered" }}
+      {{- else }}
+        {{- $moves = append $moves ( printf "%s to pipeline.destinations.thanos.%s" $key $key ) }}
       {{- end }}
     {{- end }}
+    {{- $errors = append $errors ( printf "%s still carries the single-destination key(s) %s, from before destinations were a map. They apply to nothing, and the install would keep writing to the default endpoint with no error. Move them onto the bundled Thanos Receive's entry: %s." $path ( join ", " $legacyFound ) ( join "; " $moves ) ) }}
   {{- end }}
 
   {{- /* final output */}}
@@ -1698,6 +1939,17 @@ Usage:
     {{- else if eq $authType "bearer" }}
       {{- $needed = list
             ( dict "field" "bearer.token" "value" $dest.bearer.token "env" $dest.bearer.tokenEnv "secret" true ) }}
+    {{- else if eq $authType "apiKey" }}
+      {{- $needed = list
+            ( dict "field" "apiKey.key" "value" $dest.apiKey.key "env" $dest.apiKey.keyEnv "secret" true ) }}
+    {{- else if eq $authType "headers" }}
+      {{- /* A literal header renders into the pipeline config itself, so only
+             the ones read from the environment need a source. */}}
+      {{- range $i, $header := ( $dest.headers | default list ) }}
+        {{- if and ( kindIs "map" $header ) $header.valueEnv }}
+          {{- $needed = append $needed ( dict "field" ( printf "headers[%d].value" $i ) "value" "" "env" $header.valueEnv ) }}
+        {{- end }}
+      {{- end }}
     {{- else if eq $authType "oauth2" }}
       {{- $needed = list
             ( dict "field" "oauth2.clientId" "value" $dest.oauth2.clientId "env" $dest.oauth2.clientIdEnv )

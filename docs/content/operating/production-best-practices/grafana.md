@@ -1,6 +1,6 @@
 ---
 title: "Grafana"
-weight: 7
+weight: 8
 # custom parameters
 params:
   author: Heather Lapointe

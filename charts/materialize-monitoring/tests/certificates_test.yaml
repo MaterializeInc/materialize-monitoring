@@ -328,8 +328,8 @@ tests:
   # protocol error rather than a configuration one.
   - it: should derive the scheme from tls.enabled
     set:
-      pipeline.logging.gateway.destination.loki.tls.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.loki.tls.enabled: true
+      pipeline.destinations.loki.tls.caFile: /etc/mzmon/tls/ca.crt
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     asserts:
       - matchRegex:
@@ -345,10 +345,10 @@ tests:
 
   - it: should render a tls_config from the file carriers
     set:
-      pipeline.logging.gateway.destination.loki.tls.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
-      pipeline.logging.gateway.destination.loki.tls.certFile: /etc/mzmon/tls/tls.crt
-      pipeline.logging.gateway.destination.loki.tls.keyFile: /etc/mzmon/tls/tls.key
+      pipeline.destinations.loki.tls.enabled: true
+      pipeline.destinations.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.loki.tls.certFile: /etc/mzmon/tls/tls.crt
+      pipeline.destinations.loki.tls.keyFile: /etc/mzmon/tls/tls.key
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -369,8 +369,8 @@ tests:
   # make alloy reject the config instead of skipping them.
   - it: should render a CA-only tls_config for a server-verification-only phase
     set:
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.tls.enabled: true
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.thanos.tls.enabled: true
+      pipeline.destinations.thanos.tls.caFile: /etc/mzmon/tls/ca.crt
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -387,9 +387,9 @@ tests:
   # only checking the default would still have passed against the broken form.
   - it: should honour verify false
     set:
-      pipeline.logging.gateway.destination.loki.tls.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
-      pipeline.logging.gateway.destination.loki.tls.verify: false
+      pipeline.destinations.loki.tls.enabled: true
+      pipeline.destinations.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.loki.tls.verify: false
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -398,8 +398,8 @@ tests:
 
   - it: should not skip verification by default
     set:
-      pipeline.logging.gateway.destination.loki.tls.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+      pipeline.destinations.loki.tls.enabled: true
+      pipeline.destinations.loki.tls.caFile: /etc/mzmon/tls/ca.crt
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       # Scoped to the literal the helper emits: the kubelet scrape in the
@@ -631,7 +631,7 @@ tests:
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
-      pipeline.logging.gateway.destination.loki.url: http://somewhere-else.test-monitoring.svc:3100/loki/api/v1/push
+      pipeline.destinations.loki.url: http://somewhere-else.test-monitoring.svc:3100/loki/api/v1/push
     asserts:
       - failedTemplate:
           errorPattern: "which is not a SAN on the loki certificate"
@@ -735,10 +735,41 @@ tests:
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
-      pipeline.logging.gateway.destination.loki.tls.enabled: false
+      pipeline.destinations.loki.tls.enabled: false
     asserts:
       - failedTemplate:
           errorPattern: "would send plaintext at a TLS port"
+
+  # A single binary serves the bare `loki` Service, not `loki-distributor`, and
+  # the writer pointed at it is just as plaintext.
+  - it: should fail when the Loki client is left plaintext on a single binary
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.destinations.loki.url: http://loki.test-monitoring.svc:3100/loki/api/v1/push
+      pipeline.destinations.loki.tls.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.tls.enabled is off"
+
+  # A second, external destination presents its own certificate. Checking its
+  # host against the bundled Loki's SANs would refuse every fan-out under mTLS.
+  - it: should not check an external log destination against the Loki certificate
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.destinations.archive:
+        type: loki
+        url: https://logs.example.com/loki/api/v1/push
+        queue:
+          blockOnOverflow: false
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
 
   # The failure that presents as a crashloop rather than as a TLS problem.
   - it: should fail when the Loki readiness probe is left on HTTP
@@ -843,6 +874,9 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: "puts Receive into require-and-verify immediately"
+      # And names a values path that exists, for the keypair it asks for.
+      - failedTemplate:
+          errorPattern: "no certFile/keyFile on pipeline\\.destinations\\.<name>\\.tls\\)"
 
   # The canary's -tls flag means mTLS: it builds an mTLS transport and will not
   # start without a keypair, even against a server that requires none.
@@ -891,11 +925,11 @@ tests:
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
-      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.tls.enabled: false
+      pipeline.destinations.thanos.tls.enabled: false
     asserts:
       - failedTemplate:
           # Names the destination, because the check is per destination now.
-          errorPattern: "prometheusRemoteWrite\\.thanos\\.tls\\.enabled is off"
+          errorPattern: "pipeline\\.destinations\\.thanos\\.tls\\.enabled is off"
 
   # A backend told to serve TLS from material nothing is issuing. Legitimate with
   # your own PKI, and otherwise the signature of a half-applied profile.
@@ -914,7 +948,12 @@ tests:
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
-      loki.lokiCanary.extraArgs: null
+      # The selector arguments without the TLS ones.
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - -query-append=| pod="$(POD_NAME)" | stream="stdout"
     template: templates/NOTES.txt
     asserts:
       - matchRegexRaw:
