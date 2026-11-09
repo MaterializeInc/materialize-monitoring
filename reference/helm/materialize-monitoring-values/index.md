@@ -1541,15 +1541,16 @@ Each entry has a `type`:
 - `googleCloud`: metrics, to Google Cloud Managed Service for Prometheus through the Telemetry API,
   authenticated with the gateway's Google identity. Metrics are on unless `metrics.enabled` is `false`.
 - `datadog`: logs, metrics, or both, through Datadog's exporter, authenticated with an API key.
+- `prometheus`: metrics, through Prometheus remote write. Metrics are on unless `metrics.enabled` is `false`.
 
 On a type that carries several signals, a signal is on when its block is present,
 so an `otlp` or `datadog` entry sends nothing until it has a `logs` or `metrics` block.
 
-Remote write is configured under `pipeline.metrics.gateway.destination.prometheusRemoteWrite`.
-The exporters under `pipeline.metrics.gateway.destination.otel` are deprecated in favor of these types.
+The default map holds `loki`, the bundled Loki, and `thanos`, the bundled Thanos Receive.
+`pipeline.metrics.gateway.destination.prometheusRemoteWrite` and `pipeline.metrics.gateway.destination.otel`
+are deprecated in favor of these types.
 
-The default map holds one entry, `loki`, pointing at the bundled in-cluster Loki.
-Add an entry to write logs somewhere else as well; set `loki.enabled: false` to stop writing to the bundled Loki.
+Add an entry to write somewhere else as well; set `enabled: false` on `loki` or `thanos` to stop writing to a bundled backend.
 
 **Each destination is its own failure domain.**
 Every log entry is handed to each destination in turn,
@@ -1562,7 +1563,7 @@ The render warns when more than one log destination blocks.
 **Names become Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
 `egress` and `destination` are reserved.
 A name that breaks either rule fails at render.
-A `loki` destination's writer takes the bare name; every other type's components are labeled `dest_<name>`.
+`loki` and `prometheus` components take the bare name; every other type's components are labeled `dest_<name>`.
 
 **Fields are optional.** Anything an entry omits falls back to the defaults below.
 Environment variable names derive from the name,
@@ -1573,7 +1574,7 @@ The following table lists each field, the types it applies to, and its default:
 
 | Field | Types | Default | Meaning |
 | --- | --- | --- | --- |
-| `type` | all | — | `loki`, `otlp`, `googleCloud`, or `datadog`. Required. |
+| `type` | all | — | `loki`, `otlp`, `googleCloud`, `datadog`, or `prometheus`. Required. |
 | `enabled` | all | `true` | Write to this destination. |
 | `url` | all but `datadog` | — | Endpoint, required when the entry carries a signal. `otlp`: a base URL over HTTP, `host:port` over gRPC. |
 | `url` | `googleCloud` | `https://telemetry.googleapis.com` | Override for a Private Service Connect endpoint. |
@@ -1585,7 +1586,7 @@ The following table lists each field, the types it applies to, and its default:
 | `logs.keepUnknown` | all | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
 | `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
 | `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
-| `metrics.enabled` | all but `loki` | on for `googleCloud`; on when `metrics` is present otherwise | Send metrics here. |
+| `metrics.enabled` | all but `loki` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
 | `metrics.minMetricImportance` | all but `loki` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
 | `compression` | `otlp`, `googleCloud` | `gzip` | Request compression. |
@@ -1593,14 +1594,15 @@ The following table lists each field, the types it applies to, and its default:
 | `site` | `datadog` | `datadoghq.com` | Your Datadog site, such as `datadoghq.eu`. |
 | `apiKey` | `datadog` | `keyEnv: GATEWAY_<NAME>_DEST_API_KEY` | The API key, inline as `key` (written to a ConfigMap) or through `keyEnv`. |
 | `hostMetadata` | `datadog` | `false` | Send the gateway's host metadata. |
+| `externalLabels` | `prometheus` | `cluster` from `CLUSTER_NAME` | The remote write's `external_labels`. Values are Alloy expressions. |
 | `retries` | `loki` | 10, 1s to 5m, retry on 429 | `maxBackoffRetries`, `minBackoffPeriod`, `maxBackoffPeriod`, `retryOnHttp429`. |
 | `queue` | `loki` | Alloy's defaults | `queue_config`: `capacity`, `minShards`, `blockOnOverflow`, `drainTimeout`. |
-| `queue` | all but `loki` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
-| `authType` | `loki`, `otlp` | `none` | `none`, `basicAuth`, or `bearer`; `otlp` also takes `headers` and `sigv4`. |
-| `basicAuth` / `bearer` | `loki`, `otlp` | derived env names | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
+| `queue` | `otlp`, `googleCloud`, `datadog` | Alloy's defaults | `sending_queue`: `queueSize`, `numConsumers`, `blockOnOverflow`. |
+| `authType` | `loki`, `otlp`, `prometheus` | `none` | `none`, `basicAuth`, `bearer`; also `sigv4` on `otlp`, `prometheus`, `headers` on `otlp`. |
+| `basicAuth` / `bearer` | `loki`, `otlp`, `prometheus` | derived | Credentials, inline (written to a ConfigMap) or through the `*Env` variable. |
 | `headers` | `otlp` | — | For `authType: headers`: a list of `key` with `value` (rendered inline) or `valueEnv`. |
-| `sigv4` | `otlp` | — | For `authType: sigv4`: `region`, `service`, and `roleArn` to assume a role beyond the gateway's own. |
-| `tls` | `loki`, `otlp` | off | `enabled`, `verify`, `caFile` / `certFile` / `keyFile`, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
+| `sigv4` | `otlp`, `prometheus` | — | `region`, and `roleArn` to assume a role beyond the gateway's own; `service` on `otlp`. |
+| `tls` | `loki`, `otlp`, `prometheus` | off | `enabled`, `verify`, the `*File` carriers, `serverName`, `minVersion`; `reloadInterval` on `otlp`. |
 
 **A client certificate for a destination** goes in the Secret `mzmon-alloy-gateway-destination-tls`, which you create.
 The gateway mounts it at `/etc/mzmon/destination-tls`, so set `tls.certFile` and `tls.keyFile` to files there.
@@ -2531,62 +2533,19 @@ established it.
   </tbody>
 </table>
 
-##### Prometheus remote-write destinations.
+##### Prometheus remote-write destinations (deprecated)
 
-Prometheus remote-write destinations, as a map of name to destination.
+Deprecated. Prometheus remote-write destinations, as a map of name to destination.
 
-**A map, not a single destination.** Each key names one destination and
-becomes the label on that destination's Alloy components, so the name is
-visible in `component_id` on the gateway's own metrics and in its UI.
-The default map holds one entry, `thanos`, pointing at the bundled
-in-cluster Thanos Receive.
+**Deprecated: use a `pipeline.destinations` entry of type `prometheus` instead.**
+The bundled Thanos Receive is `pipeline.destinations.thanos`.
 
-Every destination gets its **own** `prometheus.remote_write` component
-rather than a second `endpoint` block on a shared one. That costs a WAL
-per destination and buys the two things a shared component cannot give:
-
-* **Its own `minMetricImportance`.** The tier filter is a
-  `prometheus.relabel` *upstream* of the component, so a destination on
-  `essential` writes a WAL holding only essential series. A shared
-  component can only filter with `write_relabel_config`, which runs on
-  the way *out* of the WAL — every destination would pay full firehose
-  disk regardless of tier. This is the whole reason the tiers exist:
-  Amazon Managed Prometheus bills per sample ingested and per series.
-* **Its own failure domain.** A destination that stops accepting writes
-  backs up its own WAL and nothing else. On a shared component a stuck
-  endpoint holds back WAL truncation for every other endpoint too.
-
-`external_labels` is per destination for the same reason, though the
-default (`cluster` from `CLUSTER_NAME`) is what every destination wants.
-
-**Names are Alloy component labels**, so they must match
-`[a-zA-Z_][a-zA-Z0-9_]*`, and `egress` is reserved — the fan-out seam
-already uses it. A name that breaks either rule fails at render.
-
-**Fields are optional.** Anything a destination omits falls back to the
-per-destination defaults below, so a second destination is usually three
-lines. Environment variable names are derived from the destination name
-when not given — `GATEWAY_PROM_DEST_AMP`,
-`GATEWAY_PROMETHEUS_DEST_AMP_PASSWORD`,
-`GATEWAY_UNFILTERED_PROM_METRICS_AMP` — and can be set explicitly where a
-caller (such as the Terraform module's `mzmon-alloy-gateway-env` Secret)
-wants to choose them.
-
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `enabled` | `true` | Write to this destination. |
-| `url` | — | Remote-write endpoint. Required when enabled. |
-| `minMetricImportance` | `all` | Tier floor: `essential`, `recommended`, `extended`, `diagnostic`, `all`. |
-| `unfilteredMetricsEnv` | `GATEWAY_UNFILTERED_PROM_METRICS_<NAME>` | Env var carrying the tier allowlist regex. |
-| `urlEnv` | `GATEWAY_PROM_DEST_<NAME>` | Env var carrying the endpoint URL. |
-| `externalLabels` | `{cluster: CLUSTER_NAME}` | `external_labels` on the component. Values are Alloy expressions. |
-| `authType` | `none` | `none`, `basicAuth`, `bearer`, `oauth2`, or `sigv4`. |
-| `basicAuth` / `bearer` / `oauth2` / `sigv4` | see below | Credentials for the chosen `authType`. |
-| `tls` | off | Client TLS for this hop. |
-
-A worked two-destination example — full fidelity in Thanos, only the
-alerting metrics in AMP — is in
-[`profiles/aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml).
+Entries set here still apply: the chart folds each one onto `pipeline.destinations` as a `prometheus` entry and warns at render.
+Move each across, so `prometheusRemoteWrite.amp.url` becomes `pipeline.destinations.amp.url`, with `type: prometheus`.
+`minMetricImportance` and `unfilteredMetricsEnv` move under `metrics`; every other field keeps its name.
+While an entry stays here, it keeps the credential variable names this map derived, such as
+`GATEWAY_PROMETHEUS_DEST_<NAME>_PASSWORD`, and that includes a retune of `thanos`.
+Name them with the `*Env` fields when you move it, if a Secret already uses them.
 
 ##### OpenTelemetry/OTLP destinations (deprecated)
 
