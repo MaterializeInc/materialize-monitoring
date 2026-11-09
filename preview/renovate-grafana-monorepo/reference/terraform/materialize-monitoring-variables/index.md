@@ -333,9 +333,10 @@ Getting it wrong is a 403 from the intake, not a routing error.
 `all` — and each tier includes the ones below it. This is a cost control, and a sharper one than
 for most backends: Datadog bills per custom metric, so `all` is rarely what you want.
 
-`metric_endpoint` and `logs_endpoint` override the intake URLs the exporter derives from `site`.
-Leave them null unless you are routing through a proxy or PrivateLink — a hand-written endpoint
-that disagrees with `site` fails at the intake rather than at plan time.
+`metric_endpoint` overrides the metrics intake URL the exporter derives from `site`. Leave it
+null unless you are routing through a proxy or PrivateLink — a hand-written endpoint that
+disagrees with `site` fails at the intake rather than at plan time. `logs_endpoint` has no
+effect: this input exports metrics only.
 </td>
         <td class="tf-var-schema"><pre><code>object({
     site            = optional(string, "datadoghq.com")
@@ -963,6 +964,29 @@ chart's values, so the two cannot disagree.
     password     = optional(string)
     bearer_token = optional(string)
   }))</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="secret_filter" href="#secret_filter">secret_<wbr>filter</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">What the gateway's secret filter does with log lines. Sets the chart's
+`pipeline.logging.secretFilter.mode`.
+
+| Value | Effect |
+|---|---|
+| `off` | Lines are stored as they arrive |
+| `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. Nothing else that's stored changes |
+| `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored |
+
+`shadow` and `on` each cost a scan of every log line the gateway handles.
+Run `shadow` first, to see what the rules would replace in your logs. The
+filter is an extra layer of protection, not the control: configure each
+component not to log credentials in the first place.
+
+The call-home profile sets the mode to `on`, because it sends logs to
+Materialize. Passed through `additional_values`, which comes after this,
+it turns the filter on whatever this input says.
+</td>
+        <td class="tf-var-default"><code>off</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="sizing" href="#sizing">sizing</a></td>
