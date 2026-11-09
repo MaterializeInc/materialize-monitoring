@@ -4658,7 +4658,7 @@ loki:
     image:
       registry: docker.io
       repository: kiwigrid/k8s-sidecar
-      tag: 2.14.1
+      tag: 2.14.3
 
   monitoring:
     serviceMonitor:
@@ -6297,7 +6297,7 @@ alertmanager:
     enabled: true
     image:
       repository: quay.io/prometheus-operator/prometheus-config-reloader
-      tag: v0.94.2
+      tag: v0.95.1
     extraArgs:
       watched-dir: /etc/alertmanager/config
     extraVolumeMounts:
