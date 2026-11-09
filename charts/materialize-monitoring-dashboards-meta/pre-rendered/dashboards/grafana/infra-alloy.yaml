@@ -3985,7 +3985,7 @@ spec:
                             app=~"$alloyRole",
                             namespace=~"$alloyNamespace",
                             pod=~"$alloyPod",
-                            reason!~"sampleDebug|skip self|skip loki|alloy loki.echo",
+                            reason!~"sampleDebug|skip self|skip loki|alloy loki.echo|secretfilter shadow",
                             component_id!="loki.process.secretfilterShadow"
                           }
                           [$__rate_interval]
@@ -4011,7 +4011,7 @@ spec:
                             app=~"$alloyRole",
                             namespace=~"$alloyNamespace",
                             pod=~"$alloyPod",
-                            reason!~"sampleDebug|skip self|skip loki|alloy loki.echo",
+                            reason!~"sampleDebug|skip self|skip loki|alloy loki.echo|secretfilter shadow",
                             component_id!="loki.process.secretfilterShadow"
                           }
                           [$__rate_interval]
@@ -4039,7 +4039,7 @@ spec:
 
           **Unhealthy:** `ratelimit_drop_stage` is a namespace writing faster than the gateway's per-namespace rate limit allows. `backlog > 2hr` and `processed time > 2hr old` are lines older than the store accepts, most often a backlog draining after an outage. Each of these lines is lost.
 
-          Excludes the debug tap's sampling, its echo suppression, and every drop in the secret filter's shadow branch, which drop copies that were never bound for a store. The shadow branch is excluded by component, because its rate limit drops under `ratelimit_drop_stage` like the main path's. A reason not listed above is new, and counts as a loss until it is classified.
+          Excludes the debug tap's sampling, its echo suppression, and every drop in the secret filter's shadow branch, which drop copies that were never bound for a store. The shadow branch is also excluded by component, because its rate limit drops under `ratelimit_drop_stage` like the main path's. A reason not listed above is new, and counts as a loss until it is classified.
 
           A flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.
         id: 1025
