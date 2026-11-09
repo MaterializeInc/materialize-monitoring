@@ -52,7 +52,9 @@ The `raw:` escape (see [Authoring](../authoring/)) remains available and is curr
 
 These are the conventions a contributor must preserve when editing the gateway `loki.process` pipeline:
 
-- **Level normalization.** A per-application `stage.match` extracts the level, then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. A heuristic regex backfills `UNKNOWN` levels, and the success/failure of that heuristic is recorded as structured metadata.
+- **Level normalization.** A per-application `stage.match` extracts the level,
+  then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`.
+  A line no parser leveled is `UNKNOWN` until the [level detectors](#level-detectors) try it.
 - **Drops and limits.** Lines older than the ingestion backlog window are dropped.
   Oversized lines are cut rather than dropped, as [Size limits](#size-limits) describes.
   Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
@@ -63,6 +65,42 @@ These are the conventions a contributor must preserve when editing the gateway `
 > [!WARNING]
 >   The label-vs-structured-metadata split is the dominant cost-and-stability lever.
 >   Adding a new Loki label multiplies [cardinality](../../../../o11y-glossary/#observability-foundations) — default to structured metadata and promote to a label only when it is low-cardinality and used as a selector.
+
+### Level detectors {#level-detectors}
+
+A line that no per-application parser leveled reaches a sequence of detectors as `UNKNOWN`.
+Each detector recognizes one shape of line and sets its level, and the first one to match wins.
+The `levelheuristic` structured metadata names the detector that leveled the line, or `none`.
+With it, you can group what remains `UNKNOWN`, and audit a leveled line by where its level came from.
+
+The following table lists the detectors in the order they run:
+
+| `levelheuristic` | Matches | Level |
+|---|---|---|
+| `canary` | The Loki canary's payloads and its per-entry reports | `TRACE` for payloads, `DEBUG` for reports |
+| `klog` | `I1108 19:59:31.736880  1 file.go:314] ...`, from any component | `I`, `W`, `E`, or `F` |
+| `panic` | `panic: `, `fatal error: `, or `goroutine N [` opening the line, or `panicked at ` anywhere | `CRITICAL` |
+| `level_prefix` | A level word opening the line, bare or bracketed, after an optional timestamp and a space or tab | The word |
+| `access_log` | An HTTP access log line: common or combined format, or the status first | `ERROR` for 5xx, `WARN` for 4xx, otherwise `INFO` |
+| `keyvalue` | A `level=` or `"severity":` pair anywhere in the line | The value |
+| `journal_priority` | A journal entry, which carries journald's priority as `journal_priority` | The priority |
+| `stacktrace` | A Go, Java, or Python stack-trace frame, including Go's `created by` lines | `ERROR` |
+| `keyword` | `error`, `failed`, `failure`, `fatal`, or `exception` as a word, or else `warn`, `warning`, or `deprecated` | `ERROR`, or else `WARN` |
+| `go_log` | Go's standard `log` format, `2026/11/08 20:07:09 ...` | `INFO` |
+| `fluent_bit_plugin` | A fluent-bit output plugin's trace, `[flb-<plugin>] ...` | `DEBUG` |
+
+The detectors that read a level the line carries run first.
+The ones that read severity from the content run next, and the defaults for formats known to carry no level run last.
+A line in no recognized format stays `UNKNOWN` rather than being guessed `INFO`.
+
+The agent copies journald's priority keyword to the `journal_priority` label, because a label starting with `__` never leaves the agent.
+The gateway drops `journal_priority` after the detectors, so it never becomes a stream label.
+
+Every selector carries a line filter, rendered through YAML, Alloy, and LogQL escaping.
+A detector with an escaping mistake still validates and never matches,
+so `packages/alloy-pipelines/levels.corpus.yaml` holds a line for every detector.
+`packages/mzmon-lib/tests/gateway_level_corpus.rs` runs `inputProcessor` on the pinned Alloy against it, in the `pipelines` CI job.
+Add a fixture when you add or change a detector.
 
 ### Multi-line records
 
@@ -114,6 +152,57 @@ That level is exempt from both per-level rate limits.
 Classification runs after the per-application blocks, because those set `msg` from JSON that a panic does not contain.
 The regular expression is anchored at the start of the entry, so a log line that merely quotes a panic is not mistaken for one.
 
+### Secret filter
+
+The gateway runs a secret filter between two `loki.process` components.
+`loki.secretfilter` scans the line and nothing else: never labels and never structured metadata.
+So it runs before any stage that copies text out of the line, and everything the gateway stores is derived from redacted text.
+
+An entry passes through the following components in order:
+
+1. `inputPrefilter` merges multi-line records, drops lines older than the backlog window, clamps the line, and applies the global rate limit.
+   It then sniffs the level and applies the limit on unlevelled lines to the bulk tier.
+2. `loki.relabel.tierFull` and `loki.relabel.tierBulk` each keep one tier.
+   They're relabel components rather than `loki.process` drops, so the other tier's lines don't count in `loki_process_dropped_lines_total`.
+3. `loki.secretfilter.ingest` scans the full tier, and `loki.secretfilter.ingestBulk` scans the bulk tier: `DEBUG` and `TRACE`.
+4. `inputProcessor` parses the line and sets labels and structured metadata.
+
+Every source forwards to `inputPrefilter`, and only the two filter instances forward to `inputProcessor`.
+The debug tap is fed by `inputProcessor`, so it never sees a line before the filter does.
+`packages/mzmon-lib/tests/gateway_secret_filter.rs` fails if a log source can reach a sink without passing a filter, or if anything else forwards to `inputProcessor`.
+
+The `level` label is set only after parsing, so the sniff reads the level field of the three formats the stack emits: tracing JSON, tracing's plain text, and logfmt.
+Each pattern is anchored where its format puts the level.
+A line the sniff can't classify goes to the full tier, so a miss costs a scan rather than coverage.
+
+Both instances replace each secret with `<redacted:RULE_ID>`, where `RULE_ID` is the ID of the Gitleaks rule that matched.
+The placeholder carries no hash, because Alloy's `$SECRET_HASH` is an unsalted SHA-1 that confirms any guessed secret.
+A line that runs past `GATEWAY_SECRETFILTER_TIMEOUT` is forwarded with whatever was redacted and the label `secretfilter="timed-out"`.
+
+Both instances ship with `rate` set to `0`, which forwards every line unscanned and counts it in `loki_secretfilter_entries_bypassed_total`.
+To scan, set `GATEWAY_SECRETFILTER_RATE` and `GATEWAY_SECRETFILTER_BULK_RATE` to `1` in `pipeline.env`.
+<!-- TODO(DEP-313): drop the rate-0 paragraph once shadow mode has run and the default rate is 1. -->
+
+#### Rule files
+
+Both instances read `packages/alloy-pipelines/secretfilter/ingest.toml`: the Gitleaks defaults that Alloy bundles, plus Materialize's own rules.
+`make pipelines` copies it to `pre-rendered/secretfilter/`, and the chart adds each rule file to the gateway's ConfigMap as `secretfilter-<name>`.
+The subchart mounts that ConfigMap at `/etc/alloy/`, so the rules sit beside the config that reads them, and overriding the gateway's extra mounts can't drop them.
+Alloy doesn't start without the file.
+
+`packages/mzmon-lib/tests/secretfilter_corpus.rs` runs each rule file through the Alloy binary against `ingest.corpus.yaml`.
+The corpus lists lines that must be redacted, with the rule that fires on each, and lines that must pass untouched.
+The pipelines CI job runs it on the pinned Alloy version, including on every Alloy upgrade, because the default rules change between releases.
+When you change a rule, add a fixture that the change makes pass.
+Elsewhere the test skips when `alloy` isn't on your `PATH`; set `MZMON_REQUIRE_ALLOY=1` to make it fail instead.
+
+Keep every shipped rule file flat: one `[extend]` section holding only `useDefault = true`.
+Gitleaks follows two levels of `[extend]`, and a third loads without the default rules, so the one level left over belongs to the customer.
+Two instances in one Alloy process that load a file extending another by `path` race at startup, and one of them can come up with no rules at all.
+`gateway_secret_filter.rs` fails if an instance reads anything but a shipped rule file.
+
+For the design and the layers that follow, see [Secret Filtering](../../design-docs/20260924-log-secret-filtering/).
+
 ### Size limits
 
 Neither pipeline drops a line for its size.
@@ -126,7 +215,7 @@ The following table lists the rules in the order an entry meets them:
 | Where | Cuts | Limit | Suffix |
 |---|---|---|---|
 | Agent, last stage of `node_logs` and `pod_logs` | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
-| Gateway, `inputProcessor`, after the multi-line merge | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
+| Gateway, `inputPrefilter`, after the multi-line merge | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
 | Gateway, last stage of `inputProcessor` | The line | `GATEWAY_LOG_LINE_SIZE_LIMIT`, default `240KiB` | `[TRUNCATED:LINE]` |
 | Gateway, last stage of `inputProcessor` | The line | `250KiB`, fixed | `[TRUNCATED:FIELDS]` |
 | Gateway, last stage of `inputProcessor` | Every label value | `2KiB`, fixed | `[TRUNCATED:FIELDS]` |
@@ -194,11 +283,16 @@ The `oversized-log-lines` alert in `dev-alerts.yaml` fires on line cuts, for the
 
 `inputProcessor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
 
-- **Logs → Loki.** The default stub wires `loki.process "egress"` → `loki.write "destination"` to the bundled Loki distributor; the endpoint is configurable via `GATEWAY_LOKI_DEST` (falling back to an in-cluster default). Auth (`basic_auth`) is deferred. In the [remote-only topology](../../../../logs-and-events/architecture/#alternative-topologies), point `GATEWAY_LOKI_DEST` at an external OTLP/Loki destination.
+- **Logs → destinations.** The chart renders one writer per log destination in `pipeline.destinations` and lists each one in `loki.process "egress"`'s `forward_to`.
+  A `loki` destination is a `loki.write` labeled with its name.
+  An `otlp` destination is `otelcol.receiver.loki` → `otelcol.processor.batch` → an OTLP exporter, all labeled `dest_<name>`, and its metrics come off `otelcol.processor.filter "egress"` through its own tier filter.
+  The helpers are in `charts/materialize-monitoring/templates/_destination_helpers.tpl`.
+  The stub wires `loki.process "egress"` to `loki.write "loki"`, the default destination's label, reading `GATEWAY_LOKI_DEST` with an in-cluster fallback, and leaves auth out.
+  Each destination reads its URL from `GATEWAY_<NAME>_DEST`, so the default `loki` destination keeps `GATEWAY_LOKI_DEST`.
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
 - **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/architecture/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
 
-Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`), `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`).
+Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`), `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`), `GATEWAY_SECRETFILTER_RATE` and `GATEWAY_SECRETFILTER_BULK_RATE` (default `0`, no scanning), `GATEWAY_SECRETFILTER_TIMEOUT` (default `0s`, no limit).
 
 ## Attribution and adoption status
 
