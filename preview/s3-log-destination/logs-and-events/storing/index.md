@@ -180,7 +180,9 @@ An `http://` URL turns TLS off for that endpoint.
 
 #### What lands in the bucket
 
-The exporter writes one object per batch, gzip-compressed, at `<prefix>/year=YYYY/month=MM/day=DD/hour=HH/minute=MM/logs_<n>.json.gz`.
+The exporter writes one object per batch, gzip-compressed, at `<prefix>/year=YYYY/month=MM/day=DD/hour=HH/minute=MM/logs_<uuid>.json.gz`.
+The key ends in a UUIDv7, which in practice no two objects share.
+A UUIDv7 starts with a millisecond timestamp, so keys within a partition sort by when they were written.
 The time partitions are UTC unless `partitionTimezone` says otherwise.
 A batch closes after `batch.timeout` (default `1m`) or `batch.size` records (default `8192`), whichever comes first,
 so a quiet minute writes no object.
