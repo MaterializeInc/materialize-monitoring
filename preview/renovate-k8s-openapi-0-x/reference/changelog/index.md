@@ -15,7 +15,7 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.8.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.7.1 (Unreleased)
 
 _Changes Pending_
 
