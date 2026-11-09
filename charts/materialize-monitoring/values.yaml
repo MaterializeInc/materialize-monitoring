@@ -6853,12 +6853,15 @@ node-exporter:
 
   # -- Container security context, merged over the subchart's read-only root.
   # The exporter runs as UID 65534 and needs no capability to read the host's
-  # `/proc`, `/sys` and `/`.
+  # `/proc`, `/sys` and `/`. The subchart sets these same defaults; the chart
+  # pins them so that the lockdown doesn't depend on subchart defaults.
   containerSecurityContext:
     allowPrivilegeEscalation: false
     capabilities:
       drop:
         - ALL
+    seccompProfile:
+      type: RuntimeDefault
 
   # -- kube-rbac-proxy sidecar, which would put the exporter behind
   # TokenReview/SubjectAccessReview over HTTPS.
