@@ -981,6 +981,10 @@ chart's values, so the two cannot disagree.
 Run `shadow` first, to see what the rules would replace in your logs. The
 filter is an extra layer of protection, not the control: configure each
 component not to log credentials in the first place.
+
+The call-home profile sets the mode to `on`, because it sends logs to
+Materialize. Passed through `additional_values`, which comes after this,
+it turns the filter on whatever this input says.
 </td>
         <td class="tf-var-default"><code>off</code></td>
     </tr>
