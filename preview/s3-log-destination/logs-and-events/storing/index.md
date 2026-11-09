@@ -74,7 +74,7 @@ Set any of the following fields in the destination's `logs` block:
 |---|---|
 | `selector` | Keeps only entries matching a LogQL stream selector, such as `{namespace=~"environment-.+"}`. Line filters are allowed after it. |
 | `minLevel` | Drops entries below a level: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL`. |
-| `keepUnknown` | Set to `false` to drop entries with an `UNKNOWN` level, which `minLevel` keeps. A panic arrives without a level the gateway can parse, so it is `UNKNOWN`. Defaults to `true`. |
+| `keepUnknown` | Set to `false` to drop entries with an `UNKNOWN` level, which `minLevel` keeps. The gateway gives a panic the level `CRITICAL`, so a level floor never drops one. Defaults to `true`. |
 | `sampleRate` | Keeps a fraction of entries, above 0 and at most 1. |
 | `rateLimit` | Drops entries above `rate` lines per second, allowing bursts of `burst` whole lines. `burst` defaults to `rate`, rounded up, and can be lower than it. |
 
@@ -144,6 +144,10 @@ pipeline:
 Choose what the archive receives with the [reduction fields](#destination-reduction).
 Without them, it receives every log line the gateway processes.
 
+`profiles/s3-worm.values.yaml` sets up this destination with a bounded queue.
+For what to decide before you archive, such as the retention mode and what to keep out,
+see [Log compliance](../../operating/production-best-practices/log-compliance/).
+
 #### Prepare the bucket
 
 The chart writes objects; it can't create the bucket or verify its lock.
@@ -191,8 +195,10 @@ Like the other OTLP-family destinations, an `s3` destination drops records rathe
 It drops a record when its queue is full, or when S3 refuses it after retries.
 Either way, the `log-archive-drops` alert fires, and the record is missing from the archive.
 
-The gateway keeps its queue in memory, so a restart also loses what is queued.
-`queue.queueSize` and `batch.size` set how long an S3 outage the archive can ride out.
+Each batch gets about five minutes of retries, so an S3 outage longer than that drops records.
+The batch in progress and the queue live in the gateway's memory, so a gateway that's killed, for example by the OOM killer, loses them uncounted.
+`queue.queueSize` caps how many batches wait in memory.
+Alloy's default, 1000, can outgrow the gateway's memory limit on a busy install.
 
 ## Object storage
 

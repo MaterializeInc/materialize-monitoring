@@ -673,6 +673,11 @@ Skip one of these and the stack runs short of resources, or costs more than it n
 Skip one of these and nothing breaks.
 Each adds defense in depth, or extra signal where your environment calls for it.
 
+- [ ] `[operator]` [Log compliance](../log-compliance/): **If a requirement says logs must be kept unaltered,
+  archive them to a bucket with S3 Object Lock in compliance mode**, with `profiles/s3-worm.values.yaml`.
+  Loki deletes on retention and on request, so it isn't that record.
+  Turn on the secret filter first, narrow the archive with `logs.selector`, and route `log-archive-drops` to the team that owns the requirement.
+
 - [ ] `[operator]` [Network policies](../stack-wide/#network-policies): **Narrow the `0.0.0.0/0` egress rules where your infrastructure lets you.**
   `kube-state-metrics` and `grafana-operator` reach the API server on `443` and `6443` to everywhere, because a chart
   can't derive the control plane's address, and Loki reaches object storage the same way.
