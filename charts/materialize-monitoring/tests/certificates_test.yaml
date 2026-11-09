@@ -948,7 +948,12 @@ tests:
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
-      loki.lokiCanary.extraArgs: null
+      # The selector arguments without the TLS ones.
+      loki.lokiCanary.extraArgs:
+        - -labelvalue=$(POD_NAMESPACE)
+        - -streamname=container
+        - -streamvalue=canary
+        - -query-append=| pod="$(POD_NAME)" | stream="stdout"
     template: templates/NOTES.txt
     asserts:
       - matchRegexRaw:

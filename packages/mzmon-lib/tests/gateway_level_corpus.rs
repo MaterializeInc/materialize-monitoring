@@ -18,6 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use chrono::{DateTime, SecondsFormat};
 use common::alloy::{Alloy, alloy_available, http, label_set, logfmt_fields};
 use mzmon_lib::alloy::ast::{AttributeValue, Expression, ToBlock};
 use mzmon_lib::alloy::pipeline::Pipeline;
@@ -136,6 +137,10 @@ loki.echo "out" {{}}
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
+    // Fills `<<NOW>>`, because a timestamp a parser adopts has to be inside
+    // the two hours `inputProcessor` keeps.
+    let stamp =
+        DateTime::from_timestamp_nanos(now as i64).to_rfc3339_opts(SecondsFormat::Nanos, true);
     let streams: Vec<_> = fixtures
         .iter()
         .enumerate()
@@ -144,7 +149,7 @@ loki.echo "out" {{}}
             labels.insert("fixture".to_string(), f.id.clone());
             serde_json::json!({
                 "stream": labels,
-                "values": [[(now + i as u128).to_string(), f.line]],
+                "values": [[(now + i as u128).to_string(), f.line.replace("<<NOW>>", &stamp)]],
             })
         })
         .collect();
