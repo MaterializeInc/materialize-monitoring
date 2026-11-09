@@ -590,13 +590,25 @@ groups:
     expr: |-
       (
         sum by (namespace, job, component_id) (
-          rate(otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
+            (
+              otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}
+              unless
+              otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"} offset 5m
+            )
+          or
+            increase(otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
         ) > 0
       )
       or
       (
         sum by (namespace, job, component_id) (
-          rate(otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
+            (
+              otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}
+              unless
+              otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"} offset 5m
+            )
+          or
+            increase(otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
         ) > 0
       )
     for: 1m
@@ -615,6 +627,12 @@ groups:
         policy or the gateway's AWS identity, and a timeout at the network path. A
         queue that fills while S3 is healthy needs a larger `queue.queueSize` or a
         larger `batch.size`.
+
+        The exporter creates each counter at its first failure, already at its
+        value, so a series newer than the window counts as a drop. Without
+        that, one failed upload or one burst over a full queue would never
+        fire. A send failure is labeled with the error's type and whether it is
+        permanent, so each new kind of failure starts a series of its own.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#log-archive-drops
   - alert: loki-push-err-high
     expr: |-

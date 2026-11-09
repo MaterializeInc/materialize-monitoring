@@ -842,23 +842,46 @@ alerts:
         policy or the gateway's AWS identity, and a timeout at the network path. A
         queue that fills while S3 is healthy needs a larger `queue.queueSize` or a
         larger `batch.size`.
+      notes: |
+        The exporter creates each counter at its first failure, already at its
+        value, so a series newer than the window counts as a drop. Without
+        that, one failed upload or one burst over a full queue would never
+        fire. A send failure is labeled with the error's type and whether it is
+        permanent, so each new kind of failure starts a series of its own.
     query:
       id: infra.alloy.log_archive_drops
       stability: best-effort
       description:
-        summary: Rate of log records an S3 archive destination dropped, by destination.
+        summary: Log records an S3 archive destination dropped in the last 5 minutes, by destination.
+      # Each counter is summed on its own. The two differ only by name and the
+      # send counter's error labels, and `or` matches series without their names.
       promQL: |
         (
           sum by (namespace, job, component_id) (
-            rate(otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
+              (
+                otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}
+                unless
+                otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"} offset 5m
+              )
+            or
+              increase(otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
           ) > 0
         )
         or
         (
           sum by (namespace, job, component_id) (
-            rate(otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
+              (
+                otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}
+                unless
+                otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"} offset 5m
+              )
+            or
+              increase(otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
           ) > 0
         )
+      # The `unless … offset 5m` arms, which count a counter created inside the
+      # window, have no Datadog form, so the failure that creates a counter can
+      # go unreported.
       datadogQuery: |
         avg(last_5m):(
           default_zero(sum:otelcol_exporter_enqueue_failed_log_records_total{component_id:otelcol.exporter.awss3.*} by {namespace,service,component_id}.as_rate().rollup(sum, 60))
