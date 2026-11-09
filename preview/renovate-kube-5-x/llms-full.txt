@@ -9569,9 +9569,10 @@ Each adds defense in depth, or extra signal where your environment calls for it.
 - [ ] `[operator]` [TLS](../../securing/#gaps): Turn on in-cluster TLS where your environment requires it.
   Certificates and the mTLS profiles ship off by default.
 - [ ] `[operator]` [Secret filtering](../secret-filtering/#turn-it-on): **Turn on the secret filter** for an extra
-  layer of protection behind keeping credentials out of logs: set `GATEWAY_SECRETFILTER_RATE` and
-  `GATEWAY_SECRETFILTER_BULK_RATE` to `"1"` in `pipeline.env`.
+  layer of protection behind keeping credentials out of logs: set `pipeline.logging.secretFilter.mode` to `"on"`, or
+  `secret_filter = "on"` with the Terraform module.
   It ships off.
+  Run it in [shadow mode](../secret-filtering/#shadow) first, to see what it would replace in your logs.
   Then alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`, and check each one: a redaction is usually a credential a component logged.
 - [ ] `[operator]` [Alertmanager](../../../alerting/architecture/#tls): **TLS on the API port** comes with the mTLS
   profiles: `alerting.server.tls` moves 9093 to TLS, and the profiles move the probes, the reloader, the scrape, both
@@ -10028,33 +10029,76 @@ The filter scans the line and nothing else, so it has the following limits:
 - **Some identifiers look like credentials.**
   A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
 
+## Try it in shadow mode first {#shadow}
+
+Shadow mode shows what the rules match on your own logs without changing what's stored.
+The gateway scans a copy of every line and stores only the lines the filter would have redacted, already redacted, with the label `secretfilter="shadow"`.
+Use it to find the values the rules would replace by mistake before you turn the filter on.
+
+To turn shadow mode on, set the mode to `shadow`:
+
+```yaml
+pipeline:
+  logging:
+    secretFilter:
+      mode: shadow
+```
+
+If you install with the [Terraform module](../../../getting-started/terraform/), set `secret_filter = "shadow"` instead.
+The mode changes the gateway's config, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+Shadow mode costs the same CPU as turning the filter on, because it scans every line.
+Off, the chart doesn't wire it, so it costs nothing.
+
+To read what it found, query the label:
+
+```logql
+{secretfilter="shadow"}
+```
+
+Each line has `<redacted:RULE_ID>` where a value was replaced, and the rest of the line shows which field held it.
+`loki_secretfilter_secrets_redacted_by_category_total{component_id="loki.secretfilter.shadow"}` counts the matches by rule and by container.
+
+The stored lines are a sample, and the counter is the full count:
+
+- The gateway stores up to 100 shadow lines per second from each namespace, with bursts of up to 1,000.
+  Shadow lines have this limit to themselves, so they don't use up the rate limits that apply to your other lines.
+- A copy that runs past `GATEWAY_SECRETFILTER_TIMEOUT` isn't stored, because it might be only partly redacted.
+  `loki_secretfilter_lines_timed_out_total{component_id="loki.secretfilter.shadow"}` counts it.
+
+Shadow lines go to every log destination, like any other line.
+Each one is redacted, and while the filter is off its original goes to the same destinations unchanged, so a shadow line exposes nothing new.
+After you turn the filter on, turn shadow mode off: the stored lines then carry the placeholders themselves.
+
 ## Turn it on {#turn-it-on}
 
 The filter ships off.
 Each false positive permanently replaces a value in your own logs, so the defaults wait on measurement against real logs.
 <!-- TODO(DEP-313): rewrite this section once shadow mode has run and the filter is on by default. -->
 
-To turn it on, set both rates to `1` in `pipeline.env`:
+To turn it on, set the mode to `on`:
 
 ```yaml
 pipeline:
-  env:
-    GATEWAY_SECRETFILTER_RATE: "1"
-    GATEWAY_SECRETFILTER_BULK_RATE: "1"
+  logging:
+    secretFilter:
+      mode: "on"
 ```
 
-The filter runs as two instances.
-`GATEWAY_SECRETFILTER_RATE` sets the fraction of lines the main instance scans, and `GATEWAY_SECRETFILTER_BULK_RATE` sets it for `DEBUG` and `TRACE` lines, the levels most able to outrun the filter.
+If you install with the Terraform module, set `secret_filter = "on"` instead.
+The gateway has to restart to pick the mode up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+
+The filter runs as two instances, and `on` sets both of their scan rates to `1`.
+`GATEWAY_SECRETFILTER_RATE` is the fraction of lines the main instance scans, and `GATEWAY_SECRETFILTER_BULK_RATE` is the fraction of `DEBUG` and `TRACE` lines, the levels most able to outrun the filter.
 At `0`, an instance forwards every line unscanned.
-The change is an environment variable, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+A rate you set in `pipeline.env` takes precedence over the mode.
 
 The following settings change what the filter costs:
 
-`GATEWAY_SECRETFILTER_BULK_RATE`
+`pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE`
 : Below `1`, the bulk instance scans that fraction of `DEBUG` and `TRACE` lines and stores the rest unscanned.
   Lower it only when the gateway can't keep up with its input at `1`.
 
-`GATEWAY_SECRETFILTER_TIMEOUT`
+`pipeline.env.GATEWAY_SECRETFILTER_TIMEOUT`
 : The most time the filter spends on one line, such as `50ms`.
   The default, `0s`, sets no limit.
   A line that runs past it is stored with whatever the filter redacted in time, and with the label `secretfilter="timed-out"`.
@@ -16494,6 +16538,38 @@ Move each one across, so `pipeline.logging.gateway.destination.loki.url` becomes
 }</pre>
 </td>
       <td class="helm-value-desc">Type of tenancy used to write logs. Use static to write to the staticTenant value (recommended). Use byEnvironment to separate by the environment name. Use byNamespace to use the namespace of the source pod as the tenant. Use byLabel to use a label (tenantLabel) to specifically identify the tenant. Use none to disable tenancy (only use if loki does not have tenancy).
+</td>
+    </tr>
+  </tbody>
+</table>
+
+##### Secret filter.
+
+The gateway's secret filter.
+The gateway can replace credentials in log lines before they're stored.
+The filter itself is off by default. For what it does and how to turn it
+on, see Production best practices > Secret filtering.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.secretFilter<wbr>.mode</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"off"</code></td>
+      <td class="helm-value-desc">What the secret filter does with the gateway's log lines: `off`, `shadow`, or `on`.
+
+| Mode | Effect |
+| --- | --- |
+| `off` | Lines are stored as they arrive. |
+| `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. What's stored otherwise doesn't change. |
+| `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored. |
+
+`shadow` and `on` each cost a scan of every line. Use `shadow` to see what
+the rules match on your logs before you turn the filter on. In `on`, set
+`pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE` below `"1"` to scan only
+that fraction of `DEBUG` and `TRACE` lines.
 </td>
     </tr>
   </tbody>
@@ -26608,6 +26684,25 @@ chart's values, so the two cannot disagree.
   }))</code></pre></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="secret_filter" href="#secret_filter">secret_<wbr>filter</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">What the gateway's secret filter does with log lines. Sets the chart's
+`pipeline.logging.secretFilter.mode`.
+
+| Value | Effect |
+|---|---|
+| `off` | Lines are stored as they arrive |
+| `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. Nothing else that's stored changes |
+| `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored |
+
+`shadow` and `on` each cost a scan of every log line the gateway handles.
+Run `shadow` first, to see what the rules would replace in your logs. The
+filter is an extra layer of protection, not the control: configure each
+component not to log credentials in the first place.
+</td>
+        <td class="tf-var-default"><code>off</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="sizing" href="#sizing">sizing</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Deployment size. The chart's defaults target `medium`, and the small/large profiles are deltas
@@ -27384,12 +27479,24 @@ The `level` label is set only after parsing, so the sniff reads the level field 
 Each pattern is anchored where its format puts the level.
 A line the sniff can't classify goes to the full tier, so a miss costs a scan rather than coverage.
 
+A third instance, `loki.secretfilter.shadow`, measures the rules without enforcing them.
+When `pipeline.logging.secretFilter.mode` is `shadow`, `inputPrefilter` also forwards every line to it, and `loki.process.secretfilterShadow` keeps only the lines it redacted, labels them `secretfilter="shadow"`, and passes them to `inputProcessor`.
+It drops the rest under the reason `secretfilter shadow`.
+Copies skip `inputProcessor`'s rate limits and have a per-namespace limit of their own in `secretfilterShadow`, 100 lines per second with a burst of 1,000.
+That way a rule that matches most of a namespace's lines can't spend the budget its originals need.
+The Alloy dashboard's guard-drops panel excludes everything `secretfilterShadow` drops, by component, because its limit drops under the same reason as the main path's.
+The label is `secretfilter` rather than `job`, because `inputProcessor` parses some sources by `job`.
+In any other mode, the chart removes the shadow receiver from `inputPrefilter`'s `forward_to` as it renders the gateway config, and fails the render if that entry stops matching.
+An idle branch would still cost about 6% of the log path's CPU in the copy and the drop.
+
 Both instances replace each secret with `<redacted:RULE_ID>`, where `RULE_ID` is the ID of the Gitleaks rule that matched.
 The placeholder carries no hash, because Alloy's `$SECRET_HASH` is an unsalted SHA-1 that confirms any guessed secret.
 A line that runs past `GATEWAY_SECRETFILTER_TIMEOUT` is forwarded with whatever was redacted and the label `secretfilter="timed-out"`.
+The shadow instance drops such a copy instead, because once labeled `shadow` it would read as a complete result.
 
 Both instances ship with `rate` set to `0`, which forwards every line unscanned and counts it in `loki_secretfilter_entries_bypassed_total`.
-To scan, set `GATEWAY_SECRETFILTER_RATE` and `GATEWAY_SECRETFILTER_BULK_RATE` to `1` in `pipeline.env`.
+The mode `on` sets `GATEWAY_SECRETFILTER_RATE` and `GATEWAY_SECRETFILTER_BULK_RATE` to `1` in the gateway's env ConfigMap, unless `pipeline.env` already sets them.
+The Terraform module's `secret_filter` input sets the mode.
 <!-- TODO(DEP-313): drop the rate-0 paragraph once shadow mode has run and the default rate is 1. -->
 
 #### Rule files
@@ -30350,7 +30457,7 @@ Each control-plane branch runs a second, stricter filter immediately before its 
 |---|---|
 | [DEP-309] Close the remaining raw-line path: live debugging on the filter | ⬜ |
 | [DEP-310] Card-number redaction with `stage.luhn` | ⬜ |
-| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces, then the ingest filter on by default | ⬜ |
+| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces, then the ingest filter on by default | 🔨 |
 | [DEP-314] The values surface and fail-open validators, with the customer's rules rendered into a flat file | ⬜ |
 | [DEP-315] `mz-monitoring-canary`, a canary producer per layer | ⬜ |
 | [DEP-316] Alerts, runbooks and a dashboard row | ⬜ |
