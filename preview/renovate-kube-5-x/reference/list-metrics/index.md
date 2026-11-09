@@ -1662,6 +1662,27 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="otelcol_exporter_enqueue_failed_log_records_total">otelcol_exporter_enqueue_failed_log_records_total
+        <details>
+            Used labels: component_id
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.log_archive_drops">infra.alloy.log_archive_drops</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_exporter_send_failed_log_records_total">otelcol_exporter_send_failed_log_records_total
+        <details>
+            Used labels: app, component_id, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.log_archive_drops">infra.alloy.log_archive_drops</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_failed">infra.alloy.metric_pipeline.otel_failed</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="prometheus_remote_storage_highest_timestamp_in_seconds">prometheus_remote_storage_highest_timestamp_in_seconds
         <details>
             Used labels: app, container, namespace, pod
@@ -4330,16 +4351,6 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_queue">infra.alloy.metric_pipeline.otel_queue</a></li>
-            </ul>
-        </details>
-    </li>
-    <li id="otelcol_exporter_send_failed_log_records_total">otelcol_exporter_send_failed_log_records_total
-        <details>
-            Used labels: app, namespace, pod
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_failed">infra.alloy.metric_pipeline.otel_failed</a></li>
             </ul>
         </details>
     </li>
