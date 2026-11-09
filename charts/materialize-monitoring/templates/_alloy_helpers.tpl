@@ -429,10 +429,11 @@ Usage:
     {{- $logForward = append $logForward $writer }}
   {{- end }}
   {{- /* An OTLP-family destination's metrics hang off the
-         otelcol.processor.filter "egress" seam by their own tier filter. Only
-         `loki` carries no metrics, and the validator refuses metrics on it. */}}
+         otelcol.processor.filter "egress" seam by their own tier filter.
+         `prometheus` destinations hang off their own seam below, and the
+         validator refuses metrics on `loki` and `s3`, which carry logs only. */}}
   {{- range $dest := ( include "mzmon.destinations.metrics" $ | fromYamlArray ) }}
-    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" "s3" ) }}
+    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" ) }}
       {{- $metricsForward = append $metricsForward ( printf "otelcol.processor.transform.%s.input" $dest.label ) }}
     {{- end }}
   {{- end }}
@@ -680,13 +681,14 @@ Usage:
 
 
 {{/*
-Generate the components for one OTLP-family destination: `otlp`, `datadog`, or
-`googleCloud`.
+Generate the components for one OTLP-family destination: `otlp`, `datadog`,
+`googleCloud`, or `s3`.
 
   * The exporter. `otlp` renders `otelcol.exporter.otlphttp`, or
     `otelcol.exporter.otlp` for gRPC. `datadog` renders
     `otelcol.exporter.datadog`, with its endpoints only when overridden, so they
-    follow `site`. `googleCloud` renders the Telemetry API chain
+    follow `site`. `s3` renders `otelcol.exporter.awss3`, and carries logs
+    only. `googleCloud` renders the Telemetry API chain
     (`googleCloud.chain`), labeled `gcp_<name>`. Its filter and transform
     need a label of their own beside the tier filter's `dest_<name>`, and no
     `dest_` label can equal a `gcp_` one: a suffix such as `dest_<name>_gcp`

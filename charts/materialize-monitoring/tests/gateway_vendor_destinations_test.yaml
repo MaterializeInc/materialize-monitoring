@@ -388,6 +388,30 @@ tests:
       - failedTemplate:
           errorPattern: 'pipeline.destinations.worm.marshaler is "sumo_ic"'
 
+  - it: should refuse metrics on an s3 destination
+    set:
+      pipeline.destinations.worm:
+        type: s3
+        bucket: example-audit-logs
+        region: us-east-1
+        metrics: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.worm turns metrics on, but a s3 destination does not carry metrics"
+
+  - it: should keep an s3 destination off the metric seam
+    set:
+      pipeline.destinations.worm:
+        type: s3
+        bucket: example-audit-logs
+        region: us-east-1
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.(transform|filter)\.dest_worm|GATEWAY_WORM_DEST_METRICS_ALLOWLIST'
+
   # Like every OTLP-family destination, an archive drops rather than stalls
   # the install's other copies; log-archive-drops is what makes a drop loud.
   - it: should not count a default s3 destination as blocking

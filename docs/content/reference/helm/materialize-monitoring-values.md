@@ -1579,18 +1579,18 @@ The following table lists each field, the types it applies to, and its default:
 | --- | --- | --- | --- |
 | `type` | all | — | `loki`, `otlp`, `googleCloud`, `datadog`, `prometheus`, or `s3`. Required. |
 | `enabled` | all | `true` | Write to this destination. |
-| `url` | all but `datadog` | — | Endpoint, required when the entry carries a signal. `otlp`: a base URL over HTTP, `host:port` over gRPC. |
+| `url` | all but `datadog` | — | Endpoint, required when the entry carries a signal. `otlp`: a base URL over HTTP, `host:port` over gRPC. `s3`: optional, an S3-compatible endpoint. |
 | `url` | `googleCloud` | `https://telemetry.googleapis.com` | Override for a Private Service Connect endpoint. |
 | `urlEnv` | all | `GATEWAY_<NAME>_DEST` | Environment variable carrying the endpoint. |
-| `logs.enabled` | all | on for `loki`; on when `logs` is present for `otlp` | Send logs here. |
+| `logs.enabled` | `loki`, `otlp`, `datadog`, `s3` | on for `loki`, `s3`; on when `logs` is present otherwise | Send logs here. |
 | `logs.url` / `metrics.url` | `otlp` over HTTP, `datadog` | derived | One signal's own endpoint. `datadog` derives both from `site`. |
-| `logs.selector` | all | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
-| `logs.minLevel` | all | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. |
-| `logs.keepUnknown` | all | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
-| `logs.sampleRate` | all | `1` | Fraction of entries kept, above 0 and at most 1. |
-| `logs.rateLimit` | all | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
-| `metrics.enabled` | all but `loki` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
-| `metrics.minMetricImportance` | all but `loki` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
+| `logs.selector` | `loki`, `otlp`, `datadog`, `s3` | every stream | Allowlist: keep only entries matching this LogQL selector, such as `{namespace=~"environment-.+"}`. |
+| `logs.minLevel` | `loki`, `otlp`, `datadog`, `s3` | every level | Drop levels below this one: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL`. |
+| `logs.keepUnknown` | `loki`, `otlp`, `datadog`, `s3` | `true` | Keep entries whose level the gateway couldn't parse, which `minLevel` doesn't drop. |
+| `logs.sampleRate` | `loki`, `otlp`, `datadog`, `s3` | `1` | Fraction of entries kept, above 0 and at most 1. |
+| `logs.rateLimit` | `loki`, `otlp`, `datadog`, `s3` | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
+| `metrics.enabled` | `otlp`, `googleCloud`, `datadog`, `prometheus` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
+| `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
 | `compression` | `otlp`, `googleCloud`, `s3` | `gzip` | Request or object compression; `s3` also takes `none`. |
 | `project` / `location` | `googleCloud` | detected on GKE | The project and location every series is filed under. Required off GKE. |
