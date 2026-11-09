@@ -1186,6 +1186,22 @@
   - node.swap.activity
 - importance: essential
   labels:
+  - component_id
+  name: otelcol_exporter_enqueue_failed_log_records_total
+  usage:
+  - infra.alloy.log_archive_drops
+- importance: essential
+  labels:
+  - app
+  - component_id
+  - namespace
+  - pod
+  name: otelcol_exporter_send_failed_log_records_total
+  usage:
+  - infra.alloy.log_archive_drops
+  - infra.alloy.metric_pipeline.otel_failed
+- importance: essential
+  labels:
   - app
   - container
   - namespace
@@ -3033,14 +3049,6 @@
   name: otelcol_exporter_queue_size
   usage:
   - infra.alloy.metric_pipeline.otel_queue
-- importance: recommended
-  labels:
-  - app
-  - namespace
-  - pod
-  name: otelcol_exporter_send_failed_log_records_total
-  usage:
-  - infra.alloy.metric_pipeline.otel_failed
 - importance: recommended
   labels:
   - app

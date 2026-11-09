@@ -462,15 +462,16 @@ Usage:
     {{- $logForward = append $logForward $writer }}
   {{- end }}
   {{- /* An OTLP-family destination's metrics hang off the
-         otelcol.processor.filter "egress" seam by their own tier filter. Only
-         `loki` carries no metrics, and the validator refuses metrics on it. */}}
+         otelcol.processor.filter "egress" seam by their own tier filter.
+         `prometheus` destinations hang off their own seam below, and the
+         validator refuses metrics on `loki` and `s3`, which carry logs only. */}}
   {{- range $dest := ( include "mzmon.destinations.metrics" $ | fromYamlArray ) }}
     {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" ) }}
       {{- $metricsForward = append $metricsForward ( printf "otelcol.processor.transform.%s.input" $dest.label ) }}
     {{- end }}
   {{- end }}
   {{- range $dest := ( include "mzmon.destinations.active" $ | fromYamlArray ) }}
-    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" ) }}
+    {{- if has $dest.type ( list "otlp" "googleCloud" "datadog" "s3" ) }}
       {{- include "mzmon.alloyGateway.pipeline.otel.dest" ( dict "context" $ "dest" $dest ) }}
     {{- end }}
   {{- end }}
@@ -713,13 +714,14 @@ Usage:
 
 
 {{/*
-Generate the components for one OTLP-family destination: `otlp`, `datadog`, or
-`googleCloud`.
+Generate the components for one OTLP-family destination: `otlp`, `datadog`,
+`googleCloud`, or `s3`.
 
   * The exporter. `otlp` renders `otelcol.exporter.otlphttp`, or
     `otelcol.exporter.otlp` for gRPC. `datadog` renders
     `otelcol.exporter.datadog`, with its endpoints only when overridden, so they
-    follow `site`. `googleCloud` renders the Telemetry API chain
+    follow `site`. `s3` renders `otelcol.exporter.awss3`, and carries logs
+    only. `googleCloud` renders the Telemetry API chain
     (`googleCloud.chain`), labeled `gcp_<name>`. Its filter and transform
     need a label of their own beside the tier filter's `dest_<name>`, and no
     `dest_` label can equal a `gcp_` one: a suffix such as `dest_<name>_gcp`
@@ -756,6 +758,8 @@ Usage:
     {{- $exporter = ternary "otlp" "otlphttp" ( eq $dest.protocol "grpc" ) }}
   {{- else if eq $dest.type "datadog" }}
     {{- $exporter = "datadog" }}
+  {{- else if eq $dest.type "s3" }}
+    {{- $exporter = "awss3" }}
   {{- end }}
   {{- $exporterInput := printf "otelcol.exporter.%s.%s.input" $exporter $label }}
   {{- $metricsTarget := $exporterInput }}
@@ -814,6 +818,14 @@ otelcol.receiver.loki {{ $label | quote }} {
 }
 
 otelcol.processor.batch {{ $label | quote }} {
+    {{- if eq $dest.type "s3" }}
+    {{- /* One S3 object per batch, so the batch is the object size. The
+           default 200ms would write thousands of small objects an hour. */}}
+    timeout             = {{ $dest.batch.timeout | default "1m" | quote }}
+    send_batch_size     = {{ $dest.batch.size | default 8192 | int }}
+    send_batch_max_size = {{ mul ( $dest.batch.size | default 8192 | int ) 2 }}
+
+    {{- end }}
     output {
         logs = [{{ $exporterInput }}]
     }
@@ -835,6 +847,49 @@ otelcol.processor.batch {{ $label | quote }} {
           "location" $dest.location
           "compression" $dest.compression
           "queue" $dest.queue ) }}
+  {{- else if eq $dest.type "s3" }}
+
+otelcol.exporter.awss3 {{ $label | quote }} {
+    s3_uploader {
+        region              = {{ $dest.region | quote }}
+        s3_bucket           = {{ $dest.bucket | quote }}
+        s3_prefix           = {{ $dest.prefix | quote }}
+    {{- with $dest.partitionFormat }}
+        s3_partition_format = {{ . | quote }}
+    {{- end }}
+        s3_partition_timezone = {{ $dest.partitionTimezone | quote }}
+    {{- with $dest.filePrefix }}
+        file_prefix         = {{ . | quote }}
+    {{- end }}
+    {{- with $dest.storageClass }}
+        storage_class       = {{ . | quote }}
+    {{- end }}
+        compression         = {{ $dest.compression | quote }}
+    {{- /* The default key suffix is a random nine-digit number, so two
+           objects in one partition can share a key. On a versioned bucket the
+           earlier one becomes a noncurrent version that a plain listing
+           doesn't show; on an unversioned one it's overwritten. A UUIDv7
+           can't collide in practice, and sorts by write time. */}}
+        unique_key_func_name = "uuidv7"
+    {{- with $dest.roleArn }}
+        role_arn            = {{ . | quote }}
+    {{- end }}
+    {{- if $dest.url }}
+        endpoint            = sys.env({{ $dest.urlEnv | quote }})
+      {{- if hasPrefix "http://" ( tpl $dest.url $root ) }}
+        disable_ssl         = true
+      {{- end }}
+    {{- end }}
+    {{- if $dest.forcePathStyle }}
+        s3_force_path_style = true
+    {{- end }}
+    }
+
+    marshaler {
+        type = {{ $dest.marshaler | quote }}
+    }
+    {{- include "mzmon.alloyGateway.otel.sendingQueue" $dest.queue }}
+}
   {{- else if eq $dest.type "datadog" }}
 
 otelcol.exporter.datadog {{ $label | quote }} {

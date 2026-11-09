@@ -240,3 +240,52 @@ tests:
         exp_samples:
           - labels: '{namespace="monitoring"}'
             value: 1
+
+  # --- log-archive-drops: an S3 archive is the destination that must not drop --
+  #
+  # The OTLP-family destinations drop at a full queue on purpose, so a
+  # control-plane outage never holds back the local copy. An S3 archive drops
+  # the same way, but for a compliance archive every drop is a gap, so it alone
+  # alerts. A send failure after retries is a drop too.
+  - name: log-archive-drops fires for an S3 destination and not for a control plane
+    interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_enqueue_failed_log_records_total{namespace="monitoring", job="alloy-gateway", component_id="otelcol.exporter.awss3.dest_worm"}'
+        values: "0+50x15"
+      - series: 'otelcol_exporter_send_failed_log_records_total{namespace="monitoring", job="alloy-gateway", component_id="otelcol.exporter.awss3.dest_backup"}'
+        values: "0+5x15"
+      - series: 'otelcol_exporter_enqueue_failed_log_records_total{namespace="monitoring", job="alloy-gateway", component_id="otelcol.exporter.otlphttp.dest_controlPlane"}'
+        values: "0+500x15"
+      - series: 'otelcol_exporter_enqueue_failed_log_records_total{namespace="monitoring", job="alloy-gateway", component_id="otelcol.exporter.awss3.dest_quiet"}'
+        values: "0x15"
+    promql_expr_test:
+      - expr: count by (component_id) (ALERTS{alertname="log-archive-drops", alertstate="firing"})
+        eval_time: 10m
+        exp_samples:
+          - labels: '{component_id="otelcol.exporter.awss3.dest_backup"}'
+            value: 1
+          - labels: '{component_id="otelcol.exporter.awss3.dest_worm"}'
+            value: 1
+
+  # The exporter creates each failure counter at its first failure, so a series
+  # arrives already positive and may never move again. One failed upload, and
+  # one burst over a full queue, must still fire, and stop once the window has
+  # passed.
+  - name: log-archive-drops fires for a failure counter born inside the window
+    interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_enqueue_failed_log_records_total{namespace="monitoring", job="alloy-gateway", component_id="otelcol.exporter.awss3.dest_worm"}'
+        values: "_x4 120x15"
+      - series: 'otelcol_exporter_send_failed_log_records_total{namespace="monitoring", job="alloy-gateway", component_id="otelcol.exporter.awss3.dest_backup", error_type="_OTHER", error_permanent="false"}'
+        values: "_x4 8192x15"
+    promql_expr_test:
+      - expr: count by (component_id) (ALERTS{alertname="log-archive-drops", alertstate="firing"})
+        eval_time: 7m
+        exp_samples:
+          - labels: '{component_id="otelcol.exporter.awss3.dest_backup"}'
+            value: 1
+          - labels: '{component_id="otelcol.exporter.awss3.dest_worm"}'
+            value: 1
+      - expr: count by (component_id) (ALERTS{alertname="log-archive-drops", alertstate="firing"})
+        eval_time: 12m
+        exp_samples: []

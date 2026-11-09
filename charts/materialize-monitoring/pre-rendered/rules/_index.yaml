@@ -369,6 +369,16 @@ rules:
     - alloy
     enabledByDefault: true
     minImportance: essential
+  log-archive-drops:
+    file: prometheus/infra-alerts.yaml
+    engine: promql
+    group: loki
+    severity: warning
+    audience: platform
+    requires:
+    - alloy
+    enabledByDefault: true
+    minImportance: essential
   loki-push-err-high:
     file: prometheus/infra-alerts.yaml
     engine: promql

@@ -181,7 +181,8 @@ pub enum MetricSource {
 /// - The synthetic-uptime probes are SQL-prefixed like every other
 ///   `materialize-sql` family, so they come before the generic prefix.
 /// - Alloy's `loki.*` components publish `loki_write_*`, `loki_source_*` and so
-///   on, inside the name space the bundled Loki uses for its own metrics.
+///   on, inside the name space the bundled Loki uses for its own metrics. Its
+///   `otelcol.*` components publish `otelcol_*`; nothing else in the stack does.
 /// - The `mz_*` families that exist only where something optional is running
 ///   (Frontegg, a feature-flag sync, the external checker, the memory limiter)
 ///   come before the catch-all `mz_.+`.
@@ -236,7 +237,7 @@ const SOURCES: &[(&str, MetricSource)] = &[
         MetricSource::Capability(Capability::KubeletMetrics),
     ),
     (
-        "(alloy|loki_(write|source|process|relabel|secretfilter))_.+",
+        "(alloy|otelcol|loki_(write|source|process|relabel|secretfilter))_.+",
         MetricSource::Capability(Capability::Alloy),
     ),
     ("loki_.+", MetricSource::Capability(Capability::Loki)),
@@ -328,6 +329,7 @@ mod tests {
                 C(MaterializeOperator),
             ),
             ("loki_write_dropped_entries_total", C(Alloy)),
+            ("otelcol_exporter_send_failed_log_records_total", C(Alloy)),
             ("loki_request_duration_seconds_count", C(Loki)),
             ("container_memory_working_set_bytes", C(Cadvisor)),
             ("kube_pod_status_phase", C(KubeStateMetrics)),

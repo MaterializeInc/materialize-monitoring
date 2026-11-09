@@ -586,6 +586,54 @@ groups:
         all point at Loki being unable to accept the write volume. Check the
         alloy-gateway autoscaler and Loki ingestion health.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#alloy-log-drops
+  - alert: log-archive-drops
+    expr: |-
+      (
+        sum by (namespace, job, component_id) (
+            (
+              otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}
+              unless
+              otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"} offset 5m
+            )
+          or
+            increase(otelcol_exporter_enqueue_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
+        ) > 0
+      )
+      or
+      (
+        sum by (namespace, job, component_id) (
+            (
+              otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}
+              unless
+              otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"} offset 5m
+            )
+          or
+            increase(otelcol_exporter_send_failed_log_records_total{component_id=~"otelcol\\.exporter\\.awss3\\..+"}[5m])
+        ) > 0
+      )
+    for: 1m
+    labels:
+      severity: warning
+      component: alloy
+      audience: platform
+    annotations:
+      summary: An S3 log archive destination is dropping log records, so the archive has a gap.
+      description: |-
+        An `s3` destination in `pipeline.destinations` drops a record when its queue
+        is full or when S3 refuses it after retries, by design, so that an S3
+        outage never holds back the install's other log destinations. For a
+        compliance archive each drop is a missing record. Check the gateway's logs
+        for `otelcol.exporter.awss3` errors: an AccessDenied points at the bucket
+        policy or the gateway's AWS identity, and a timeout at the network path. A
+        queue that fills while S3 is healthy needs a larger `queue.queueSize` or a
+        larger `batch.size`.
+
+        The exporter creates each counter at its first failure, already at its
+        value, so a series newer than the window counts as a drop. Without
+        that, one failed upload or one burst over a full queue would never
+        fire. A send failure is labeled with the error's type and whether it is
+        permanent, so each new kind of failure starts a series of its own.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#log-archive-drops
   - alert: loki-push-err-high
     expr: |-
       100 * (

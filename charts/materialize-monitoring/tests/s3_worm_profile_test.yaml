@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# profiles/s3-worm.values.yaml: a compliance archive in a bucket with S3 Object
+# Lock.
+#
+# The profile is a contract: one destination, a bounded queue, and nothing else
+# touched. A drift installs cleanly and archives less than it should, or grows
+# the gateway past its memory limit during an S3 outage.
+suite: s3-worm profile
+release:
+  name: test-mon
+  namespace: monitoring
+values:
+  - ../profiles/s3-worm.values.yaml
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.destinations.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.destinations.thanos.url: https://metrics.example.com/api/v1/receive
+  pipeline.destinations.worm.bucket: example-audit-logs
+  pipeline.destinations.worm.region: us-east-1
+tests:
+  - it: should archive every forwarded line to the bucket
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "egress" \{[^}]*otelcol\.receiver\.loki\.dest_worm\.receiver'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.awss3 "dest_worm" \{\s*s3_uploader \{\s*region\s*= "us-east-1"\s*s3_bucket\s*= "example-audit-logs"\s*s3_prefix\s*= "mzmon/logs"'
+      # No selector, level floor, or sampling: the archive is not reduced.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.process "dest_worm"'
+
+  # Alloy's default queue holds 1000 batches, which can outgrow the gateway's
+  # memory limit during a long S3 outage on a busy install.
+  - it: should bound the batches waiting in memory
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.awss3 "dest_worm" \{[\s\S]*?sending_queue \{\s*queue_size = 20\s*\}'
+
+  - it: should leave the gateway's ServiceAccount role to the install
+    template: charts/alloy-gateway/templates/serviceaccount.yaml
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - notExists:
+          path: metadata.annotations["eks.amazonaws.com/role-arn"]
+
+  # Both destinations drop rather than stall, so neither holds back the
+  # bundled Loki, and their environment variables don't collide.
+  - it: should compose with the call-home profile
+    values:
+      - ../profiles/call-home.values.yaml
+      - ../profiles/s3-worm.values.yaml
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'Destination: worm \(s3: logs\)'
+      - matchRegexRaw:
+          pattern: 'Destination: controlPlane \(otlp: logs, essential metrics\)'
+      - matchRegexRaw:
+          pattern: "block when their queue fills"
+        not: true
