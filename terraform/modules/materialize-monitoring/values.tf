@@ -468,6 +468,18 @@ locals {
     clusterName = var.cluster_name
   })]
 
+  # Written for every value, `off` included, so the module's default holds
+  # rather than whatever default the chart version carries.
+  secret_filter_document = [yamlencode({
+    pipeline = {
+      logging = {
+        secretFilter = {
+          mode = var.secret_filter
+        }
+      }
+    }
+  })]
+
   # ----------------------------------------------------------------------------
   # Final ordered list
   # ----------------------------------------------------------------------------
@@ -509,6 +521,8 @@ locals {
     # `externalDependencies`; see postgres_exporter.tf.
     local.postgres_exporter_document,
     local.consensus_document,
+    # Nothing above writes `pipeline.logging.secretFilter`.
+    local.secret_filter_document,
   )
 
   # The caller stays last, so `additional_values` still overrides everything —

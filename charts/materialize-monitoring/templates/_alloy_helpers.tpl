@@ -200,6 +200,26 @@ Usage:
   {{- include "mzmon.alloyGateway.pipeline.contents" $ | replace "\t" "    " }}
 {{- end }}
 
+{{- /*
+The secret filter's mode, `off` when unset: `off`, `shadow`, or `on`.
+`mzmon.alloy.validate` refuses anything else.
+
+YAML 1.1 reads an unquoted `on` or `off` as a boolean, so a values file that
+writes `mode: on` arrives as `true`. The two booleans map to the modes they
+were written as.
+
+Usage:
+  {{- if eq ( include "mzmon.secretFilter.mode" $ ) "on" }}
+*/}}
+{{- define "mzmon.secretFilter.mode" }}
+  {{- $mode := dig "logging" "secretFilter" "mode" "off" ( $.Values.pipeline | default dict ) }}
+  {{- if kindIs "bool" $mode }}
+    {{- ternary "on" "off" $mode }}
+  {{- else }}
+    {{- $mode | toString }}
+  {{- end }}
+{{- end }}
+
 {{/*
 Generate the contents of an alloy-gateway pipeline.
 
@@ -215,8 +235,21 @@ Usage:
     {{- fail "pipelines.* is the wrong key. Use pipeline.*" }}
   {{- end }}
 
-  {{- /* Output main snippet */}}
-  {{- $.Files.Get "pre-rendered/pipelines/gateway.alloy" }}
+  {{- /* Output main snippet. The secret filter's shadow branch is wired only
+         when pipeline.logging.secretFilter.mode is `shadow`: otherwise its
+         receiver comes out of inputPrefilter's forward_to, so no line is copied
+         into a branch that would drop it. The shadow components stay defined
+         and receive nothing. A render fails rather than shipping the copy if
+         the entry ever stops matching. */}}
+  {{- $gateway := $.Files.Get "pre-rendered/pipelines/gateway.alloy" }}
+  {{- if ne ( include "mzmon.secretFilter.mode" $ ) "shadow" }}
+    {{- $shadowTap := "\t\tloki.secretfilter.shadow.receiver,\n" }}
+    {{- if not ( contains $shadowTap $gateway ) }}
+      {{- fail "gateway.alloy no longer lists loki.secretfilter.shadow.receiver as the chart expects; update mzmon.alloyGateway.pipeline.contents" }}
+    {{- end }}
+    {{- $gateway = replace $shadowTap "" $gateway }}
+  {{- end }}
+  {{- $gateway }}
 
   {{- /* Metric processors */}}
   {{- $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}
@@ -1699,6 +1732,11 @@ Usage:
 {{- define "mzmon.alloy.validate" }}
   {{- $errors := list }}
   {{- $warnings := list }}
+
+  {{- $mode := include "mzmon.secretFilter.mode" $ }}
+  {{- if not ( has $mode ( list "off" "shadow" "on" ) ) }}
+    {{- $errors = append $errors ( printf "pipeline.logging.secretFilter.mode is %q; it must be off, shadow, or on." $mode ) }}
+  {{- end }}
 
   {{- $res := include "mzmon.alloy.validate.reachability" $ | fromYaml }}
   {{- $errors = concat $errors $res.errors | default list }}

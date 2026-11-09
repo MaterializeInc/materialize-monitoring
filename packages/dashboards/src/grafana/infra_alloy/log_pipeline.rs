@@ -321,6 +321,35 @@ mod tests {
     }
 
     #[test]
+    fn the_shadow_branch_is_excluded_by_component() {
+        // Its rate limit drops under `ratelimit_drop_stage`, which the reason
+        // matcher can't exclude without hiding the main path's losses.
+        let q = &test_queries();
+        let panel = guard_drops(q);
+        let expr = panel.spec.data.spec.queries[0]
+            .spec
+            .query
+            .spec
+            .as_ref()
+            .expect("spec")["expr"]
+            .as_str()
+            .expect("expr");
+        assert!(
+            expr.contains(r#"component_id!="loki.process.secretfilterShadow""#),
+            "the guard query doesn't exclude the shadow branch: {expr}"
+        );
+        let gateway = std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../charts/materialize-monitoring/pre-rendered/pipelines/gateway.alloy"),
+        )
+        .expect("read gateway.alloy");
+        assert!(
+            gateway.contains(r#"loki.process "secretfilterShadow" {"#),
+            "the guard query excludes loki.process.secretfilterShadow, which gateway.alloy no longer defines"
+        );
+    }
+
+    #[test]
     fn the_status_panel_counts_requests_not_buckets() {
         // Summing `_bucket` series counts each request once per bucket, which
         // is the mistake in the dashboards this one replaces.

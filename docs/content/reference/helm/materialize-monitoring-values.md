@@ -1903,6 +1903,38 @@ Move each one across, so `pipeline.logging.gateway.destination.loki.url` becomes
   </tbody>
 </table>
 
+##### Secret filter.
+
+The gateway's secret filter.
+The gateway can replace credentials in log lines before they're stored.
+The filter itself is off by default. For what it does and how to turn it
+on, see Production best practices > Secret filtering.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">pipeline<wbr>.logging<wbr>.secretFilter<wbr>.mode</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"off"</code></td>
+      <td class="helm-value-desc">What the secret filter does with the gateway's log lines: `off`, `shadow`, or `on`.
+
+| Mode | Effect |
+| --- | --- |
+| `off` | Lines are stored as they arrive. |
+| `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. What's stored otherwise doesn't change. |
+| `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored. |
+
+`shadow` and `on` each cost a scan of every line. Use `shadow` to see what
+the rules match on your logs before you turn the filter on. In `on`, set
+`pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE` below `"1"` to scan only
+that fraction of `DEBUG` and `TRACE` lines.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 #### Metrics configuration
 
 Configuration for metrics behavior

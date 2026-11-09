@@ -124,10 +124,12 @@ jobs:
       #     packages/alloy-pipelines/levels.corpus.yaml. Each line must leave with
       #     its level and the detector that set it; a detector whose escaping is
       #     wrong still validates and never matches, so only a run catches it.
+      #   * gateway_shadow_budget: the secret filter's shadow branch under load.
+      #     Shadow copies must not spend the rate limits their originals need.
       - name: alloy corpora
         env:
           MZMON_REQUIRE_ALLOY: "1"
-        run: cargo test -p mzmon-lib --test secretfilter_corpus --test gateway_level_corpus
+        run: cargo test -p mzmon-lib --test secretfilter_corpus --test gateway_level_corpus --test gateway_shadow_budget
       # metric-tiers.yaml is generated from the query registry and checked in, the
       # same freshness contract as the pipelines above.
       - name: make metrics

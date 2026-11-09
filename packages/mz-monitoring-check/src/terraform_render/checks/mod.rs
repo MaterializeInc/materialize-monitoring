@@ -32,6 +32,7 @@ pub mod node_exporter;
 pub mod object_storage;
 pub mod postgres_exporter;
 pub mod scheduling;
+pub mod secret_filter;
 pub mod storage_class;
 pub mod workload_identity;
 

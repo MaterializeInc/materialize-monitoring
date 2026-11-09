@@ -1310,6 +1310,29 @@ pipeline:
         audit: static
         environment: static
 
+    # -- (h5) The gateway's secret filter.
+    # @notationType -- (sectionstart) Secret filter.
+    # @raw
+    # The gateway can replace credentials in log lines before they're stored.
+    # The filter itself is off by default. For what it does and how to turn it
+    # on, see Production best practices > Secret filtering.
+    secretFilter:
+      # -- What the secret filter does with the gateway's log lines: `off`,
+      # `shadow`, or `on`.
+      # @raw
+      #
+      # | Mode | Effect |
+      # | --- | --- |
+      # | `off` | Lines are stored as they arrive. |
+      # | `shadow` | A copy of every line is scanned, and only the lines the filter would have redacted are stored, already redacted, with the label `secretfilter="shadow"`. What's stored otherwise doesn't change. |
+      # | `on` | Every line is scanned, and each credential found is replaced with `<redacted:RULE_ID>` before the line is stored. |
+      #
+      # `shadow` and `on` each cost a scan of every line. Use `shadow` to see what
+      # the rules match on your logs before you turn the filter on. In `on`, set
+      # `pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE` below `"1"` to scan only
+      # that fraction of `DEBUG` and `TRACE` lines.
+      mode: "off"
+
   # -- (h4) Configuration for metrics behavior
   # @notationType -- (sectionstart) Metrics configuration
   metrics:

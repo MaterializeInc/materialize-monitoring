@@ -18,7 +18,8 @@
 // them into a full tier and a DEBUG/TRACE bulk tier, each scanned by its own
 // loki.secretfilter before inputProcessor reads anything out of the line. The
 // filter ships with its rate at 0, so it forwards every line unscanned until
-// GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE are set.
+// pipeline.logging.secretFilter.mode is `on`, which sets
+// GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE to 1.
 //
 // A Rust panic is not one log line, so inputPrefilter opens with a
 // stage.multiline that reassembles one before any stage can drop or reorder it,
@@ -331,6 +332,7 @@ loki.process "inputPrefilter" {
 	forward_to = [
 		loki.relabel.tierFull.receiver,
 		loki.relabel.tierBulk.receiver,
+		loki.secretfilter.shadow.receiver,
 	]
 
 	stage.match {
@@ -441,6 +443,48 @@ loki.secretfilter "ingestBulk" {
 	drop_on_timeout = false
 	label_timed_out = true
 	origin_label = "container"
+}
+
+loki.secretfilter "shadow" {
+	forward_to = [
+		loki.process.secretfilterShadow.receiver,
+	]
+	gitleaks_config = "/etc/alloy/secretfilter-ingest.toml"
+	redact_with = "<redacted:$SECRET_NAME>"
+	processing_timeout = coalesce(sys.env("GATEWAY_SECRETFILTER_TIMEOUT"), "0s")
+	drop_on_timeout = true
+	origin_label = "container"
+}
+
+loki.process "secretfilterShadow" {
+	forward_to = [
+		loki.process.inputProcessor.receiver,
+	]
+
+	stage.label_drop {
+		values = [
+			"sniffed_level",
+		]
+	}
+
+	stage.static_labels {
+		values = {
+			secretfilter = "shadow",
+		}
+	}
+
+	stage.match {
+		selector            = "{secretfilter=\"shadow\"} != \"<redacted:\""
+		action              = "drop"
+		drop_counter_reason = "secretfilter shadow"
+	}
+
+	stage.limit {
+		rate          = 100
+		burst         = 1000
+		drop          = true
+		by_label_name = "namespace"
+	}
 }
 
 loki.process "inputProcessor" {
@@ -2134,7 +2178,7 @@ loki.process "inputProcessor" {
 	}
 
 	stage.match {
-		selector = "{level=\"INFO\"}"
+		selector = "{level=\"INFO\", secretfilter!=\"shadow\"}"
 
 		stage.limit {
 			rate  = 1000
@@ -2144,7 +2188,7 @@ loki.process "inputProcessor" {
 	}
 
 	stage.match {
-		selector = "{level!~\"(CRITICAL|ERROR|WARN|INFO)\"}"
+		selector = "{level!~\"(CRITICAL|ERROR|WARN|INFO)\", secretfilter!=\"shadow\"}"
 
 		stage.limit {
 			rate          = 1000
@@ -2154,10 +2198,14 @@ loki.process "inputProcessor" {
 		}
 	}
 
-	stage.limit {
-		rate  = 10000
-		burst = 100000
-		drop  = false
+	stage.match {
+		selector = "{level=~\".+\", secretfilter!=\"shadow\"}"
+
+		stage.limit {
+			rate  = 10000
+			burst = 100000
+			drop  = false
+		}
 	}
 
 	stage.drop {

@@ -78,11 +78,17 @@ fn is_filter(id: &str) -> bool {
     id.starts_with("loki.secretfilter.")
 }
 
-/// A path from `from` to a sink that passes no secret filter, if there is one.
-fn unfiltered_path(graph: &BTreeMap<String, Vec<String>>, from: &str) -> Option<Vec<String>> {
+/// A path from `from` to a node `stop` accepts that passes no secret filter,
+/// if there is one.
+fn unfiltered_path(
+    graph: &BTreeMap<String, Vec<String>>,
+    from: &str,
+    stop: fn(&str) -> bool,
+) -> Option<Vec<String>> {
     fn walk(
         graph: &BTreeMap<String, Vec<String>>,
         node: &str,
+        stop: fn(&str) -> bool,
         path: &mut Vec<String>,
         seen: &mut BTreeSet<String>,
     ) -> bool {
@@ -90,20 +96,20 @@ fn unfiltered_path(graph: &BTreeMap<String, Vec<String>>, from: &str) -> Option<
             return false;
         }
         path.push(node.to_string());
-        if is_sink(node) {
+        if stop(node) {
             return true;
         }
         let next = graph
             .get(node)
             .unwrap_or_else(|| panic!("{node} is forwarded to but not defined"));
-        if next.iter().any(|n| walk(graph, n, path, seen)) {
+        if next.iter().any(|n| walk(graph, n, stop, path, seen)) {
             return true;
         }
         path.pop();
         false
     }
     let mut path = Vec::new();
-    walk(graph, from, &mut path, &mut BTreeSet::new()).then_some(path)
+    walk(graph, from, stop, &mut path, &mut BTreeSet::new()).then_some(path)
 }
 
 #[test]
@@ -123,25 +129,23 @@ fn every_log_source_reaches_a_sink_only_through_a_secret_filter() {
         );
     }
     for source in sources {
-        if let Some(path) = unfiltered_path(&graph, source) {
+        if let Some(path) = unfiltered_path(&graph, source, is_sink) {
             panic!("reaches a sink unfiltered: {}", path.join(" -> "));
         }
     }
 }
 
 #[test]
-fn every_path_into_input_processor_comes_from_a_secret_filter() {
+fn every_path_into_input_processor_passes_a_secret_filter() {
     // inputProcessor copies text out of the line, so a sink reached through a
     // filter is not enough: the filter has to run before inputProcessor.
     let graph = log_graph();
-    let feeders: Vec<&String> = graph
-        .iter()
-        .filter(|(_, targets)| targets.iter().any(|t| t == "loki.process.inputProcessor"))
-        .map(|(id, _)| id)
-        .collect();
-    assert!(!feeders.is_empty());
-    for feeder in feeders {
-        assert!(is_filter(feeder), "{feeder} forwards to inputProcessor");
+    assert!(graph.contains_key("loki.process.inputProcessor"));
+    for source in graph.keys().filter(|id| is_source(id)) {
+        if let Some(path) = unfiltered_path(&graph, source, |n| n == "loki.process.inputProcessor")
+        {
+            panic!("reaches inputProcessor unfiltered: {}", path.join(" -> "));
+        }
     }
 }
 

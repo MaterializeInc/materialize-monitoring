@@ -279,6 +279,16 @@ const CHECKS: &[Check] = &[
         run: checks::internal_tls::rulers_remote_write_over_tls,
     },
     Check {
+        name: "secret_filter::shadow_branch_matches_mode",
+        applies: |_| true,
+        run: checks::secret_filter::shadow_branch_matches_mode,
+    },
+    Check {
+        name: "secret_filter::rates_match_mode",
+        applies: |_| true,
+        run: checks::secret_filter::rates_match_mode,
+    },
+    Check {
         name: "destinations::remote_write",
         applies: |ctx| ctx.declares("prometheus_remote_write"),
         run: checks::destinations::remote_write,

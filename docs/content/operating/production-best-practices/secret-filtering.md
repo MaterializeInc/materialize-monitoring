@@ -76,33 +76,76 @@ The filter scans the line and nothing else, so it has the following limits:
 - **Some identifiers look like credentials.**
   A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
 
+## Try it in shadow mode first {#shadow}
+
+Shadow mode shows what the rules match on your own logs without changing what's stored.
+The gateway scans a copy of every line and stores only the lines the filter would have redacted, already redacted, with the label `secretfilter="shadow"`.
+Use it to find the values the rules would replace by mistake before you turn the filter on.
+
+To turn shadow mode on, set the mode to `shadow`:
+
+```yaml
+pipeline:
+  logging:
+    secretFilter:
+      mode: shadow
+```
+
+If you install with the [Terraform module](../../../getting-started/terraform/), set `secret_filter = "shadow"` instead.
+The mode changes the gateway's config, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+Shadow mode costs the same CPU as turning the filter on, because it scans every line.
+Off, the chart doesn't wire it, so it costs nothing.
+
+To read what it found, query the label:
+
+```logql
+{secretfilter="shadow"}
+```
+
+Each line has `<redacted:RULE_ID>` where a value was replaced, and the rest of the line shows which field held it.
+`loki_secretfilter_secrets_redacted_by_category_total{component_id="loki.secretfilter.shadow"}` counts the matches by rule and by container.
+
+The stored lines are a sample, and the counter is the full count:
+
+- The gateway stores up to 100 shadow lines per second from each namespace, with bursts of up to 1,000.
+  Shadow lines have this limit to themselves, so they don't use up the rate limits that apply to your other lines.
+- A copy that runs past `GATEWAY_SECRETFILTER_TIMEOUT` isn't stored, because it might be only partly redacted.
+  `loki_secretfilter_lines_timed_out_total{component_id="loki.secretfilter.shadow"}` counts it.
+
+Shadow lines go to every log destination, like any other line.
+Each one is redacted, and while the filter is off its original goes to the same destinations unchanged, so a shadow line exposes nothing new.
+After you turn the filter on, turn shadow mode off: the stored lines then carry the placeholders themselves.
+
 ## Turn it on {#turn-it-on}
 
 The filter ships off.
 Each false positive permanently replaces a value in your own logs, so the defaults wait on measurement against real logs.
 <!-- TODO(DEP-313): rewrite this section once shadow mode has run and the filter is on by default. -->
 
-To turn it on, set both rates to `1` in `pipeline.env`:
+To turn it on, set the mode to `on`:
 
 ```yaml
 pipeline:
-  env:
-    GATEWAY_SECRETFILTER_RATE: "1"
-    GATEWAY_SECRETFILTER_BULK_RATE: "1"
+  logging:
+    secretFilter:
+      mode: "on"
 ```
 
-The filter runs as two instances.
-`GATEWAY_SECRETFILTER_RATE` sets the fraction of lines the main instance scans, and `GATEWAY_SECRETFILTER_BULK_RATE` sets it for `DEBUG` and `TRACE` lines, the levels most able to outrun the filter.
+If you install with the Terraform module, set `secret_filter = "on"` instead.
+The gateway has to restart to pick the mode up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+
+The filter runs as two instances, and `on` sets both of their scan rates to `1`.
+`GATEWAY_SECRETFILTER_RATE` is the fraction of lines the main instance scans, and `GATEWAY_SECRETFILTER_BULK_RATE` is the fraction of `DEBUG` and `TRACE` lines, the levels most able to outrun the filter.
 At `0`, an instance forwards every line unscanned.
-The change is an environment variable, so the gateway has to restart to pick it up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
+A rate you set in `pipeline.env` takes precedence over the mode.
 
 The following settings change what the filter costs:
 
-`GATEWAY_SECRETFILTER_BULK_RATE`
+`pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE`
 : Below `1`, the bulk instance scans that fraction of `DEBUG` and `TRACE` lines and stores the rest unscanned.
   Lower it only when the gateway can't keep up with its input at `1`.
 
-`GATEWAY_SECRETFILTER_TIMEOUT`
+`pipeline.env.GATEWAY_SECRETFILTER_TIMEOUT`
 : The most time the filter spends on one line, such as `50ms`.
   The default, `0s`, sets no limit.
   A line that runs past it is stored with whatever the filter redacted in time, and with the label `secretfilter="timed-out"`.

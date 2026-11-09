@@ -23,7 +23,8 @@ description: |
   them into a full tier and a DEBUG/TRACE bulk tier, each scanned by its own
   loki.secretfilter before inputProcessor reads anything out of the line. The
   filter ships with its rate at 0, so it forwards every line unscanned until
-  GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE are set.
+  pipeline.logging.secretFilter.mode is `on`, which sets
+  GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE to 1.
 
   A Rust panic is not one log line, so inputPrefilter opens with a
   stage.multiline that reassembles one before any stage can drop or reorder it,
@@ -402,14 +403,16 @@ blocks:
   # inputProcessor.
   #
   # The filter ships with `rate` 0, which forwards every line unscanned and
-  # counts it in loki_secretfilter_entries_bypassed_total. Set
-  # GATEWAY_SECRETFILTER_RATE and GATEWAY_SECRETFILTER_BULK_RATE to 1 to scan.
-  # TODO(DEP-313): default both to 1 after shadow mode has run on real logs.
+  # counts it in loki_secretfilter_entries_bypassed_total. The chart's
+  # pipeline.logging.secretFilter.mode `on` sets GATEWAY_SECRETFILTER_RATE and
+  # GATEWAY_SECRETFILTER_BULK_RATE to 1.
+  # TODO(DEP-313): default the mode to `on` after shadow mode has run on real logs.
   - loki.process:
       label: inputPrefilter
       forward_to:
         - "loki.relabel.tierFull.receiver"
         - "loki.relabel.tierBulk.receiver"
+        - "loki.secretfilter.shadow.receiver"
       blocks:
         # --- multi-line records: Rust panics --------------------------------
         #
@@ -656,6 +659,69 @@ blocks:
       drop_on_timeout: false
       label_timed_out: true
       origin_label: container
+
+  # --- secret-filter shadow mode ----------------------------------------------
+  #
+  # Measures the ingest rules on real logs without changing them. The shadow
+  # instance scans a copy of every line the prefilter keeps, and
+  # secretfilterShadow stores only the lines it redacted, already redacted,
+  # with the label `secretfilter="shadow"`. The main stream is unchanged. The
+  # per-rule counters give the rate, and the stored lines give the context
+  # that tells a credential from a value that only looks like one.
+  #
+  # Wired only when pipeline.logging.secretFilter.mode is `shadow`. Otherwise
+  # the chart removes this instance's receiver from inputPrefilter's forward_to
+  # as it renders the config, so no line is copied: an idle branch still costs
+  # about 6% of the log path's CPU, measured, in the copy and the drop. On, it
+  # scans every line and costs the same CPU as turning the ingest filter on. It
+  # reads the same flat rule file as the two ingest instances; see the startup
+  # race above.
+  #
+  # The label is `secretfilter`, not `job`: inputProcessor parses some sources
+  # by `job`, and a shadow copy should parse like its original.
+  #
+  # A copy that runs past GATEWAY_SECRETFILTER_TIMEOUT is dropped, unlike a
+  # main-stream line. It would carry only the redactions finished in time, and
+  # once labeled `shadow` it would read as a complete result.
+  # loki_secretfilter_lines_timed_out_total still counts it.
+  - loki.secretfilter:
+      label: shadow
+      forward_to: ["loki.process.secretfilterShadow.receiver"]
+      gitleaks_config: /etc/alloy/secretfilter-ingest.toml
+      redact_with: "<redacted:$SECRET_NAME>"
+      processing_timeout:
+        function: coalesce
+        arguments:
+          - env: GATEWAY_SECRETFILTER_TIMEOUT
+          - "0s"
+      drop_on_timeout: true
+      origin_label: container
+  - loki.process:
+      label: secretfilterShadow
+      forward_to: ["loki.process.inputProcessor.receiver"]
+      blocks:
+        # The prefilter's tier mark, which only the splitters remove.
+        - stage.label_drop:
+            values: ["sniffed_level"]
+        - stage.static_labels:
+            values:
+              secretfilter: shadow
+        # Every line without a placeholder is a copy of a line the main stream
+        # already carries. The infra-alloy dashboard counts this reason as
+        # deliberate, not as loss.
+        - stage.match:
+            selector: '{secretfilter="shadow"} != "<redacted:"'
+            action: drop
+            drop_counter_reason: "secretfilter shadow"
+        # The copies' own budget. inputProcessor's rate limits skip them, so a
+        # rule that matches most of a namespace's lines can't spend the budget
+        # its originals need. The per-rule counters still count every match;
+        # the stored copies are a sample for context.
+        - stage.limit:
+            rate: 100
+            burst: 1000
+            drop: true
+            by_label_name: namespace
 
   # --- main processing pipeline -----------
   # Receives only lines that passed a secret filter instance.
@@ -1592,25 +1658,30 @@ blocks:
                       - "__meta_kubernetes_pod_label_app_kubernetes_io_name"
 
         # --- per-level rate limits ------------------------------------------
+        # Shadow copies skip these. secretfilterShadow limits them on a budget
+        # of their own, so a copy never spends one its original needs.
         - stage.match:
-            selector: '{level="INFO"}'
+            selector: '{level="INFO", secretfilter!="shadow"}'
             blocks:
               - stage.limit:
                   rate: 1000
                   burst: 20000
                   drop: false
         - stage.match:
-            selector: '{level!~"(CRITICAL|ERROR|WARN|INFO)"}'
+            selector: '{level!~"(CRITICAL|ERROR|WARN|INFO)", secretfilter!="shadow"}'
             blocks:
               - stage.limit:
                   rate: 1000
                   burst: 5000
                   drop: true
                   by_label_name: namespace
-        - stage.limit:
-            rate: 10000
-            burst: 100000
-            drop: false
+        - stage.match:
+            selector: '{level=~".+", secretfilter!="shadow"}'
+            blocks:
+              - stage.limit:
+                  rate: 10000
+                  burst: 100000
+                  drop: false
 
         # --- final label/metadata shaping -----------------------------------
         - stage.drop:

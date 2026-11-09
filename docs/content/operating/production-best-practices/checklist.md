@@ -682,9 +682,10 @@ Each adds defense in depth, or extra signal where your environment calls for it.
 - [ ] `[operator]` [TLS](../../securing/#gaps): Turn on in-cluster TLS where your environment requires it.
   Certificates and the mTLS profiles ship off by default.
 - [ ] `[operator]` [Secret filtering](../secret-filtering/#turn-it-on): **Turn on the secret filter** for an extra
-  layer of protection behind keeping credentials out of logs: set `GATEWAY_SECRETFILTER_RATE` and
-  `GATEWAY_SECRETFILTER_BULK_RATE` to `"1"` in `pipeline.env`.
+  layer of protection behind keeping credentials out of logs: set `pipeline.logging.secretFilter.mode` to `"on"`, or
+  `secret_filter = "on"` with the Terraform module.
   It ships off.
+  Run it in [shadow mode](../secret-filtering/#shadow) first, to see what it would replace in your logs.
   Then alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`, and check each one: a redaction is usually a credential a component logged.
 - [ ] `[operator]` [Alertmanager](../../../alerting/architecture/#tls): **TLS on the API port** comes with the mTLS
   profiles: `alerting.server.tls` moves 9093 to TLS, and the profiles move the probes, the reloader, the scrape, both

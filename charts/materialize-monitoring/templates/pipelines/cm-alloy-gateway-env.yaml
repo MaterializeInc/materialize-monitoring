@@ -20,6 +20,16 @@ data:
   GATEWAY_KUBELET_TLS_INSECURE: {{ $kubelet.tlsInsecureSkipVerify | toJson | quote }}
   {{- $kubeProxy := .Values.pipeline.metrics.kubeProxy }}
   GATEWAY_KUBE_PROXY_SCRAPE_INTERVAL: {{ $kubeProxy.scrapeInterval | quote }}
+  {{- /* `on` scans every line in both tiers. A rate already in pipeline.env
+         wins, which is how an install scans only part of the bulk tier, and
+         keeps the key from being written twice. */}}
+  {{- if eq ( include "mzmon.secretFilter.mode" $ ) "on" }}
+    {{- range $key := list "GATEWAY_SECRETFILTER_RATE" "GATEWAY_SECRETFILTER_BULK_RATE" }}
+      {{- if not ( hasKey ( $.Values.pipeline.env | default dict ) $key ) }}
+  {{ $key }}: "1"
+      {{- end }}
+    {{- end }}
+  {{- end }}
   {{- /* The destinations' variables, from the helper the validator checks for
          duplicate keys. */}}
   {{- range $entry := ( include "mzmon.destinations.envEntries" $ | fromYamlArray ) }}
