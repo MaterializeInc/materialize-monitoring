@@ -92,7 +92,10 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
+      # Only main saves; see the cargo-test job in test.yaml for why.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # rustfmt picks up rustfmt.toml if present (none today; defaults apply).
       - name: cargo fmt (check mode)
         run: cargo fmt --all -- --check

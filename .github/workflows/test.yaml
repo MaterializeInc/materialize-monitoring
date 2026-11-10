@@ -24,7 +24,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
+      # Only main saves a Rust cache; pull requests restore main's. GitHub caps
+      # the repository's caches at 10 GB and evicts the least recently used, and
+      # each job's cache is ~450 MB, so per-PR saves would evict main's and leave
+      # new PRs compiling every dependency (datadog-api-client alone is ~100s).
+      # A PR that changes Cargo.lock restores main's cache by prefix and rebuilds
+      # only the dependencies that moved.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install promtool
         # promtool ships inside the prometheus release tarball. The scrape
         # transpiler tests use it as a `promtool check config` oracle (mirrors
@@ -94,7 +102,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
+      # Only main saves; see the cargo-test job in test.yaml for why.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # fmt, validate, and — via the terraform-render prerequisite — a plan of
       # every example with the chart rendered against the values it composes.
       # helm is preinstalled on the runner image. No cluster needed: the

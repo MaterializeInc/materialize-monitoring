@@ -31,7 +31,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
+      # Only main saves; see the cargo-test job in test.yaml for why.
+      # Shared with publish-release.yaml, which builds the same binary but never
+      # runs on main, so it has no cache of its own to restore.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: mz-monitoring-build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: propose version-update PRs
         run: cargo run -p mz-monitoring-build -- propose-bumps --draft --automerge
         env:
