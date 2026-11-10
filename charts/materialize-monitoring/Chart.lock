@@ -25,12 +25,12 @@ dependencies:
   version: 9.0.0
 - name: prometheus-node-exporter
   repository: oci://ghcr.io/prometheus-community/charts
-  version: 5.0.0
+  version: 5.1.0
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server
   version: 3.14.0
 - name: prometheus-postgres-exporter
   repository: oci://ghcr.io/prometheus-community/charts
   version: 8.2.0
-digest: sha256:7cf544d384a3e9eef9b4a40d19e13d602a0cc24747268ee41679bfd418ec7bfc
-generated: "2026-11-09T15:30:08.15116944Z"
+digest: sha256:d2da296230cef9976107ba3f634985136b53197478d7929a1afde317000d05e6
+generated: "2026-11-10T19:52:44.641383883Z"
