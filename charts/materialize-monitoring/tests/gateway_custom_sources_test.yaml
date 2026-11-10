@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# `pipeline.gateway.customSources`: raw Alloy config appended to the gateway's sources.
+#
+# The chart checks only the shape of the map. Whether the config is valid Alloy
+# is the pre-validate job's call, so these assert that an entry reaches both the
+# gateway's ConfigMap and the one the job validates.
+suite: alloy gateway custom sources
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.destinations.loki.enabled: false
+  pipeline.destinations.thanos.enabled: false
+tests:
+  - it: should render nothing extra by default
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'pipeline\.gateway\.customSources'
+
+  - it: should render each entry through tpl, sorted by name, into both ConfigMaps
+    templates:
+      - templates/pipelines/cm-alloy-gateway.yaml
+      - templates/pipelines/validator/cm-validate-gateway.yaml
+    set:
+      pipeline.gateway.customSources:
+        zeta: |
+          prometheus.scrape "example" {
+            targets    = [{"__address__" = "example.{{ .Release.Namespace }}.svc:9100"}]
+            forward_to = [otelcol.receiver.prometheus.inputBridge.receiver]
+          }
+        alpha: |
+          loki.source.file "extra" {
+            targets    = [{"__path__" = "/tmp/extra.log"}]
+            forward_to = [loki.process.inputPrefilter.receiver]
+          }
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '// pipeline\.gateway\.customSources\.alpha\nloki\.source\.file "extra" \{[\s\S]*// pipeline\.gateway\.customSources\.zeta\nprometheus\.scrape "example" \{'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '"__address__" = "example\.test-monitoring\.svc:9100"'
+
+  # An overlay removes an entry a lower values file set by nulling it.
+  - it: should skip a null or empty entry
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      pipeline.gateway.customSources:
+        removed: null
+        blank: ""
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'pipeline\.gateway\.customSources'
+
+  # The validator ConfigMap renders the same pipeline and fails first, so it is
+  # turned off here to pin the failure to the gateway's own ConfigMap.
+  - it: should refuse an entry that is not a string
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      pipeline.preValidateJob.enabled: false
+      pipeline.gateway.customSources:
+        scrape:
+          targets: []
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pipeline\.gateway\.customSources\.scrape must be a string of Alloy config, not map'

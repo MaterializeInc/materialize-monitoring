@@ -429,6 +429,36 @@ prometheus.relabel "receiveIdentity" {
         replacement   = "unknown"
     }
 }
+  {{- include "mzmon.alloyGateway.pipeline.customSources" $ }}
+{{- end }}
+
+{{/*
+Render `pipeline.gateway.customSources`: raw Alloy config appended to the
+gateway's sources, one entry per key, sorted by key so the rendered ConfigMap
+doesn't change between renders.
+
+Each entry is a string run through `tpl`. A `null` or empty entry renders
+nothing, so an overlay can remove an entry a lower one set. Anything other
+than a string fails the render. The chart checks nothing else: the pre-validate
+job runs the whole pipeline through `alloy validate`, which is what catches a
+bad block or a `forward_to` naming a component that does not exist.
+
+Usage:
+  {{- include "mzmon.alloyGateway.pipeline.customSources" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.pipeline.customSources" }}
+  {{- $custom := dig "gateway" "customSources" dict ( $.Values.pipeline | default dict ) | default dict }}
+  {{- range $name := ( keys $custom | sortAlpha ) }}
+    {{- $source := index $custom $name }}
+    {{- if and ( not ( kindIs "invalid" $source ) ) ( not ( kindIs "string" $source ) ) }}
+      {{- printf "pipeline.gateway.customSources.%s must be a string of Alloy config, not %s" $name ( kindOf $source ) | fail }}
+    {{- end }}
+    {{- with $source }}
+
+// pipeline.gateway.customSources.{{ $name }}
+{{ tpl . $ | trim }}
+    {{- end }}
+  {{- end }}
 {{- end }}
 
 {{/*
