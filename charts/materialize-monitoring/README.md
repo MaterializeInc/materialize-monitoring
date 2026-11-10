@@ -1573,6 +1573,7 @@ pipeline:
         prometheus.scrape "example" {
           targets    = [{"__address__" = "example.example-ns.svc:9100"}]
           forward_to = [otelcol.receiver.prometheus.inputBridge.receiver]
+          honor_metadata = true
 
           clustering {
             enabled = true
