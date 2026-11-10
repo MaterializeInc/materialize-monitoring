@@ -22,6 +22,12 @@ permissions:
   # dorny/paths-filter lists a PR's changed files via the API.
   pull-requests: read
 
+env:
+  # No debug info for workspace crates either; Cargo.toml already drops it for
+  # dependencies. CI never attaches a debugger, and debug info only lengthens
+  # the workspace compile and link that every run pays, even on a cache hit.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
 jobs:
   changes:
     runs-on: ubuntu-26.04
@@ -92,7 +98,10 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
+      # Only main saves; see the cargo-test job in test.yaml for why.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # rustfmt picks up rustfmt.toml if present (none today; defaults apply).
       - name: cargo fmt (check mode)
         run: cargo fmt --all -- --check

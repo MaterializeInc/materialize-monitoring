@@ -13,6 +13,12 @@ concurrency:
   group: publish-release-${{ github.event.pull_request.head.ref }}
   cancel-in-progress: false
 
+env:
+  # No debug info for workspace crates either; Cargo.toml already drops it for
+  # dependencies. CI never attaches a debugger, and debug info only lengthens
+  # the workspace compile and link that every run pays, even on a cache hit.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
 jobs:
   # Publish container images before cutting the release. Runs for every
   # version-update merge so `publish-release` can depend on it, but only the
@@ -64,7 +70,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
+      # Only main saves; see the cargo-test job in test.yaml for why.
+      # Restores the cache propose-bumps.yaml saves on main for the same binary.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: mz-monitoring-build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
       # Build the packaged chart .tgz — a gitignored build output — for chart
       # components, so the component's `artifacts` glob resolves for the release

@@ -21,6 +21,10 @@ permissions:
 env:
   # renovate: datasource=github-releases packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.33.0
+  # No debug info for workspace crates either; Cargo.toml already drops it for
+  # dependencies. CI never attaches a debugger, and debug info only lengthens
+  # the workspace compile and link that every run pays, even on a cache hit.
+  CARGO_PROFILE_DEV_DEBUG: "0"
 
 jobs:
   changes:
@@ -81,7 +85,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
+      # Only main saves; see the cargo-test job in test.yaml for why.
+      # Both tiers build the same crate, so they share one cache.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: e2e
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build the assertion suite
         run: cargo build -p mz-monitoring-e2e
@@ -151,7 +160,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
+      # Only main saves; see the cargo-test job in test.yaml for why.
+      # Both tiers build the same crate, so they share one cache.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: e2e
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build the assertion suite
         run: cargo build -p mz-monitoring-e2e
