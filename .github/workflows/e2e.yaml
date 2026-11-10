@@ -21,6 +21,10 @@ permissions:
 env:
   # renovate: datasource=github-releases packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.33.0
+  # No debug info for workspace crates either; Cargo.toml already drops it for
+  # dependencies. CI never attaches a debugger, and debug info only lengthens
+  # the workspace compile and link that every run pays, even on a cache hit.
+  CARGO_PROFILE_DEV_DEBUG: "0"
 
 jobs:
   changes:

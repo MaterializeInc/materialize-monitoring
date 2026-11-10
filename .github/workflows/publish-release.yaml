@@ -13,6 +13,12 @@ concurrency:
   group: publish-release-${{ github.event.pull_request.head.ref }}
   cancel-in-progress: false
 
+env:
+  # No debug info for workspace crates either; Cargo.toml already drops it for
+  # dependencies. CI never attaches a debugger, and debug info only lengthens
+  # the workspace compile and link that every run pays, even on a cache hit.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
 jobs:
   # Publish container images before cutting the release. Runs for every
   # version-update merge so `publish-release` can depend on it, but only the
