@@ -15,9 +15,14 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.8.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.9.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.8.0
+
+* Add pipeline.gateway.customSources for raw gateway Alloy config
+    * [materialize-monitoring#713](https://github.com/MaterializeInc/materialize-monitoring/pull/713)
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.7.1
 
