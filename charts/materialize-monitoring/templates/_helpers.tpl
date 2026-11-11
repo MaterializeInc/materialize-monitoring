@@ -285,8 +285,90 @@ Usage:
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
-  {{- /* final output */}}
-  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+  {{- /* Last, so the overrides see every check's output. */}}
+  {{- include "mzmon.validate.overrides" ( dict "root" $ "errors" $errors "warnings" $warnings ) }}
+{{- end }}
+
+{{- /*
+Apply `footgunOverrides` to the collected validation report.
+
+Downgrading happens before silencing, and a downgraded error is exempt from
+`silenceWarnings`: the chart still considers that configuration broken, so the
+report keeps a trace of it however broad the silencing is.
+
+An override that is not a list of strings is an error, and no override can
+downgrade it. An expression that does not compile fails the render from
+`mustRegexMatch`, naming the expression.
+
+Usage:
+  {{- include "mzmon.validate.overrides" ( dict "root" $ "errors" $errors "warnings" $warnings ) }}
+*/}}
+{{- define "mzmon.validate.overrides" }}
+  {{- $overrides := .root.Values.footgunOverrides | default dict }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $invalid := list }}
+
+  {{- $lists := dict }}
+  {{- range $key := list "downgradeErrors" "silenceWarnings" }}
+    {{- $entries := list }}
+    {{- if hasKey $overrides $key }}
+      {{- $entries = index $overrides $key }}
+    {{- end }}
+    {{- $valid := list }}
+    {{- if not ( kindIs "slice" $entries ) }}
+      {{- $invalid = append $invalid ( printf "footgunOverrides.%s is %s. Set it to a list of regular expressions." $key ( toJson $entries ) ) }}
+    {{- else }}
+      {{- range $i, $entry := $entries }}
+        {{- if and ( kindIs "string" $entry ) $entry }}
+          {{- $valid = append $valid $entry }}
+        {{- else }}
+          {{- $invalid = append $invalid ( printf "footgunOverrides.%s[%d] is %s. Each entry is a regular expression, as a non-empty string." $key $i ( toJson $entry ) ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- $_ := set $lists $key $valid }}
+  {{- end }}
+
+  {{- $used := dict }}
+  {{- $downgraded := list }}
+  {{- range $message := .errors }}
+    {{- $by := "" }}
+    {{- range $pattern := $lists.downgradeErrors }}
+      {{- if not $by }}
+        {{- if mustRegexMatch $pattern $message }}
+          {{- $by = $pattern }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- if $by }}
+      {{- $_ := set $used $by true }}
+      {{- $downgraded = append $downgraded ( printf "%s (An error, downgraded by footgunOverrides.downgradeErrors entry %q.)" $message $by ) }}
+    {{- else }}
+      {{- $errors = append $errors $message }}
+    {{- end }}
+  {{- end }}
+
+  {{- $stale := list }}
+  {{- range $pattern := $lists.downgradeErrors }}
+    {{- if not ( hasKey $used $pattern ) }}
+      {{- $stale = append $stale ( printf "footgunOverrides.downgradeErrors entry %q matches no error. Remove it, so it can't downgrade an error you haven't seen yet." $pattern ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- range $message := concat .warnings $stale }}
+    {{- $silenced := false }}
+    {{- range $pattern := $lists.silenceWarnings }}
+      {{- if and ( not $silenced ) ( mustRegexMatch $pattern $message ) }}
+        {{- $silenced = true }}
+      {{- end }}
+    {{- end }}
+    {{- if not $silenced }}
+      {{- $warnings = append $warnings $message }}
+    {{- end }}
+  {{- end }}
+
+  {{- dict "errors" ( concat $invalid $errors ) "warnings" ( concat $downgraded $warnings ) | toYaml }}
 {{- end }}
 
 {{- /*

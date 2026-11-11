@@ -4675,6 +4675,65 @@ unmanaged here, both scopes fall back to the release.
   </tbody>
 </table>
 
+### Footgun overrides
+
+Overrides for the chart's render-time validation.
+
+The chart checks its values every time it renders.
+An error fails the render with `Validation failed:` and the list of errors.
+A warning prints in the install notes, and as a `# WARNING:` comment in the rendered output.
+
+Each check exists because the configuration it catches installs cleanly and then fails quietly.
+Fix the value when you can.
+These overrides are for a check that's wrong about your install, until the chart is corrected.
+If a check fails because another release of this chart runs the component, set `otherReleases` instead.
+
+Both lists take regular expressions in Go's RE2 syntax.
+An expression matches anywhere in a message, so anchor it with `^` and `$` to match a whole message.
+Escape `.` and the other metacharacters to match them literally.
+
+- `downgradeErrors`: an error that matches any expression is reported as a warning instead, and the render continues.
+  The warning names the expression that downgraded it, and it can't be silenced.
+  An expression that matches no error adds a warning, so a stale override doesn't hide a future error.
+- `silenceWarnings`: a warning that matches any expression is dropped.
+  `".*"` drops every warning except the downgraded errors.
+
+The overrides apply to that validation report only.
+They can't override a required value, a template that fails while it renders, or a subchart's own checks.
+
+```yaml
+footgunOverrides:
+  downgradeErrors:
+    - 'pipeline\.destinations\.thanos\.url points at the bundled Thanos'
+  silenceWarnings:
+    - 'loki\.gateway\.enabled is not recommended for production'
+```
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">footgunOverrides<wbr>.downgradeErrors</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Regular expressions for errors to report as warnings instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">footgunOverrides<wbr>.silenceWarnings</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Regular expressions for warnings to drop.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Bundled subchart configurations
 
 Configuration for bundled subcharts
