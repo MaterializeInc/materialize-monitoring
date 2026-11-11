@@ -512,7 +512,7 @@ Usage:
          gates. Failing that render would turn "you probably want Alertmanager
          too" into "this chart will not install", which is not the chart's call
          to make. The stack still runs; it just cannot tell anyone about it. */}}
-  {{- if and ( not $enabled ) ( or $thanosRuler $lokiRuler ) }}
+  {{- if and ( not ( include "mzmon.deployed" ( dict "root" $ "component" "alertmanager" ) ) ) ( or $thanosRuler $lokiRuler ) }}
     {{- $which := list }}
     {{- if $thanosRuler }}
       {{- $which = append $which "thanos.ruler" }}
@@ -520,7 +520,7 @@ Usage:
     {{- if $lokiRuler }}
       {{- $which = append $which "loki.ruler" }}
     {{- end }}
-    {{- $warnings = append $warnings ( printf "%s %s enabled but Alertmanager is not, so every alert they evaluate is discarded. Enable `tags.alertmanager`, or turn the rulers off — a ruler that cannot notify is indistinguishable from a healthy one." ( join " and " $which ) ( ternary "is" "are" ( eq ( len $which ) 1 ) ) ) }}
+    {{- $warnings = append $warnings ( printf "%s %s enabled but Alertmanager is not, so every alert they evaluate is discarded. Enable `tags.alertmanager`, or turn the rulers off — a ruler that cannot notify is indistinguishable from a healthy one. If another release of this chart runs Alertmanager, set otherReleases.alertmanager: true." ( join " and " $which ) ( ternary "is" "are" ( eq ( len $which ) 1 ) ) ) }}
   {{- end }}
 
   {{- if and ( not $enabled ) $receivers }}

@@ -138,6 +138,92 @@ Usage:
 {{- end -}}
 
 {{- /*
+The components `otherReleases` can name, each with the helper that says whether
+this release runs it.
+
+Usage:
+  {{- $components := include "mzmon.otherReleases.components" $ | fromYaml }}
+*/}}
+{{- define "mzmon.otherReleases.components" }}
+alloy-agent: mzmon.alloyAgent.enabled
+alloy-gateway: mzmon.alloyGateway.enabled
+loki: mzmon.loki.enabled
+thanos: mzmon.thanos.enabled
+alertmanager: mzmon.alertmanager.enabled
+{{- end }}
+
+{{- /*
+Whether another release runs a component in place of this one: it is named in
+`otherReleases` and this release does not run it.
+
+A component this release runs is this release's, whatever `otherReleases` says,
+so its own checks keep applying to it.
+
+Returns a truthy string when it does, empty when not.
+
+Usage:
+  {{- if ( include "mzmon.otherReleases.runs" ( dict "root" $ "component" "thanos" ) ) }}
+*/}}
+{{- define "mzmon.otherReleases.runs" }}
+  {{- $root := .root | required ".root must be specified" }}
+  {{- $component := .component | required ".component must be specified" }}
+  {{- $helper := index ( include "mzmon.otherReleases.components" $root | fromYaml ) $component | required ( printf "%s is not a component otherReleases can name" $component ) }}
+  {{- if and ( dig $component false ( $root.Values.otherReleases | default dict ) ) ( not ( include $helper $root ) ) }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Whether a component's Services exist in the cluster: this release runs it, or
+`otherReleases` says another release does.
+
+For the checks that ask whether an address reaches anything. A check that
+compares this release's settings for the component asks `mzmon.<component>.enabled`
+instead, because another release's settings are not in these values.
+
+Returns a truthy string when they do, empty when not.
+
+Usage:
+  {{- if ( include "mzmon.deployed" ( dict "root" $ "component" "thanos" ) ) }}
+*/}}
+{{- define "mzmon.deployed" }}
+  {{- $root := .root | required ".root must be specified" }}
+  {{- $component := .component | required ".component must be specified" }}
+  {{- $helper := index ( include "mzmon.otherReleases.components" $root | fromYaml ) $component | required ( printf "%s is not a component otherReleases can name" $component ) }}
+  {{- if or ( include $helper $root ) ( include "mzmon.otherReleases.runs" . ) }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Validate `otherReleases`.
+
+An unknown key is an error rather than ignored: it is a component name the
+operator expected to silence a check with, and the check it names fails anyway,
+pointing at the wrong thing.
+
+Usage:
+  {{- $res := include "mzmon.otherReleases.validate" $ | fromYaml }}
+*/}}
+{{- define "mzmon.otherReleases.validate" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $components := include "mzmon.otherReleases.components" $ | fromYaml }}
+
+  {{- range $component, $declared := ( $.Values.otherReleases | default dict ) }}
+    {{- $helper := index $components $component }}
+    {{- if not $helper }}
+      {{- $errors = append $errors ( printf "otherReleases.%s is not a component this chart runs. Name one of %s." $component ( keys $components | sortAlpha | join ", " ) ) }}
+    {{- else if and $declared ( include $helper $ ) }}
+      {{- $warnings = append $warnings ( printf "otherReleases.%s is true, but this release runs %s as well, so it has no effect: this release's addresses and checks apply to its own %s. Turn the component off here, or set otherReleases.%s: false." $component $component $component $component ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
 Validation collection.
 
 This is called twice:
@@ -151,7 +237,11 @@ Usage:
   {{- $errors := list }}
   {{- $warnings := list }}
 
-  {{- $res := include "mzmon.loki.validate" $ | fromYaml }}
+  {{- $res := include "mzmon.otherReleases.validate" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
+  {{- $res = include "mzmon.loki.validate" $ | fromYaml }}
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 

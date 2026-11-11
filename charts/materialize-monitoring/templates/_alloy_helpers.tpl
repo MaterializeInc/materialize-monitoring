@@ -1928,21 +1928,21 @@ Validate that the agent has a gateway to write to.
   {{- $agentOn := include "mzmon.alloyAgent.enabled" $ }}
   {{- $gatewayOn := include "mzmon.alloyGateway.enabled" $ }}
 
-  {{- if and $agentOn ( not $gatewayOn ) }}
+  {{- if and $agentOn ( not ( include "mzmon.deployed" ( dict "root" $ "component" "alloy-gateway" ) ) ) }}
     {{- $url := tpl ( $.Values.pipeline.logging.agent.destination.loki.url | toString ) $ }}
     {{- if contains "alloy-gateway" $url }}
-      {{- $errors = append $errors ( printf "The Alloy agent is enabled and writes to the bundled gateway (%s), but alloy-gateway is not enabled. Node logs would be collected and then dropped. Enable the gateway, or repoint pipeline.logging.agent.destination.loki.url at a collector you run." $url ) }}
+      {{- $errors = append $errors ( printf "The Alloy agent is enabled and writes to the bundled gateway (%s), but alloy-gateway is not enabled. Node logs would be collected and then dropped. Enable the gateway, or repoint pipeline.logging.agent.destination.loki.url at a collector you run. If another release of this chart runs the gateway, set otherReleases.alloy-gateway: true." $url ) }}
     {{- end }}
   {{- end }}
 
-  {{- if and $gatewayOn ( not $agentOn ) }}
-    {{- $warnings = append $warnings "alloy-gateway is enabled but the alloy-agent is not, so nothing collects node or pod logs. This is correct only if you push logs to the gateway from elsewhere (loki.source.api or OTLP)." }}
+  {{- if and $gatewayOn ( not ( include "mzmon.deployed" ( dict "root" $ "component" "alloy-agent" ) ) ) }}
+    {{- $warnings = append $warnings "alloy-gateway is enabled but the alloy-agent is not, so nothing collects node or pod logs. This is correct only if you push logs to the gateway from elsewhere (loki.source.api or OTLP). If another release of this chart runs the agent, set otherReleases.alloy-agent: true." }}
   {{- end }}
 
   {{- /* The bundled Loki is the gateway's default log destination. */}}
-  {{- if and $gatewayOn ( not ( include "mzmon.loki.enabled" $ ) ) }}
+  {{- if and $gatewayOn ( not ( include "mzmon.deployed" ( dict "root" $ "component" "loki" ) ) ) }}
     {{- range $dest := ( include "mzmon.destinations.bundledLoki" $ | fromYamlArray ) }}
-      {{- $errors = append $errors ( printf "pipeline.destinations.%s.url points at the bundled Loki (%s) but Loki is not enabled. Logs would be written to a Service that does not exist. Set pipeline.destinations.%s.enabled: false, or enable Loki." $dest.name $dest.resolvedUrl $dest.name ) }}
+      {{- $errors = append $errors ( printf "pipeline.destinations.%s.url points at the bundled Loki (%s) but Loki is not enabled. Logs would be written to a Service that does not exist. Set pipeline.destinations.%s.enabled: false, or enable Loki. If another release of this chart runs Loki, set otherReleases.loki: true." $dest.name $dest.resolvedUrl $dest.name ) }}
     {{- end }}
   {{- end }}
 
