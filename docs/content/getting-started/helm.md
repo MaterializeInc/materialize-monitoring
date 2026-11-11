@@ -463,6 +463,39 @@ The admin credentials are in the `grafana` Secret (keys `admin-user` and `admin-
 >
 >  That lookup returns nothing during `helm template` and `--dry-run`, so any render-only pipeline — most [GitOps](../gitops/) setups — regenerates the password on **every sync**. Supply your own Secret and set `grafana.grafana.admin.existingSecret` there. The Terraform module does exactly this, for exactly this reason.
 
+### Override a validation check {#footgun-overrides}
+
+The chart checks your values every time it renders.
+An error fails the render with `Validation failed:`, and a warning prints in the install notes.
+Fix the value when you can, because each check catches a configuration that installs cleanly and then fails quietly.
+
+If a check fails because another release of this chart runs the component, set `otherReleases` instead.
+For more information, see [Split the stack across releases](#split-releases).
+
+When a check is wrong about your install, `footgunOverrides` changes how the chart reports it.
+Each entry is a regular expression that matches anywhere in a message:
+
+`downgradeErrors`
+: An error that matches is reported as a warning instead, and the render continues.
+  An expression that matches no error adds a warning of its own.
+
+`silenceWarnings`
+: A warning that matches is dropped.
+  A downgraded error is never dropped.
+
+For example, the chart treats any in-cluster URL that contains `thanos-receive` as its own Thanos.
+If a different chart installed your Thanos with a Service of that name, the following values let the release render:
+
+```yaml
+footgunOverrides:
+  downgradeErrors:
+    - 'pipeline\.destinations\.thanos\.url points at the bundled Thanos'
+```
+
+The overrides can't change a required value, a template that fails while it renders, or a subchart's own checks.
+With the Terraform module, set them in `additional_values`.
+For the full rules, see [Footgun overrides](../../reference/helm/materialize-monitoring-values/#footgun-overrides).
+
 ## After changing values
 
 **Restart Alloy after any pipeline or filter change.** This is the one place the chart cannot own its own rollout, and it is the reverse of what a chart normally guarantees: a `helm upgrade` that reports success can leave both Alloy roles serving the *previous* configuration indefinitely.

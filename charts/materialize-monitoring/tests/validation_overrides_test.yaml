@@ -1,0 +1,155 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for `footgunOverrides`, which reshapes the validation report: an error
+# matching `downgradeErrors` becomes a warning, and a warning matching
+# `silenceWarnings` is dropped.
+#
+# The errors come from a pipeline-only release, whose gateway writes to a
+# bundled Thanos and Loki that the release does not run. The warnings come from
+# a default install, which warns about the Loki gateway and the empty
+# receivers. Both are stable checks that other suites already lock down, so a
+# change in their wording fails there first.
+suite: validation overrides
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.enabled: false
+  thanos.global.objstore.createSecret: false
+tests:
+  # --- downgradeErrors ------------------------------------------------------
+
+  - it: fails the render on every error by default
+    set:
+      tags.default: false
+      tags.pipeline: true
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.thanos.url points at the bundled Thanos"
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.url points at the bundled Loki"
+
+  - it: still fails on the errors no expression matches
+    set:
+      tags.default: false
+      tags.pipeline: true
+      footgunOverrides.downgradeErrors:
+        - 'bundled Thanos'
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.url points at the bundled Loki"
+      - failedTemplate:
+          errorPattern: "bundled Thanos"
+        not: true
+
+  - it: renders when every error is downgraded
+    set:
+      tags.default: false
+      tags.pipeline: true
+      footgunOverrides.downgradeErrors:
+        - 'bundled Thanos'
+        - '^pipeline\.destinations\.loki\.url '
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: reports a downgraded error as a warning naming its expression
+    set:
+      tags.default: false
+      tags.pipeline: true
+      footgunOverrides.downgradeErrors:
+        - 'bundled Thanos'
+        - 'bundled Loki'
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: '\*\*WARNING\*\*: pipeline\.destinations\.thanos\.url points at the bundled Thanos .* \(An error, downgraded by footgunOverrides\.downgradeErrors entry "bundled Thanos"\.\)'
+      - matchRegexRaw:
+          pattern: '\*\*ERROR\*\*'
+        not: true
+
+  # An override left behind after its error is fixed would downgrade the next
+  # error that happens to match it, unseen.
+  - it: warns about an expression that matches no error
+    set:
+      footgunOverrides.downgradeErrors:
+        - 'no check says this'
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'footgunOverrides\.downgradeErrors entry "no check says this" matches no error'
+
+  # --- silenceWarnings ------------------------------------------------------
+
+  - it: drops a warning that matches, and keeps the rest
+    set:
+      footgunOverrides.silenceWarnings:
+        - 'loki\.gateway\.enabled is not recommended'
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "loki.gateway.enabled is not recommended"
+        not: true
+      - matchRegexRaw:
+          pattern: "alerting.receivers is empty"
+
+  - it: drops every warning but the downgraded errors
+    set:
+      tags.default: false
+      tags.pipeline: true
+      footgunOverrides.downgradeErrors:
+        - 'bundled Thanos'
+        - 'bundled Loki'
+        - 'no check says this'
+      footgunOverrides.silenceWarnings:
+        - '.*'
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "downgraded by footgunOverrides.downgradeErrors entry \"bundled Thanos\""
+      - matchRegexRaw:
+          pattern: "downgraded by footgunOverrides.downgradeErrors entry \"bundled Loki\""
+      - matchRegexRaw:
+          pattern: "nothing in this release evaluates the PromQL rules"
+        not: true
+      - matchRegexRaw:
+          pattern: "matches no error"
+        not: true
+
+  # --- the overrides themselves ---------------------------------------------
+
+  # Not downgradable, even by an expression that matches everything.
+  - it: refuses an override that is not a list of strings
+    set:
+      footgunOverrides.downgradeErrors:
+        - '.*'
+      footgunOverrides.silenceWarnings: 'loki'
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'footgunOverrides\.silenceWarnings is "loki"\. Set it to a list of regular expressions\.'
+
+  - it: refuses an entry that is not a non-empty string
+    set:
+      footgunOverrides.silenceWarnings:
+        - 1
+        - ''
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'footgunOverrides\.silenceWarnings\[0\] is 1\.'
+      - failedTemplate:
+          errorPattern: 'footgunOverrides\.silenceWarnings\[1\] is ""\.'
+
+  - it: fails on an expression that does not compile, naming it
+    set:
+      footgunOverrides.silenceWarnings:
+        - '('
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "error parsing regexp: missing closing \\): `\\(`"
