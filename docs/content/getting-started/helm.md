@@ -173,7 +173,7 @@ The release that runs the gateway keeps the PodMonitors because it installs the 
 For the same reason, run kube-state-metrics, node-exporter, and Loki in that release to keep their alert rules.
 The log-derived alert rules install only in a release that runs both the gateway and Loki.
 
-<!-- TODO: derive rule capabilities and the LogQL rule sync from otherReleases, then drop the two sentences before this note and the one after the example. -->
+<!-- TODO(DEP-473): derive rule capabilities and the LogQL rule sync from otherReleases, then drop the two sentences before this note and the one after the example. -->
 
 For example, the following values split the stack into a pipeline release and a backends release that also runs Grafana.
 Each release also takes the shared values files.
