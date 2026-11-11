@@ -331,6 +331,85 @@ set `tags.postgres-exporter: true`.
   </tbody>
 </table>
 
+### Split releases
+
+Components another release of this chart runs, for a stack split across releases.
+
+You can install the stack as several releases of this chart, such as the pipeline in one release and the backends in another.
+Each release then addresses Services that a different release runs.
+For example, the gateway in the pipeline release writes to Thanos Receive and Loki in the backends release.
+
+The render fails on an address that names a component this release doesn't run, because within one release that Service doesn't exist.
+Set a component's key to `true` to say that another release runs it.
+This release then treats the component as present:
+
+- The checks that an address reaches a running Service pass.
+- The Grafana data sources that follow a backend's enablement render for it.
+
+Pass every release the same values files.
+Both ends of a hop read some settings, such as the gateway's TLS, and each release renders and checks its end from its own values.
+The same values also resolve each component to the same namespace in every release.
+
+The following example is the pipeline release, beside a release that runs the backends:
+
+```yaml
+tags:
+  default: false
+  pipeline: true
+otherReleases:
+  loki: true
+  thanos: true
+  alertmanager: true
+```
+
+Each release also renders resources that belong to no component, such as the PriorityClasses, the Grafana instance, and the Materialize PodMonitors.
+Keep each of those in one release, and turn it off in the others.
+The alert rules install in the release that runs the gateway, and only for the components that release runs.
+[Split the stack across releases](https://materializeinc.github.io/materialize-monitoring/getting-started/helm/#split-releases)
+lists which release keeps what.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.alloy-agent</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs the Alloy agent.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.alloy-gateway</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs the Alloy gateway, which this release's agent and rulers write to.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.loki</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs Loki, which this release's gateway writes to and Grafana reads from.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.thanos</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs Thanos, which this release's gateway writes to and Grafana reads from.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.alertmanager</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs Alertmanager, which this release's rulers notify.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Priority classes
 
 Scheduling priority shared across the stack's subcharts.
