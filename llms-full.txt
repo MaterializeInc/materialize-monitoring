@@ -2216,6 +2216,39 @@ The admin credentials are in the `grafana` Secret (keys `admin-user` and `admin-
 >
 >  That lookup returns nothing during `helm template` and `--dry-run`, so any render-only pipeline — most [GitOps](../gitops/) setups — regenerates the password on **every sync**. Supply your own Secret and set `grafana.grafana.admin.existingSecret` there. The Terraform module does exactly this, for exactly this reason.
 
+### Override a validation check {#footgun-overrides}
+
+The chart checks your values every time it renders.
+An error fails the render with `Validation failed:`, and a warning prints in the install notes.
+Fix the value when you can, because each check catches a configuration that installs cleanly and then fails quietly.
+
+If a check fails because another release of this chart runs the component, set `otherReleases` instead.
+For more information, see [Split the stack across releases](#split-releases).
+
+When a check is wrong about your install, `footgunOverrides` changes how the chart reports it.
+Each entry is a regular expression that matches anywhere in a message:
+
+`downgradeErrors`
+: An error that matches is reported as a warning instead, and the render continues.
+  An expression that matches no error adds a warning of its own.
+
+`silenceWarnings`
+: A warning that matches is dropped.
+  A downgraded error is never dropped.
+
+For example, the chart treats any in-cluster URL that contains `thanos-receive` as its own Thanos.
+If a different chart installed your Thanos with a Service of that name, the following values let the release render:
+
+```yaml
+footgunOverrides:
+  downgradeErrors:
+    - 'pipeline\.destinations\.thanos\.url points at the bundled Thanos'
+```
+
+The overrides can't change a required value, a template that fails while it renders, or a subchart's own checks.
+With the Terraform module, set them in `additional_values`.
+For the full rules, see [Footgun overrides](../../reference/helm/materialize-monitoring-values/#footgun-overrides).
+
 ## After changing values
 
 **Restart Alloy after any pipeline or filter change.** This is the one place the chart cannot own its own rollout, and it is the reverse of what a chart normally guarantees: a `helm upgrade` that reports success can leave both Alloy roles serving the *previous* configuration indefinitely.
@@ -19648,6 +19681,65 @@ unmanaged here, both scopes fall back to the release.
 []</pre>
 </td>
       <td class="helm-value-desc">Tolerations for the cleanup job. An uninstall has to work even when the ordinary pools are tainted or full, so this is worth widening if scheduling it is ever the thing that fails.
+</td>
+    </tr>
+  </tbody>
+</table>
+
+### Footgun overrides
+
+Overrides for the chart's render-time validation.
+
+The chart checks its values every time it renders.
+An error fails the render with `Validation failed:` and the list of errors.
+A warning prints in the install notes, and as a `# WARNING:` comment in the rendered output.
+
+Each check exists because the configuration it catches installs cleanly and then fails quietly.
+Fix the value when you can.
+These overrides are for a check that's wrong about your install, until the chart is corrected.
+If a check fails because another release of this chart runs the component, set `otherReleases` instead.
+
+Both lists take regular expressions in Go's RE2 syntax.
+An expression matches anywhere in a message, so anchor it with `^` and `$` to match a whole message.
+Escape `.` and the other metacharacters to match them literally.
+
+- `downgradeErrors`: an error that matches any expression is reported as a warning instead, and the render continues.
+  The warning names the expression that downgraded it, and it can't be silenced.
+  An expression that matches no error adds a warning, so a stale override doesn't hide a future error.
+- `silenceWarnings`: a warning that matches any expression is dropped.
+  `".*"` drops every warning except the downgraded errors.
+
+The overrides apply to that validation report only.
+They can't override a required value, a template that fails while it renders, or a subchart's own checks.
+
+```yaml
+footgunOverrides:
+  downgradeErrors:
+    - 'pipeline\.destinations\.thanos\.url points at the bundled Thanos'
+  silenceWarnings:
+    - 'loki\.gateway\.enabled is not recommended for production'
+```
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">footgunOverrides<wbr>.downgradeErrors</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Regular expressions for errors to report as warnings instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">footgunOverrides<wbr>.silenceWarnings</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Regular expressions for warnings to drop.
 </td>
     </tr>
   </tbody>
