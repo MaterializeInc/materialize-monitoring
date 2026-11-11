@@ -15,9 +15,20 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.8.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.9.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.8.0
+
+* Add pipeline.gateway.customSources for raw gateway Alloy config
+    * [materialize-monitoring#713](https://github.com/MaterializeInc/materialize-monitoring/pull/713)
+
+## materialize-monitoring (Helm chart + Terraform module) v1.7.1
+
+* Revert "Update quay.io/prometheus-operator/prometheus-config-reloader Docker tag to v0.95.1"
+    * [materialize-monitoring#708](https://github.com/MaterializeInc/materialize-monitoring/pull/708)
+    * Reverted prometheus-config-reloader due to [missing architectures](https://github.com/prometheus-operator/prometheus-operator/issues/8953)
 
 ## Prometheus Scrapers v0.7.0 (Unreleased)
 
