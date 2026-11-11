@@ -311,7 +311,10 @@ Usage:
 
   {{- $lists := dict }}
   {{- range $key := list "downgradeErrors" "silenceWarnings" }}
-    {{- $entries := index $overrides $key | default list }}
+    {{- $entries := list }}
+    {{- if hasKey $overrides $key }}
+      {{- $entries = index $overrides $key }}
+    {{- end }}
     {{- $valid := list }}
     {{- if not ( kindIs "slice" $entries ) }}
       {{- $invalid = append $invalid ( printf "footgunOverrides.%s is %s. Set it to a list of regular expressions." $key ( toJson $entries ) ) }}
