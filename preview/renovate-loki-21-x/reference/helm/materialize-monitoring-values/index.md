@@ -41,7 +41,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.15.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.4.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.1.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.2.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.4.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.0 |
@@ -1520,6 +1520,57 @@ release instances.
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"info"</code></td>
       <td class="helm-value-desc">Level for the gateway logs.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.customSources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra Alloy components for the gateway's pipeline, as a map of name to Alloy config.
+
+Each entry is a string of Alloy config, rendered with `tpl` after the gateway's own sources.
+Use it for a source the chart has no setting for, such as a scrape of a service that has no ServiceMonitor.
+Entries render in key order. Set an entry to `null` to remove one that another values file added.
+
+The chart doesn't check what an entry contains.
+The pre-validate job (`pipeline.preValidateJob`) runs the whole pipeline through `alloy validate`,
+so a syntax error, a duplicate component label, or a `forward_to` that names no component fails the install or upgrade before the gateway gets the new config.
+It can't catch a source that needs RBAC, a mount, or an environment variable the gateway doesn't have.
+
+Forward into the gateway's own entry points, so the data gets the same processing and reaches every destination:
+
+| Signal | Entry point |
+| --- | --- |
+| Scraped metrics | `otelcol.receiver.prometheus.inputBridge.receiver` |
+| Pushed metrics that may lack `job` or `instance` | `prometheus.relabel.receiveIdentity.receiver` |
+| Loki log entries | `loki.process.inputPrefilter.receiver` |
+| OTLP metrics | `otelcol.processor.transform.inputMetricProcessor.input` |
+| OTLP logs | `otelcol.exporter.loki.bridge.input` |
+
+These are internal component names, not a stable interface: if a release renames one, the pre-validate job fails rather than the gateway.
+
+Metrics still pass each destination's tier filter, so a metric outside the registry reaches only destinations at `minMetricImportance: all`.
+Every gateway replica runs every entry, so turn on `clustering` in a scrape, or each replica scrapes every target.
+
+For example, a scrape of a service that has no ServiceMonitor:
+
+```yaml
+pipeline:
+  gateway:
+    customSources:
+      exampleScrape: |
+        prometheus.scrape "example" {
+          targets    = [{"__address__" = "example.example-ns.svc:9100"}]
+          forward_to = [otelcol.receiver.prometheus.inputBridge.receiver]
+          honor_metadata = true
+
+          clustering {
+            enabled = true
+          }
+        }
+```
 </td>
     </tr>
   </tbody>
