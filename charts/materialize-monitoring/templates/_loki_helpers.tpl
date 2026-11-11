@@ -693,8 +693,8 @@ Usage:
 
   {{- /* Same reasoning as the Thanos ruler's: the samples are lost, the alerts
          are not, and a Loki-only install is a legitimate shape. */}}
-  {{- if and $rwOn ( not ( include "mzmon.alloyGateway.enabled" $ ) ) }}
-    {{- $warnings = append $warnings "loki.loki.rulerConfig.remote_write targets the alloy-gateway, but alloy-gateway is not enabled. Recording-rule samples are written to a Service that does not exist, so they fill the ruler's WAL and are eventually dropped. Alerting is unaffected." }}
+  {{- if and $rwOn ( not ( include "mzmon.deployed" ( dict "root" $ "component" "alloy-gateway" ) ) ) }}
+    {{- $warnings = append $warnings "loki.loki.rulerConfig.remote_write targets the alloy-gateway, but alloy-gateway is not enabled. Recording-rule samples are written to a Service that does not exist, so they fill the ruler's WAL and are eventually dropped. Alerting is unaffected. If another release of this chart runs the gateway, set otherReleases.alloy-gateway: true." }}
   {{- end }}
 
   {{- /* A rule group is per tenant, and the ruler does not evaluate across

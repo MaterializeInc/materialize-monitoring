@@ -404,6 +404,7 @@ deployed, and a Query Frontend deployed that nothing reads through.
   {{- $warnings := list }}
   {{- $values := $.Values.thanos | required "thanos is missing from values." }}
   {{- $enabled := include "mzmon.thanos.enabled" $ }}
+  {{- $deployed := include "mzmon.deployed" ( dict "root" $ "component" "thanos" ) }}
 
   {{- /* Only meaningful when something is actually writing: with the gateway
          disabled, a stale destination URL is inert. */}}
@@ -413,9 +414,11 @@ deployed, and a Query Frontend deployed that nothing reads through.
            `thanos-receive.<domain>` is not flagged. */}}
     {{- range $dest := ( include "mzmon.alloyGateway.promDests.thanos" $ | fromYamlArray ) }}
       {{- $path := printf "pipeline.destinations.%s.url" $dest.name }}
-      {{- if not $enabled }}
-        {{- $errors = append $errors ( printf "%s points at the bundled Thanos (%s) but Thanos is not enabled. Metrics would be written to a Service that does not exist." $path $dest.resolvedUrl ) }}
-      {{- else if not ( dig "receive" "enabled" false $values ) }}
+      {{- /* Thanos in another release is configured by that release's values,
+             so `receive.enabled` here says nothing about it. */}}
+      {{- if not $deployed }}
+        {{- $errors = append $errors ( printf "%s points at the bundled Thanos (%s) but Thanos is not enabled. Metrics would be written to a Service that does not exist. If another release of this chart runs Thanos, set otherReleases.thanos: true." $path $dest.resolvedUrl ) }}
+      {{- else if and $enabled ( not ( dig "receive" "enabled" false $values ) ) }}
         {{- $errors = append $errors ( printf "%s points at thanos-receive (%s) but thanos.receive.enabled is false." $path $dest.resolvedUrl ) }}
       {{- end }}
     {{- end }}
@@ -423,8 +426,8 @@ deployed, and a Query Frontend deployed that nothing reads through.
 
   {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) ) }}
     {{- $dsUrl := tpl ( $.Values.connections.datasources.thanos.url | toString ) $ }}
-    {{- if and ( contains "thanos-query" $dsUrl ) ( contains ".svc" $dsUrl ) ( not $enabled ) }}
-      {{- $errors = append $errors ( printf "connections.datasources.thanos is enabled and points at the bundled Thanos (%s), but Thanos is not enabled." $dsUrl ) }}
+    {{- if and ( contains "thanos-query" $dsUrl ) ( contains ".svc" $dsUrl ) ( not $deployed ) }}
+      {{- $errors = append $errors ( printf "connections.datasources.thanos is enabled and points at the bundled Thanos (%s), but Thanos is not enabled. If another release of this chart runs Thanos, set otherReleases.thanos: true." $dsUrl ) }}
     {{- end }}
     {{- /* Query Frontend is the caching read path. Deploying it while the
            datasource still addresses Query means the cache is bypassed. */}}
@@ -607,7 +610,9 @@ Usage:
   {{- /* The gateway's metrics listener is the ruler's remote-write target. */}}
   {{- if and $stateless $ours }}
     {{- if not ( include "mzmon.alloyGateway.enabled" $ ) }}
-      {{- $warnings = append $warnings "thanos.ruler runs stateless and remote-writes to the alloy-gateway, but alloy-gateway is not enabled. Rule results are written to a Service that does not exist, so they accumulate in the WAL and are eventually dropped. Alerting itself still works — this costs the recording rules and the ALERTS series, not the notifications." }}
+      {{- if not ( include "mzmon.otherReleases.runs" ( dict "root" $ "component" "alloy-gateway" ) ) }}
+        {{- $warnings = append $warnings "thanos.ruler runs stateless and remote-writes to the alloy-gateway, but alloy-gateway is not enabled. Rule results are written to a Service that does not exist, so they accumulate in the WAL and are eventually dropped. Alerting itself still works — this costs the recording rules and the ALERTS series, not the notifications. If another release of this chart runs the gateway, set otherReleases.alloy-gateway: true." }}
+      {{- end }}
     {{- else }}
       {{- /* The listener's TLS and the Secret the ruler mounts have to agree.
              The Secret's name carries the mode, because the ruler reads it

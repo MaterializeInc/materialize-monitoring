@@ -591,8 +591,10 @@ Validation for the rules surface.
   {{- end }}
 
   {{- if $values.enabled }}
-    {{- if not ( include "mzmon.thanos.ruler.enabled" $ ) }}
-      {{- $warnings = append $warnings "rules.enabled renders PrometheusRule resources, but thanos.ruler is off, so nothing in this release evaluates the PromQL rules. That is only correct if another component in the cluster imports PrometheusRules." }}
+    {{- /* The Thanos ruler imports every PrometheusRule in the cluster, so one
+           that another release runs evaluates this release's rules. */}}
+    {{- if and ( not ( include "mzmon.thanos.ruler.enabled" $ ) ) ( not ( include "mzmon.otherReleases.runs" ( dict "root" $ "component" "thanos" ) ) ) }}
+      {{- $warnings = append $warnings "rules.enabled renders PrometheusRule resources, but thanos.ruler is off, so nothing in this release evaluates the PromQL rules. That is only correct if another component in the cluster imports PrometheusRules. If another release of this chart runs Thanos, set otherReleases.thanos: true." }}
     {{- end }}
 
     {{- $caps := include "mzmon.rules.capabilities" $ | fromYamlArray }}

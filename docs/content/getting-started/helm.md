@@ -141,6 +141,108 @@ So a Loki-only install is `tags.default: false` plus `tags.loki: true`, and addi
 
 Each subchart also has an `enabled` circuit breaker that takes **precedence over every tag**. Setting `loki.enabled: false` turns Loki off even with `tags.default: true`, which is the reliable way to subtract one component from an otherwise default install.
 
+### Split the stack across releases {#split-releases}
+
+You can install the stack as several releases of the chart, so that each part has its own owner or upgrade cadence.
+For example, one release runs the pipeline, a second runs the backends, and a third runs Grafana.
+
+Each release then addresses Services that another release runs, such as the gateway writing to Thanos Receive.
+The render fails on an address that names a component its release doesn't run, unless `otherReleases` says that another release runs it.
+
+To split the stack, configure the releases as follows:
+
+1. Pass every release the same values files.
+   Both ends of a hop read some settings, such as the gateway's TLS, and each release renders and checks its end from its own values.
+2. In each release, set `tags` to the components that release runs.
+3. In each release, set `otherReleases.COMPONENT: true` for each component that another release runs.
+   Replace `COMPONENT` with `alloy-agent`, `alloy-gateway`, `loki`, `thanos`, or `alertmanager`.
+4. Keep each resource that belongs to no component in one release, and turn it off in the others.
+
+The following table lists the resources that belong to no component, the release that keeps them, and the values that you set to `false` in every other release:
+
+| Resources | Keep them in | Set to `false` elsewhere |
+|---|---|---|
+| PriorityClasses | Any one release | `priorityClasses.create` |
+| Grafana instance, dashboard folders, and data sources | The release that runs Grafana | `connections.grafana.enabled`, `connections.datasources.enabled`, and `dashboards.config.grafana.enabled` |
+| Materialize, Materialize operator, and CNI PodMonitors | The release that runs the gateway | `serviceMonitor.enabled` under each of `materialize.environmentd`, `materialize.environmentdSQL`, `materialize.clusterd`, `materialize.balancerd`, `materialize.console`, and `materialize-operator`, and `networking.cni.*.enabled` |
+
+Install the release that keeps the PriorityClasses first.
+The other releases warn that the classes have to exist already, and the API server rejects their pods until they do.
+
+The release that runs the gateway keeps the PodMonitors because it installs the PromQL alert rules, and it chooses which rules apply from the scrapes and components it runs itself.
+For the same reason, run kube-state-metrics, node-exporter, and Loki in that release to keep their alert rules.
+The log-derived alert rules install only in a release that runs both the gateway and Loki.
+
+<!-- TODO: derive rule capabilities and the LogQL rule sync from otherReleases, then drop the two sentences before this note and the one after the example. -->
+
+For example, the following values split the stack into a pipeline release and a backends release that also runs Grafana.
+Each release also takes the shared values files.
+
+```yaml
+# pipeline.values.yaml
+tags:
+  default: false
+  pipeline: true
+  kube-state-metrics: true
+  node-exporter: true
+otherReleases:
+  loki: true
+  thanos: true
+  alertmanager: true
+connections:
+  grafana:
+    enabled: false
+  datasources:
+    enabled: false
+dashboards:
+  config:
+    grafana:
+      enabled: false
+```
+
+```yaml
+# backends.values.yaml
+tags:
+  default: false
+  bundled-backends: true
+  managed-grafana: true
+otherReleases:
+  alloy-agent: true
+  alloy-gateway: true
+priorityClasses:
+  create: false
+materialize:
+  environmentd:
+    serviceMonitor:
+      enabled: false
+  environmentdSQL:
+    serviceMonitor:
+      enabled: false
+  clusterd:
+    serviceMonitor:
+      enabled: false
+  balancerd:
+    serviceMonitor:
+      enabled: false
+  console:
+    serviceMonitor:
+      enabled: false
+materialize-operator:
+  serviceMonitor:
+    enabled: false
+networking:
+  cni:
+    aws-vpc:
+      enabled: false
+    cilium:
+      enabled: false
+```
+
+This layout runs Loki apart from the gateway, so Loki's own alert rules and the log-derived alert rules don't install.
+
+A default address names the component's namespace from the values, such as `thanos.namespaceOverride`.
+Because every release takes the same values files, each one resolves a component to the same namespace.
+
 ### Sizing
 
 The chart's defaults target a **medium** deployment, so the sizing profiles are deltas in either direction rather than a full configuration:

@@ -310,8 +310,9 @@ Usage:
 Whether a bundled datasource should be provisioned.
 
 Honors an explicit `connections.datasources.<name>.enabled`, and otherwise
-follows whether the backend it points at is deployed by this release. Pointing
-at a backend outside the release means setting `enabled` explicitly.
+follows whether the backend it points at is deployed, by this release or by
+another one that `otherReleases` names. Pointing at a backend this chart does
+not run means setting `enabled` explicitly.
 
 Returns a truthy string when it should be, empty when not.
 
@@ -326,7 +327,7 @@ Usage:
   {{- else if not ( kindIs "invalid" $ds.enabled ) }}
     {{- ternary "true" "" $ds.enabled }}
   {{- else }}
-    {{- include ( printf "mzmon.%s.enabled" .name ) $root }}
+    {{- include "mzmon.deployed" ( dict "root" $root "component" .name ) }}
   {{- end }}
 {{- end }}
 

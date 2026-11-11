@@ -1,0 +1,276 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for `otherReleases`, which lets one release address a component that
+# another release of this chart runs.
+#
+# Each case is paired: the same layout without the declaration still fails or
+# warns, so a check that stopped firing altogether cannot pass here.
+#
+# The bundled-destination URLs stay in-cluster throughout, because that is the
+# shape the split exists for, and they resolve to `test-monitoring` in every
+# release just as shared values do.
+suite: split releases
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  # Backends' own validators, which every layout that runs them needs.
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.enabled: false
+  thanos.global.objstore.createSecret: false
+tests:
+  # --- the pipeline release -------------------------------------------------
+
+  - it: refuses a gateway writing to backends no release is said to run
+    set:
+      tags.pipeline: true
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.thanos.url points at the bundled Thanos .* If another release of this chart runs Thanos, set otherReleases.thanos: true."
+      - failedTemplate:
+          errorPattern: "pipeline.destinations.loki.url points at the bundled Loki .* If another release of this chart runs Loki, set otherReleases.loki: true."
+
+  - it: renders a gateway writing to backends another release runs
+    set:
+      tags.pipeline: true
+      otherReleases.loki: true
+      otherReleases.thanos: true
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # The user-facing case: the backends in a namespace of their own, named by
+  # a full address rather than through the namespace helpers.
+  - it: renders a gateway writing to another release's Thanos by its full address
+    set:
+      tags.pipeline: true
+      otherReleases.loki: true
+      otherReleases.thanos: true
+      pipeline.destinations.thanos.url: http://thanos-receive.thanos.svc.cluster.local:10908/api/v1/receive
+      pipeline.destinations.loki.url: http://loki-distributor.loki.svc.cluster.local:3100/loki/api/v1/push
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # `thanos.receive.*` in this release configures no Receive, so it cannot be
+  # held against a destination that writes to another release's.
+  - it: ignores this release's Thanos settings when another release runs Thanos
+    set:
+      tags.pipeline: true
+      otherReleases.loki: true
+      otherReleases.thanos: true
+      thanos.receive.enabled: false
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: still refuses a disabled Receive when this release runs Thanos
+    set:
+      tags.pipeline: true
+      tags.thanos: true
+      otherReleases.loki: true
+      thanos.receive.enabled: false
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "points at thanos-receive .* but thanos.receive.enabled is false"
+
+  # The Thanos ruler imports every PrometheusRule in the cluster, so another
+  # release's evaluates this release's rules.
+  - it: warns that nothing evaluates the rules when no release runs Thanos
+    set:
+      tags.pipeline: true
+      otherReleases.loki: true
+      pipeline.destinations.thanos.enabled: false
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "nothing in this release evaluates the PromQL rules"
+
+  - it: leaves the rules to the Thanos ruler another release runs
+    set:
+      tags.pipeline: true
+      otherReleases.loki: true
+      otherReleases.thanos: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "nothing in this release evaluates the PromQL rules"
+        not: true
+
+  # --- the agent and the gateway apart --------------------------------------
+
+  - it: refuses an agent writing to a gateway no release is said to run
+    set:
+      tags.alloy-agent: true
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "but alloy-gateway is not enabled.* If another release of this chart runs the gateway, set otherReleases.alloy-gateway: true."
+
+  - it: renders an agent writing to a gateway another release runs
+    set:
+      tags.alloy-agent: true
+      otherReleases.alloy-gateway: true
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: warns about a gateway with no agent when no release runs one
+    set:
+      tags.alloy-gateway: true
+      otherReleases.loki: true
+      otherReleases.thanos: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "nothing collects node or pod logs"
+
+  - it: stays quiet about the agent when another release runs it
+    set:
+      tags.alloy-gateway: true
+      otherReleases.alloy-agent: true
+      otherReleases.loki: true
+      otherReleases.thanos: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "nothing collects node or pod logs"
+        not: true
+
+  # --- the backends release -------------------------------------------------
+
+  - it: warns that the rulers' targets are missing when no release runs them
+    set:
+      tags.loki: true
+      tags.thanos: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "thanos.ruler runs stateless and remote-writes to the alloy-gateway, but alloy-gateway is not enabled"
+      - matchRegexRaw:
+          pattern: "loki.loki.rulerConfig.remote_write targets the alloy-gateway, but alloy-gateway is not enabled"
+      - matchRegexRaw:
+          pattern: "enabled but Alertmanager is not"
+
+  - it: stays quiet about rulers whose targets another release runs
+    set:
+      tags.loki: true
+      tags.thanos: true
+      otherReleases.alloy-gateway: true
+      otherReleases.alertmanager: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "but alloy-gateway is not enabled"
+        not: true
+      - matchRegexRaw:
+          pattern: "enabled but Alertmanager is not"
+        not: true
+
+  # The pairing between Receive's TLS and the gateway's destination TLS is
+  # checked from this release's values, which the docs say every release
+  # shares. A backends release whose values disagree with the gateway's is
+  # still refused, so the declaration is not a way around it.
+  - it: still checks the gateway's TLS against Receive's from this release's values
+    set:
+      tags.thanos: true
+      otherReleases.alloy-gateway: true
+      thanos.receive.extraArgs:
+        - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
+        - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "thanos.receive.extraArgs enables remote-write TLS, but pipeline.destinations.thanos.tls.enabled is off"
+
+  # --- the Grafana release --------------------------------------------------
+
+  - it: refuses a Thanos data source when no release is said to run Thanos
+    set:
+      tags.managed-grafana: true
+      connections.datasources.thanos.enabled: true
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "connections.datasources.thanos is enabled and points at the bundled Thanos .* If another release of this chart runs Thanos, set otherReleases.thanos: true."
+
+  - it: provisions no backend data sources when no release runs the backends
+    set:
+      tags.managed-grafana: true
+    template: grafana-datasources.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: provisions the data sources for backends another release runs
+    set:
+      tags.managed-grafana: true
+      otherReleases.loki: true
+      otherReleases.thanos: true
+      otherReleases.alertmanager: true
+    template: grafana-datasources.yaml
+    asserts:
+      - hasDocuments:
+          count: 3
+      - containsDocument:
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaDatasource
+          name: mzmon-thanos-datasource
+          namespace: test-monitoring
+        documentIndex: 0
+      - equal:
+          path: spec.datasource.url
+          value: http://thanos-query.test-monitoring.svc:9090
+        documentIndex: 0
+      - containsDocument:
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaDatasource
+          name: mzmon-loki-datasource
+          namespace: test-monitoring
+        documentIndex: 1
+      - containsDocument:
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaDatasource
+          name: mzmon-alertmanager-datasource
+          namespace: test-monitoring
+        documentIndex: 2
+
+  - it: honors a data source turned off over the declaration
+    set:
+      tags.managed-grafana: true
+      otherReleases.loki: true
+      otherReleases.thanos: true
+      connections.datasources.loki.enabled: false
+    template: grafana-datasources.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - containsDocument:
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaDatasource
+          name: mzmon-thanos-datasource
+          namespace: test-monitoring
+
+  # --- the block itself -----------------------------------------------------
+
+  - it: refuses a component name the chart does not run
+    set:
+      otherReleases.gateway: true
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "otherReleases.gateway is not a component this chart runs. Name one of alertmanager, alloy-agent, alloy-gateway, loki, thanos."
+
+  # This release's own Thanos wins, so its checks keep applying to it.
+  - it: warns that a component this release runs cannot be another release's
+    set:
+      tags.thanos: true
+      otherReleases.thanos: true
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "otherReleases.thanos is true, but this release runs thanos as well, so it has no effect"
