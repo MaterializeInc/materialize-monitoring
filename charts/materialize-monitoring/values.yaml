@@ -6443,7 +6443,7 @@ alertmanager:
     enabled: true
     image:
       repository: quay.io/prometheus-operator/prometheus-config-reloader
-      tag: v0.94.2
+      tag: v0.95.2
     extraArgs:
       watched-dir: /etc/alertmanager/config
     extraVolumeMounts:
