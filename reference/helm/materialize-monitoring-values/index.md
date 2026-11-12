@@ -6833,9 +6833,9 @@ templates test `or <component>.pdb.enabled global.pdb.enabled`.
     voluntary eviction and hang node drains indefinitely. `maxUnavailable: 1`
     permits the eviction, so the singleton is a harmless no-op rather than
     a drain deadlock.
-  * On Receive it must stay within what write quorum tolerates
-    (`replicationFactor - ((replicationFactor / 2) + 1)`), which is 1 at
-    the replication factor of 3 set below. A validator enforces this.
+  * On Receive it must stay within what write quorum tolerates, which is
+    1 at the replication factor of 2 set below: Thanos gives a factor of 2
+    a write quorum of 1. A validator enforces this.
 
 This matches the Loki convention (ingester `maxUnavailable: 1`).
 </td>
@@ -7060,9 +7060,10 @@ than from the bucket. 6h covers the common dashboard ranges and leaves 4h of
 margin after a block closes, uploads, and the Store Gateway syncs it.
 
 Raising it back is a real cost rather than just a number. At the medium
-envelope (1.5M series) 24h is ~7.3Gi per pod, and a GKE node with a 47Gi boot
+envelope (1.5M series) 24h is ~4.9Gi per pod, and a GKE node with a 47Gi boot
 disk offers only ~18.8Gi of *allocatable* ephemeral storage — one pod would
-claim 40% of the node's budget, and Loki's ingesters draw on the same pool.
+claim a quarter of the node's budget, and Loki's ingesters draw on the same
+pool.
 </td>
     </tr>
     <tr>
@@ -7070,16 +7071,21 @@ claim 40% of the node's budget, and Loki's ingesters draw on the same pool.
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "--receive.replication-factor=3"
+  "--receive.replication-factor=2"
 ]</pre>
 </td>
       <td class="helm-value-desc">Extra CLI arguments for Receive.
+The replication factor is 2. Thanos gives a factor of 2 a write quorum of
+1, so it survives losing one pod, as 3 does, and holds a third less
+memory. Choose 3 when a write acknowledged while a pod is down must still
+have two copies. See Production Best Practices > Metrics (Thanos) for the
+quorum table and the trade.
+
 **This is a list, and Helm overwrites lists rather than merging them.**
 Anything that sets `receive.extraArgs` replaces this entry wholesale, so
 the replication factor must be restated or it silently falls back to
-Thanos's default of 1 — write quorum 1, no losses tolerated. The shipped
-profiles restate it; so must yours. See Production Best Practices >
-Metrics (Thanos) for the quorum table.
+Thanos's default of 1 — one copy of every series, no losses tolerated. The
+shipped profiles restate it; so must yours.
 </td>
     </tr>
     <tr>
@@ -7123,9 +7129,10 @@ If you want its recommendations without its actions, set
 }</pre>
 </td>
       <td class="helm-value-desc">Resource requests for Receive. Medium sizing.
-Memory is the cell to get right: budget ~3 KB per active series held, and
-note that at `replicaCount == replicationFactor` **every pod holds every
-series** — sharding begins only above RF.
+Memory is the cell to get right: budget ~3 KB per active series held. Each
+pod holds `replicationFactor / replicaCount` of the series, which is two
+thirds at the defaults; at `replicaCount == replicationFactor` **every pod
+holds every series**.
 
 No memory limit, deliberately, and for a sharper reason than elsewhere in
 this chart: an OOM-kill drops the un-uploaded block window, and unlike
@@ -7149,8 +7156,8 @@ ephemeral-storage`. Check before raising these:
 
   kubectl get nodes -o custom-columns='NODE:.metadata.name,EPH:.status.allocatable.ephemeral-storage'
 
-4Gi holds 6h of the medium envelope (~1.8Gi) with room for the WAL and
-compaction churn, and leaves the rest of the node for everything sharing that
+4Gi holds 6h of a pod's share of the medium envelope (~1.2Gi) with room for
+the WAL and compaction churn, and leaves the rest of the node for everything sharing that
 pool — including Loki's ingesters, which are also `emptyDir`-backed.
 </td>
     </tr>
@@ -7192,11 +7199,13 @@ pool — including Loki's ingesters, which are also `emptyDir`-backed.
 ]</pre>
 </td>
       <td class="helm-value-desc">Topology spread for Receive: hard across zones, soft across hosts.
-This is the constraint that makes `--receive.replication-factor=3` mean
+This is the constraint that makes `--receive.replication-factor=2` mean
 what the quorum table says. Without it the scheduler is free to place all
-three replicas in one zone, and RF 3 buys nothing against the failure it
-exists for — losing a zone takes every copy and, since write quorum is 2,
-takes writes with it.
+three replicas in one zone, and replication buys nothing against the
+failure it exists for — losing that zone takes every copy of every series,
+and writes with them. With one replica per zone, a series' two copies sit
+in two zones; above three replicas the hashring places copies without
+regard to zone, so some series keep both copies in one.
 
 **Hard** (`DoNotSchedule`) on zones, deliberately. A pod that cannot
 satisfy it goes Pending, which is the signal Karpenter or the
@@ -7243,7 +7252,7 @@ every Thanos component count Receive's pods when computing its own skew.
 This is the same call the chart makes for Loki's ingesters, for the same
 reason, and it is worth spelling out because Receive looks stateful.
 
-Durability comes from `--receive.replication-factor=3`, not from disk.
+Durability comes from `--receive.replication-factor=2`, not from disk.
 Blocks ship to object storage every 2h, so the window that exists only
 locally is at most 2h — and every replica uploads its own copy under a
 distinct `receive_replica` external label, which the Compactor
@@ -7255,12 +7264,13 @@ A PVC makes an AZ failure **worse**, not merely less flexible: an EBS
 volume cannot be attached from another zone, so a pod whose zone is gone
 stays Pending until the zone returns rather than rescheduling into a
 healthy one. On the write path that turns a recoverable event into an
-outage that waits on the cloud provider — with RF 3 write quorum is 2, so
-two pods stuck Pending block writes outright.
+outage that waits on the cloud provider — two pods stuck Pending fail the
+writes of every series whose two copies they hold, which on three pods is
+a third of them.
 
 The trade accepted in exchange: Thanos Receive has no peer hand-off, so
 unlike Loki it will not backfill an emptied pod from its neighbours. That
-window stays at two copies instead of three until the next block ships.
+window stays at one copy instead of two until the next block ships.
 </td>
     </tr>
     <tr>
