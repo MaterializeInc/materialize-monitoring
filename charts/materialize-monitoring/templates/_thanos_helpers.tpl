@@ -59,6 +59,26 @@ Usage:
 {{- end }}
 
 {{- /*
+Thanos Receive write quorum for a replication factor.
+
+Mirrors Thanos `writeQuorum()` in `pkg/receive/handler.go`: `(rf / 2) + 1` on
+integer division, except that a factor of 2 has a quorum of 1. Thanos
+special-cases 2 so that two copies survive one loss, the guarantee a pair of
+Prometheus replicas behind a Sidecar gives.
+
+Usage:
+  {{- $quorum := include "mzmon.thanos.receive.writeQuorum" $rf | int }}
+*/}}
+{{- define "mzmon.thanos.receive.writeQuorum" }}
+  {{- $rf := . | int }}
+  {{- if eq $rf 2 }}
+    {{- 1 }}
+  {{- else }}
+    {{- add ( div $rf 2 ) 1 }}
+  {{- end }}
+{{- end }}
+
+{{- /*
 Whether a PodDisruptionBudget renders for a Thanos component.
 
 The subchart tests `or <component>.pdb.enabled global.pdb.enabled`, so a
@@ -266,16 +286,17 @@ count out from under the HPA.
              alone would stop at the empty per-component default. */}}
       {{- $maxUnavail := ( dig "receive" "pdb" "maxUnavailable" "" $values ) | default ( dig "global" "pdb" "maxUnavailable" "" $values ) }}
       {{- $rf := include "mzmon.thanos.receive.replicationFactor" $ | int }}
-      {{- $tolerated := sub $rf ( add ( div $rf 2 ) 1 ) | int }}
+      {{- $quorum := include "mzmon.thanos.receive.writeQuorum" $rf | int }}
+      {{- $tolerated := sub $rf $quorum | int }}
       {{- /* Only meaningful once replication provides a budget to respect. At
-             a factor of 1 or 2 nothing is tolerated, but the fix is the
-             replication factor — which the replication validator already
-             reports — not a maxUnavailable of 0, which would block every
-             drain. Reporting both would double up on one root cause.
+             a factor of 1 nothing is tolerated, but the fix is the replication
+             factor — which the replication validator already reports — not a
+             maxUnavailable of 0, which would block every drain. Reporting both
+             would double up on one root cause.
              A percentage cannot be compared to a pod count, so it is skipped. */}}
       {{- if and $maxUnavail ( gt $tolerated 0 ) ( not ( hasSuffix "%" ( $maxUnavail | toString ) ) ) }}
         {{- if gt ( $maxUnavail | int ) $tolerated }}
-          {{- $errors = append $errors ( printf "The Receive PodDisruptionBudget allows %v pods unavailable, but a replication factor of %d only tolerates %d (write quorum is (rf/2)+1). A node drain would break ingestion. Lower maxUnavailable, or raise the replication factor." $maxUnavail $rf $tolerated ) }}
+          {{- $errors = append $errors ( printf "The Receive PodDisruptionBudget allows %v pods unavailable, but a replication factor of %d only tolerates %d (write quorum is %d). A node drain would break ingestion. Lower maxUnavailable, or raise the replication factor." $maxUnavail $rf $tolerated $quorum ) }}
         {{- end }}
       {{- end }}
       {{- if ( dig "receive" "pdb" "minAvailable" "" $values ) | default ( dig "global" "pdb" "minAvailable" "" $values ) }}
@@ -332,6 +353,12 @@ every series lands on exactly one ingester, so losing a pod fails the writes
 that hash to it (the ring assignment is deterministic — writes are not
 rerouted) and leaves up to `tsdb.retention` of not-yet-uploaded data with no
 second copy.
+
+The chart sets a factor of 2 through `receive.extraArgs`. Thanos gives 2 a
+write quorum of 1, so it survives one ingester loss as 3 does, while holding a
+third less memory. What it gives up is durability while degraded: with one copy
+down, a write is acknowledged on a single pod's `emptyDir` until the next block
+upload. That is an operator's trade to make, so neither 2 nor 3 warns.
 */}}
 {{- define "mzmon.thanos.validate.receiveReplication" }}
   {{- $errors := list }}
@@ -362,9 +389,7 @@ second copy.
     {{- end }}
   {{- end }}
 
-  {{- /* Thanos writeQuorum() is `(replicationFactor / 2) + 1` on integer
-         division, so tolerated losses are `rf - quorum`. */}}
-  {{- $quorum := add ( div $rf 2 ) 1 | int }}
+  {{- $quorum := include "mzmon.thanos.receive.writeQuorum" $rf | int }}
   {{- $tolerated := sub $rf $quorum | int }}
 
   {{- if le $replicas 1 }}
@@ -372,21 +397,13 @@ second copy.
   {{- else if gt $rf $replicas }}
     {{- $errors = append $errors ( printf "The replication factor is %d (%s) but %s is %d. Each write is forwarded to that many ingesters, so it can never reach quorum." $rf $rfPath $replicaPath $replicas ) }}
   {{- else if eq $rf 1 }}
-    {{- $hint := ternary "Raise it to 3 for a quorum that tolerates one loss." "Set thanos.receive.extraArgs: [\"--receive.replication-factor=3\"] for a quorum that tolerates one loss." $split }}
+    {{- $hint := ternary "Set thanos.receive.router.replicationFactor to 2 for a write quorum of 1 that tolerates one loss." "Set thanos.receive.extraArgs: [\"--receive.replication-factor=2\"], as the chart default does, for a write quorum of 1 that tolerates one loss." $split }}
     {{- $warnings = append $warnings ( printf "%s is %d, so writes are sharded across a hashring — but the replication factor is 1, so each series lands on exactly one ingester. Losing one pod fails the writes that hash to it and leaves its un-uploaded TSDB with no second copy. %s" $replicaPath $replicas $hint ) }}
-  {{- else if eq $tolerated 0 }}
-    {{- /* The trap, and the reason a factor of 2 is the wrong instinct:
-           quorum is `rf/2 + 1`, so at rf=2 every copy must succeed. That is
-           the same fault tolerance as rf=1, and on a small ring it is worse —
-           more series depend on any one pod while quorum still demands all of
-           their copies. On a 3-pod ring, losing one pod fails ~1/3 of series
-           at rf=1 but ~2/3 at rf=2. */}}
-    {{- $warnings = append $warnings ( printf "The replication factor is %d (%s), so Thanos write quorum is (rf/2)+1 = %d — every copy must succeed and no ingester can be lost. That is the same fault tolerance as a factor of 1, and on a small ring it fails a larger share of writes, because more series depend on any one pod while quorum still demands all their copies. Use an odd factor: 3 gives a quorum of 2 and tolerates one loss." $rf $rfPath $quorum ) }}
-  {{- else if eq ( mod $rf 2 ) 0 }}
-    {{- /* Even factors above 2 do tolerate losses, but never more than the
-           odd factor below them — the extra copy buys durability, not
-           availability. */}}
-    {{- $warnings = append $warnings ( printf "The replication factor is %d (%s) is even: quorum is (rf/2)+1 = %d, tolerating %d ingester loss — the same as a factor of %d, for one more copy per write. The extra copy adds durability, not availability. Prefer an odd factor." $rf $rfPath $quorum $tolerated ( sub $rf 1 ) ) }}
+  {{- else if and ( gt $rf 2 ) ( eq ( mod $rf 2 ) 0 ) }}
+    {{- /* Even factors above 2 tolerate no more losses than the odd factor
+           below them — the extra copy buys durability, not availability.
+           2 is the exception, because Thanos gives it a quorum of 1. */}}
+    {{- $warnings = append $warnings ( printf "The replication factor %d (%s) is even: quorum is (rf/2)+1 = %d, tolerating %d ingester loss — the same as a factor of %d, for one more copy per write. The extra copy adds durability, not availability. Prefer %d." $rf $rfPath $quorum $tolerated ( sub $rf 1 ) ( sub $rf 1 ) ) }}
   {{- end }}
 
   {{- /* final output */}}

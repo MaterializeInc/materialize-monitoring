@@ -198,6 +198,6 @@ list; on the Helm path the profile has to restate the host rule, since Helm over
 
 > [!WARNING]
 >   **Nothing reminds you when you gain a zone.**
->   The pods keep scheduling happily, spread across nothing, and RF 3 goes on reading like AZ resilience on every dashboard.
+>   The pods keep scheduling happily, spread across nothing, and replication goes on reading like AZ resilience on every dashboard.
 >   `min_zones` is the better habit than the profile for this reason alone: it is a number you update when the cluster
 >   changes, not a file you have to remember to stop passing.

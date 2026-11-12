@@ -26,7 +26,7 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --receive.replication-factor=3
+          content: --receive.replication-factor=2
 
   - it: small keeps the replication factor despite overriding extraArgs
     values:
@@ -35,7 +35,7 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --receive.replication-factor=3
+          content: --receive.replication-factor=2
 
   - it: large keeps the replication factor despite overriding extraArgs
     values:
@@ -44,7 +44,7 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --receive.replication-factor=3
+          content: --receive.replication-factor=2
 
   # --- VPA must not rewrite the profile's requests --------------------------
   # `updateMode: Auto` evicts pods to apply new requests, and Receive holds up to
@@ -95,7 +95,7 @@ tests:
       - ../profiles/thanos-large.values.yaml
     template: ../charts/thanos/templates/receive/statefulset.yaml
     asserts:
-      # 6 is a multiple of both RF (3) and a three-zone topology.
+      # 6 is a multiple of both RF (2) and a three-zone topology.
       - equal:
           path: spec.replicas
           value: 6
@@ -105,12 +105,12 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].resources.limits.memory
 
-  - it: small keeps Receive at the replication-factor floor
+  - it: small keeps Receive at three replicas, one per zone
     values:
       - ../profiles/thanos-small.values.yaml
     template: ../charts/thanos/templates/receive/statefulset.yaml
     asserts:
-      # 3 is the RF floor, not a sizing choice — it must not drop below it.
+      # 3 is the zone layout, not a sizing choice — it must not drop below it.
       - equal:
           path: spec.replicas
           value: 3
@@ -370,10 +370,10 @@ tests:
           path: spec.maxReplicas
           value: 8
 
-  # --- Topology spread: what makes RF 3 mean what the quorum table says -------
+  # --- Topology spread: what makes RF 2 mean what the quorum table says -------
   # Without zone spread the scheduler may put all three replicas in one zone, and
-  # RF 3 buys nothing against the failure it exists for — a zone loss takes every
-  # copy, and since write quorum is 2 it takes writes with it.
+  # replication buys nothing against the failure it exists for — a zone loss
+  # takes every copy of every series, and writes with them.
   - it: spreads Receive hard across zones and soft across hosts
     template: ../charts/thanos/templates/receive/statefulset.yaml
     asserts:
@@ -510,7 +510,7 @@ tests:
       # helm-docs reordering broke once already — keep both pinned together.
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --receive.replication-factor=3
+          content: --receive.replication-factor=2
 
   - it: keeps the 6h retention at every size, since the profiles do not override it
     values:

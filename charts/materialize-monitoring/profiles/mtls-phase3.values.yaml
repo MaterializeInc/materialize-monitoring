@@ -99,10 +99,11 @@ thanos:
     # There is no middle state on this hop.
     #
     # The list restates every earlier entry, because Helm overwrites lists rather
-    # than merging them — including `--receive.replication-factor=3`, which
-    # silently falls back to 1 (write quorum 1, no tolerated losses) if dropped.
+    # than merging them — including `--receive.replication-factor=2`, which
+    # silently falls back to 1 (one copy of every series, no tolerated losses)
+    # if dropped.
     extraArgs:
-      - --receive.replication-factor=3
+      - --receive.replication-factor=2
       - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
       - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
       - --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt

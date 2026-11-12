@@ -28,7 +28,7 @@ set:
   # replication factor from a neighbour. This mirrors the shipped default, so
   # cases that do not care about replication exercise the real configuration.
   thanos.receive.extraArgs:
-    - --receive.replication-factor=3
+    - --receive.replication-factor=2
 tests:
   # --- objstore -------------------------------------------------------------
 
@@ -107,8 +107,23 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: "replicaCount is 3, so writes are sharded across a hashring — but the replication factor is 1"
+      - matchRegexRaw:
+          pattern: 'extraArgs: \["--receive.replication-factor=2"\], as the chart default does'
 
-  - it: does not warn about replication once extraArgs sets an odd factor
+  # Thanos special-cases a factor of 2 to a write quorum of 1, so it tolerates
+  # one loss as 3 does. Choosing between them trades memory for durability while
+  # degraded, which is the operator's call, so neither warns.
+  - it: does not warn about the default replication factor of 2
+    set:
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=2
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "replication factor is 1|replication factor 2|quorum"
+        not: true
+
+  - it: does not warn about replication once extraArgs sets a factor of 3
     set:
       thanos.receive.extraArgs:
         - --receive.replication-factor=3
@@ -117,20 +132,6 @@ tests:
       - matchRegexRaw:
           pattern: "replication factor is 1|quorum"
         not: true
-
-  # Thanos write quorum is (rf/2)+1, so a factor of 2 needs both copies and
-  # tolerates nothing — the same as a factor of 1, and worse on a small ring
-  # because more series depend on any one pod.
-  - it: warns that a replication factor of 2 tolerates no ingester loss
-    set:
-      thanos.receive.extraArgs:
-        - --receive.replication-factor=2
-    template: NOTES.txt
-    asserts:
-      - matchRegexRaw:
-          pattern: "quorum is \\(rf/2\\)\\+1 = 2 — every copy must succeed and no ingester can be lost"
-      - matchRegexRaw:
-          pattern: "same fault tolerance as a factor of 1"
 
   # Even factors above 2 do tolerate a loss, just never more than the odd
   # factor below them — so the message must not claim zero tolerance.
@@ -142,10 +143,7 @@ tests:
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
-          pattern: "tolerating 1 ingester loss — the same as a factor of 3"
-      - matchRegexRaw:
-          pattern: "no ingester can be lost"
-        not: true
+          pattern: "replication factor 4 .* is even: quorum is \\(rf/2\\)\\+1 = 3, tolerating 1 ingester loss — the same as a factor of 3"
 
   - it: accepts an odd factor on a larger ring
     set:
@@ -207,13 +205,25 @@ tests:
           pattern: "thanos.query runs 2 replicas with no PodDisruptionBudget"
 
   # The PDB budget and the write-quorum budget have to agree, or a routine
-  # node drain breaks ingestion.
+  # node drain breaks ingestion. At the default factor of 2 the budget comes
+  # from Thanos's special case, a quorum of 1, rather than from (rf/2)+1.
   - it: errors when the Receive PDB allows more loss than quorum tolerates
     set:
       thanos.global.pdb.maxUnavailable: 2
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=2
     asserts:
       - failedTemplate:
-          errorPattern: "allows 2 pods unavailable, but a replication factor of 3 only tolerates 1"
+          errorPattern: "allows 2 pods unavailable, but a replication factor of 2 only tolerates 1 \\(write quorum is 1\\)"
+
+  - it: errors when the Receive PDB allows more loss than an odd factor's quorum tolerates
+    set:
+      thanos.global.pdb.maxUnavailable: 2
+      thanos.receive.extraArgs:
+        - --receive.replication-factor=3
+    asserts:
+      - failedTemplate:
+          errorPattern: "allows 2 pods unavailable, but a replication factor of 3 only tolerates 1 \\(write quorum is 2\\)"
 
   - it: accepts a wider PDB when the replication factor supports it
     set:

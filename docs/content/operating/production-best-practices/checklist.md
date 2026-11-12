@@ -264,7 +264,7 @@ Skip one of these and part of the stack stops working without an error, so nothi
   not running, discarded samples (`loki_discarded_samples_total`), object-store errors, and disk usage.
   Loki down is its own incident.
 - [ ] `[operator]` [Thanos](../thanos/#receive-replication): **Alert on Receive write failures and quorum errors.**
-  With a replication factor of 1 or 2, these are the first sign of a lost pod, and the dashboards don't show it.
+  At a replication factor of 1, they're the first sign of a lost pod, and the dashboards don't show it.
 - [ ] `[operator]` [Thanos](../thanos/): Keep the Store Gateway enabled.
   It's how queries reach historical blocks; without it, reads are limited to what Receive holds locally.
 - [ ] `[operator]` [Grafana](../grafana/): **Set `grafana.ini.server.root_url`** to the URL users actually reach.
@@ -366,11 +366,11 @@ Skip one of these and part of the stack stops working without an error, so nothi
 
 Skip one of these and an ordinary restart, node loss, or upgrade loses telemetry or state for good.
 
-- [ ] `[operator]` [Thanos](../thanos/#receive-replication): **Keep the Receive replication factor odd, and restate
-  `receive.extraArgs` in full whenever you set it.**
-  The chart sets the factor to 3 through that list, and Helm overwrites lists, so an override that adds any flag drops it to Thanos's default of 1.
+- [ ] `[operator]` [Thanos](../thanos/#choose-a-replication-factor): **Keep the Receive replication factor at 2 or 3, and
+  restate `receive.extraArgs` in full whenever you set it.**
+  The chart sets the factor to 2 through that list, and Helm overwrites lists, so an override that adds any flag drops it to Thanos's default of 1.
   At 1, the un-uploaded window exists in one copy on one node.
-  A render-time check warns at factor 1, warns harder at 2, and errors when the factor exceeds `replicaCount`.
+  A render-time check warns at factor 1 and at even factors above 2, and errors when the factor exceeds `replicaCount`.
 - [ ] `[operator]` [Thanos](../thanos/#thanos-retention-compaction): Restate `compactor.extraArgs` in full too.
   It carries the vertical compaction and deduplication flags, and dropping the first halts the Compactor at the first overlapping block.
 - [ ] `[operator]` [Thanos](../thanos/#thanos-retention-compaction): **Know that deduplication is irreversible** on an existing bucket.
@@ -416,7 +416,7 @@ Skip one of these and an ordinary restart, node loss, or upgrade loses telemetry
   Requests are set for scheduling.
 - [x] `[chart]` [Loki](../loki/#schema-periods): `schema_config` uses TSDB, schema **v13**, and a 24h index period.
 - [x] `[chart]` [Thanos](../thanos/#receive-replication): `receive.mode: standalone` with `replicaCount: 3`, an
-  auto-generated ketama hashring, and `--receive.replication-factor=3` in `receive.extraArgs`.
+  auto-generated ketama hashring, and `--receive.replication-factor=2` in `receive.extraArgs`.
 - [x] `[chart]` [Thanos](../thanos/#receive-replication): **Every profile restates `receive.extraArgs` in full**, so the replication factor survives.
   A unit test pins this at all three sizes.
 - [x] `[chart]` [Thanos](../thanos/): **VerticalPodAutoscaler disabled on Receive and the Compactor.**

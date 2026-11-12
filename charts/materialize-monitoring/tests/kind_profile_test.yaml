@@ -63,8 +63,8 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 256Mi
-      # Receive stays at the RF floor — three tiny pods, not one big one, so the
-      # hashring and quorum path stay under test.
+      # Receive keeps three pods — tiny ones, not one big one — so the hashring
+      # shards and replicates and the quorum path stays under test.
       - equal:
           path: spec.replicas
           value: 3
@@ -73,7 +73,7 @@ tests:
       # it to Thanos's default of 1.
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --receive.replication-factor=3
+          content: --receive.replication-factor=2
 
   - it: keeps the replication factor when composed after thanos-small
     values:
@@ -83,7 +83,7 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --receive.replication-factor=3
+          content: --receive.replication-factor=2
       # kind composes last, so its size wins over the small profile's.
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory

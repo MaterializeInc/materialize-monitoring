@@ -492,9 +492,9 @@ locals {
     # After sizing, because the phase-3 profile restates
     # `thanos.receive.extraArgs` and Helm overwrites lists rather than merging
     # them. Either way round one side loses silently — the TLS flags vanish, or
-    # `--receive.replication-factor=3` does and write quorum drops to 1 with
-    # nothing said. The mTLS profiles restate the replication factor, so they are
-    # the safe side to have win.
+    # `--receive.replication-factor=2` does and Receive falls back to one copy of
+    # every series with nothing said. The mTLS profiles restate the replication
+    # factor, so they are the safe side to have win.
     local.mtls_documents,
     local.grafana_database_documents,
     local.storage_documents,
