@@ -64,10 +64,10 @@
 #     A sizing overlay that breaks the test profile it is meant to compose with
 #     is not composable.
 #  2. Some replica counts are correctness floors rather than capacity choices.
-#     Loki's ingesters and Thanos Receive both sit at the replication-factor
-#     floor of 3, and the ring and write-quorum behaviour they provide is a
-#     large part of what an E2E run exists to prove. Three tiny pods, not one
-#     big one.
+#     Loki's ingesters sit at the replication-factor floor of 3, and Thanos
+#     Receive runs three pods at replication factor 2, so the ring shards and
+#     replicates. The ring and write-quorum behaviour they provide is a large
+#     part of what an E2E run exists to prove. Three tiny pods, not one big one.
 #
 # So this profile shrinks each pod and leaves the count of them to whoever owns
 # the topology. If you want fewer Thanos replicas in CI, compose `thanos-small`
@@ -105,7 +105,7 @@ thanos:
     topologySpreadConstraints: []
 
     # NOTE: `extraArgs` is deliberately NOT set here. The base values carry
-    # `--receive.replication-factor=3` in that list, and Helm overwrites lists
+    # `--receive.replication-factor=2` in that list, and Helm overwrites lists
     # rather than merging them — setting it here would silently drop the factor
     # to Thanos's default of 1. Sizing needs nothing from that list, so it is
     # left alone and the factor is inherited from whatever composed before this.

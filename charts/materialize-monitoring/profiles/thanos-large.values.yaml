@@ -45,23 +45,24 @@ thanos:
       - --query.timeout=5m
 
   receive:
-    # -- Six replicas rather than three, so streams shard across the ring
-    # instead of every pod holding every series — which is what happens at
-    # `replicaCount == replicationFactor`. Six is deliberately a multiple of
-    # both the replication factor (3) and a three-zone topology, so shards and
-    # zones divide evenly.
+    # -- Six replicas rather than three, so each pod holds a third of the
+    # series rather than two thirds. Six is deliberately a multiple of both the
+    # replication factor (2) and a three-zone topology, so shards and zones
+    # divide evenly. Above three replicas the hashring places a series' copies
+    # without regard to zone, so a zone loss can take both copies of some
+    # series; see "Spreading across zones" in the doc above.
     replicaCount: 6
     # -- Restated in full. Dropping this line silently reverts to Thanos's
-    # default replication factor of 1 — and at six replicas that means five
-    # sixths of the series have exactly one copy.
+    # default replication factor of 1 — one copy of every series, so losing any
+    # pod fails the sixth of the writes that hash to it.
     extraArgs:
-      - --receive.replication-factor=3
+      - --receive.replication-factor=2
     resources:
       requests:
         cpu: 1500m
         memory: 8Gi
-        # -- ~133k samples/s sharded across six pods at RF 3 is ~66k samples/s
-        # each, so 6h is ~2.4Gi per pod plus WAL. On an `emptyDir` (see the base
+        # -- ~133k samples/s at RF 2 across six pods is ~44k samples/s each, so
+        # 6h is ~1.6Gi per pod plus WAL. On an `emptyDir` (see the base
         # values), so this is the per-pod node-disk requirement made explicit to
         # the scheduler — check it against a node's *allocatable* ephemeral
         # storage, which is far below its disk size.

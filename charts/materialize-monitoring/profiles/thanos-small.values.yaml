@@ -11,7 +11,7 @@
 #
 # This file defines ONLY the deltas from the medium defaults — smaller
 # resources, volumes, caches, read limits, and retention. The topology stays
-# production-shaped (replication factor 3, 3 receive replicas, PDBs on every
+# production-shaped (replication factor 2, 3 receive replicas, PDBs on every
 # component) so HA behavior stays valid; small just runs leaner.
 
 tags:
@@ -39,15 +39,14 @@ thanos:
       - --query.timeout=2m
 
   receive:
-    # Stays at 3 replicas: that is the replication-factor floor, not a sizing
-    # choice. At `replicaCount == replicationFactor` every pod holds every
-    # series, which is correct here — 150k series is small enough that sharding
-    # buys nothing and the extra pods would cost more than they save.
+    # Stays at the medium default of 3 replicas, one per zone in a three-zone
+    # cluster. That is topology, not sizing: at 150k series the third pod buys
+    # zone coverage, not capacity.
     replicaCount: 3
     # -- Restated in full. Dropping this line silently reverts to Thanos's
     # default replication factor of 1, which tolerates no pod loss at all.
     extraArgs:
-      - --receive.replication-factor=3
+      - --receive.replication-factor=2
     resources:
       requests:
         cpu: 250m

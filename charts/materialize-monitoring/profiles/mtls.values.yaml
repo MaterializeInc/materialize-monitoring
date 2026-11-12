@@ -327,13 +327,13 @@ loki:
 # untouched and needs no matching change.
 thanos:
   receive:
-    # **`--receive.replication-factor=3` is restated, and must be.** Helm
+    # **`--receive.replication-factor=2` is restated, and must be.** Helm
     # overwrites lists rather than merging them, so setting `extraArgs` at all
     # replaces the base chart's entry — and dropping it silently falls back to
-    # Thanos's default of 1, which is write quorum 1 and no tolerated losses. The
-    # base values call this out; this profile is the case they mean.
+    # Thanos's default of 1, which is one copy of every series and no tolerated
+    # losses. The base values call this out; this profile is the case they mean.
     extraArgs:
-      - --receive.replication-factor=3
+      - --receive.replication-factor=2
       - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
       - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
       # NOT `--remote-write.server-tls-client-ca` — see the phase note above.

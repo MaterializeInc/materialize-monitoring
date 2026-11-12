@@ -221,7 +221,7 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --receive.replication-factor=3
+          content: --receive.replication-factor=2
       - equal:
           path: spec.replicas
           value: 6

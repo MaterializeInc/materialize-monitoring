@@ -90,7 +90,7 @@ Phase 1 and phase 2 are both states where an anonymous client is still served, s
 Locally it reports `ignored`, because `KIND_CONTEXT` is only a default and someone who has pointed these targets at a longer-lived cluster should not find out by having a Secret deleted; pass `E2E_FLAGS=--allow-disruptive` when that is what you want.
 
 The ordering here is load-bearing and silent when wrong: the profiles arrive through `additional_values`, which the module puts last, so they override the sizing profile's `thanos.receive.extraArgs` rather than the reverse.
-Helm overwrites lists, and whichever side loses that merge does so without a word — either the TLS flags vanish or `--receive.replication-factor=3` does, and the second one drops write quorum to 1.
+Helm overwrites lists, and whichever side loses that merge does so without a word — either the TLS flags vanish or `--receive.replication-factor=2` does, and the second one leaves Receive with one copy of every series.
 
 **What tier 2 cannot cover:** workload identity. rustfs takes static credentials and kind has no OIDC issuer an IAM provider trusts, so IRSA and GKE Workload Identity are only exercised at tier 3 — after we have already tagged. The `workload_identity_available` output states this so a caller cannot miss it.
 

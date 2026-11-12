@@ -713,7 +713,8 @@ tests:
               optional: false
 
   # Helm overwrites lists, so setting extraArgs at all drops the base entry —
-  # and a missing replication factor is write quorum 1 with no tolerated losses.
+  # and a missing replication factor is one copy of every series, with no
+  # tolerated losses.
   - it: should keep the Thanos replication factor when adding TLS args
     values:
       - ../profiles/mtls.values.yaml
@@ -724,7 +725,7 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --receive.replication-factor=3
+          content: --receive.replication-factor=2
       - contains:
           path: spec.template.spec.containers[0].args
           content: --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
@@ -843,7 +844,7 @@ tests:
           content: --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --receive.replication-factor=3
+          content: --receive.replication-factor=2
 
   # Phase 3 without phase 2 is the outage this ordering exists to prevent. The
   # gateway listener trips first — its client CA also comes from phase 2 — and
@@ -867,7 +868,7 @@ tests:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
       thanos.receive.extraArgs:
-        - --receive.replication-factor=3
+        - --receive.replication-factor=2
         - --remote-write.server-tls-cert=/etc/mzmon/tls/tls.crt
         - --remote-write.server-tls-key=/etc/mzmon/tls/tls.key
         - --remote-write.server-tls-client-ca=/etc/mzmon/tls/ca.crt

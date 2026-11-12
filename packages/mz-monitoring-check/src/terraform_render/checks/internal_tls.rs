@@ -31,7 +31,7 @@ const CERT_FILE: &str = "/etc/mzmon/tls/tls.crt";
 
 const RECEIVE_SERVER_CERT: &str = "--remote-write.server-tls-cert=";
 const RECEIVE_CLIENT_CA: &str = "--remote-write.server-tls-client-ca=";
-const REPLICATION_FACTOR: &str = "--receive.replication-factor=3";
+const REPLICATION_FACTOR: &str = "--receive.replication-factor=2";
 const GATEWAY_REQUIRES: &str = r#"client_auth_type = "RequireAndVerifyClientCert""#;
 const ALERTMANAGER_WEB_CONFIG: &str = "--web.config.file=/etc/alertmanager/config/web.yml";
 
@@ -73,7 +73,7 @@ pub fn thanos_receive_serves_tls(ctx: &Ctx) -> Result<()> {
 ///
 /// The sizing profile also sets `thanos.receive.extraArgs`, and Helm overwrites
 /// lists. Whichever document loses that merge does so silently, and losing this
-/// flag drops write quorum to 1.
+/// flag leaves Receive with one copy of every series.
 pub fn replication_factor_survives(ctx: &Ctx) -> Result<()> {
     if !receive_args(ctx).any(|arg| arg == REPLICATION_FACTOR) {
         bail!(
