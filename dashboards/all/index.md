@@ -68,7 +68,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
@@ -114,11 +114,11 @@ The namespace picker discovers every namespace and merely *defaults* to the Mate
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -159,11 +159,11 @@ It needs both a metrics and a logs datasource.
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -220,11 +220,11 @@ The dashboard needs both a metrics and a logs data source.
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -274,11 +274,11 @@ It needs both a metrics and a logs datasource.
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -333,11 +333,11 @@ It needs both a metrics and a logs datasource.
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -376,11 +376,11 @@ It needs both a metrics and a logs datasource, the latter for the node journal.
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -417,11 +417,11 @@ Where `env-logs` opens on the Materialize namespaces, this one subtracts them, s
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -475,11 +475,11 @@ A NAT gateway out of source ports makes a Materialize source stall and reconnect
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -520,11 +520,11 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -584,11 +584,11 @@ They don't render on a cluster without Karpenter, where the Karpenter tab explai
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -633,11 +633,11 @@ It needs both a metrics and a logs datasource.
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -681,11 +681,11 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
@@ -732,11 +732,11 @@ The Logs tab reads Loki rather than Thanos, so it keeps working, and it is where
     </tr>
     <tr>
       <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
     <tr>
       <td>Datadog<br /><small>dashboard JSON</small></td>
-      <td colspan="2"><em>Not published yet</em></td>
+      <td colspan="2"><em>Not supported yet</em></td>
     </tr>
   </tbody>
 </table>
