@@ -181,6 +181,59 @@ html {
   }
 }
 
+// On hover or keyboard focus, the `o11y` link unfolds into `observability`:
+// the `11` collapses while the eleven letters it stands for grow in its place.
+// Each part is a one-column inline grid whose track transitions between 0fr
+// and 1fr, which animates to the letters' natural width without hard-coding
+// it. Mid-transition, a fractional track fills only that fraction of the
+// grid's own width, so the text overflows its track and the grid clips it at
+// its edge instead. `min-width: 0` lets the track reach zero.
+.site-header-o11y {
+  white-space: nowrap;
+
+  .o11y-fold,
+  .o11y-unfold {
+    display: inline-grid;
+    overflow-x: clip;
+    transition:
+      grid-template-columns 0.35s ease-in-out,
+      opacity 0.35s ease-in-out;
+
+    > span {
+      min-width: 0;
+    }
+  }
+
+  .o11y-fold {
+    grid-template-columns: 1fr;
+  }
+
+  .o11y-unfold {
+    grid-template-columns: 0fr;
+    opacity: 0;
+  }
+
+  &:hover,
+  &:focus-visible {
+    .o11y-fold {
+      grid-template-columns: 0fr;
+      opacity: 0;
+    }
+
+    .o11y-unfold {
+      grid-template-columns: 1fr;
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .o11y-fold,
+    .o11y-unfold {
+      transition: none;
+    }
+  }
+}
+
 // Push Book's fixed left menu and right TOC down below our header.
 .book-menu .book-menu-content,
 .book-toc .book-toc-content {
