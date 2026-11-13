@@ -194,7 +194,8 @@ tests:
 
   # This chart's `image.repository` carries the registry host inline. The
   # config-reloader sidecar is on by default and the subchart renders it first,
-  # so both images are in play and both have to move.
+  # so both images are in play and both have to move. The tag has to move too:
+  # the inherited one carries upstream's `-distroless` suffix.
   - it: chainguard profile repoints Alertmanager, whose repository holds the host
     values:
       - ../profiles/registry/chainguard.values.yaml
@@ -202,7 +203,7 @@ tests:
     asserts:
       - matchRegex:
           path: spec.template.spec.containers[1].image
-          pattern: '^cgr\.dev/<ORG>/prometheus-alertmanager:'
+          pattern: '^cgr\.dev/<ORG>/prometheus-alertmanager:v[0-9.]+$'
       - matchRegex:
           path: spec.template.spec.containers[0].image
           pattern: '^cgr\.dev/<ORG>/prometheus-config-reloader:'
@@ -235,6 +236,16 @@ tests:
       - matchRegex:
           path: spec.template.spec.containers[0].image
           pattern: '^docker\.io/<ORG>/dhi-loki:'
+
+  # DHI spells the version without upstream's leading `v` as well.
+  - it: docker hardened images profile restates the Alertmanager tag as DHI spells it
+    values:
+      - ../profiles/registry/docker-hardened-images.values.yaml
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[1].image
+          pattern: '^docker\.io/<ORG>/dhi-alertmanager:\d+\.\d+\.\d+$'
 
   # A vendor whose tags are not plain semver needs `node-exporter.version` set
   # as well: the chart feeds `coalesce version image.tag Chart.AppVersion` to
@@ -310,6 +321,7 @@ tests:
           path: spec.template.spec.containers[0].image
           pattern: '^<REGISTRY>/(quay/prometheus-operator/prometheus-config-reloader|registry-k8s-io/metrics-server/metrics-server):'
 
+  # Like node-exporter's, Alertmanager's `-distroless` suffix survives a mirror.
   - it: mirror profile covers Alertmanager behind its reloader sidecar
     values:
       - ../profiles/registry/mirror.values.yaml
@@ -317,7 +329,7 @@ tests:
     asserts:
       - matchRegex:
           path: spec.template.spec.containers[1].image
-          pattern: '^<REGISTRY>/quay/prometheus/alertmanager:'
+          pattern: '^<REGISTRY>/quay/prometheus/alertmanager:v\d+\.\d+\.\d+-distroless$'
 
   # memcached composes the anchor with the chart's own `library/memcached`
   # default rather than being spelled out, so this pins that the two halves

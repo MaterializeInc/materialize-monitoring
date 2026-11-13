@@ -62,9 +62,9 @@
 # Loki's memcached pair used to be in that group and no longer is: 18.11.0 gave
 # both a `registry` key, so the anchors reach them.
 #
-# Note that `node-exporter.image.distroless` stays `true` here, unlike in the
-# hardened-image profiles. A mirror preserves upstream tags, so the
-# `-distroless` suffix it appends still resolves.
+# Note that `node-exporter.image.distroless` stays `true` here, and
+# Alertmanager keeps its `-distroless` tag, unlike in the hardened-image
+# profiles. A mirror preserves upstream tags, so the suffix still resolves.
 
 # Inert holder for the anchors. The umbrella chart ships no `values.schema.json`,
 # so an unrecognised top-level key is ignored rather than rejected.
