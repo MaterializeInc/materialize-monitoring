@@ -31,7 +31,7 @@ and for what has shipped, see the [Changelog](/materialize-monitoring/preview/re
 ## How it works
 
 * [Architecture](/materialize-monitoring/preview/renovate-kube-5-x/architecture/) — the umbrella chart, the components it bundles, and how telemetry moves between them.
-* [o11y Glossary](/materialize-monitoring/preview/renovate-kube-5-x/o11y-glossary/) — the vocabulary the rest of these pages assume.
+* [Observability glossary](/materialize-monitoring/preview/renovate-kube-5-x/o11y-glossary/) — the vocabulary the rest of these pages assume.
 
 ## By signal
 
