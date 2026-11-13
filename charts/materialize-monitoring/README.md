@@ -8657,7 +8657,8 @@ the version.
 
 The profiles under `profiles/registry/` repoint `repository`. The mirror
 profile keeps this tag. The Chainguard and Docker Hardened Images profiles
-restate it without the suffix, which neither vendor publishes.
+restate it without the suffix, which neither vendor publishes; DHI's also
+drops the leading `v`.
 </td>
     </tr>
     <tr>

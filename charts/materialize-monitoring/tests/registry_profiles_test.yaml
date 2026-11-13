@@ -237,14 +237,15 @@ tests:
           path: spec.template.spec.containers[0].image
           pattern: '^docker\.io/<ORG>/dhi-loki:'
 
-  - it: docker hardened images profile drops the Alertmanager distroless tag suffix
+  # DHI spells the version without upstream's leading `v` as well.
+  - it: docker hardened images profile restates the Alertmanager tag as DHI spells it
     values:
       - ../profiles/registry/docker-hardened-images.values.yaml
     template: ../charts/alertmanager/templates/statefulset.yaml
     asserts:
       - matchRegex:
           path: spec.template.spec.containers[1].image
-          pattern: '^docker\.io/<ORG>/dhi-alertmanager:v[0-9.]+$'
+          pattern: '^docker\.io/<ORG>/dhi-alertmanager:\d+\.\d+\.\d+$'
 
   # A vendor whose tags are not plain semver needs `node-exporter.version` set
   # as well: the chart feeds `coalesce version image.tag Chart.AppVersion` to
