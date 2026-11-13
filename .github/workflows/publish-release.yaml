@@ -76,7 +76,7 @@ jobs:
         with:
           shared-key: mz-monitoring-build
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5
       # Build the packaged chart .tgz — a gitignored build output — for chart
       # components, so the component's `artifacts` glob resolves for the release
       # and the tarball can be pushed to GHCR below. We package the committed
