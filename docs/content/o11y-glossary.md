@@ -1,5 +1,5 @@
 ---
-title: "o11y Glossary"
+title: "Observability Glossary"
 weight: 20
 ---
 

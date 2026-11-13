@@ -339,7 +339,7 @@ It cannot instrument what does not emit, and the gap between those two facts is 
 |---|---|
 | What is built, in flight, and planned next | [Roadmap](../reference/development/roadmap/) |
 | How the pieces fit together | [Architecture](../architecture/) |
-| What the vocabulary on these pages means | [o11y Glossary](../o11y-glossary/) |
+| What the vocabulary on these pages means | [Observability Glossary](../o11y-glossary/) |
 | What a consumer can rely on | [Stability Guarantees and Deprecation Policy](../reference/stability/) |
 | How to install it | [Getting Started](../getting-started/overview/) |
 | Why a larger piece is shaped the way it is | [Design Docs](../reference/development/design-docs/overview/) |

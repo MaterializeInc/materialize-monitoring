@@ -23,7 +23,7 @@ diagnosis honest.
   — the mirror, for when the *stack* is what is broken. **Indexed by symptom.**
 - [Logs and Events](../../../docs/content/logs-and-events/querying.md) — LogQL
   against this stack, and the label set that actually exists.
-- [o11y Glossary](../../../docs/content/o11y-glossary.md) — vocabulary, when a
+- [Observability Glossary](../../../docs/content/o11y-glossary.md) — vocabulary, when a
   term in a panel is doing more work than it looks.
 
 The docsite is also published as one file for exactly this purpose:
