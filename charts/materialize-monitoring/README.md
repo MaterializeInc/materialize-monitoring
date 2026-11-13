@@ -8637,7 +8637,7 @@ the StatefulSet, whose volumes do not follow; see
       <td class="helm-value-default"><pre>
 {
   "repository": "quay.io/prometheus/alertmanager",
-  "tag": "v0.35.0"
+  "tag": "v0.35.0-distroless"
 }</pre>
 </td>
       <td class="helm-value-desc">Alertmanager image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -8645,8 +8645,19 @@ the StatefulSet, whose volumes do not follow; see
 So Renovate bumps Alertmanager on its own cadence, with Alertmanager's own
 release notes, instead of only when a chart release happens to carry a new
 `appVersion`. Grafana is pinned the same way. This chart's `repository`
-carries the registry host; there is no separate `registry` key. The
-profiles under `profiles/registry/` repoint `repository` and keep this tag.
+carries the registry host; there is no separate `registry` key.
+
+The `-distroless` tag is upstream's image with no shell and no package
+manager. Nothing in this configuration needs a shell, and `amtool` is in
+the image, so `kubectl exec ... -- amtool` works. The image's default user
+is 65532; `securityContext` pins 65534, which owns the data volumes. The
+subchart has no `distroless` switch like `node-exporter.image.distroless`,
+so the suffix lives in `tag`; Renovate keeps a tag's suffix when it bumps
+the version.
+
+The profiles under `profiles/registry/` repoint `repository`. The mirror
+profile keeps this tag. The Chainguard and Docker Hardened Images profiles
+restate it without the suffix, which neither vendor publishes.
 </td>
     </tr>
     <tr>

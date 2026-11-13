@@ -35,6 +35,15 @@ set:
       endpoint: s3.amazonaws.com
       region: us-east-1
 tests:
+  # --- image ----------------------------------------------------------------
+  # The tag moves with Renovate, so this pins the image and variant, not the version.
+  - it: uses the pinned distroless image
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[1].image
+          pattern: '^quay\.io/prometheus/alertmanager:v\d+\.\d+\.\d+-distroless$'
+
   # --- high availability ----------------------------------------------------
 
   # Above one replica the subchart wires a peer per ordinal and the mesh

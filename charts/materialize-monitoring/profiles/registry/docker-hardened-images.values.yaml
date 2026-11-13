@@ -141,10 +141,11 @@ thanos:
           repository: "<ORG>/dhi-kubectl"
           # -dev, because this sidecar runs a shell script and curls the Ruler's
           # reload endpoint. The default DHI image carries no shell and would
-          # crash-loop. This is the one place in this file that overrides a tag,
-          # and it overrides the base chart's pinned version rather than the
-          # upstream default -- so it floats where everything else here is
-          # pinned. Pin it to a versioned `-dev` tag if your catalog carries one.
+          # crash-loop. This is one of two tags this file overrides
+          # (Alertmanager's is the other), and it overrides the base chart's
+          # pinned version rather than the upstream default -- so it floats
+          # where everything else here is pinned. Pin it to a versioned `-dev`
+          # tag if your catalog carries one.
           tag: "latest-dev"
 
 # --- Grafana -----------------------------------------------------------------
@@ -180,9 +181,15 @@ grafana-operator:
 # --- Alertmanager ------------------------------------------------------------
 # This chart's `image.repository` carries the registry host inline — it has no
 # separate `registry` key.
+#
+# **Restate the Alertmanager tag.** `values.yaml` pins upstream's `-distroless`
+# variant, a suffix DHI does not publish, so inheriting the tag names an image
+# that does not exist. This is the same Alertmanager version without the
+# suffix; move it with `alertmanager.image.tag`.
 alertmanager:
   image:
     repository: "docker.io/<ORG>/dhi-alertmanager"
+    tag: "v0.35.0"
   configmapReload:
     image:
       repository: "docker.io/<ORG>/dhi-prometheus-config-reloader"
