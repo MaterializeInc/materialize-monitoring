@@ -307,5 +307,5 @@ A deployment that already runs its own Prometheus can skip the gateway entirely 
 - [Thanos Compactor](https://thanos.io/tip/components/compact.md/) (official): compaction levels, vertical compaction and downsampling.
 - [Alloy clustering](https://grafana.com/docs/alloy/latest/get-started/clustering/) (official).
 - [Metrics pipeline reference](../../reference/development/pipelines/metrics/): the gateway's pipeline, component by component.
-- [Observability Glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
+- [Observability glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
 

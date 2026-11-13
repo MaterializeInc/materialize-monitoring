@@ -31,7 +31,7 @@ and for what has shipped, see the [Changelog](/materialize-monitoring/preview/cl
 ## How it works
 
 * [Architecture](/materialize-monitoring/preview/claude-observability-glossary-title/architecture/) — the umbrella chart, the components it bundles, and how telemetry moves between them.
-* [Observability Glossary](/materialize-monitoring/preview/claude-observability-glossary-title/o11y-glossary/) — the vocabulary the rest of these pages assume.
+* [Observability glossary](/materialize-monitoring/preview/claude-observability-glossary-title/o11y-glossary/) — the vocabulary the rest of these pages assume.
 
 ## By signal
 

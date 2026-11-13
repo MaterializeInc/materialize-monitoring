@@ -36,7 +36,7 @@ and for what has shipped, see the [Changelog]({{< relref "reference/changelog.md
 ## How it works
 
 * [Architecture]({{< relref "architecture.md" >}}) — the umbrella chart, the components it bundles, and how telemetry moves between them.
-* [Observability Glossary]({{< relref "o11y-glossary.md" >}}) — the vocabulary the rest of these pages assume.
+* [Observability glossary]({{< relref "o11y-glossary.md" >}}) — the vocabulary the rest of these pages assume.
 
 ## By signal
 
@@ -418,7 +418,7 @@ It cannot instrument what does not emit, and the gap between those two facts is 
 |---|---|
 | What is built, in flight, and planned next | [Roadmap](../reference/development/roadmap/) |
 | How the pieces fit together | [Architecture](../architecture/) |
-| What the vocabulary on these pages means | [Observability Glossary](../o11y-glossary/) |
+| What the vocabulary on these pages means | [Observability glossary](../o11y-glossary/) |
 | What a consumer can rely on | [Stability Guarantees and Deprecation Policy](../reference/stability/) |
 | How to install it | [Getting Started](../getting-started/overview/) |
 | Why a larger piece is shaped the way it is | [Design Docs](../reference/development/design-docs/overview/) |
@@ -612,7 +612,7 @@ See [Alert Architecture](../alerting/architecture/) for the full design.
 
 
 --------------------------------------------------------------------------------
-title: "Observability Glossary"
+title: "Observability glossary"
 url: https://materializeinc.github.io/materialize-monitoring/preview/claude-observability-glossary-title/o11y-glossary/index.md
 --------------------------------------------------------------------------------
 
@@ -622,7 +622,7 @@ Use h5 for term headings and provide stable anchors.
 Interlink terms as used.
 -->
 
-# Glossary of Observability Terms
+# Glossary of observability terms
 
 A reference for the vocabulary you'll see across these docs.
 The audience is a Materialize customer or operator: comfortable with SQL, conversant in DBA terminology, working knowledge of Kubernetes.
@@ -2767,7 +2767,7 @@ A deployment that already runs its own Prometheus can skip the gateway entirely 
 - [Thanos Compactor](https://thanos.io/tip/components/compact.md/) (official): compaction levels, vertical compaction and downsampling.
 - [Alloy clustering](https://grafana.com/docs/alloy/latest/get-started/clustering/) (official).
 - [Metrics pipeline reference](../../reference/development/pipelines/metrics/): the gateway's pipeline, component by component.
-- [Observability Glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
+- [Observability glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
 
 
 --------------------------------------------------------------------------------
@@ -5205,7 +5205,7 @@ Cross-cutting operational guidance (upgrades, securing, tuning) lives under [Ope
 - [Loki hash rings](https://grafana.com/docs/loki/latest/get-started/hash-rings/) — ring membership and replication in detail.
 - [Loki storage](https://grafana.com/docs/loki/latest/operations/storage/) — object storage, the index, and retention.
 - [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative gateway/agent pipeline definition.
-- [Observability Glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
+- [Observability glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
 
 
 --------------------------------------------------------------------------------

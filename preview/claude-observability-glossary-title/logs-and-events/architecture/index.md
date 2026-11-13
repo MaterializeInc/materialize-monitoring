@@ -343,5 +343,5 @@ Cross-cutting operational guidance (upgrades, securing, tuning) lives under [Ope
 - [Loki hash rings](https://grafana.com/docs/loki/latest/get-started/hash-rings/) — ring membership and replication in detail.
 - [Loki storage](https://grafana.com/docs/loki/latest/operations/storage/) — object storage, the index, and retention.
 - [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative gateway/agent pipeline definition.
-- [Observability Glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
+- [Observability glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
 
