@@ -35,7 +35,7 @@ and for what has shipped, see the [Changelog]({{< relref "reference/changelog.md
 ## How it works
 
 * [Architecture]({{< relref "architecture.md" >}}) — the umbrella chart, the components it bundles, and how telemetry moves between them.
-* [o11y Glossary]({{< relref "o11y-glossary.md" >}}) — the vocabulary the rest of these pages assume.
+* [Observability glossary]({{< relref "o11y-glossary.md" >}}) — the vocabulary the rest of these pages assume.
 
 ## By signal
 
