@@ -31942,7 +31942,6 @@ Designed in [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byo
 | Item | Status |
 |---|---|
 | [DEP-220] Sanitize telemetry before control-plane egress | ⬜ |
-| [DEP-236] A trust bundle for a private CA: the roots a corporate proxy or an on-premise object store needs, merged with the internal issuer's | ⬜ |
 | [DEP-287] `oauth2.tls` on the destination schema: certificate-authenticated token exchange, shared with call-home | ⬜ |
 | [DEP-224] A Day 1 dependencies dashboard: are the Materialize and observability prerequisites satisfied | ⬜ |
 | **BYOC · Observability implementation** | Not yet scoped |
@@ -32165,7 +32164,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-224]: https://linear.app/materializeinc/issue/DEP-224
 [DEP-225]: https://linear.app/materializeinc/issue/DEP-225
 [DEP-233]: https://linear.app/materializeinc/issue/DEP-233
-[DEP-236]: https://linear.app/materializeinc/issue/DEP-236
 [DEP-249]: https://linear.app/materializeinc/issue/DEP-249
 [DEP-251]: https://linear.app/materializeinc/issue/DEP-251
 [DEP-252]: https://linear.app/materializeinc/issue/DEP-252
