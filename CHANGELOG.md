@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Container Images v0.11.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.10.0 (Unreleased)
 
 _Changes Pending_
@@ -56,9 +60,17 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Container Images v0.10.0 (Unreleased)
+## Container Images v0.10.0
 
-_Changes Pending_
+* Update dependency grafana/alloy to v1.22.0
+    * [materialize-monitoring#741](https://github.com/MaterializeInc/materialize-monitoring/pull/741)
+    * [`v1.22.0`](https://redirect.github.com/grafana/alloy/releases/tag/v1.22.0)
+* Update gcr.io/distroless/base-debian13 Docker digest to 0e48b9b
+    * [materialize-monitoring#729](https://github.com/MaterializeInc/materialize-monitoring/pull/729)
+* Update gcr.io/distroless/base-debian13 Docker digest to ca90dc2
+    * [materialize-monitoring#698](https://github.com/MaterializeInc/materialize-monitoring/pull/698)
+* Update debian:13 Docker digest to 9c6e381
+    * [materialize-monitoring#696](https://github.com/MaterializeInc/materialize-monitoring/pull/696)
 
 ## mzmon-lib (shared library) v0.15.0
 
