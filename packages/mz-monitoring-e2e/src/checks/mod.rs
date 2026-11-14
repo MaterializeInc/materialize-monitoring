@@ -22,5 +22,6 @@ pub mod grafana;
 pub mod kube_state;
 pub mod loki;
 pub mod node;
+pub mod object_storage;
 pub mod thanos;
 pub mod tls;

@@ -28,8 +28,8 @@ use crate::cluster::{ServiceTarget, encode};
 use crate::ctx::Ctx;
 use crate::retry::retry_until;
 
-const QUERY_SERVICE: &str = "thanos-query";
-const QUERY_PORT: u16 = 9090;
+pub(crate) const QUERY_SERVICE: &str = "thanos-query";
+pub(crate) const QUERY_PORT: u16 = 9090;
 
 /// Thanos Query answers.
 ///

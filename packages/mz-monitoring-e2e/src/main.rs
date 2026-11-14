@@ -322,6 +322,15 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         thanos,
         checks::thanos::typed_names_round_trip,
     ));
+    // Read through Thanos, so it needs Thanos, which is also the component
+    // that always uses a bucket.
+    trials.push(trial(
+        runtime,
+        ctx,
+        "object_storage::reachable",
+        thanos,
+        checks::object_storage::reachable,
+    ));
 
     // Alertmanager. Gated on it running in the release namespace, which is
     // where every Service this suite dials is looked up; under split-namespace

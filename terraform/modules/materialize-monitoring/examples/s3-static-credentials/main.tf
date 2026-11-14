@@ -56,6 +56,10 @@ module "monitoring" {
     # rejects one outright — and reads `http://` as "use plain HTTP", so this one
     # value also selects the transport. No region: the store is not AWS, so there
     # is no regional host to derive and nothing to sign against a region.
+    #
+    # Plain HTTP here so `http_endpoint_bare_and_insecure` keeps its case. A
+    # store serving its own PKI is named `https://` and paired with
+    # `trust_bundle_ca_pem` below; tier 2 runs that shape against rustfs.
     endpoint = "http://objectstore.example.internal:9000"
 
     # No service-account annotations. That is the point of this example — the
@@ -64,4 +68,14 @@ module "monitoring" {
 
   object_storage_access_key_id     = "EXAMPLEACCESSKEYID"
   object_storage_secret_access_key = "EXAMPLEsecretaccesskeyEXAMPLEsecret12345"
+
+  # The CA a self-hosted store's certificate chains to, which no image trusts.
+  # Declared so `make terraform-render` proves the bundle reaches the ConfigMap
+  # the chart mounts, and that every pod mounting it rolls when it changes. A
+  # placeholder, not a parseable certificate: nothing here verifies against it.
+  trust_bundle_ca_pem = <<-EOT
+    -----BEGIN CERTIFICATE-----
+    EXAMPLEPLACEHOLDERNOTAREALCERTIFICATE
+    -----END CERTIFICATE-----
+  EOT
 }

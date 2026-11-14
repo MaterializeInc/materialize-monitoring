@@ -79,9 +79,15 @@ rustfs stands in for S3 and CNPG for RDS/Cloud SQL. It does not call the monitor
 
 It composes through the substrate's **state file** rather than instantiating it as a child module, because the substrate configures its own providers to stay applyable alone, and a child module carrying provider blocks cannot be cleanly removed. Hence two applies; `make e2e-tier2` runs both.
 
-**What this proves that tier 1 cannot:** the object-storage paths. Tier 1 runs Loki on a local filesystem and no Thanos at all, so the entire storage surface — Loki's S3 chunk client, the Thanos objstore config, the static-credential wiring — is unexercised there. It is also the only tier where the suite's five Thanos assertions run rather than report `ignored`.
+**What this proves that tier 1 cannot:** the object-storage paths. Tier 1 runs Loki on a local filesystem and no Thanos at all, so the entire storage surface — Loki's S3 chunk client, the Thanos objstore config, the static-credential wiring, the trust bundle — is unexercised there. It is also the only tier where the suite's Thanos and object-storage assertions run rather than report `ignored`.
 
 Credentials go in through `object_storage_access_key_id` / `object_storage_secret_access_key`, the module's first-class static-credential path — not `additional_values`. That is deliberate: a tier-2 root wired through the escape hatch would validate a composition no customer uses, while this exercises exactly the path a deployment without workload identity takes in production.
+
+**rustfs serves HTTPS with a certificate from a CA only the substrate knows**, the shape an on-premise store presents.
+The substrate generates the CA with the `tls` provider and outputs it, and the composition passes it to `trust_bundle_ca_pem`, so Loki and Thanos reach their buckets only through the [trust bundle](../../docs/content/operating/securing.md#trust-a-private-ca).
+`object_storage::reachable` asserts that every component that tried its bucket has succeeded at least once.
+It reads the objstore client's counters rather than waiting for data, because a Receive upload or a Loki chunk flush takes longer than a run.
+The chart's rustfs probes are plain HTTP and can't reach a TLS listener, so the substrate turns them off, and the bucket Job's retries stand in for readiness.
 
 **Tier 2 runs mTLS phase 3 by default.** The substrate installs cert-manager, `certificates_enabled` follows that, and the composition layers the chart's own `mtls.values.yaml`, `mtls-phase2.values.yaml` and `mtls-phase3.values.yaml` — the shipped profiles rather than a copy, so a change to one is caught here instead of drifting.
 All three at once, deliberately: the phases exist to make a *rollout* order-independent, which is a live-cluster concern, and a fresh install has no running writers to strand.

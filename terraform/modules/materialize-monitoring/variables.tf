@@ -366,6 +366,28 @@ variable "object_storage_secret_access_key" {
   sensitive   = true
 }
 
+variable "trust_bundle_ca_pem" {
+  description = <<-EOT
+    PEM certificates of CAs to trust for outbound TLS, in addition to the images' own roots. Use it
+    for an object store, a destination, or an Alertmanager receiver whose certificate comes from a
+    private CA, or that sits behind a TLS-intercepting proxy, rather than turning verification off.
+
+    The module writes it to the `mzmon-trust-bundle` ConfigMap, under `ca.crt`, before it installs
+    the release. Loki, Thanos, both Alloy roles, and Alertmanager load it alongside their images'
+    roots, and roll when it changes. In-cluster TLS between components still trusts only the
+    internal CA. Null creates no ConfigMap. To supply the bundle another way, such as from a
+    trust-manager `Bundle`, leave this null. See
+    https://materializeinc.github.io/materialize-monitoring/operating/securing/#trust-a-private-ca.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.trust_bundle_ca_pem == null || can(regex("-----BEGIN CERTIFICATE-----", var.trust_bundle_ca_pem))
+    error_message = "trust_bundle_ca_pem must hold at least one PEM certificate (-----BEGIN CERTIFICATE-----)."
+  }
+}
+
 # ==============================================================================
 # Extra metrics destinations
 # ==============================================================================
