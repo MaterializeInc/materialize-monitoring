@@ -17,6 +17,7 @@ placeholders:
 - __mzmon_consensus_cloudsql__
 - __mzmon_consensus_postgres__
 - __mzmon_core_workloads__
+- __mzmon_chart_version__
 - __mzmon_consensus_rds__
 - __mzmon_sql_prefix__
 capabilities:
@@ -35,6 +36,8 @@ capabilities:
   loki:
     derived: true
   alloy:
+    derived: true
+  thanos:
     derived: true
   cloudwatch:
     derived: true
@@ -1383,3 +1386,104 @@ records:
     requires:
     - postgres-exporter
     minImportance: extended
+  "mzmon_heartbeat/mzmon:heartbeat":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat
+    record: mzmon:heartbeat
+    labels:
+      chart_version: __mzmon_chart_version__
+    requires:
+    - thanos
+  "mzmon_heartbeat_kube_state_metrics/mzmon:cluster_created_timestamp_seconds":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_kube_state_metrics
+    record: mzmon:cluster_created_timestamp_seconds
+    labels: {}
+    requires:
+    - kube-state-metrics
+    - thanos
+    minImportance: diagnostic
+  "mzmon_heartbeat_kube_state_metrics/mzmon:environment_info":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_kube_state_metrics
+    record: mzmon:environment_info
+    labels: {}
+    requires:
+    - kube-state-metrics
+    - thanos
+    minImportance: essential
+  "mzmon_heartbeat_kube_state_metrics/mzmon:build_info:count":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_kube_state_metrics
+    record: mzmon:build_info:count
+    labels:
+      component: kubelet
+    requires:
+    - kube-state-metrics
+    - thanos
+    minImportance: essential
+  "mzmon_heartbeat_materialize/mzmon:build_info:count":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_materialize
+    record: mzmon:build_info:count
+    labels:
+      component: environmentd
+    requires:
+    - materialize
+    - thanos
+    minImportance: diagnostic
+  "mzmon_heartbeat_alloy/mzmon:build_info:count":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_alloy
+    record: mzmon:build_info:count
+    labels:
+      component: alloy
+    requires:
+    - alloy
+    - thanos
+    minImportance: essential
+  "mzmon_heartbeat_loki/mzmon:build_info:count":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_loki
+    record: mzmon:build_info:count
+    labels:
+      component: loki
+    requires:
+    - loki
+    - thanos
+    minImportance: diagnostic
+  "mzmon_heartbeat_node_exporter/mzmon:build_info:count":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_node_exporter
+    record: mzmon:build_info:count
+    labels:
+      component: node-exporter
+    requires:
+    - node-exporter
+    - thanos
+    minImportance: diagnostic
+  "mzmon_heartbeat_thanos/mzmon:build_info:count":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_thanos
+    record: mzmon:build_info:count
+    labels:
+      component: thanos
+    requires:
+    - thanos
+    minImportance: essential
+  "mzmon_heartbeat_thanos/mzmon:rules:count":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_thanos
+    record: mzmon:rules:count
+    labels: {}
+    requires:
+    - thanos
+    minImportance: extended
+  "mzmon_heartbeat_thanos/mzmon:rule_evaluation_failures:rate5m":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_thanos
+    record: mzmon:rule_evaluation_failures:rate5m
+    labels: {}
+    requires:
+    - thanos
+    minImportance: essential

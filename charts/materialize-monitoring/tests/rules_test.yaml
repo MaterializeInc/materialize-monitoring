@@ -40,12 +40,12 @@ templates:
 tests:
   # --- what installs --------------------------------------------------------
 
-  # Three alert files and the ext-consensus recording rules.
+  # Three alert files, the ext-consensus recording rules, and the heartbeat.
   - it: installs the vetted default set as PrometheusRules
     template: templates/alerts/prometheusrules.yaml
     asserts:
       - hasDocuments:
-          count: 4
+          count: 5
       - isKind:
           of: PrometheusRule
       - equal:
@@ -173,7 +173,7 @@ tests:
     asserts:
       # One PrometheusRule per PromQL registry file.
       - hasDocuments:
-          count: 5
+          count: 6
 
   # --- placeholders ---------------------------------------------------------
 
@@ -395,6 +395,67 @@ tests:
           pattern: "common-alerts/#clusterd-error-kill$"
 
   # --- recording rules ------------------------------------------------------
+
+  # The heartbeat installs with the bundled Thanos, whose ruler evaluates it,
+  # with this chart's own version in place of the placeholder.
+  - it: records the heartbeat with the chart's version
+    template: templates/alerts/prometheusrules.yaml
+    chart:
+      version: 9.8.7
+    documentSelector:
+      path: metadata.name
+      value: mzmon-mzmon-heartbeat
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: recording-rules
+      - equal:
+          path: spec.groups[?(@.name == "mzmon_heartbeat")].rules[?(@.record == "mzmon:heartbeat")].labels.chart_version
+          value: 9.8.7
+      - equal:
+          path: spec.groups[?(@.name == "mzmon_heartbeat")].rules[?(@.record == "mzmon:heartbeat")].expr
+          value: vector(1)
+      # Each component's group installs where the chart collects that component.
+      - exists:
+          path: spec.groups[?(@.name == "mzmon_heartbeat_kube_state_metrics")].rules[?(@.record == "mzmon:cluster_created_timestamp_seconds")]
+      - exists:
+          path: spec.groups[?(@.name == "mzmon_heartbeat_thanos")].rules[?(@.record == "mzmon:rules:count")]
+      - equal:
+          path: spec.groups[?(@.name == "mzmon_heartbeat_alloy")].rules[?(@.record == "mzmon:build_info:count")].labels.component
+          value: alloy
+
+  # A component the chart doesn't collect takes its own series with it and
+  # leaves the rest of the heartbeat.
+  - it: leaves a component's heartbeat group out where the chart does not collect it
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      kube-state-metrics.enabled: false
+      loki.monitoring.serviceMonitor.enabled: false
+    documentSelector:
+      path: metadata.name
+      value: mzmon-mzmon-heartbeat
+    asserts:
+      - notExists:
+          path: spec.groups[?(@.name == "mzmon_heartbeat_kube_state_metrics")]
+      - notExists:
+          path: spec.groups[?(@.name == "mzmon_heartbeat_loki")]
+      - exists:
+          path: spec.groups[?(@.name == "mzmon_heartbeat")].rules[?(@.record == "mzmon:heartbeat")]
+      - exists:
+          path: spec.groups[?(@.name == "mzmon_heartbeat_alloy")]
+
+  # Without the bundled Thanos's metrics there is no ruler of the chart's to
+  # evaluate the heartbeat, so none of it installs.
+  - it: installs no heartbeat without the bundled Thanos
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      thanos.global.serviceMonitor.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 4
+      - notEqual:
+          path: metadata.name
+          value: mzmon-mzmon-heartbeat
 
   # The persist adapter reads Materialize's own calls, so it needs nothing
   # configured and nothing selected.

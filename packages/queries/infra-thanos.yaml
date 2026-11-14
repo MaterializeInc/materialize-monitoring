@@ -2186,8 +2186,9 @@ queries:
 
 metricOverrides:
   # The verdict row. A deployment trimmed to `essential` should still be able to
-  # say whether the metrics store is working.
-  - metricPattern: "ALERTS|thanos_compact_halted|thanos_build_info|prometheus_rule_evaluation_failures_total|prometheus_rule_group_last_evaluation_timestamp_seconds"
+  # say whether the metrics store is working. `ALERTS` is in the `alerts` tier,
+  # which `essential` includes, so it needs no override.
+  - metricPattern: "thanos_compact_halted|thanos_build_info|prometheus_rule_evaluation_failures_total|prometheus_rule_group_last_evaluation_timestamp_seconds"
     importance: essential
     priority: 10
 

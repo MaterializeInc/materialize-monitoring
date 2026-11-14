@@ -1727,7 +1727,7 @@ The following table lists each field, the types it applies to, and its default:
 | `logs.sampleRate` | `loki`, `otlp`, `datadog`, `s3` | `1` | Fraction of entries kept, above 0 and at most 1. |
 | `logs.rateLimit` | `loki`, `otlp`, `datadog`, `s3` | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
 | `metrics.enabled` | `otlp`, `googleCloud`, `datadog`, `prometheus` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
-| `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
+| `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `heartbeat` to `all`. `heartbeat` and `alerts` send only the call-home heartbeat, and with `alerts`, `ALERTS`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
 | `compression` | `otlp`, `googleCloud`, `s3` | `gzip` | Request or object compression; `s3` also takes `none`. |
 | `project` / `location` | `googleCloud` | detected on GKE | The project and location every series is filed under. Required off GKE. |
@@ -3935,8 +3935,9 @@ read, and recording one costs a few series. `selected`, `disabled` and
 | `egress-gateway` | A dedicated egress-gateway node pool, identified by a `workload` label |
 
 The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
-`kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
-present when this chart runs the component and collects its metrics, and
+`kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` and
+`thanos`, each present when this chart runs the component and collects its
+metrics, and
 `cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the
 gateway runs that provider pull (`pipeline.metrics.provider.*`). List one
 here as well when something outside the chart provides it — your own

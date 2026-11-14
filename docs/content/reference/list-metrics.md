@@ -22,6 +22,12 @@ Metrics are grouped by "metricImportance" levels (mzmon-specific).
 These levels guide which metrics are prioritized in
 metric stores which have limited capacity.
 
+Two tiers sit above **essential**, and only series the chart's own rules write belong to them.
+The **heartbeat** tier is the call-home heartbeat: a fixed record of what an install runs and whether its monitoring stack works.
+The **alerts** tier is `ALERTS`, the state of every pending or firing alert.
+A destination at `alerts` receives both, and every wider tier includes both.
+For what the heartbeat carries, see [What the heartbeat sends](../../operating/call-home/#heartbeat).
+
 The **essential** metrics are the set of metrics that
 are critical and you would always want to have available.
 These are used in alerting.
@@ -41,6 +47,14 @@ provide an **all** min-importance for including
 absolutely everything.
 This is recommended if you have cheaper metric storage
 like our bundled Thanos provider.
+
+## Heartbeat series
+
+{{% list-metrics importance="heartbeat" %}}
+
+## Alert state
+
+{{% list-metrics importance="alerts" %}}
 
 ## Essential Metrics
 

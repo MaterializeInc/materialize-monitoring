@@ -20,6 +20,15 @@
 //! that references a metric is `essential`, the metric is `essential`, because
 //! you cannot drop a metric an alert depends on. `metricOverrides` can then set a
 //! metric's importance outright (see [`crate::query::registry`]).
+//!
+//! Above `essential` sit two **reserved** tiers, the narrowest a destination can
+//! take. `heartbeat` holds the recorded series a rule declares as part of the
+//! call-home heartbeat, and `alerts` holds `ALERTS`. They are what the call-home
+//! `heartbeat` and `alerts` levels send, and they nest like every other tier:
+//! `alerts` includes `heartbeat`, and `essential` includes both. Nothing a query
+//! says can put a metric in either, so a query cannot widen what those levels
+//! send: a file's hint and a `metricOverrides` entry take only the four
+//! [`QUERY_LEVELS`].
 
 use std::fmt;
 use std::str::FromStr;
@@ -28,12 +37,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::query::error::Error;
 
-/// How important a metric is. Ordered most-important → least: `essential`
-/// (powers alerts) > `recommended` (powers dashboards) > `extended` (optional /
+/// How important a metric is. Ordered most-important → least: `heartbeat` (the
+/// call-home heartbeat record) > `alerts` (alert state) > `essential` (powers
+/// alerts) > `recommended` (powers dashboards) > `extended` (optional /
 /// experimental) > `diagnostic` (debugging and deep analysis).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Importance {
+    Heartbeat,
+    Alerts,
     Essential,
     Recommended,
     Extended,
@@ -42,17 +54,28 @@ pub enum Importance {
 
 /// Importance levels from least to most important. [`Ord`] compares by position
 /// here, so `a.max(b)` is the greatest-wins roll-up and sorting descending puts
-/// `essential` first.
-pub const IMPORTANCE_ORDER: [Importance; 4] = [
+/// `heartbeat` first.
+pub const IMPORTANCE_ORDER: [Importance; 6] = [
     Importance::Diagnostic,
     Importance::Extended,
     Importance::Recommended,
     Importance::Essential,
+    Importance::Alerts,
+    Importance::Heartbeat,
+];
+
+/// The levels a query's importance can take, from a file's
+/// `metricImportanceHint` or a `metricOverrides` entry, most important first.
+pub const QUERY_LEVELS: [Importance; 4] = [
+    Importance::Essential,
+    Importance::Recommended,
+    Importance::Extended,
+    Importance::Diagnostic,
 ];
 
 impl Importance {
     /// This level's position in [`IMPORTANCE_ORDER`] (0 = least important,
-    /// 3 = `essential`).
+    /// 5 = `heartbeat`).
     pub fn rank(self) -> usize {
         IMPORTANCE_ORDER
             .iter()
@@ -60,9 +83,17 @@ impl Importance {
             .expect("every Importance variant is in IMPORTANCE_ORDER")
     }
 
+    /// Whether this is one of the two tiers only the series the rules produce
+    /// can hold, `heartbeat` and `alerts`.
+    pub fn is_reserved(self) -> bool {
+        !QUERY_LEVELS.contains(&self)
+    }
+
     /// The kebab-case wire value (matches the schema enum).
     pub fn as_str(self) -> &'static str {
         match self {
+            Importance::Heartbeat => "heartbeat",
+            Importance::Alerts => "alerts",
             Importance::Essential => "essential",
             Importance::Recommended => "recommended",
             Importance::Extended => "extended",
@@ -91,6 +122,8 @@ impl FromStr for Importance {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "heartbeat" => Ok(Importance::Heartbeat),
+            "alerts" => Ok(Importance::Alerts),
             "essential" => Ok(Importance::Essential),
             "recommended" => Ok(Importance::Recommended),
             "extended" => Ok(Importance::Extended),
@@ -122,7 +155,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn essential_is_the_most_important() {
+    fn the_reserved_tiers_sit_above_essential() {
+        assert!(Importance::Heartbeat > Importance::Alerts);
+        assert!(Importance::Alerts > Importance::Essential);
+        assert!(Importance::Heartbeat.is_reserved());
+        assert!(Importance::Alerts.is_reserved());
+        assert!(QUERY_LEVELS.iter().all(|i| !i.is_reserved()));
+    }
+
+    #[test]
+    fn essential_is_the_most_important_query_level() {
+        assert_eq!(QUERY_LEVELS[0], Importance::Essential);
         assert!(Importance::Essential > Importance::Recommended);
         assert!(Importance::Recommended > Importance::Extended);
         assert!(Importance::Extended > Importance::Diagnostic);

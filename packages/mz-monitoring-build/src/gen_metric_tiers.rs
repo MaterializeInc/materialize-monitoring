@@ -39,13 +39,18 @@ const HEADER: &str = "\
 # one part of the Cloud platform uses, and it does not exist on self-managed.
 # Other names are literal.
 #
-# The series the Thanos ruler writes are listed too: each recorded name, such as
-# `ext:consensus_up`, at `recommended` unless a query reading it is more
-# important, and `ALERTS` at `essential`. A recorded name's tier says nothing
-# about the metrics its rule reads, which keep their own. The ruler reads those
-# from Thanos, so they must reach the `thanos` destination for the series to be
+# The series the Thanos ruler writes are listed too. A recorded name, such as
+# `ext:consensus_up`, is at the tier its rule declares, or `recommended` unless a
+# query reading it is more important. A recorded name's tier says nothing about
+# the metrics its rule reads, which keep their own. The ruler reads those from
+# Thanos, so they must reach the `thanos` destination for the series to be
 # recorded at all, even where another destination receives only the recorded
 # series.
+#
+# `heartbeat` and `alerts` are reserved for those series, and no query can put a
+# metric in either. `heartbeat` lists the records that make up the call-home
+# heartbeat, and `alerts` lists `ALERTS`. A destination at `alerts` takes both,
+# and one at `essential` takes both as well.
 ";
 
 /// Arguments for the `gen-metric-tiers` command.
@@ -83,8 +88,11 @@ pub fn gen_metric_tiers(args: GenMetricTiersArgs) -> anyhow::Result<()> {
         .with_context(|| format!("writing {}", args.out.display()))?;
 
     eprintln!(
-        "wrote {} metrics ({} essential, {} recommended, {} extended, {} diagnostic) -> {}",
+        "wrote {} metrics ({} heartbeat, {} alerts, {} essential, {} recommended, {} extended, \
+         {} diagnostic) -> {}",
         tiers.len(),
+        tiers.heartbeat.len(),
+        tiers.alerts.len(),
         tiers.essential.len(),
         tiers.recommended.len(),
         tiers.extended.len(),
