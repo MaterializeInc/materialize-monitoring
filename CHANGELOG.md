@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.17.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.10.0 (Unreleased)
 
 _Changes Pending_
@@ -52,9 +56,85 @@ _Changes Pending_
 
 _Changes Pending_
 
-## mzmon-lib (shared library) v0.16.0 (Unreleased)
+## mzmon-lib (shared library) v0.16.0
 
-_Changes Pending_
+* Update Rust crate rustls-pki-types to v1.16.0
+    * [materialize-monitoring#736](https://github.com/MaterializeInc/materialize-monitoring/pull/736)
+* Update Rust crate zip to v9.5.0
+    * [materialize-monitoring#704](https://github.com/MaterializeInc/materialize-monitoring/pull/704)
+    * [`v9.5.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#950---2026-11-08)
+    * [`v9.4.2`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#942---2026-11-07)
+    * [`v9.4.1`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#941---2026-11-06)
+    * [`v9.4.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#940---2026-11-05)
+* Update Rust crate uuid to v1.29.2
+    * [materialize-monitoring#726](https://github.com/MaterializeInc/materialize-monitoring/pull/726)
+    * [`v1.29.2`](https://redirect.github.com/uuid-rs/uuid/releases/tag/v1.29.2)
+* Default Thanos Receive to replication factor 2
+    * [materialize-monitoring#727](https://github.com/MaterializeInc/materialize-monitoring/pull/727)
+    * Thanos Receive's default replication factor is 2, down from 3, in the base values and every shipped profile. Thanos gives a factor of 2 a write quorum of 1, so Receive still survives the loss of one pod, and each pod holds two thirds of the series instead of all of them. The upgrade rolls the Receive StatefulSet one pod at a time. To keep a factor of 3, set `thanos.receive.extraArgs` to `["--receive.replication-factor=3"]`, restating any TLS flags your install carries. See "Thanos Receive: replication factor 2" on the upgrading page.
+    * The render-time check no longer warns at replication factor 2, and its PodDisruptionBudget check uses Thanos's quorum of 1 at that factor.
+* Update Rust crate jsonschema to 0.61.0
+    * [materialize-monitoring#721](https://github.com/MaterializeInc/materialize-monitoring/pull/721)
+    * [`v0.61.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0610---2026-11-08)
+* Update Rust crate serde-saphyr to v2.1.1
+    * [materialize-monitoring#703](https://github.com/MaterializeInc/materialize-monitoring/pull/703)
+    * [`v2.1.1`](https://redirect.github.com/bourumir-wyngs/serde-saphyr/blob/HEAD/CHANGELOG.md#211)
+    * [`v2.1.0`](https://redirect.github.com/bourumir-wyngs/serde-saphyr/blob/HEAD/CHANGELOG.md#210)
+* Update Rust crate uuid to v1.29.1
+    * [materialize-monitoring#710](https://github.com/MaterializeInc/materialize-monitoring/pull/710)
+    * [`v1.29.1`](https://redirect.github.com/uuid-rs/uuid/releases/tag/v1.29.1)
+* Add an s3 log destination for write-once archives
+    * [materialize-monitoring#702](https://github.com/MaterializeInc/materialize-monitoring/pull/702)
+    * Added the `s3` type to `pipeline.destinations`. It archives logs to an S3 bucket or S3-compatible store through `otelcol.exporter.awss3`, and with Object Lock in compliance mode on the bucket, the archive is write-once. See "Archive logs to write-once storage" in Storing Logs.
+    * Added `profiles/s3-worm.values.yaml`, which archives the gateway's logs to an S3 bucket with Object Lock, and a "Log compliance" page in Production best practices.
+    * Added the `log-archive-drops` alert (`warning`, in the default set). It fires when an `s3` destination drops log records.
+* Add secret-filter shadow mode behind a chart value (DEP-313)
+    * [materialize-monitoring#690](https://github.com/MaterializeInc/materialize-monitoring/pull/690)
+    * New value `pipeline.logging.secretFilter.mode`, `off` (default), `shadow`, or `on`, and a matching Terraform input `secret_filter`. `on` turns the gateway's secret filter on. `shadow` runs it in shadow mode. Shadow mode scans a copy of every log line and stores only the lines the filter would have redacted, already redacted, with the label `secretfilter="shadow"`. Nothing else that's stored changes. Shadow mode stores at most 100 shadow lines per second from each namespace, and they don't count against the gateway's other rate limits. Shadow mode costs the same CPU as turning the filter on, and nothing while it's off. For how to use it, see **Production best practices > Secret filtering**.
+    * The `infra-alloy` dashboard's guard-drops panel treats everything the shadow branch drops as deliberate.
+* Add the prometheus destination type and fold prometheusRemoteWrite onto it
+    * [materialize-monitoring#692](https://github.com/MaterializeInc/materialize-monitoring/pull/692)
+    * Added the `prometheus` type to `pipeline.destinations`. The bundled Thanos Receive is the default entry `thanos`.
+    * **Deprecated:** `pipeline.metrics.gateway.destination.prometheusRemoteWrite`. Entries still apply as `prometheus` destinations and warn at render. Move each to `pipeline.destinations.<name>` with `type: prometheus`, with `minMetricImportance` under `metrics`; see "Upgrading from `prometheusRemoteWrite`" in Storing Metrics.
+    * The bundled Thanos destination's environment variables are `GATEWAY_THANOS_DEST` and `GATEWAY_THANOS_DEST_METRICS_ALLOWLIST`, replacing `GATEWAY_PROM_DEST_THANOS` and `GATEWAY_UNFILTERED_PROM_METRICS_THANOS`. The gateway rolls once on upgrade.
+    * `authType: oauth2` is no longer documented for remote write. It never rendered.
+    * The Terraform module's `prometheus_remote_write` writes `pipeline.destinations` entries. Inputs and the credentials Secret are unchanged. Keys `loki`, `googleCloud`, `datadog`, `otlp`, and `destination` are refused, because they would merge into another destination.
+* Update dependency virtualenv to v21.14.13 [SECURITY]
+    * [materialize-monitoring#695](https://github.com/MaterializeInc/materialize-monitoring/pull/695)
+    * [`v21.14.13`](https://redirect.github.com/pypa/virtualenv/releases/tag/21.14.13)
+* Stamp the level corpus's Loki line with the push time
+    * [materialize-monitoring#693](https://github.com/MaterializeInc/materialize-monitoring/pull/693)
+* Port the otel exporters to pipeline.destinations
+    * [materialize-monitoring#689](https://github.com/MaterializeInc/materialize-monitoring/pull/689)
+    * Added the `googleCloud` and `datadog` types to `pipeline.destinations`, and `authType: headers` and `sigv4` to `otlp` destinations. Each destination has its own credentials, metric tier, queue, and log reduction.
+    * **Deprecated:** `pipeline.metrics.gateway.destination.otel` and `pipeline.logging.gateway.destination.otel`. They still render as before and warn at render. Replace `otlpExporter`, `googleCloudExporter`, and `datadogExporter` with `pipeline.destinations` entries of type `otlp`, `googleCloud`, and `datadog`; see "Move off the deprecated `otel` block" in Storing Metrics.
+    * Fixed `pipeline.metrics.gateway.destination.otel.auth.awsSigv4.roleArn`, which rendered an attribute Alloy refuses at load.
+    * The Terraform module's `google_cloud_metrics`, `datadog_metrics`, and `otlp_metrics` write `pipeline.destinations` entries instead of the deprecated block. Inputs and the credentials Secret are unchanged. A Datadog site outside the US now gets its own metrics intake rather than the US one.
+    * The `otel-metrics-fanout` and `otlp-metrics-honeycomb` profiles use `pipeline.destinations`.
+* Level the gateway's UNKNOWN lines by their shape
+    * [materialize-monitoring#687](https://github.com/MaterializeInc/materialize-monitoring/pull/687)
+    * Log lines that no parser levels are now leveled by shape where the shape carries one: klog prefixes, a leading level word, HTTP status, journald priority, panics, stack frames, and failure or warning words. On a measured AKS install, `UNKNOWN` fell from about 1.08M to about 17k lines a day. Queries that select `level="UNKNOWN"` match far fewer lines; dashboards that count `WARN` and above count klog `E` lines and keyword errors that were hidden in `UNKNOWN`.
+    * The `levelheuristic` structured metadata names the detector that leveled an `UNKNOWN` line, or `none`, in place of `success` and `failed`.
+    * The Alloy agent forwards journald's priority to the gateway as `journal_priority`, which the gateway drops after use.
+* Ship the ingest secret-filter rules and a corpus harness on Alloy (DEP-311, DEP-312)
+    * [materialize-monitoring#684](https://github.com/MaterializeInc/materialize-monitoring/pull/684)
+    * The gateway's ConfigMap carries the secret filter's Gitleaks rules as `secretfilter-ingest.toml`. For what the filter does, how to turn it on, and why it's a backstop rather than the control, see **Production best practices > Secret filtering**. The rules add Materialize-specific patterns to Alloy's defaults: passwords in connection URLs and password fields, `Authorization` headers, presigned-URL signatures, truncated private keys, base64-encoded metadata URLs, and Materialize app passwords. The filter is still off by default; set `pipeline.env.GATEWAY_SECRETFILTER_RATE` and `pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE` to `"1"` to scan.
+* Run the ingest secret filter ahead of parsing, off by default (DEP-308)
+    * [materialize-monitoring#682](https://github.com/MaterializeInc/materialize-monitoring/pull/682)
+    * The gateway runs a secret filter (`loki.secretfilter`) on every log line before it parses the line, in two tiers: `DEBUG` and `TRACE`, and everything else. It ships **off**: every line passes through unscanned and is counted in `loki_secretfilter_entries_bypassed_total`. To scan with Alloy's bundled Gitleaks rules, set `pipeline.env.GATEWAY_SECRETFILTER_RATE` and `pipeline.env.GATEWAY_SECRETFILTER_BULK_RATE` to `"1"`. A found secret becomes `<redacted:RULE_ID>`.
+    * The gateway's safety clamp and global rate limit report under `component_id="loki.process.inputPrefilter"` rather than `loki.process.inputProcessor`, so `loki_process_truncated_fields_total` and `loki_process_dropped_lines_total` series for those stages change `component_id`.
+    * The gateway's debug tap (`sampleDebug`) no longer receives a raw copy of each pushed line; it still receives every line after processing.
+* Type loki.secretfilter and stage.luhn in the pipeline schema (DEP-307)
+    * [materialize-monitoring#680](https://github.com/MaterializeInc/materialize-monitoring/pull/680)
+    * The Alloy pipeline schema types the `loki.secretfilter` component and the `stage.luhn` stage of `loki.process`. `loki.secretfilter` requires a non-empty `redact_with`, and refuses `$SECRET_HASH` in it and `redact_percent`.
+* Update Rust crate zip to v9.3.0
+    * [materialize-monitoring#671](https://github.com/MaterializeInc/materialize-monitoring/pull/671)
+    * [`v9.3.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#930---2026-11-03)
+    * [`v9.2.3`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#923---2026-11-03)
+    * [`v9.2.2`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#922---2026-11-01)
+* Update Rust crate zip to v9.2.1
+    * [materialize-monitoring#661](https://github.com/MaterializeInc/materialize-monitoring/pull/661)
+    * [`v9.2.1`](https://redirect.github.com/zip-rs/zip2/releases/tag/v9.2.1)
 
 ## Container Images v0.10.0 (Unreleased)
 
