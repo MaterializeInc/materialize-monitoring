@@ -12,14 +12,29 @@
 # mounted file later changes nothing in a running pod. Hence the release waits
 # on the ConfigMap, and the hash below rolls every pod that reads it.
 
+locals {
+  # See `trust_bundle_enabled` in variables.tf: inferring from the PEM fails the
+  # plan when the PEM is computed in the same apply.
+  trust_bundle_enabled = var.trust_bundle_enabled != null ? var.trust_bundle_enabled : var.trust_bundle_ca_pem != null
+
+  # A volume reads a ConfigMap from its own pod's namespace only, so the bundle
+  # goes wherever a consumer runs. Keyed by input variables rather than
+  # `local.namespace`, so `for_each` stays known at plan.
+  trust_bundle_namespaces = !local.trust_bundle_enabled ? toset([]) : toset(
+    var.trust_bundle_namespaces != null
+    ? var.trust_bundle_namespaces
+    : [var.namespace, coalesce(var.alertmanager_namespace, var.namespace)]
+  )
+}
+
 resource "kubernetes_config_map" "trust_bundle" {
-  count = var.trust_bundle_ca_pem == null ? 0 : 1
+  for_each = local.trust_bundle_namespaces
 
   metadata {
     # Fixed: the chart's volumes name it literally, because subchart values
     # cannot be templated from the release.
     name      = "mzmon-trust-bundle"
-    namespace = local.namespace
+    namespace = each.key
   }
 
   data = {
@@ -27,6 +42,13 @@ resource "kubernetes_config_map" "trust_bundle" {
   }
 
   depends_on = [kubernetes_namespace.monitoring]
+
+  lifecycle {
+    precondition {
+      condition     = var.trust_bundle_ca_pem != null
+      error_message = "trust_bundle_enabled is true but trust_bundle_ca_pem is null, so the trust bundle would hold no CAs."
+    }
+  }
 }
 
 locals {
@@ -39,7 +61,7 @@ locals {
   # pod it renders. Maps deep-merge across values documents, so these sit beside
   # `config_hash_document`'s annotation on the Alloy roles rather than replacing
   # it. With no bundle there is nothing to roll on, and no document is added.
-  trust_bundle_document = var.trust_bundle_ca_pem == null ? [] : [yamlencode({
+  trust_bundle_document = !local.trust_bundle_enabled ? [] : [yamlencode({
     loki = {
       defaults = { podAnnotations = local.trust_bundle_annotations }
     }

@@ -388,6 +388,36 @@ variable "trust_bundle_ca_pem" {
   }
 }
 
+variable "trust_bundle_enabled" {
+  description = <<-EOT
+    Whether to create the trust bundle from `trust_bundle_ca_pem`.
+
+    Null infers it from `trust_bundle_ca_pem`, which is right whenever the PEM is a literal or read
+    from a file. Set it explicitly when the PEM comes from a resource created in the same apply,
+    such as a `tls_self_signed_cert`.
+  EOT
+  type        = bool
+  default     = null
+}
+
+variable "trust_bundle_namespaces" {
+  description = <<-EOT
+    Namespaces to create the `mzmon-trust-bundle` ConfigMap in. Null uses `namespace` and
+    `alertmanager_namespace`.
+
+    Under the chart's `split-namespace` profile, list every namespace a consumer runs in: `loki`,
+    `thanos`, `alloy-agent`, `alloy-gateway`, and `alertmanager`. Not inferred: the module cannot see
+    where an `additional_values` override put them. The namespaces have to exist before apply.
+  EOT
+  type        = list(string)
+  default     = null
+
+  validation {
+    condition     = var.trust_bundle_namespaces == null || length(coalesce(var.trust_bundle_namespaces, [])) > 0
+    error_message = "trust_bundle_namespaces must list at least one namespace, or be null to use namespace and alertmanager_namespace."
+  }
+}
+
 # ==============================================================================
 # Extra metrics destinations
 # ==============================================================================

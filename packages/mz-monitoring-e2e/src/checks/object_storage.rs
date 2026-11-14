@@ -60,52 +60,59 @@ pub async fn reachable(ctx: &Ctx) -> Result<()> {
         || async {
             let operations = by_component(ctx, &target, OPERATIONS, ns).await?;
             let failures = by_component(ctx, &target, FAILURES, ns).await?;
-
-            let mut problems = Vec::new();
-            let mut attempted = Vec::new();
-            for (component, tried) in &operations {
-                if *tried <= 0.0 {
-                    continue;
-                }
-                attempted.push(component.clone());
-                let failed = failures.get(component).copied().unwrap_or(0.0);
-                if failed >= *tried {
-                    problems.push(format!(
-                        "{component} failed all {tried} of its object-storage operations"
-                    ));
-                }
-            }
-
-            let tried = |product: &str| attempted.iter().any(|c| c.contains(product));
-            if !tried("thanos") {
-                problems.push("no Thanos component has tried its bucket yet".to_owned());
-            }
-            if loki_expected && !tried("loki") {
-                problems.push("no Loki component has tried its bucket yet".to_owned());
-            }
-
-            if problems.is_empty() {
-                return Ok(());
-            }
-            bail!(
-                "{}\nComponents with operations: {}.\n\
-                 A store behind a private CA needs it in the trust bundle, the \
-                 `mzmon-trust-bundle` ConfigMap, before the pods start. Look for \
-                 `x509: certificate signed by unknown authority` in the component's log",
-                problems.join("\n"),
-                if attempted.is_empty() {
-                    "none".to_owned()
-                } else {
-                    attempted.join(", ")
-                },
-            )
+            check_reachable(&operations, &failures, loki_expected)
         },
     )
     .await
 }
 
-/// One family, summed per scrape job and keyed `family{job}`, so a message
-/// names both the product and the component.
+/// The verdict on one reading of both families, keyed alike by [`component`].
+fn check_reachable(
+    operations: &BTreeMap<String, f64>,
+    failures: &BTreeMap<String, f64>,
+    loki_expected: bool,
+) -> Result<()> {
+    let mut problems = Vec::new();
+    let mut attempted = Vec::new();
+    for (component, tried) in operations {
+        if *tried <= 0.0 {
+            continue;
+        }
+        attempted.push(component.clone());
+        let failed = failures.get(component).copied().unwrap_or(0.0);
+        if failed >= *tried {
+            problems.push(format!(
+                "{component} failed all {tried} of its object-storage operations"
+            ));
+        }
+    }
+
+    let tried = |product: &str| attempted.iter().any(|c| c.contains(product));
+    if !tried("thanos") {
+        problems.push("no Thanos component has tried its bucket yet".to_owned());
+    }
+    if loki_expected && !tried("loki") {
+        problems.push("no Loki component has tried its bucket yet".to_owned());
+    }
+
+    if problems.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "{}\nComponents with operations: {}.\n\
+         A store behind a private CA needs it in the trust bundle, the \
+         `mzmon-trust-bundle` ConfigMap, before the pods start. Look for \
+         `x509: certificate signed by unknown authority` in the component's log",
+        problems.join("\n"),
+        if attempted.is_empty() {
+            "none".to_owned()
+        } else {
+            attempted.join(", ")
+        },
+    )
+}
+
+/// One family, summed per scrape job and keyed by [`component`].
 async fn by_component(
     ctx: &Ctx,
     target: &ServiceTarget,
@@ -119,11 +126,112 @@ async fn by_component(
         .iter()
         .filter_map(|s| {
             let name = s.pointer("/metric/__name__").and_then(Value::as_str)?;
-            let job = s
-                .pointer("/metric/job")
-                .and_then(Value::as_str)
-                .unwrap_or("<no job>");
-            Some((format!("{name}{{job={job:?}}}"), sample_value(s)?))
+            let job = s.pointer("/metric/job").and_then(Value::as_str);
+            Some((component(name, suffix, job), sample_value(s)?))
         })
         .collect())
+}
+
+/// `prefix{job="…"}`: the family's prefix with the family itself stripped, so
+/// an operations series and a failures series from one component share a key,
+/// and a message names both the product and the component.
+fn component(name: &str, suffix: &str, job: Option<&str>) -> String {
+    let prefix = name
+        .strip_suffix(suffix)
+        .unwrap_or(name)
+        .trim_end_matches('_');
+    let prefix = if prefix.is_empty() {
+        "objstore"
+    } else {
+        prefix
+    };
+    format!("{prefix}{{job={:?}}}", job.unwrap_or("<no job>"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::{FAILURES, OPERATIONS, check_reachable, component};
+
+    const RECEIVE: &str = "monitoring/thanos-receive";
+    const INGESTER: &str = "monitoring/loki-ingester";
+
+    type Family = BTreeMap<String, f64>;
+
+    /// Both families, keyed the way `by_component` keys them. Each row is a
+    /// prefix, a job, the operations tried, and how many failed.
+    fn reading(rows: &[(&str, &str, f64, f64)]) -> (Family, Family) {
+        let mut operations = BTreeMap::new();
+        let mut failures = BTreeMap::new();
+        for (prefix, job, tried, failed) in rows {
+            let ops = format!("{prefix}_{OPERATIONS}");
+            let fails = format!("{prefix}_{FAILURES}");
+            operations.insert(component(&ops, OPERATIONS, Some(job)), *tried);
+            failures.insert(component(&fails, FAILURES, Some(job)), *failed);
+        }
+        (operations, failures)
+    }
+
+    #[test]
+    fn both_families_of_one_component_share_a_key() {
+        assert_eq!(
+            component(
+                "thanos_objstore_bucket_operations_total",
+                OPERATIONS,
+                Some(RECEIVE)
+            ),
+            component(
+                "thanos_objstore_bucket_operation_failures_total",
+                FAILURES,
+                Some(RECEIVE)
+            ),
+        );
+        assert_eq!(
+            component(
+                "objstore_bucket_operations_total",
+                OPERATIONS,
+                Some(INGESTER)
+            ),
+            component(
+                "objstore_bucket_operation_failures_total",
+                FAILURES,
+                Some(INGESTER)
+            ),
+        );
+    }
+
+    /// What an untrusted certificate does: every attempt fails.
+    #[test]
+    fn a_component_that_fails_every_operation_fails() {
+        let (operations, failures) = reading(&[("thanos", RECEIVE, 12.0, 12.0)]);
+        let err = check_reachable(&operations, &failures, false)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("failed all 12 of its object-storage operations"),
+            "{err}"
+        );
+    }
+
+    /// A component that started before the store answered, then recovered.
+    #[test]
+    fn some_failures_then_a_success_passes() {
+        let (operations, failures) =
+            reading(&[("thanos", RECEIVE, 12.0, 3.0), ("loki", INGESTER, 4.0, 1.0)]);
+        assert!(check_reachable(&operations, &failures, true).is_ok());
+    }
+
+    #[test]
+    fn no_thanos_operations_fails() {
+        let (operations, failures) = reading(&[("loki", INGESTER, 4.0, 0.0)]);
+        assert!(check_reachable(&operations, &failures, true).is_err());
+    }
+
+    #[test]
+    fn loki_on_a_bucket_must_have_tried_it() {
+        let (operations, failures) = reading(&[("thanos", RECEIVE, 12.0, 0.0)]);
+        assert!(check_reachable(&operations, &failures, false).is_ok());
+        assert!(check_reachable(&operations, &failures, true).is_err());
+    }
 }

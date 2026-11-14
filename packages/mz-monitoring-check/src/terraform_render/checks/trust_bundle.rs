@@ -17,11 +17,14 @@
 //! until something else restarts it. A hash written to a path a subchart doesn't
 //! merge into its pods reaches no pod at all.
 
+use std::collections::BTreeSet;
+
 use anyhow::{Result, bail};
 use serde_json::Value;
 
 use super::report;
 use crate::terraform_render::ctx::Ctx;
+use crate::terraform_render::setup::NAMESPACE;
 
 /// The name the chart's volumes mount, and the module's ConfigMap.
 const CONFIG_MAP: &str = "mzmon-trust-bundle";
@@ -33,29 +36,82 @@ pub fn enabled(ctx: &Ctx) -> bool {
     ctx.declares("trust_bundle_ca_pem")
 }
 
-/// The module plans `mzmon-trust-bundle` with the declared PEM under `ca.crt`.
+/// Every ConfigMap the module plans is `mzmon-trust-bundle`, with the declared
+/// PEM under `ca.crt`.
 pub fn config_map_holds_the_pem(ctx: &Ctx) -> Result<()> {
-    let Some(planned) = ctx.planned("kubernetes_config_map", "trust_bundle") else {
+    let planned = ctx.planned_all("kubernetes_config_map", "trust_bundle");
+    if planned.is_empty() {
         bail!(
             "the example declares trust_bundle_ca_pem but the module plans no trust_bundle \
              ConfigMap, so every pod starts with only its image's roots"
         );
-    };
+    }
     let mut problems = Vec::new();
 
-    let name = planned.pointer("/metadata/0/name").and_then(Value::as_str);
-    if name != Some(CONFIG_MAP) {
-        problems.push(format!(
-            "the ConfigMap is named {name:?}, but the chart mounts {CONFIG_MAP:?}"
-        ));
-    }
+    for config_map in planned {
+        let namespace = config_map
+            .pointer("/metadata/0/namespace")
+            .and_then(Value::as_str)
+            .unwrap_or("<no namespace>");
+        let name = config_map
+            .pointer("/metadata/0/name")
+            .and_then(Value::as_str);
+        if name != Some(CONFIG_MAP) {
+            problems.push(format!(
+                "the ConfigMap in {namespace} is named {name:?}, but the chart mounts {CONFIG_MAP:?}"
+            ));
+        }
 
-    let held = planned.pointer("/data/ca.crt").and_then(Value::as_str);
-    if held != ctx.declared_str("trust_bundle_ca_pem") {
-        problems.push("its `ca.crt` is not the declared trust_bundle_ca_pem".to_owned());
+        let held = config_map.pointer("/data/ca.crt").and_then(Value::as_str);
+        if held != ctx.declared_str("trust_bundle_ca_pem") {
+            problems.push(format!(
+                "the `ca.crt` of the ConfigMap in {namespace} is not the declared trust_bundle_ca_pem"
+            ));
+        }
     }
 
     report(problems, "")
+}
+
+/// Every namespace a consumer renders into holds a planned bundle.
+///
+/// A volume reads a ConfigMap from its own pod's namespace only, so a consumer a
+/// profile moved elsewhere, such as `split-namespace.values.yaml` does, mounts an
+/// empty directory unless the bundle is created there too.
+pub fn every_consumer_namespace_holds_it(ctx: &Ctx) -> Result<()> {
+    // The chart renders as `setup::NAMESPACE`, but the module installs into its
+    // own `namespace`, so a workload in the render namespace counts as there.
+    let release_namespace = ctx.declared_str("namespace").unwrap_or(NAMESPACE);
+    let planned: BTreeSet<&str> = ctx
+        .planned_all("kubernetes_config_map", "trust_bundle")
+        .into_iter()
+        .filter_map(|config_map| config_map.pointer("/metadata/0/namespace")?.as_str())
+        .collect();
+
+    let mut problems = Vec::new();
+    for workload in ctx.rendered.workloads() {
+        if !mounts_the_bundle(workload.pod_spec()) {
+            continue;
+        }
+        let namespace = match workload.namespace() {
+            None | Some(NAMESPACE) => release_namespace,
+            Some(namespace) => namespace,
+        };
+        if !planned.contains(namespace) {
+            problems.push(format!(
+                "{} runs in {namespace}, where the module plans no {CONFIG_MAP}",
+                workload.id()
+            ));
+        }
+    }
+
+    report(
+        problems,
+        &format!(
+            "The module plans it in {planned:?}. List every consumer's namespace in \
+             trust_bundle_namespaces."
+        ),
+    )
 }
 
 /// Every workload that mounts the bundle carries its hash, the same one.
@@ -64,7 +120,7 @@ pub fn config_map_holds_the_pem(ctx: &Ctx) -> Result<()> {
 /// written to a key the subchart never merges into its pod template fails here.
 pub fn consumers_roll_on_change(ctx: &Ctx) -> Result<()> {
     let mut consumers = 0usize;
-    let mut hashes = std::collections::BTreeSet::new();
+    let mut hashes = BTreeSet::new();
     let mut problems = Vec::new();
 
     for workload in ctx.rendered.workloads() {

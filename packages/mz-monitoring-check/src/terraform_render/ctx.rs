@@ -78,19 +78,28 @@ impl Ctx {
         self.declared(input).and_then(|value| lookup(value, path))
     }
 
-    /// The planned values of one of the module's own resources.
+    /// The planned values of one of the module's own resources. For a counted
+    /// resource, the first instance; [`Ctx::planned_all`] returns every one.
     pub fn planned(&self, kind: &str, name: &str) -> Option<&Value> {
+        self.planned_all(kind, name).into_iter().next()
+    }
+
+    /// The planned values of every instance of one of the module's own
+    /// resources, in plan order.
+    pub fn planned_all(&self, kind: &str, name: &str) -> Vec<&Value> {
         self.plan
-            .pointer("/planned_values/root_module/child_modules")?
-            .as_array()?
-            .iter()
+            .pointer("/planned_values/root_module/child_modules")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
             .filter_map(|module| module.get("resources")?.as_array())
             .flatten()
-            .find(|resource| {
+            .filter(|resource| {
                 resource.get("type").and_then(Value::as_str) == Some(kind)
                     && resource.get("name").and_then(Value::as_str) == Some(name)
-            })?
-            .get("values")
+            })
+            .filter_map(|resource| resource.get("values"))
+            .collect()
     }
 
     /// The values documents the module composed, in merge order.

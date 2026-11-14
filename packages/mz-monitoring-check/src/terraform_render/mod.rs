@@ -361,6 +361,11 @@ const CHECKS: &[Check] = &[
         run: checks::trust_bundle::consumers_roll_on_change,
     },
     Check {
+        name: "trust_bundle::every_consumer_namespace_holds_it",
+        applies: checks::trust_bundle::enabled,
+        run: checks::trust_bundle::every_consumer_namespace_holds_it,
+    },
+    Check {
         name: "postgres_exporter::metadata_databases_reach_the_rules",
         applies: checks::postgres_exporter::declares_metadata,
         run: checks::postgres_exporter::metadata_databases_reach_the_rules,
