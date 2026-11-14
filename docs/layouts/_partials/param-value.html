@@ -1,0 +1,16 @@
+{{- /*
+  param-value: Render one frontmatter param value for param-table and
+  param-matrix.
+
+  A string goes through markdownify, so a value can carry code font or a link.
+  A list renders comma-separated, and anything else prints as-is.
+
+  Called as: partial "param-value.html" VALUE
+*/ -}}
+{{- if reflect.IsSlice . -}}
+  {{- delimit . ", " -}}
+{{- else if reflect.IsMap . -}}
+  {{- . -}}
+{{- else -}}
+  {{- . | markdownify -}}
+{{- end -}}

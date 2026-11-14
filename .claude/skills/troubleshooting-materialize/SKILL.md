@@ -28,8 +28,8 @@ diagnosis honest.
 
 The docsite is also published as one file for exactly this purpose:
 `https://materializeinc.github.io/materialize-monitoring/llms.txt` is the index
-and `.../llms-full.txt` is the whole site inlined. Fetch the index first — 16KB
-against 1.4MB, and it usually names the page you want.
+and `.../llms-full.txt` is the whole site inlined. Fetch the index first. It is
+about a hundredth of the full file's size, and it usually names the page you want.
 
 ## Know which problem you have
 
