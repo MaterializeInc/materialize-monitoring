@@ -15,9 +15,39 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.8.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.10.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.9.0
+
+* Add footgunOverrides to downgrade validation errors and silence warnings
+    * [materialize-monitoring#722](https://github.com/MaterializeInc/materialize-monitoring/pull/722)
+    * New `footgunOverrides` value for a validation check that's wrong about your install. `footgunOverrides.downgradeErrors` takes regular expressions; an error that matches one is reported as a warning, and the render continues. `footgunOverrides.silenceWarnings` takes regular expressions; a warning that matches one is dropped. A downgraded error is never silenced, and a `downgradeErrors` expression that matches no error adds a warning. See "Override a validation check" on the Helm install page.
+* Let a release address components another release runs
+    * [materialize-monitoring#719](https://github.com/MaterializeInc/materialize-monitoring/pull/719)
+    * New `otherReleases` value for a stack split across several releases of `materialize-monitoring`. Set `otherReleases.<component>: true` in each release for each component another release runs. The keys are `alloy-agent`, `alloy-gateway`, `loki`, `thanos`, and `alertmanager`. The release then addresses that component without failing validation, and Grafana provisions its data sources. See "Split the stack across releases" on the Helm install page.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.6.0..v0.7.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.15.0..v0.16.0</summary>
+
+    * Update Rust crate serde-saphyr to v2.1.1
+        * [materialize-monitoring#703](https://github.com/MaterializeInc/materialize-monitoring/pull/703)
+        * [`v2.1.1`](https://redirect.github.com/bourumir-wyngs/serde-saphyr/blob/HEAD/CHANGELOG.md#211)
+        * [`v2.1.0`](https://redirect.github.com/bourumir-wyngs/serde-saphyr/blob/HEAD/CHANGELOG.md#210)
+    * Update Rust crate uuid to v1.29.1
+        * [materialize-monitoring#710](https://github.com/MaterializeInc/materialize-monitoring/pull/710)
+        * [`v1.29.1`](https://redirect.github.com/uuid-rs/uuid/releases/tag/v1.29.1)
+
+  </details>
+
+## materialize-monitoring (Helm chart + Terraform module) v1.8.0
+
+* Add pipeline.gateway.customSources for raw gateway Alloy config
+    * [materialize-monitoring#713](https://github.com/MaterializeInc/materialize-monitoring/pull/713)
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.7.1
 

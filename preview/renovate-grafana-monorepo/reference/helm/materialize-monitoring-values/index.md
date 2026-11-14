@@ -44,9 +44,9 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.0.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.4.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 5.0.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.5 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
 
 ## Values {#values}
@@ -326,6 +326,85 @@ set `tags.postgres-exporter: true`.
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
       <td class="helm-value-desc">Enable postgres_exporter. In no group, `default` included: it watches databases you list under `postgres-exporter.targets`.
+</td>
+    </tr>
+  </tbody>
+</table>
+
+### Split releases
+
+Components another release of this chart runs, for a stack split across releases.
+
+You can install the stack as several releases of this chart, such as the pipeline in one release and the backends in another.
+Each release then addresses Services that a different release runs.
+For example, the gateway in the pipeline release writes to Thanos Receive and Loki in the backends release.
+
+The render fails on an address that names a component this release doesn't run, because within one release that Service doesn't exist.
+Set a component's key to `true` to say that another release runs it.
+This release then treats the component as present:
+
+- The checks that an address reaches a running Service pass.
+- The Grafana data sources that follow a backend's enablement render for it.
+
+Pass every release the same values files.
+Both ends of a hop read some settings, such as the gateway's TLS, and each release renders and checks its end from its own values.
+The same values also resolve each component to the same namespace in every release.
+
+The following example is the pipeline release, beside a release that runs the backends:
+
+```yaml
+tags:
+  default: false
+  pipeline: true
+otherReleases:
+  loki: true
+  thanos: true
+  alertmanager: true
+```
+
+Each release also renders resources that belong to no component, such as the PriorityClasses, the Grafana instance, and the Materialize PodMonitors.
+Keep each of those in one release, and turn it off in the others.
+The alert rules install in the release that runs the gateway, and only for the components that release runs.
+[Split the stack across releases](https://materializeinc.github.io/materialize-monitoring/getting-started/helm/#split-releases)
+lists which release keeps what.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.alloy-agent</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs the Alloy agent.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.alloy-gateway</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs the Alloy gateway, which this release's agent and rulers write to.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.loki</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs Loki, which this release's gateway writes to and Grafana reads from.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.thanos</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs Thanos, which this release's gateway writes to and Grafana reads from.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">otherReleases<wbr>.alertmanager</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Another release runs Alertmanager, which this release's rulers notify.
 </td>
     </tr>
   </tbody>
@@ -1520,6 +1599,57 @@ release instances.
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"info"</code></td>
       <td class="helm-value-desc">Level for the gateway logs.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.customSources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra Alloy components for the gateway's pipeline, as a map of name to Alloy config.
+
+Each entry is a string of Alloy config, rendered with `tpl` after the gateway's own sources.
+Use it for a source the chart has no setting for, such as a scrape of a service that has no ServiceMonitor.
+Entries render in key order. Set an entry to `null` to remove one that another values file added.
+
+The chart doesn't check what an entry contains.
+The pre-validate job (`pipeline.preValidateJob`) runs the whole pipeline through `alloy validate`,
+so a syntax error, a duplicate component label, or a `forward_to` that names no component fails the install or upgrade before the gateway gets the new config.
+It can't catch a source that needs RBAC, a mount, or an environment variable the gateway doesn't have.
+
+Forward into the gateway's own entry points, so the data gets the same processing and reaches every destination:
+
+| Signal | Entry point |
+| --- | --- |
+| Scraped metrics | `otelcol.receiver.prometheus.inputBridge.receiver` |
+| Pushed metrics that may lack `job` or `instance` | `prometheus.relabel.receiveIdentity.receiver` |
+| Loki log entries | `loki.process.inputPrefilter.receiver` |
+| OTLP metrics | `otelcol.processor.transform.inputMetricProcessor.input` |
+| OTLP logs | `otelcol.exporter.loki.bridge.input` |
+
+These are internal component names, not a stable interface: if a release renames one, the pre-validate job fails rather than the gateway.
+
+Metrics still pass each destination's tier filter, so a metric outside the registry reaches only destinations at `minMetricImportance: all`.
+Every gateway replica runs every entry, so turn on `clustering` in a scrape, or each replica scrapes every target.
+
+For example, a scrape of a service that has no ServiceMonitor:
+
+```yaml
+pipeline:
+  gateway:
+    customSources:
+      exampleScrape: |
+        prometheus.scrape "example" {
+          targets    = [{"__address__" = "example.example-ns.svc:9100"}]
+          forward_to = [otelcol.receiver.prometheus.inputBridge.receiver]
+          honor_metadata = true
+
+          clustering {
+            enabled = true
+          }
+        }
+```
 </td>
     </tr>
   </tbody>
@@ -4543,6 +4673,65 @@ unmanaged here, both scopes fall back to the release.
   </tbody>
 </table>
 
+### Footgun overrides
+
+Overrides for the chart's render-time validation.
+
+The chart checks its values every time it renders.
+An error fails the render with `Validation failed:` and the list of errors.
+A warning prints in the install notes, and as a `# WARNING:` comment in the rendered output.
+
+Each check exists because the configuration it catches installs cleanly and then fails quietly.
+Fix the value when you can.
+These overrides are for a check that's wrong about your install, until the chart is corrected.
+If a check fails because another release of this chart runs the component, set `otherReleases` instead.
+
+Both lists take regular expressions in Go's RE2 syntax.
+An expression matches anywhere in a message, so anchor it with `^` and `$` to match a whole message.
+Escape `.` and the other metacharacters to match them literally.
+
+- `downgradeErrors`: an error that matches any expression is reported as a warning instead, and the render continues.
+  The warning names the expression that downgraded it, and it can't be silenced.
+  An expression that matches no error adds a warning, so a stale override doesn't hide a future error.
+- `silenceWarnings`: a warning that matches any expression is dropped.
+  `".*"` drops every warning except the downgraded errors.
+
+The overrides apply to that validation report only.
+They can't override a required value, a template that fails while it renders, or a subchart's own checks.
+
+```yaml
+footgunOverrides:
+  downgradeErrors:
+    - 'pipeline\.destinations\.thanos\.url points at the bundled Thanos'
+  silenceWarnings:
+    - 'loki\.gateway\.enabled is not recommended for production'
+```
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">footgunOverrides<wbr>.downgradeErrors</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Regular expressions for errors to report as warnings instead.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">footgunOverrides<wbr>.silenceWarnings</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Regular expressions for warnings to drop.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Bundled subchart configurations
 
 Configuration for bundled subcharts
@@ -6644,9 +6833,9 @@ templates test `or <component>.pdb.enabled global.pdb.enabled`.
     voluntary eviction and hang node drains indefinitely. `maxUnavailable: 1`
     permits the eviction, so the singleton is a harmless no-op rather than
     a drain deadlock.
-  * On Receive it must stay within what write quorum tolerates
-    (`replicationFactor - ((replicationFactor / 2) + 1)`), which is 1 at
-    the replication factor of 3 set below. A validator enforces this.
+  * On Receive it must stay within what write quorum tolerates, which is
+    1 at the replication factor of 2 set below: Thanos gives a factor of 2
+    a write quorum of 1. A validator enforces this.
 
 This matches the Loki convention (ingester `maxUnavailable: 1`).
 </td>
@@ -6871,9 +7060,10 @@ than from the bucket. 6h covers the common dashboard ranges and leaves 4h of
 margin after a block closes, uploads, and the Store Gateway syncs it.
 
 Raising it back is a real cost rather than just a number. At the medium
-envelope (1.5M series) 24h is ~7.3Gi per pod, and a GKE node with a 47Gi boot
+envelope (1.5M series) 24h is ~4.9Gi per pod, and a GKE node with a 47Gi boot
 disk offers only ~18.8Gi of *allocatable* ephemeral storage — one pod would
-claim 40% of the node's budget, and Loki's ingesters draw on the same pool.
+claim a quarter of the node's budget, and Loki's ingesters draw on the same
+pool.
 </td>
     </tr>
     <tr>
@@ -6881,16 +7071,21 @@ claim 40% of the node's budget, and Loki's ingesters draw on the same pool.
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "--receive.replication-factor=3"
+  "--receive.replication-factor=2"
 ]</pre>
 </td>
       <td class="helm-value-desc">Extra CLI arguments for Receive.
+The replication factor is 2. Thanos gives a factor of 2 a write quorum of
+1, so it survives losing one pod, as 3 does, and holds a third less
+memory. Choose 3 when a write acknowledged while a pod is down must still
+have two copies. See Production Best Practices > Metrics (Thanos) for the
+quorum table and the trade.
+
 **This is a list, and Helm overwrites lists rather than merging them.**
 Anything that sets `receive.extraArgs` replaces this entry wholesale, so
 the replication factor must be restated or it silently falls back to
-Thanos's default of 1 — write quorum 1, no losses tolerated. The shipped
-profiles restate it; so must yours. See Production Best Practices >
-Metrics (Thanos) for the quorum table.
+Thanos's default of 1 — one copy of every series, no losses tolerated. The
+shipped profiles restate it; so must yours.
 </td>
     </tr>
     <tr>
@@ -6934,9 +7129,10 @@ If you want its recommendations without its actions, set
 }</pre>
 </td>
       <td class="helm-value-desc">Resource requests for Receive. Medium sizing.
-Memory is the cell to get right: budget ~3 KB per active series held, and
-note that at `replicaCount == replicationFactor` **every pod holds every
-series** — sharding begins only above RF.
+Memory is the cell to get right: budget ~3 KB per active series held. Each
+pod holds `replicationFactor / replicaCount` of the series, which is two
+thirds at the defaults; at `replicaCount == replicationFactor` **every pod
+holds every series**.
 
 No memory limit, deliberately, and for a sharper reason than elsewhere in
 this chart: an OOM-kill drops the un-uploaded block window, and unlike
@@ -6960,8 +7156,8 @@ ephemeral-storage`. Check before raising these:
 
   kubectl get nodes -o custom-columns='NODE:.metadata.name,EPH:.status.allocatable.ephemeral-storage'
 
-4Gi holds 6h of the medium envelope (~1.8Gi) with room for the WAL and
-compaction churn, and leaves the rest of the node for everything sharing that
+4Gi holds 6h of a pod's share of the medium envelope (~1.2Gi) with room for
+the WAL and compaction churn, and leaves the rest of the node for everything sharing that
 pool — including Loki's ingesters, which are also `emptyDir`-backed.
 </td>
     </tr>
@@ -7003,11 +7199,13 @@ pool — including Loki's ingesters, which are also `emptyDir`-backed.
 ]</pre>
 </td>
       <td class="helm-value-desc">Topology spread for Receive: hard across zones, soft across hosts.
-This is the constraint that makes `--receive.replication-factor=3` mean
+This is the constraint that makes `--receive.replication-factor=2` mean
 what the quorum table says. Without it the scheduler is free to place all
-three replicas in one zone, and RF 3 buys nothing against the failure it
-exists for — losing a zone takes every copy and, since write quorum is 2,
-takes writes with it.
+three replicas in one zone, and replication buys nothing against the
+failure it exists for — losing that zone takes every copy of every series,
+and writes with them. With one replica per zone, a series' two copies sit
+in two zones; above three replicas the hashring places copies without
+regard to zone, so some series keep both copies in one.
 
 **Hard** (`DoNotSchedule`) on zones, deliberately. A pod that cannot
 satisfy it goes Pending, which is the signal Karpenter or the
@@ -7054,7 +7252,7 @@ every Thanos component count Receive's pods when computing its own skew.
 This is the same call the chart makes for Loki's ingesters, for the same
 reason, and it is worth spelling out because Receive looks stateful.
 
-Durability comes from `--receive.replication-factor=3`, not from disk.
+Durability comes from `--receive.replication-factor=2`, not from disk.
 Blocks ship to object storage every 2h, so the window that exists only
 locally is at most 2h — and every replica uploads its own copy under a
 distinct `receive_replica` external label, which the Compactor
@@ -7066,12 +7264,13 @@ A PVC makes an AZ failure **worse**, not merely less flexible: an EBS
 volume cannot be attached from another zone, so a pod whose zone is gone
 stays Pending until the zone returns rather than rescheduling into a
 healthy one. On the write path that turns a recoverable event into an
-outage that waits on the cloud provider — with RF 3 write quorum is 2, so
-two pods stuck Pending block writes outright.
+outage that waits on the cloud provider — two pods stuck Pending fail the
+writes of every series whose two copies they hold, which on three pods is
+a third of them.
 
 The trade accepted in exchange: Thanos Receive has no peer hand-off, so
 unlike Loki it will not backfill an emptied pod from its neighbours. That
-window stays at two copies instead of three until the next block ships.
+window stays at one copy instead of two until the next block ships.
 </td>
     </tr>
     <tr>
@@ -8149,7 +8348,7 @@ for the full checklist.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/grafana",
-  "tag": "13.3.0"
+  "tag": "13.3.1"
 }</pre>
 </td>
       <td class="helm-value-desc">Grafana server image.
@@ -8628,7 +8827,7 @@ the StatefulSet, whose volumes do not follow; see
       <td class="helm-value-default"><pre>
 {
   "repository": "quay.io/prometheus/alertmanager",
-  "tag": "v0.34.2"
+  "tag": "v0.35.0-distroless"
 }</pre>
 </td>
       <td class="helm-value-desc">Alertmanager image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -8636,8 +8835,20 @@ the StatefulSet, whose volumes do not follow; see
 So Renovate bumps Alertmanager on its own cadence, with Alertmanager's own
 release notes, instead of only when a chart release happens to carry a new
 `appVersion`. Grafana is pinned the same way. This chart's `repository`
-carries the registry host; there is no separate `registry` key. The
-profiles under `profiles/registry/` repoint `repository` and keep this tag.
+carries the registry host; there is no separate `registry` key.
+
+The `-distroless` tag is upstream's image with no shell and no package
+manager. Nothing in this configuration needs a shell, and `amtool` is in
+the image, so `kubectl exec ... -- amtool` works. The image's default user
+is 65532; `securityContext` pins 65534, which owns the data volumes. The
+subchart has no `distroless` switch like `node-exporter.image.distroless`,
+so the suffix lives in `tag`; Renovate keeps a tag's suffix when it bumps
+the version.
+
+The profiles under `profiles/registry/` repoint `repository`. The mirror
+profile keeps this tag. The Chainguard and Docker Hardened Images profiles
+restate it without the suffix, which neither vendor publishes; DHI's also
+drops the leading `v`.
 </td>
     </tr>
     <tr>
