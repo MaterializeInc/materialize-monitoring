@@ -30,9 +30,9 @@
 # objstore client falls back to `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`,
 # so the keys never reach the Loki config ConfigMap.
 #
-# For a self-signed certificate, add `http_config: {insecure_skip_verify: true}`
-# to the Thanos Secret and `http: {insecure_skip_verify: true}` under
-# `loki.loki.storage.object_store.s3` below.
+# For a certificate from a private or self-signed CA, put that CA in the trust
+# bundle, a ConfigMap or Secret named `mzmon-trust-bundle`, and keep
+# verification on. See Securing > Trust a private CA.
 
 loki:
   loki:

@@ -907,7 +907,9 @@ medium (base) workloads:
                 - -c 16384
                 - -v
                 - -u 11211
-              env: null
+              env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
               envFrom: null
               image: docker.io/library/memcached:1.6.45-alpine
               imagePullPolicy: IfNotPresent
@@ -1050,6 +1052,8 @@ medium (base) workloads:
                 - -memberlist.advertise-addr=$(POD_IP)
                 - -target=compactor
               env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
                 - name: GOGC
                   value: "80"
                 - name: POD_IP
@@ -1107,6 +1111,12 @@ medium (base) workloads:
                   name: data
                 - mountPath: /tmp
                   name: temp
+                - mountPath: /etc/mzmon/trust-bundle/configmap
+                  name: mzmon-trust-bundle-configmap
+                  readOnly: true
+                - mountPath: /etc/mzmon/trust-bundle/secret
+                  name: mzmon-trust-bundle-secret
+                  readOnly: true
           enableServiceLinks: true
           priorityClassName: monitoring-scalable
           securityContext:
@@ -1133,6 +1143,17 @@ medium (base) workloads:
               name: runtime-config
             - emptyDir: {}
               name: data
+            - configMap:
+                name: mzmon-trust-bundle
+                optional: true
+              name: mzmon-trust-bundle-configmap
+            - name: mzmon-trust-bundle-secret
+              secret:
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+                optional: true
+                secretName: mzmon-trust-bundle
       updateStrategy:
         rollingUpdate:
           partition: 0
@@ -1187,6 +1208,8 @@ medium (base) workloads:
                 - -memberlist.advertise-addr=$(POD_IP)
                 - -target=distributor
               env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
                 - name: GOGC
                   value: "80"
                 - name: POD_IP
@@ -1244,6 +1267,12 @@ medium (base) workloads:
                   name: data
                 - mountPath: /tmp
                   name: temp
+                - mountPath: /etc/mzmon/trust-bundle/configmap
+                  name: mzmon-trust-bundle-configmap
+                  readOnly: true
+                - mountPath: /etc/mzmon/trust-bundle/secret
+                  name: mzmon-trust-bundle-secret
+                  readOnly: true
           enableServiceLinks: true
           priorityClassName: monitoring-scalable
           securityContext:
@@ -1270,6 +1299,17 @@ medium (base) workloads:
               name: runtime-config
             - emptyDir: {}
               name: data
+            - configMap:
+                name: mzmon-trust-bundle
+                optional: true
+              name: mzmon-trust-bundle-configmap
+            - name: mzmon-trust-bundle-secret
+              secret:
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+                optional: true
+                secretName: mzmon-trust-bundle
   4: |
     apiVersion: apps/v1
     kind: StatefulSet
@@ -1318,6 +1358,8 @@ medium (base) workloads:
                 - -memberlist.advertise-addr=$(POD_IP)
                 - -target=index-gateway
               env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
                 - name: GOGC
                   value: "80"
                 - name: POD_IP
@@ -1375,6 +1417,12 @@ medium (base) workloads:
                   name: data
                 - mountPath: /tmp
                   name: temp
+                - mountPath: /etc/mzmon/trust-bundle/configmap
+                  name: mzmon-trust-bundle-configmap
+                  readOnly: true
+                - mountPath: /etc/mzmon/trust-bundle/secret
+                  name: mzmon-trust-bundle-secret
+                  readOnly: true
           enableServiceLinks: true
           priorityClassName: monitoring-scalable
           securityContext:
@@ -1401,6 +1449,17 @@ medium (base) workloads:
               name: runtime-config
             - emptyDir: {}
               name: data
+            - configMap:
+                name: mzmon-trust-bundle
+                optional: true
+              name: mzmon-trust-bundle-configmap
+            - name: mzmon-trust-bundle-secret
+              secret:
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+                optional: true
+                secretName: mzmon-trust-bundle
       updateStrategy:
         type: RollingUpdate
   5: |
@@ -1447,6 +1506,8 @@ medium (base) workloads:
                 - -target=ingester
                 - -ingester.availability-zone=zone-default
               env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
                 - name: GOGC
                   value: "80"
                 - name: POD_IP
@@ -1504,6 +1565,12 @@ medium (base) workloads:
                   name: data
                 - mountPath: /tmp
                   name: temp
+                - mountPath: /etc/mzmon/trust-bundle/configmap
+                  name: mzmon-trust-bundle-configmap
+                  readOnly: true
+                - mountPath: /etc/mzmon/trust-bundle/secret
+                  name: mzmon-trust-bundle-secret
+                  readOnly: true
           enableServiceLinks: true
           priorityClassName: monitoring-scalable
           securityContext:
@@ -1553,6 +1620,17 @@ medium (base) workloads:
               name: runtime-config
             - emptyDir: {}
               name: data
+            - configMap:
+                name: mzmon-trust-bundle
+                optional: true
+              name: mzmon-trust-bundle-configmap
+            - name: mzmon-trust-bundle-secret
+              secret:
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+                optional: true
+                secretName: mzmon-trust-bundle
       updateStrategy:
         type: RollingUpdate
   6: |
@@ -1697,6 +1775,8 @@ medium (base) workloads:
                 - -memberlist.advertise-addr=$(POD_IP)
                 - -target=querier
               env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
                 - name: GOGC
                   value: "80"
                 - name: POD_IP
@@ -1754,6 +1834,12 @@ medium (base) workloads:
                   name: data
                 - mountPath: /tmp
                   name: temp
+                - mountPath: /etc/mzmon/trust-bundle/configmap
+                  name: mzmon-trust-bundle-configmap
+                  readOnly: true
+                - mountPath: /etc/mzmon/trust-bundle/secret
+                  name: mzmon-trust-bundle-secret
+                  readOnly: true
           enableServiceLinks: true
           priorityClassName: monitoring-scalable
           securityContext:
@@ -1789,6 +1875,17 @@ medium (base) workloads:
               name: runtime-config
             - emptyDir: {}
               name: data
+            - configMap:
+                name: mzmon-trust-bundle
+                optional: true
+              name: mzmon-trust-bundle-configmap
+            - name: mzmon-trust-bundle-secret
+              secret:
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+                optional: true
+                secretName: mzmon-trust-bundle
   8: |
     apiVersion: apps/v1
     kind: Deployment
@@ -1840,6 +1937,8 @@ medium (base) workloads:
                 - -memberlist.advertise-addr=$(POD_IP)
                 - -target=query-frontend
               env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
                 - name: GOGC
                   value: "80"
                 - name: POD_IP
@@ -1897,6 +1996,12 @@ medium (base) workloads:
                   name: data
                 - mountPath: /tmp
                   name: temp
+                - mountPath: /etc/mzmon/trust-bundle/configmap
+                  name: mzmon-trust-bundle-configmap
+                  readOnly: true
+                - mountPath: /etc/mzmon/trust-bundle/secret
+                  name: mzmon-trust-bundle-secret
+                  readOnly: true
           enableServiceLinks: true
           priorityClassName: monitoring-scalable
           securityContext:
@@ -1923,6 +2028,17 @@ medium (base) workloads:
               name: runtime-config
             - emptyDir: {}
               name: data
+            - configMap:
+                name: mzmon-trust-bundle
+                optional: true
+              name: mzmon-trust-bundle-configmap
+            - name: mzmon-trust-bundle-secret
+              secret:
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+                optional: true
+                secretName: mzmon-trust-bundle
   9: |
     apiVersion: apps/v1
     kind: Deployment
@@ -1975,6 +2091,8 @@ medium (base) workloads:
                 - -memberlist.advertise-addr=$(POD_IP)
                 - -target=query-scheduler
               env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
                 - name: GOGC
                   value: "80"
                 - name: POD_IP
@@ -2032,6 +2150,12 @@ medium (base) workloads:
                   name: data
                 - mountPath: /tmp
                   name: temp
+                - mountPath: /etc/mzmon/trust-bundle/configmap
+                  name: mzmon-trust-bundle-configmap
+                  readOnly: true
+                - mountPath: /etc/mzmon/trust-bundle/secret
+                  name: mzmon-trust-bundle-secret
+                  readOnly: true
           enableServiceLinks: true
           priorityClassName: monitoring-scalable
           securityContext:
@@ -2058,6 +2182,17 @@ medium (base) workloads:
               name: runtime-config
             - emptyDir: {}
               name: data
+            - configMap:
+                name: mzmon-trust-bundle
+                optional: true
+              name: mzmon-trust-bundle-configmap
+            - name: mzmon-trust-bundle-secret
+              secret:
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+                optional: true
+                secretName: mzmon-trust-bundle
   10: |
     apiVersion: apps/v1
     kind: StatefulSet
@@ -2100,7 +2235,9 @@ medium (base) workloads:
                 - -c 16384
                 - -v
                 - -u 11211
-              env: null
+              env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
               envFrom: null
               image: docker.io/library/memcached:1.6.45-alpine
               imagePullPolicy: IfNotPresent
@@ -2239,6 +2376,8 @@ medium (base) workloads:
                 - -memberlist.advertise-addr=$(POD_IP)
                 - -target=ruler
               env:
+                - name: SSL_CERT_DIR
+                  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
                 - name: CLUSTER_NAME
                   valueFrom:
                     configMapKeyRef:
@@ -2301,6 +2440,12 @@ medium (base) workloads:
                   name: data
                 - mountPath: /tmp
                   name: temp
+                - mountPath: /etc/mzmon/trust-bundle/configmap
+                  name: mzmon-trust-bundle-configmap
+                  readOnly: true
+                - mountPath: /etc/mzmon/trust-bundle/secret
+                  name: mzmon-trust-bundle-secret
+                  readOnly: true
           enableServiceLinks: true
           priorityClassName: monitoring-scalable
           securityContext:
@@ -2325,6 +2470,17 @@ medium (base) workloads:
             - configMap:
                 name: loki-runtime
               name: runtime-config
+            - configMap:
+                name: mzmon-trust-bundle
+                optional: true
+              name: mzmon-trust-bundle-configmap
+            - name: mzmon-trust-bundle-secret
+              secret:
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+                optional: true
+                secretName: mzmon-trust-bundle
       volumeClaimTemplates:
         - apiVersion: v1
           kind: PersistentVolumeClaim

@@ -1,0 +1,217 @@
+suite: trust bundle
+# The trust bundle adds an operator's CAs to the roots each Go component trusts
+# for outbound TLS: Go loads its roots from the directories `SSL_CERT_DIR`
+# names, and the `mzmon-trust-bundle` ConfigMap and Secret mount at two of them.
+#
+# Subchart values can't call a helper, so the same entries are written out in
+# three places: `global.extra*` for Loki and Thanos, the Alloy roles' volume
+# lists, and Alertmanager's. These tests hold each one to the value
+# `mzmon.trustBundle.certDir` renders into the Alloy env ConfigMaps. A value
+# written to a list nobody reads, or a profile that replaces a list and drops
+# the entries, still renders.
+chart:
+  version: 0.0.0-test
+release:
+  name: mzmon
+  namespace: test-monitoring
+set:
+  loki.loki.storage.bucketNames.chunks: test-chunks
+  loki.loki.storage.bucketNames.ruler: test-ruler
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  thanos.global.objstore.config: |
+    type: FILESYSTEM
+  # The mtls profile moves the Loki datasource to https, and the render refuses
+  # an https datasource with no CA.
+  connections.datasources.loki.tls.caPem: |
+    -----BEGIN CERTIFICATE-----
+    placeholder
+    -----END CERTIFICATE-----
+
+# The value every component carries, as `mzmon.trustBundle.certDir` renders it.
+x-env: &certDirEnv
+  name: SSL_CERT_DIR
+  value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
+x-configmap-volume: &configMapVolume
+  name: mzmon-trust-bundle-configmap
+  configMap:
+    name: mzmon-trust-bundle
+    optional: true
+x-secret-volume: &secretVolume
+  name: mzmon-trust-bundle-secret
+  secret:
+    secretName: mzmon-trust-bundle
+    optional: true
+    items:
+      - key: ca.crt
+        path: ca.crt
+x-configmap-mount: &configMapMount
+  name: mzmon-trust-bundle-configmap
+  mountPath: /etc/mzmon/trust-bundle/configmap
+  readOnly: true
+x-secret-mount: &secretMount
+  name: mzmon-trust-bundle-secret
+  mountPath: /etc/mzmon/trust-bundle/secret
+  readOnly: true
+
+tests:
+  # --- Loki and Thanos, through global.extra* --------------------------------
+  # Every Loki component that reaches object storage or a webhook. Loki adds
+  # `global.extra*` ahead of `defaults` and the per-component lists.
+  - it: should give every Loki component the trust bundle
+    templates:
+      - ../charts/loki/templates/compactor/workload.yaml
+      - ../charts/loki/templates/distributor/workload.yaml
+      - ../charts/loki/templates/index-gateway/workload.yaml
+      - ../charts/loki/templates/ingester/workload.yaml
+      - ../charts/loki/templates/querier/workload.yaml
+      - ../charts/loki/templates/query-frontend/workload.yaml
+      - ../charts/loki/templates/ruler/workload.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: *certDirEnv
+      - contains:
+          path: spec.template.spec.volumes
+          content: *configMapVolume
+      - contains:
+          path: spec.template.spec.volumes
+          content: *secretVolume
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: *configMapMount
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: *secretMount
+
+  - it: should give every Thanos component the trust bundle
+    templates:
+      - ../charts/thanos/templates/compactor/statefulset.yaml
+      - ../charts/thanos/templates/query/deployment.yaml
+      - ../charts/thanos/templates/receive/statefulset.yaml
+      - ../charts/thanos/templates/ruler/statefulset.yaml
+      - ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: *certDirEnv
+      - contains:
+          path: spec.template.spec.volumes
+          content: *configMapVolume
+      - contains:
+          path: spec.template.spec.volumes
+          content: *secretVolume
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: *configMapMount
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: *secretMount
+
+  # --- Alloy, through its own lists and the env ConfigMaps -------------------
+  - it: should mount the trust bundle into both Alloy roles
+    templates:
+      - ../charts/alloy-agent/templates/controllers/daemonset.yaml
+      - ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content: *configMapVolume
+      - contains:
+          path: spec.template.spec.volumes
+          content: *secretVolume
+      - contains:
+          path: spec.template.spec.containers[?(@.name=="alloy")].volumeMounts
+          content: *configMapMount
+      - contains:
+          path: spec.template.spec.containers[?(@.name=="alloy")].volumeMounts
+          content: *secretMount
+
+  - it: should set SSL_CERT_DIR in both Alloy env ConfigMaps
+    templates:
+      - templates/pipelines/cm-alloy-agent-env.yaml
+      - templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.SSL_CERT_DIR
+          value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
+
+  # A ConfigMap can't hold a key twice, and Kubernetes rejects the duplicate.
+  - it: should let pipeline.env set SSL_CERT_DIR instead, once
+    set:
+      pipeline.env.SSL_CERT_DIR: /etc/ssl/certs:/custom
+    templates:
+      - templates/pipelines/cm-alloy-agent-env.yaml
+      - templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.SSL_CERT_DIR
+          value: /etc/ssl/certs:/custom
+      - notMatchRegexRaw:
+          pattern: "SSL_CERT_DIR:[^\\n]*\\n(.*\\n)*\\s*SSL_CERT_DIR:"
+
+  # --- Alertmanager ------------------------------------------------------------
+  - it: should give Alertmanager the trust bundle
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[?(@.name=="alertmanager")].env
+          content: *certDirEnv
+      - contains:
+          path: spec.template.spec.volumes
+          content: *configMapVolume
+      - contains:
+          path: spec.template.spec.volumes
+          content: *secretVolume
+      - contains:
+          path: spec.template.spec.containers[?(@.name=="alertmanager")].volumeMounts
+          content: *configMapMount
+      - contains:
+          path: spec.template.spec.containers[?(@.name=="alertmanager")].volumeMounts
+          content: *secretMount
+
+  # --- profiles that replace the lists ---------------------------------------
+  # The mtls profile restates Alloy's `volumes.extra` in full. The mounts stay
+  # in the base values, so a restated list without the trust-bundle volumes is
+  # a pod Kubernetes rejects for mounting a volume that doesn't exist.
+  - it: should keep the trust-bundle volumes under the mtls profile
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    templates:
+      - ../charts/alloy-agent/templates/controllers/daemonset.yaml
+      - ../charts/alloy-gateway/templates/controllers/deployment.yaml
+      - ../charts/loki/templates/ingester/workload.yaml
+      - ../charts/thanos/templates/receive/statefulset.yaml
+      - ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content: *configMapVolume
+      - contains:
+          path: spec.template.spec.volumes
+          content: *secretVolume
+
+  # The profile's own volumes have to survive alongside: Loki's and Thanos's
+  # come from `defaults` and the component list, which global.extra* adds to.
+  - it: should keep the mtls profile's own volumes beside the trust bundle
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    templates:
+      - ../charts/loki/templates/ingester/workload.yaml
+      - ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+          any: true

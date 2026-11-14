@@ -12,6 +12,11 @@ metadata:
     {{- include "mzmon.annotations" $ | nindent 4 }}
 data:
   {{- tpl ( toYaml .Values.pipeline.env ) $ | nindent 2 }}
+  {{- /* The trust bundle. One already in pipeline.env wins, which keeps the
+         key from being written twice. */}}
+  {{- if not ( hasKey ( .Values.pipeline.env | default dict ) "SSL_CERT_DIR" ) }}
+  SSL_CERT_DIR: {{ include "mzmon.trustBundle.certDir" $ | quote }}
+  {{- end }}
   {{- $kubelet := .Values.pipeline.metrics.kubelet }}
   GATEWAY_CADVISOR_SCRAPE_INTERVAL: {{ $kubelet.scrapeInterval | quote }}
   {{- /* Rendered as a JSON literal because the pipeline unwraps it with

@@ -98,6 +98,7 @@ Every workload now ships a NetworkPolicy, on by default.
 
 - [ ] `[consumer]` **(Terraform: automatic)** Use **workload identity** for object storage — IRSA, GKE Workload Identity, or Azure Workload Identity — rather than static keys. See [Logs & Events > Storing](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) and [Metrics > Storing](../../metrics/storing/#thanos-object-storage).
 - [ ] `[consumer]` Give Alertmanager a **workload identity** for Amazon SNS rather than static keys, scoped to `sns:Publish` on its topics. It is the only notification integration a cloud identity can authorize; the rest read a credential from the `alertmanager-receivers` Secret. See [Alert Channels > Cloud provider services](../../alerting/channels/#cloud).
+- [ ] `[operator]` If your object store or a destination presents a certificate from a private CA, add the CA to the [trust bundle](#trust-a-private-ca) rather than turning verification off.
 - [ ] `[operator]` Narrow the `0.0.0.0/0` egress rules where your infrastructure gives you something tighter — a VPC endpoint's CIDR, or Cilium's `toFQDNs`. The chart cannot derive the API server's or the object store's address, so it ships the broad form and says so.
 - [ ] `[operator]` Remember the credential endpoint, not just the bucket. Workload identity fetches a token from STS (or the GCP/Azure equivalent) on `443`, and a policy that covers the bucket but not the token endpoint hangs the component at startup rather than failing it. This is the single most common NetworkPolicy mistake in this stack; [Loki's checklist](../production-best-practices/loki/#object-storage-egress) covers the symptom in detail.
 
@@ -386,6 +387,86 @@ The mount is unconditional and marked `optional: true`, so the same values work 
 - [ ] `[operator]` **Do not set `renewBefore` near `duration`.** It looks like a way to exercise renewal and it is a way to break cert-manager: at 92% of duration (a 1h certificate with 55m of headroom) renewal fires every few minutes, and on a small cluster with six certificates the controller livelocked in an optimistic-locking re-queue loop, stopped renewing, and then reported `Ready=True: "Certificate is up to date and has not expired"` on certificates that had expired 45 minutes earlier — every TLS hop failing with `certificate has expired` while the Certificate resource looked healthy. Keep `renewBefore` to a third of `duration` or less, and force renewal explicitly (delete the Secret, or `cmctl renew`) if you want to test it.
 - [ ] `[operator]` **A mounted file is not a reloaded file.** The kubelet refreshes Secret contents atomically, but the process still has to notice, and reload support differs per component. That is why no hop turns on by default, and why enabling one is a decision to make per component rather than per stack.
 
+## Trust a private CA {#trust-a-private-ca}
+
+Some endpoints the stack connects to present a certificate from a CA that its images don't trust.
+Examples are an S3-compatible store serving your own certificates, a webhook behind a TLS-intercepting proxy, and a destination on your own PKI.
+The trust bundle adds your CAs to the roots the stack trusts for those connections, so you don't have to turn verification off.
+
+Every Loki and Thanos component, both Alloy roles, and Alertmanager mount a ConfigMap and a Secret named `mzmon-trust-bundle`.
+Each sets `SSL_CERT_DIR` to Go's default certificate directories plus the two mounts.
+Go loads its roots from those directories and from the image's own CA file, so the image's public roots stay trusted.
+Both mounts are optional, so a pod starts whether or not either exists.
+
+### Supply the CAs
+
+Create the ConfigMap, the Secret, or both, in each namespace the stack runs in.
+That's one namespace unless you use `profiles/split-namespace.values.yaml`.
+
+- **A ConfigMap suits CAs you distribute across the cluster.**
+  Every key is mounted, so any key name works.
+  With [trust-manager](https://cert-manager.io/docs/trust/trust-manager/), name a `Bundle` `mzmon-trust-bundle`.
+  trust-manager writes a ConfigMap with the Bundle's name into each namespace its selector matches:
+
+  ```yaml
+  apiVersion: trust.cert-manager.io/v1alpha1
+  kind: Bundle
+  metadata:
+    name: mzmon-trust-bundle
+  spec:
+    sources:
+      - useDefaultCAs: true
+      # Read from trust-manager's trust namespace, `cert-manager` by default.
+      - secret:
+          name: corporate-root-ca
+          key: ca.crt
+    target:
+      configMap:
+        key: ca-certificates.crt
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+  ```
+
+- **A Secret suits a CA you have as a file.**
+  Only its `ca.crt` key is mounted:
+
+  ```bash
+  kubectl create secret generic mzmon-trust-bundle -n monitoring --from-file=ca.crt=corporate-root-ca.pem
+  ```
+
+  If cert-manager already issues from your private CA, a `Certificate` with `secretName: mzmon-trust-bundle` gives you this Secret.
+  A CA issuer writes its own certificate to `ca.crt`.
+  The chart mounts only that key, so the certificate's private key never reaches a pod.
+
+Then restart the pods:
+
+```bash
+kubectl rollout restart deployment,statefulset,daemonset -n monitoring
+```
+
+Restart them again after any change to the bundle.
+The kubelet refreshes the mounted files, but a Go process reads its roots once, at its first TLS connection, and keeps them.
+
+### What it covers
+
+The trust bundle applies to every outbound connection that verifies against the system roots, which is any connection with no CA of its own:
+
+- Loki's and Thanos's object storage, when the storage configuration names no CA file.
+- `pipeline.destinations` entries with no `tls.caFile`.
+- Alertmanager receivers whose HTTP configuration names no `ca_file`.
+
+The in-cluster hops under [Certificates](#certificates) name the internal CA explicitly, so the trust bundle doesn't widen what they accept.
+
+A connection that names its own CA file trusts that file instead of the system roots.
+To trust the bundle there, point the setting at `/etc/mzmon/trust-bundle/configmap/KEY` or `/etc/mzmon/trust-bundle/secret/ca.crt`.
+Replace `KEY` with the ConfigMap's key.
+
+It doesn't reach Grafana, the postgres-exporter, kube-state-metrics, node-exporter, Loki's gateway, or memcached.
+
+- [ ] `[operator]` **If your images ship no CA bundle, put the public roots in the trust bundle too.** Such an image trusts only what the bundle holds. trust-manager adds the public roots with `useDefaultCAs: true`, as in the example.
+- [ ] `[operator]` **Restate the trust-bundle entries when you replace a list that carries them.** They're in `global.extraEnv`, `global.extraVolumes`, and `global.extraVolumeMounts`, which reach Loki and Thanos. They're also in `alloy-agent` and `alloy-gateway` under `controller.volumes.extra` and `alloy.mounts.extra`, and in `alertmanager` under `extraVolumes`, `extraVolumeMounts`, and `extraEnv`. Helm replaces lists rather than merging them. A mount whose volume is gone makes the pod invalid, and the other omissions remove the CAs without an error.
+
 ## What is not there yet {#gaps}
 
 Stated plainly, because the values surface implies more than the deployment has — `minVersion: TLS13` sitting next to `enabled: false` reads like a switch rather than a project.
@@ -402,7 +483,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **In-cluster TLS, agent → gateway** | ✅ Shipped and **authenticated** at phase 3. The listener renders from Helm and the agent's destination presents a certificate; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker |
 | **Mutual TLS between components** | ✅ At phase 3, five listeners require and verify a client certificate: Thanos Receive's remote-write port and the gateway's 3100, 4317, 4318 and 9090. Loki's HTTP port and Alertmanager's API port are the exceptions and stay at verify-if-given. Authentication, not authorization — none of these can express "this identity may write and that one may not", so the size of the trust domain is the security property |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |
-| **A trust bundle for a private CA** | ❌ Not shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)). Needed for an S3-compatible store behind a private CA, and for images that ship no CA bundle at all |
+| **A trust bundle for a private CA** | ✅ Shipped. A ConfigMap or Secret named `mzmon-trust-bundle` adds your CAs to the roots Loki, Thanos, both Alloy roles, and Alertmanager trust for outbound TLS; see [Trust a private CA](#trust-a-private-ca) |
 | **Intra-Loki, intra-Thanos and intra-Alertmanager TLS** | ❌ Not shipped. Distributor→ingester gRPC, the memberlist ring, query→store, Alertmanager's gossip on 9094 — all real hops inside a single subchart's trust boundary |
 | **Redaction in the pipeline** | ❌ Not shipped ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)) |
 
