@@ -1,0 +1,32 @@
+# Scrape balancerd, the pgwire and HTTPS proxy in front of environmentd.
+# balancerd serves its own /metrics (mz_balancer_*) on the internal-http port.
+# https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.PodMonitor
+apiVersion: monitoring.coreos.com/v1
+# A PodMonitor because the balancerd Service exposes only the pgwire and http
+# ports, so a ServiceMonitor has no endpoint port to name for internal-http.
+kind: PodMonitor
+metadata:
+  name: balancerd
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: balancerd
+spec:
+  selector:
+    matchLabels:
+      # Added in v26.24.0
+      # https://github.com/MaterializeInc/materialize/pull/36415
+      app.kubernetes.io/name: balancerd
+  namespaceSelector:
+    any: true
+  # Pod labels copied onto scraped metrics (consumed by the dashboards).
+  # Harmless on pods lacking a given label. Node-level labels (zone, instance
+  # type, nodepool) are intentionally excluded — they are not pod labels.
+  podTargetLabels:
+    - materialize.cloud/organization-name
+    - materialize.cloud/organization-namespace
+    - materialize.cloud/organization-id
+  # https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.PodMetricsEndpoint
+  podMetricsEndpoints:
+    - port: internal-http
+      path: /metrics
+      relabelings: []
