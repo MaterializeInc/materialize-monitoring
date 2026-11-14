@@ -45,6 +45,10 @@ and for what has shipped, see the [Changelog](/materialize-monitoring/preview/re
 Metrics → Rules is a stub, so this page doesn't link to it.
 It appears in the sidebar because the section exists, and the [Roadmap](/materialize-monitoring/preview/renovate-k8s-openapi-0-x/reference/development/roadmap/) tracks the work behind it.
 
+## Working with the data
+
+* [Observability tools](/materialize-monitoring/preview/renovate-k8s-openapi-0-x/o11y-tools/overview/) — Grafana in a browser, the Grafana MCP server for AI agents, `gcx`, and the backend APIs, compared by audience, access, ease of use, and stability.
+
 ## Operating the stack
 
 * [Production Best Practices](/materialize-monitoring/preview/renovate-k8s-openapi-0-x/operating/production-best-practices/checklist/) — sizing, retention, replication, disruption budgets, and durability, each tagged by who owns it.
