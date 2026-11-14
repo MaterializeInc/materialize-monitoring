@@ -296,11 +296,15 @@ and not its name, which is the resource&rsquo;s name.
 <h4><code>component="kubelet"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_kube_state_metrics</code></small></h4>
 Nodes running each kubelet version.
 <code>version</code> is the kubelet&rsquo;s, as the node reports it, which is the
-cluster&rsquo;s Kubernetes version once an upgrade finishes.
+cluster&rsquo;s Kubernetes version once an upgrade finishes. Each node
+counts once however many kube-state-metrics replicas report it.
 <p><strong>Recorded where:</strong> <code>kube-state-metrics</code>, <code>thanos</code>.</p>
         
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>kube_node_info, &#34;<span style="color:#e6db74">version</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">kubelet_version</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node, kubelet_version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_info<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">version</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">kubelet_version</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
 <h4><code>component="environmentd"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_materialize</code></small></h4>
@@ -323,11 +327,43 @@ Running node-exporter processes of each version.
 <p><strong>Recorded where:</strong> <code>node-exporter</code>, <code>thanos</code>.</p>
         
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>node_exporter_build_info<span style="color:#f92672">)</span></span></span></code></pre></div>
+<h4><code>component="postgres"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_postgres</code></small></h4>
+Metadata databases running each PostgreSQL version, read through the
+postgres-exporter.
+Covers each <code>externalDependencies.consensus</code> entry with
+<code>flavor: postgres</code>, whichever service runs the database: Amazon RDS,
+Cloud SQL, Azure Database for PostgreSQL, or a cluster of your own.
+Absent where none is declared, or the exporter doesn&rsquo;t run.
+<p><strong>Recorded where:</strong> <code>thanos</code>, <code>postgres-exporter</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target, short_version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      pg_static{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">version</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">short_version</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
 <h4><code>component="thanos"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_thanos</code></small></h4>
 Running Thanos processes of each version, every component together.
 <p><strong>Recorded where:</strong> <code>thanos</code>.</p>
         
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>thanos_build_info<span style="color:#f92672">)</span></span></span></code></pre></div>
+<h3 id="mzmon-node_uname_info-count"><code>mzmon:node_uname_info:count</code>
+  <a class="anchor" href="#mzmon-node_uname_info-count">#</a>
+</h3>
+<h4><small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_node_exporter</code></small></h4>
+Nodes with each CPU architecture and kernel release.
+<code>machine</code> and <code>release</code> are <code>uname -m</code> and <code>uname -r</code> on the node,
+such as <code>aarch64</code> and <code>6.12.40-64.114.amzn2023.aarch64</code>. The node&rsquo;s
+host name stays behind.
+<p><strong>Recorded where:</strong> <code>node-exporter</code>, <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>machine, release<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodename, machine, release<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>node_uname_info<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
 <h3 id="mzmon-rules-count"><code>mzmon:rules:count</code>
   <a class="anchor" href="#mzmon-rules-count">#</a>
 </h3>

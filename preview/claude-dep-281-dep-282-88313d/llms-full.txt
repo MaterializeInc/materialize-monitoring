@@ -14254,7 +14254,8 @@ The following table lists every series in the heartbeat:
 | Series | Labels | Value |
 |---|---|---|
 | `mzmon:heartbeat` | `chart_version` | `1` |
-| `mzmon:build_info:count` | `component`, `version` | The running processes of that component at that version. `component` is `alloy`, `environmentd`, `kubelet`, `loki`, `node-exporter`, or `thanos`. |
+| `mzmon:build_info:count` | `component`, `version` | The running processes of that component at that version. `component` is `alloy`, `environmentd`, `kubelet`, `loki`, `node-exporter`, `postgres`, or `thanos`. |
+| `mzmon:node_uname_info:count` | `machine`, `release` | The nodes with that CPU architecture and kernel release |
 | `mzmon:environment_info` | `environment_id` | `1` for each Materialize environment |
 | `mzmon:cluster_created_timestamp_seconds` | None | When the cluster's `kube-system` namespace was created |
 | `mzmon:rules:count` | None | The rules the Thanos ruler evaluates |
@@ -14263,6 +14264,11 @@ The following table lists every series in the heartbeat:
 Each series also carries `cluster`, which is `clusterName`, and `ruler_replica`, the name of the ruler pod that wrote it.
 The gateway sets `job` and `instance` to `thanos-ruler`.
 A component that isn't running reports no `mzmon:build_info:count` series.
+
+`postgres` is the PostgreSQL version of your Materialize metadata database, counted per database.
+It's read through the postgres-exporter, because no cloud provider's metrics carry an engine version.
+It covers each `externalDependencies.consensus` entry with `flavor: postgres`, whether the database runs on Amazon RDS, Cloud SQL, Azure Database for PostgreSQL, or a cluster of your own.
+Other databases the exporter watches aren't reported.
 
 Your own Thanos stores the same series, so you can read exactly what the heartbeat sends:
 
@@ -37132,7 +37138,8 @@ The schedule for level 1 should be an explicit list of field names in the docsit
 **Decision: the heartbeat is a set of recorded series, evaluated by the Thanos ruler, in a `heartbeat` metric tier of their own.**
 They are defined in `packages/queries/mzmon-heartbeat.yaml`
 and listed field by field in [What the heartbeat sends](../../../../operating/call-home/#heartbeat):
-the chart version, the running version of each component, each Materialize environment's `environment_id`, the cluster's creation time,
+the chart version, the running version of each component and of the metadata database where the postgres-exporter reads it,
+each node's architecture and kernel release, each Materialize environment's `environment_id`, the cluster's creation time,
 and whether the ruler's rules load and evaluate.
 Three properties follow from that construction:
 

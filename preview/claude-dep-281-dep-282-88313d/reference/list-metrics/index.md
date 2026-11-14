@@ -73,6 +73,12 @@ like our bundled Thanos provider.
             <br />
         </details>
     </li>
+    <li id="mzmon:node_uname_info:count">mzmon:node_uname_info:count
+        <details>
+            Written by the chart's recording rules: see <a href="../recorded-series/#mzmon-node_uname_info-count">Recorded Series</a>.
+            <br />
+        </details>
+    </li>
     <li id="mzmon:rule_evaluation_failures:rate5m">mzmon:rule_evaluation_failures:rate5m
         <details>
             Written by the chart's recording rules: see <a href="../recorded-series/#mzmon-rule_evaluation_failures-rate5m">Recorded Series</a>.
