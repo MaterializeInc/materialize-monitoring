@@ -14,8 +14,8 @@ output "chart_version" {
 }
 
 output "grafana_url" {
-  description = "In-cluster URL for Grafana, which is what the module deploys by default. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that yet, so use the external hostname you configured there instead."
-  value       = "http://grafana.${local.namespace}.svc.cluster.local"
+  description = "In-cluster URL for Grafana, which is what the module deploys by default. It is HTTPS on port 443 when `grafana_external_dns_names` gives Grafana a certificate, and that certificate names the external hostnames rather than this one. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that, so use the external hostname you configured there instead."
+  value       = "${local.grafana_https ? "https" : "http"}://grafana.${local.namespace}.svc.cluster.local"
 }
 
 output "grafana_admin_user" {

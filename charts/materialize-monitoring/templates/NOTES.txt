@@ -78,6 +78,7 @@ Alertmanager is installed and notifies for both rulers.
   {{- $gfNamespace := include "mzmon.grafana.namespace" $ }}
   {{- $gfName := include "mzmon.grafana.fullname" $ }}
   {{- $gfPort := include "mzmon.grafana.servicePort" $ }}
+  {{- $gfScheme := include "mzmon.grafana.scheme" $ }}
   {{- /*
   Read through the section helpers, not `dig`'s multi-key form: a section set to
   `null` — how a values file removes one a profile set — makes that form error on
@@ -118,11 +119,20 @@ Grafana is installed and configured to visualize metrics and logs.
 
   Reachable at the load balancer's address, once it is provisioned:
     kubectl --namespace {{ $gfNamespace }} get svc {{ $gfName }} -o wide
+    {{- if eq $gfScheme "https" }}
+    {{- range $host := ( dig "external" "dnsNames" list ( $.Values.certificates | default dict ) ) }}
+    https://{{ $host }}/
+    {{- end }}
+    DNS for those names is yours to create; the Service does not publish it.
+    {{- end }}
   {{- end }}
 
   Reach it from your machine:
     kubectl --namespace {{ $gfNamespace }} port-forward svc/{{ $gfName }} 3000:{{ $gfPort }}
-    Then open http://localhost:3000
+    Then open {{ $gfScheme }}://localhost:3000
+    {{- if eq $gfScheme "https" }}
+    Grafana's certificate names its public hostname, so the browser warns about localhost.
+    {{- end }}
   {{- if not ( dig "admin" "existingSecret" "" $.Values.grafana ) }}
 
   Read the generated admin password:

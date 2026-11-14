@@ -70,5 +70,22 @@ spec:
     {{- else }}
       {{- fail "connections.grafana.external needs either apiKey or adminUser + adminPassword when connections.grafana.mode is \"external\"" }}
     {{- end }}
+  {{- $clientTLS := $.Values.connections.grafana.tls | default dict }}
+  {{- if $clientTLS }}
+  client:
+    tls:
+      {{- $clientTLS | toYaml | nindent 6 }}
+  {{- else if and $bundled ( not $ext.url ) ( eq ( include "mzmon.grafana.scheme" $ ) "https" ) }}
+  {{- /*
+  A bundled Grafana serving HTTPS presents its browser-facing certificate, which
+  names the public hostname and not the Service the operator dials. Nothing the
+  operator can check matches, so it encrypts without verifying. A Grafana on
+  plain HTTP gives this hop no TLS at all, so this is no weaker than the
+  default. Supply `connections.grafana.tls` to verify instead.
+  */}}
+  client:
+    tls:
+      insecureSkipVerify: true
+  {{- end }}
   {{- end }}
 {{- end }}

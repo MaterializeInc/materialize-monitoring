@@ -1,0 +1,290 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for a bundled Grafana that serves HTTPS from its browser-facing
+# certificate: the `grafana-https` profile, the in-cluster URL and operator TLS
+# that follow `grafana.ini.server.protocol`, and the validator that holds the
+# pieces together.
+#
+# Each piece fails on its own and quietly. A Grafana with no certificate files
+# exits at startup; a plaintext probe never passes; a plaintext scrape loses
+# Grafana's own metrics; an `http://` root_url sends every post-sign-in redirect
+# to a port nothing answers; and grafana-operator dialing `http://` at a TLS port
+# provisions nothing.
+#
+# `grafana.ini` is set as a nested map, not a dotted `set` path; see the note at
+# the top of grafana_production_test.yaml.
+suite: grafana serving https
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.managed-grafana: true
+  # The profile turns `certificates` on, which needs an internal issuer too.
+  certificates.internal.selfSigned.enabled: true
+tests:
+  # --- defaults -------------------------------------------------------------
+
+  - it: keeps the operator on plain HTTP with no client TLS by default
+    set:
+      certificates.internal.selfSigned.enabled: false
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec.external.url
+          value: http://grafana.test-monitoring:80
+      - notExists:
+          path: spec.client
+
+  # --- the profile ----------------------------------------------------------
+
+  - it: renders the profile without a validation failure
+    values:
+      - ../profiles/grafana-https.values.yaml
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: issues the external certificate into the Secret Grafana mounts
+    values:
+      - ../profiles/grafana-https.values.yaml
+    template: templates/certificates.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-grafana-external-tls
+    asserts:
+      - equal:
+          path: spec.secretName
+          value: mzmon-grafana-external-tls
+      - equal:
+          path: spec.dnsNames
+          value:
+            - grafana.example.com
+
+  - it: mounts the certificate and probes over HTTPS
+    values:
+      - ../profiles/grafana-https.values.yaml
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: grafana-external-tls
+            secret:
+              secretName: mzmon-grafana-external-tls
+              defaultMode: null
+          any: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: grafana-external-tls
+            mountPath: /etc/mzmon/grafana-external-tls
+            readOnly: true
+            subPath: null
+          any: true
+      # The profile sets only the scheme; the subchart's path and port survive
+      # the merge.
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value:
+            path: /api/health
+            port: grafana
+            scheme: HTTPS
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value:
+            path: /api/health
+            port: grafana
+            scheme: HTTPS
+
+  - it: points grafana.ini at the mounted certificate
+    values:
+      - ../profiles/grafana-https.values.yaml
+    template: ../charts/grafana/templates/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "protocol = https\n"
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "cert_file = /etc/mzmon/grafana-external-tls/tls.crt\n"
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "cert_key = /etc/mzmon/grafana-external-tls/tls.key\n"
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "certs_watch_interval = 1h\n"
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "cookie_secure = true\n"
+
+  - it: moves the Service to 443 and leaves the container port alone
+    values:
+      - ../profiles/grafana-https.values.yaml
+    template: ../charts/grafana/templates/service.yaml
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 443
+      - equal:
+          path: spec.ports[0].targetPort
+          value: grafana
+
+  - it: scrapes Grafana over HTTPS, verifying the public name
+    values:
+      - ../profiles/grafana-https.values.yaml
+    template: ../charts/grafana/templates/servicemonitor.yaml
+    asserts:
+      - equal:
+          path: spec.endpoints[0].scheme
+          value: https
+      - equal:
+          path: spec.endpoints[0].tlsConfig
+          value:
+            serverName: grafana.example.com
+
+  # --- grafana-operator -----------------------------------------------------
+
+  # The certificate names the public host, not the Service, so nothing the
+  # operator can check matches.
+  - it: has the operator dial HTTPS without verifying
+    values:
+      - ../profiles/grafana-https.values.yaml
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec.external.url
+          value: https://grafana.test-monitoring:443
+      - equal:
+          path: spec.client.tls
+          value:
+            insecureSkipVerify: true
+
+  - it: takes connections.grafana.tls over the default
+    values:
+      - ../profiles/grafana-https.values.yaml
+    set:
+      connections.grafana.tls.certSecretRef.name: grafana-ca
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec.client.tls
+          value:
+            certSecretRef:
+              name: grafana-ca
+
+  # An explicit URL may name the public host, which does verify, so the chart
+  # assumes nothing about it.
+  - it: leaves client TLS alone when the bundled URL is overridden
+    values:
+      - ../profiles/grafana-https.values.yaml
+    set:
+      connections.grafana.external.url: https://grafana.example.com
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - equal:
+          path: spec.external.url
+          value: https://grafana.example.com
+      - notExists:
+          path: spec.client
+
+  - it: tells a port-forward to use https
+    values:
+      - ../profiles/grafana-https.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Then open https://localhost:3000"
+
+  # --- validation -----------------------------------------------------------
+
+  - it: errors on https with no certificate files
+    set:
+      grafana:
+        grafana.ini:
+          server:
+            protocol: https
+        livenessProbe:
+          httpGet:
+            scheme: HTTPS
+        readinessProbe:
+          httpGet:
+            scheme: HTTPS
+        serviceMonitor:
+          scheme: https
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "cert_file or cert_key is unset"
+
+  - it: errors on a plaintext probe
+    values:
+      - ../profiles/grafana-https.values.yaml
+    set:
+      grafana:
+        readinessProbe:
+          httpGet:
+            scheme: HTTP
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "grafana.readinessProbe.httpGet.scheme is \"HTTP\""
+
+  - it: errors on a plaintext scrape
+    values:
+      - ../profiles/grafana-https.values.yaml
+    set:
+      grafana:
+        serviceMonitor:
+          scheme: http
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "every scrape of Grafana's own metrics fails"
+
+  - it: errors on an http root_url
+    values:
+      - ../profiles/grafana-https.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          server:
+            root_url: http://grafana.example.com
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "Write it with https://"
+
+  - it: errors when the mounted certificate has no issuer
+    values:
+      - ../profiles/grafana-https.values.yaml
+    set:
+      certificates.external.issuerRef.name: ""
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "mounts mzmon-grafana-external-tls for its certificate, but nothing issues it"
+
+  - it: warns when cookie_secure is off
+    values:
+      - ../profiles/grafana-https.values.yaml
+    set:
+      grafana:
+        grafana.ini:
+          security:
+            cookie_secure: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "cookie_secure is not true"
+
+  - it: warns when an issued external certificate is served by nothing
+    set:
+      certificates.enabled: true
+      certificates.external.issuerRef.name: letsencrypt
+      certificates.external.dnsNames:
+        - grafana.example.com
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "nothing presents the certificate"

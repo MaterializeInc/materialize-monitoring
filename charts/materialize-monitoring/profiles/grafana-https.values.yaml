@@ -1,0 +1,94 @@
+# Profile: have the bundled Grafana serve HTTPS from its browser-facing
+# certificate.
+#
+# For a Grafana behind an L4 load balancer. A `LoadBalancer` Service passes TCP
+# through, so TLS has to terminate in the pod. cert-manager issues the
+# certificate from `certificates.external` into the Secret
+# `mzmon-grafana-external-tls`, and Grafana serves it on its own port. Behind an
+# Ingress or an L7 load balancer, terminate TLS there instead with
+# `grafana-ingress`.
+#
+# Layer it over your platform profile, then replace the issuer name and every
+# `grafana.example.com`:
+#
+#   helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+#     -f charts/materialize-monitoring/profiles/gcp-example.values.yaml \
+#     -f charts/materialize-monitoring/profiles/grafana-https.values.yaml
+#
+# `certificates.enabled` also renders the stack's internal certificates, which
+# need an issuer of their own. Set `certificates.internal.issuerRef.name`, or
+# `certificates.internal.selfSigned.enabled: true` for the chart's own root. A
+# public ACME issuer can't sign in-cluster names, so it can't be that issuer.
+#
+# The profile moves the following together, and the render refuses a Grafana
+# serving HTTPS with any of them left behind:
+#
+#   * Grafana reads `cert_file` and `cert_key` from the mounted Secret, and
+#     rereads them hourly, so a renewal takes effect without a restart.
+#   * The Service listens on 443, so `https://grafana.example.com` needs no port.
+#     The container port stays 3000, so NetworkPolicies are unchanged.
+#   * The probes and the ServiceMonitor speak HTTPS. The kubelet doesn't verify a
+#     probe's certificate. The scrape verifies the certificate against
+#     `serverName` and the system's public roots.
+#   * grafana-operator dials the Service over HTTPS without verifying, because
+#     the certificate names the public hostname and not the Service. See
+#     `connections.grafana.tls`.
+#
+# The pod waits in ContainerCreating until cert-manager has issued the
+# certificate, because the mount isn't optional. A pending issuance shows on the
+# `Certificate` resource: `kubectl -n monitoring describe certificate
+# mzmon-grafana-external-tls`.
+
+certificates:
+  enabled: true
+  external:
+    issuerRef:
+      # A ClusterIssuer that can sign the public name, such as Let's Encrypt
+      # through a DNS-01 solver.
+      name: letsencrypt
+      kind: ClusterIssuer
+    dnsNames:
+      - grafana.example.com
+
+grafana:
+  service:
+    port: 443
+
+  grafana.ini:
+    server:
+      protocol: https
+      cert_file: /etc/mzmon/grafana-external-tls/tls.crt
+      cert_key: /etc/mzmon/grafana-external-tls/tls.key
+      # Grafana compares the files' modification times on this interval and
+      # reloads them when they change. cert-manager renews well ahead of expiry,
+      # so an hour is ample.
+      certs_watch_interval: 1h
+      # Must match the URL users reach. Grafana redirects here after sign-in and
+      # builds share links, notification links, and OAuth redirect URIs from it.
+      root_url: https://grafana.example.com
+    security:
+      cookie_secure: true
+
+  # A list, and Helm replaces lists rather than merging them, so restate any
+  # mount another values file adds, such as an OIDC client secret.
+  extraSecretMounts:
+    - name: grafana-external-tls
+      secretName: mzmon-grafana-external-tls
+      mountPath: /etc/mzmon/grafana-external-tls
+      readOnly: true
+
+  # Maps merge, so the subchart's path, port, and timings survive.
+  livenessProbe:
+    httpGet:
+      scheme: HTTPS
+  readinessProbe:
+    httpGet:
+      scheme: HTTPS
+
+  serviceMonitor:
+    scheme: https
+    tlsConfig:
+      # The name on the certificate. With no CA named, the scraper trusts the
+      # system's public roots, which is what a public issuer chains to. For a
+      # private issuer, also set `ca` to the issuing CA.
+      serverName: grafana.example.com

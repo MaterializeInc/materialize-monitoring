@@ -335,12 +335,63 @@ locals {
       # Always emitted, empty when there is no Secret to mount. An empty list is
       # the subchart's own default, so it contributes nothing — and it keeps the
       # conditional inside a list, where the types unify.
-      extraSecretMounts = local.grafana_database_password_secret ? [{
-        name       = "grafana-db"
-        secretName = one(kubernetes_secret.grafana_database[*].metadata[0].name)
-        mountPath  = "/etc/secrets/grafana-db"
+      extraSecretMounts = local.grafana_database_secret_mounts
+    }
+  })]
+
+  # A local because `grafana_https_documents` restates it: Helm replaces lists
+  # rather than merging them, so the later document has to carry every mount.
+  grafana_database_secret_mounts = local.grafana_database_password_secret ? [{
+    name       = "grafana-db"
+    secretName = one(kubernetes_secret.grafana_database[*].metadata[0].name)
+    mountPath  = "/etc/secrets/grafana-db"
+    readOnly   = true
+  }] : []
+
+  # ----------------------------------------------------------------------------
+  # Grafana serving HTTPS
+  # ----------------------------------------------------------------------------
+  # A browser-facing certificate exists for Grafana behind an L4 load balancer,
+  # which passes TCP through, so the only thing that can present it is Grafana.
+  # Issuing it therefore turns HTTPS on, with the same settings as the chart's
+  # `grafana-https` profile, which the chart's render check holds together.
+  #
+  # Gated on the same condition as `certificates.external` in `wiring_values`.
+  grafana_https = var.certificates_enabled && var.issuer_ref != null && length(var.grafana_external_dns_names) > 0
+
+  # The chart names the Secret `<fullname>-grafana-external-tls`.
+  grafana_external_secret = "${local.monitoring_fullname}-grafana-external-tls"
+
+  # After `grafana_database_documents`, whose `extraSecretMounts` it restates.
+  # `root_url` is the first external name. A caller's `additional_values` come
+  # later, so a different `root_url` there still wins.
+  grafana_https_documents = !local.grafana_https ? [] : [yamlencode({
+    grafana = {
+      service = { port = 443 }
+      "grafana.ini" = {
+        server = {
+          protocol             = "https"
+          cert_file            = "/etc/mzmon/grafana-external-tls/tls.crt"
+          cert_key             = "/etc/mzmon/grafana-external-tls/tls.key"
+          certs_watch_interval = "1h"
+          root_url             = "https://${var.grafana_external_dns_names[0]}"
+        }
+        security = { cookie_secure = true }
+      }
+      extraSecretMounts = concat(local.grafana_database_secret_mounts, [{
+        name       = "grafana-external-tls"
+        secretName = local.grafana_external_secret
+        mountPath  = "/etc/mzmon/grafana-external-tls"
         readOnly   = true
-      }] : []
+      }])
+      livenessProbe  = { httpGet = { scheme = "HTTPS" } }
+      readinessProbe = { httpGet = { scheme = "HTTPS" } }
+      # Verified against the public name and the scraper's system roots, which
+      # is what a public issuer chains to.
+      serviceMonitor = {
+        scheme    = "https"
+        tlsConfig = { serverName = var.grafana_external_dns_names[0] }
+      }
     }
   })]
 
@@ -497,6 +548,7 @@ locals {
     # factor, so they are the safe side to have win.
     local.mtls_documents,
     local.grafana_database_documents,
+    local.grafana_https_documents,
     local.storage_documents,
     local.azure_identity_document,
     local.azure_gateway_identity_document,

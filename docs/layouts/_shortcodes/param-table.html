@@ -1,8 +1,17 @@
 {{/*
   param-table: Show a table of parameters for a page.
 
+  Parameters:
+    keys          The params to show, comma-separated, in display order.
+                  Without it, every param shows, sorted by name.
+    ignoreParams  The params to leave out when keys isn't set, comma-separated.
+
+  Keys display humanized, so `cluster-access` heads its row as "Cluster access".
+  param-matrix compares the same params across the pages of a section.
+
   Usage:
     {{< param-table ignoreParams="skipme" >}}
+    {{< param-table keys="audience,stability" >}}
 */}}
 {{- $ignoreParams := .Get "ignoreParams" | default "" -}}
 {{- $ignoreParamsList := split $ignoreParams "," -}}
@@ -11,13 +20,25 @@
 {{- if .Page.IsHome }}
   {{- $params = .Site.Params }}
 {{- end }}
+{{- $keys := slice }}
+{{- with .Get "keys" }}
+  {{- range split . "," }}
+    {{- $keys = $keys | append (strings.TrimSpace . | lower) }}
+  {{- end }}
+{{- else }}
+  {{- range $key, $_ := $params }}
+    {{- if not ( in $ignoreParamsList $key ) }}
+      {{- $keys = $keys | append $key }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 <table class="param-table">
   <tbody>
-    {{- range $key, $value := $params }}
-      {{- if not ( in $ignoreParamsList $key ) }}
+    {{- range $key := $keys }}
+      {{- if isset $params $key }}
         <tr>
-          <th>{{ $key }}</th>
-          <td>{{ $value }}</td>
+          <th>{{ humanize $key }}</th>
+          <td>{{ partial "param-value.html" (index $params $key) }}</td>
         </tr>
       {{- end }}
     {{- end }}

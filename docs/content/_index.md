@@ -49,6 +49,10 @@ and for what has shipped, see the [Changelog]({{< relref "reference/changelog.md
 Metrics → Rules is a stub, so this page doesn't link to it.
 It appears in the sidebar because the section exists, and the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) tracks the work behind it.
 
+## Working with the data
+
+* [Observability tools]({{< relref "o11y-tools/overview.md" >}}) — Grafana in a browser, the Grafana MCP server for AI agents, `gcx`, and the backend APIs, compared by audience, access, ease of use, and stability.
+
 ## Operating the stack
 
 * [Production Best Practices]({{< relref "operating/production-best-practices/checklist.md" >}}) — sizing, retention, replication, disruption budgets, and durability, each tagged by who owns it.

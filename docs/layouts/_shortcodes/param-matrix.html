@@ -1,0 +1,52 @@
+{{/*
+  param-matrix: Compare the pages of the current section in one table, with a
+  column per page and a row per frontmatter param.
+
+  Each page keeps its own values in its params and shows them with param-table,
+  so this table and the pages can't disagree.
+  The page this sits on is left out, and so is any page that sets none of the
+  params.
+  Columns follow the section's page order, which is by weight.
+
+  Parameters:
+    keys  The params to show as rows, comma-separated, in display order.
+          Required.
+
+  Usage:
+    {{< param-matrix keys="audience,stability" >}}
+*/}}
+{{- $keys := slice }}
+{{- range split (.Get "keys" | default "") "," }}
+  {{- with strings.TrimSpace . }}{{ $keys = $keys | append (lower .) }}{{ end }}
+{{- end }}
+{{- if not $keys }}
+  {{- errorf "param-matrix: keys is required (from %s)" .Page.File.Path }}
+{{- end }}
+{{- $pages := slice }}
+{{- range .Page.CurrentSection.RegularPages }}
+  {{- if eq .RelPermalink $.Page.RelPermalink }}{{ continue }}{{ end }}
+  {{- $page := . }}
+  {{- range $keys }}
+    {{- if index $page.Params . }}{{ $pages = $pages | append $page }}{{ break }}{{ end }}
+  {{- end }}
+{{- end }}
+<table class="param-matrix">
+  <thead>
+    <tr>
+      <td></td>
+      {{- range $pages }}
+      <th scope="col"><a href="{{ .RelPermalink }}">{{ .LinkTitle }}</a></th>
+      {{- end }}
+    </tr>
+  </thead>
+  <tbody>
+    {{- range $key := $keys }}
+    <tr>
+      <th scope="row">{{ humanize $key }}</th>
+      {{- range $pages }}
+      <td>{{ with index .Params $key }}{{ partial "param-value.html" . }}{{ end }}</td>
+      {{- end }}
+    </tr>
+    {{- end }}
+  </tbody>
+</table>
