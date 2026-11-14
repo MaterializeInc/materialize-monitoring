@@ -29,19 +29,19 @@ Nothing in the chart reads a level from Materialize.
 
 ## Call-home levels {#levels}
 
-The following table lists each level, what it sends, and the profile that sets it:
+The following table lists each level and what it sends:
 
-| Level | What crosses | Profile |
-|---|---|---|
-| `off` | Nothing. The default. | None |
-| `heartbeat` | Nothing. | `profiles/call-home-heartbeat.values.yaml` |
-| `alerts` | Nothing. | `profiles/call-home-alerts.values.yaml` |
-| `metrics` | Metrics at the `essential` tier. | `profiles/call-home-metrics.values.yaml` |
-| `diagnostics` | Metrics at the `essential` tier, and logs at `WARN` and above. | `profiles/call-home.values.yaml` |
+| Level | What crosses |
+|---|---|
+| `off` | Nothing. The default. |
+| `heartbeat` | Nothing. |
+| `alerts` | Nothing. |
+| `metrics` | Metrics at the `essential` tier. |
+| `diagnostics` | Metrics at the `essential` tier, and logs at `WARN` and above. |
 
-<!-- TODO(DEP-281, DEP-282): `heartbeat` gains the heartbeat record and `alerts` gains alert state; update both rows and the profiles' headers. -->
+<!-- TODO(DEP-281, DEP-282): `heartbeat` gains the heartbeat record and `alerts` gains alert state; update both rows and the profile's header. -->
 
-Each profile sets `callHome.level` and nothing else.
+`profiles/call-home.values.yaml` sets `diagnostics`, and nothing else.
 
 At `diagnostics`, the gateway sends at most 500 log lines per second per gateway replica, in bursts of at most 5000.
 It levels most lines, including Rust and Go panics, which arrive as `CRITICAL`.
@@ -70,19 +70,21 @@ The control plane reads your identity from the certificate, so the gateway sends
    The gateway mounts the Secret at `/etc/mzmon/destination-tls`.
    At `metrics` and above, the gateway fails to load its configuration without it, and names the missing file.
 
-1. Add the profile for your level to your install, after the profiles you already use.
+1. Set the level.
 
-   With Helm, add it to the `-f` list of your upgrade command.
+   With Helm, add the profile to the `-f` list of your upgrade command, after the profiles you already use.
+   To choose a level other than `diagnostics`, set `callHome.level` after it.
    The profiles ship inside the chart package; for more information, see [Get the profiles](../../getting-started/helm/#get-the-profiles).
 
    ```bash
    helm upgrade RELEASE oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring \
      --version VERSION --namespace NAMESPACE \
      -f YOUR_VALUES.yaml \
-     -f materialize-monitoring/profiles/call-home-metrics.values.yaml
+     -f materialize-monitoring/profiles/call-home.values.yaml \
+     --set callHome.level=metrics
    ```
 
-   With the Terraform module, append the profile's contents to `additional_values`, for example with `file()`.
+   With the Terraform module, set `callHome.level` in `additional_values`.
 
 1. Confirm the gateway is sending.
    After the gateway restarts, the install notes show the level, and `otelcol_exporter_sent_metric_points_total` rises
@@ -137,7 +139,7 @@ Your own Loki and Thanos keep everything at every level.
 
 ## Turn off call-home {#disable}
 
-Remove the profile from your install, or set `callHome.level` to `"off"`.
+Remove the profile and any `callHome.level` you set, or set `callHome.level` to `"off"`.
 Quote it: YAML reads a bare `off` as `false`, which the chart also accepts as `off`.
 The gateway stops sending at its next restart, which the upgrade triggers.
 

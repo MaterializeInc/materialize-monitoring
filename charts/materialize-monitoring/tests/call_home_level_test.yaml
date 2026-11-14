@@ -173,10 +173,10 @@ tests:
       - failedTemplate:
           errorPattern: 'callHome.level is "true"'
 
-  # --- each rung, from its profile ---------------------------------------------
+  # --- each rung -----------------------------------------------------------------
   - it: should send nothing at heartbeat
-    values:
-      - ../profiles/call-home-heartbeat.values.yaml
+    set:
+      callHome.level: heartbeat
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - notMatchRegex:
@@ -184,8 +184,8 @@ tests:
           pattern: 'dest_controlPlane'
 
   - it: should say heartbeat sends nothing, without a no-signal warning
-    values:
-      - ../profiles/call-home-heartbeat.values.yaml
+    set:
+      callHome.level: heartbeat
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
@@ -194,8 +194,8 @@ tests:
           pattern: 'controlPlane is enabled but carries no signal'
 
   - it: should send nothing at alerts
-    values:
-      - ../profiles/call-home-alerts.values.yaml
+    set:
+      callHome.level: alerts
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - notMatchRegex:
@@ -203,8 +203,8 @@ tests:
           pattern: 'dest_controlPlane'
 
   - it: should send essential metrics and no logs at metrics
-    values:
-      - ../profiles/call-home-metrics.values.yaml
+    set:
+      callHome.level: metrics
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
@@ -213,8 +213,8 @@ tests:
           pattern: 'Call-home level: metrics \(sends to the controlPlane destination\)'
 
   - it: should render no log path at metrics
-    values:
-      - ../profiles/call-home-metrics.values.yaml
+    set:
+      callHome.level: metrics
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
       - matchRegex:
@@ -225,8 +225,8 @@ tests:
           pattern: 'otelcol\.receiver\.loki "dest_controlPlane"'
 
   - it: should leave the secret filter to its mode at metrics
-    values:
-      - ../profiles/call-home-metrics.values.yaml
+    set:
+      callHome.level: metrics
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     asserts:
       - notExists:
@@ -242,9 +242,8 @@ tests:
 
   # --- the level is a ceiling --------------------------------------------------
   - it: should refuse logs below diagnostics
-    values:
-      - ../profiles/call-home-metrics.values.yaml
     set:
+      callHome.level: metrics
       pipeline.destinations.controlPlane.logs.enabled: true
     template: templates/validate.yaml
     asserts:
@@ -252,9 +251,8 @@ tests:
           errorPattern: "callHome.level is metrics, which sends no logs"
 
   - it: should refuse metrics below the metrics level
-    values:
-      - ../profiles/call-home-alerts.values.yaml
     set:
+      callHome.level: alerts
       pipeline.destinations.controlPlane.metrics.minMetricImportance: essential
     template: templates/validate.yaml
     asserts:
@@ -262,9 +260,8 @@ tests:
           errorPattern: "callHome.level is alerts, which sends no metrics"
 
   - it: should refuse a tier floor below essential
-    values:
-      - ../profiles/call-home-metrics.values.yaml
     set:
+      callHome.level: metrics
       pipeline.destinations.controlPlane.metrics.minMetricImportance: recommended
     template: templates/validate.yaml
     asserts:
@@ -302,9 +299,8 @@ tests:
           errorPattern: "logs.rateLimit.burst is 5001"
 
   - it: should refuse another type
-    values:
-      - ../profiles/call-home-metrics.values.yaml
     set:
+      callHome.level: metrics
       pipeline.destinations.controlPlane.type: prometheus
     template: templates/validate.yaml
     asserts:
@@ -327,9 +323,8 @@ tests:
           pattern: 'loki\.process "dest_controlPlane" \{[\s\S]*?selector = "\{level=~\\"TRACE\|DEBUG\|INFO\|WARN\|UNKNOWN\\"\}"\s*action = "drop"[\s\S]*?stage\.limit \{\s*rate = 100\s*burst = 1000'
 
   - it: should send to another control plane when the entry names one
-    values:
-      - ../profiles/call-home-metrics.values.yaml
     set:
+      callHome.level: metrics
       pipeline.destinations.controlPlane.url: https://telemetry.c.staging.cloud.materialize.com
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     asserts:

@@ -1542,7 +1542,7 @@ but the render fails if it sends more: a lower tier floor, a lower log level, `l
 At `off`, the render fails if the entry is there at all, unless it's `enabled: false`.
 
 Only this key raises the level. Nothing in the chart reads a level from Materialize.
-The `call-home-*` profiles set it, one profile per level, and `call-home` sets `diagnostics`.
+`profiles/call-home.values.yaml` sets `diagnostics`.
 </td>
     </tr>
   </tbody>

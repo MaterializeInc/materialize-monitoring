@@ -161,3 +161,22 @@ tests:
     asserts:
       - notExists:
           path: data.GATEWAY_SECRETFILTER_RATE
+
+  # --- another level, over the profile ------------------------------------------
+  # The page tells an operator to keep the profile and set the level after it.
+  - it: should send metrics only when the level is set to metrics after it
+    set:
+      callHome.level: metrics
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'Destination: controlPlane \(otlp: essential metrics\)'
+
+  - it: should send nothing when the level is set to off after it
+    set:
+      callHome.level: "off"
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'dest_controlPlane'

@@ -166,7 +166,7 @@ Usage:
     {{- $errors = append $errors ( printf "callHome.level is %q. It must be off, heartbeat, alerts, metrics, or diagnostics. Quote off, as \"off\", so YAML reads it as a string." $level ) }}
   {{- else if eq ( int $spec.rank ) 0 }}
     {{- if and ( kindIs "map" $entry ) $entry ( ne ( toString ( index $entry "enabled" ) ) "false" ) }}
-      {{- $errors = append $errors ( printf "%s is the destination for Materialize's control plane, but callHome.level is off, so nothing is sent to it. Set callHome.level to the level you agree to send, for example with profiles/call-home-metrics.values.yaml; the level builds the destination, and %s can only send less." $path $path ) }}
+      {{- $errors = append $errors ( printf "%s is the destination for Materialize's control plane, but callHome.level is off, so nothing is sent to it. Set callHome.level to the level you agree to send, for example metrics; the level builds the destination, and %s can only send less." $path $path ) }}
     {{- end }}
   {{- else }}
     {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}

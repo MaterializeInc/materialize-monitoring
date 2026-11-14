@@ -1,16 +1,19 @@
 # Profile: call-home. Sends a reduced copy of telemetry to Materialize's
-# control plane at the `diagnostics` call-home level, alongside the full copy
-# the install keeps.
+# control plane, alongside the full copy the install keeps.
 #
-# Nothing is sent unless you apply a call-home profile. Each one sets
-# `callHome.level` and touches nothing else, so compose it with the cloud and
-# sizing profiles the install already uses. Each level sends everything the one
-# above it in this list sends, and more:
+# Nothing is sent unless you set `callHome.level`, which defaults to `off`.
+# This profile sets it to `diagnostics` and touches nothing else, so compose it
+# with the cloud and sizing profiles the install already uses. Each level sends
+# everything the one above it in this list sends, and more:
 #
-#   call-home-heartbeat.values.yaml  heartbeat    nothing in this chart version
-#   call-home-alerts.values.yaml     alerts       nothing in this chart version
-#   call-home-metrics.values.yaml    metrics      metrics at the `essential` tier
-#   call-home.values.yaml            diagnostics  this profile
+#   off          nothing (the default)
+#   heartbeat    nothing in this chart version
+#   alerts       nothing in this chart version
+#   metrics      metrics at the `essential` tier
+#   diagnostics  also logs at WARN and above (this profile)
+#
+# To choose another level, change the value below in a copy of this file, or
+# pass `--set callHome.level=metrics` after it.
 #
 # Bring Your Own Cloud stacks apply this profile too; the only difference is how
 # the client certificate is issued, which happens outside this chart. The
