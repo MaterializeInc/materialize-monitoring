@@ -3565,8 +3565,8 @@ alloy-agent:
   image:
     registry: ghcr.io
     repository: materializeinc/mzmon-alloy
-    tag: v1.21.3-mz3
-    digest: sha256:b378000c1b13ad3345ab859439a33ce9aace6dd3fe107542c3e3b8651a8c9e65
+    tag: v1.22.0-mz3
+    digest: sha256:b5c82238ddcf1fb6c095b6febf5ce5859e696bc91a609cd876d35a51c6adc243
     pullPolicy: IfNotPresent
 
   configReloader:
@@ -3890,8 +3890,8 @@ alloy-gateway:
   image:
     registry: ghcr.io
     repository: materializeinc/mzmon-alloy
-    tag: v1.21.3-mz3
-    digest: sha256:b378000c1b13ad3345ab859439a33ce9aace6dd3fe107542c3e3b8651a8c9e65
+    tag: v1.22.0-mz3
+    digest: sha256:b5c82238ddcf1fb6c095b6febf5ce5859e696bc91a609cd876d35a51c6adc243
     pullPolicy: IfNotPresent
 
   configReloader:
