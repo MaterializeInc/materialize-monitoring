@@ -32,8 +32,9 @@ To port-forward, your Kubernetes identity needs `get` and `list` on `services` a
 and `create` on `pods/portforward`, in the backend's namespace.
 The `amtool` examples need `create` on `pods/exec` instead.
 
-The examples on this page use the `monitoring` namespace.
-Under the `split-namespace` profile, each backend runs in its own namespace: `thanos`, `loki`, and `alertmanager`.
+In each `kubectl` snippet, set `KUBECONTEXT` to your cluster's context and `NAMESPACE` to the backend's namespace.
+Every backend runs in `monitoring` by default.
+Under the `split-namespace` profile, each runs in its own namespace: `thanos`, `loki`, and `alertmanager`.
 
 ## Query metrics from Thanos Query
 
@@ -45,10 +46,13 @@ To query metrics, follow these steps:
 1. Forward a local port to Thanos Query:
 
    ```bash
-   kubectl --namespace monitoring port-forward svc/thanos-query 9090:9090
+   KUBECONTEXT=my-cluster
+   NAMESPACE=monitoring
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" port-forward svc/thanos-query 9090:9090
    ```
 
-1. Run a query with `promtool` or `curl`:
+1. In another terminal, run a query with `promtool` or `curl`:
 
    ```bash
    promtool query instant http://localhost:9090 'up{namespace="materialize-environment"}'
@@ -74,10 +78,13 @@ To query logs, follow these steps:
 1. Forward a local port to the Loki gateway:
 
    ```bash
-   kubectl --namespace monitoring port-forward svc/loki-gateway 3100:8080
+   KUBECONTEXT=my-cluster
+   NAMESPACE=monitoring
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" port-forward svc/loki-gateway 3100:8080
    ```
 
-1. Run a query with `logcli` or `curl`:
+1. In another terminal, run a query with `logcli` or `curl`:
 
    ```bash
    logcli query --addr=http://localhost:3100 --org-id=loki --since=1h --limit=50 \
@@ -98,11 +105,11 @@ For the labels a log stream carries, and the attributes that are structured meta
 Run it in the pod rather than through a port-forward:
 
 ```bash
-kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- amtool alert query
-```
+KUBECONTEXT=my-cluster
+NAMESPACE=monitoring
 
-```bash
-kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- amtool silence query
+kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" exec alertmanager-0 -c alertmanager -- amtool alert query
+kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" exec alertmanager-0 -c alertmanager -- amtool silence query
 ```
 
 To create and expire silences, see [Maintenance windows](../../alerting/maintenance/#through-amtool).
