@@ -52,24 +52,31 @@ Exposed Grafana
 Unexposed Grafana
 : The Service is `ClusterIP` by default, so you need a port-forward and Kubernetes access to the Grafana namespace.
 
+In each snippet, set `KUBECONTEXT` to your cluster's context and `NAMESPACE` to Grafana's namespace.
+Grafana runs in `monitoring` by default, and in `grafana` under the `split-namespace` profile.
+
 To reach an unexposed Grafana, follow these steps:
 
 1. Forward a local port to the Grafana Service:
 
    ```bash
-   kubectl --namespace monitoring port-forward svc/grafana 3000:80
+   KUBECONTEXT=my-cluster
+   NAMESPACE=monitoring
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" port-forward svc/grafana 3000:80
    ```
 
-1. Read the generated admin user name and password from their Secret:
+1. In another terminal, read the generated admin user name and password from their Secret:
 
    ```bash
-   kubectl --namespace monitoring get secret grafana -o jsonpath="{.data.admin-user}" | base64 -d; echo
-   kubectl --namespace monitoring get secret grafana -o jsonpath="{.data.admin-password}" | base64 -d; echo
+   KUBECONTEXT=my-cluster
+   NAMESPACE=monitoring
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" get secret grafana -o jsonpath="{.data.admin-user}" | base64 -d; echo
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" get secret grafana -o jsonpath="{.data.admin-password}" | base64 -d; echo
    ```
 
 1. Open `http://localhost:3000`, and sign in with that user name and password.
-
-Under the `split-namespace` profile, Grafana runs in the `grafana` namespace instead of `monitoring`.
 
 > [!WARNING]
 > A Grafana role limits what you can change, not what you can read.
