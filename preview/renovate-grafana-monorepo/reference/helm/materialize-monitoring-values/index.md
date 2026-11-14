@@ -47,7 +47,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 5.0.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.5 |
-| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
+| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.49.0 |
 
 ## Values {#values}
 
@@ -951,10 +951,17 @@ opposite rule and takes its own namespace; the chart handles both.
 </td>
       <td class="helm-value-desc">The browser-facing name, for a Grafana behind an L4 load balancer.
 
-Only Grafana takes an external certificate today, because it is the only
+Only Grafana takes an external certificate, because it is the only
 component in the stack meant for a human and the only one this chart helps
 expose. Set `dnsNames` to the hostname the load balancer answers on; it must
 match what users actually type, and what `grafana.ini.server.root_url` says.
+
+The certificate lands in the Secret `<fullname>-grafana-external-tls`, which
+is `mzmon-grafana-external-tls` at the default `fullnameOverride`. Issuing it
+serves nothing by itself. Grafana serves it once `grafana.ini.server.protocol`
+is `https` and the Secret is mounted where `cert_file` and `cert_key` point.
+The `grafana-https` profile sets all of that, and the render refuses an
+`https` Grafana with no certificate to serve.
 
 Leave `issuerRef.name` empty and nothing external is rendered, which is the
 right answer for an L7 load balancer holding a cloud-managed certificate.
@@ -3316,6 +3323,32 @@ Reference: https://grafana.github.io/grafana-operator/docs/api/#grafanaspec
 {}</pre>
 </td>
       <td class="helm-value-desc">Secret for Grafana API key
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.grafana<wbr>.tls</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">How grafana-operator verifies Grafana's certificate, as the `Grafana` resource's `spec.client.tls`.
+Applies in `bundled` and `external` modes. Takes either
+`insecureSkipVerify: true`, or `certSecretRef` naming a Secret whose
+`ca.crt` is the CA to trust; grafana-operator rejects both at once.
+
+Empty, a bundled Grafana that serves HTTPS (`grafana.grafana.ini.server.protocol`
+is `https`) gets `insecureSkipVerify: true`. Grafana then presents its
+browser-facing certificate, which names the public hostname rather than
+the Service the operator dials, so no CA makes the name match. A Grafana on
+plain HTTP gives this hop no TLS at all, so skipping verification is no
+weaker than the default.
+
+`certSecretRef` works when Grafana serves a certificate that also names
+its Service, such as one from a private CA that signs both its public and
+in-cluster names. grafana-operator also presents the Secret's `tls.crt` and
+`tls.key` as a client certificate.
+
+Reference: https://grafana.github.io/grafana-operator/docs/api/#grafanaspecclienttls
 </td>
     </tr>
   </tbody>
@@ -6036,7 +6069,7 @@ that holds Loki's own HTTP port at phase 2.
   "pullPolicy": "IfNotPresent",
   "registry": "ghcr.io",
   "repository": "jkroepke/access-log-exporter",
-  "tag": "1.0.1"
+  "tag": "1.0.2"
 }</pre>
 </td>
       <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
@@ -8537,6 +8570,10 @@ is the only option that lifts both constraints.
 default and the reason a fresh install needs `kubectl port-forward`. Prefer
 `ingress` over a `LoadBalancer` Service: Grafana is ordinary HTTP that wants
 host-based routing and a certificate, which is what Ingress is for.
+
+A `LoadBalancer` Service is an L4 load balancer, which passes TCP through, so
+TLS has to terminate in Grafana. The `grafana-https` profile does that from
+the certificate `certificates.external` issues, and moves `port` to 443.
 
 A `LoadBalancer` Service with no `loadBalancerSourceRanges` is an error at
 render time unless `connections.grafana.allowPublicAccess` is set.

@@ -545,6 +545,16 @@ resource ID and the key never enters the cluster — for that shape leave this
 empty and pass the annotation through `grafana.service.annotations` in
 `additional_values`.
 
+With the certificate issued, Grafana serves HTTPS from it, as the chart's
+`grafana-https` profile sets up. The module mounts the Secret, sets
+`grafana.ini.server.protocol` to `https`, `root_url` to the first name, and
+`cookie_secure`, and moves the Service to port 443. The probes and the
+ServiceMonitor switch to HTTPS, and the scrape verifies the certificate
+against the first name and the system's public roots. grafana-operator
+dials the in-cluster Service without verifying, because the certificate
+doesn't name it. For a private `var.issuer_ref`, set
+`grafana.serviceMonitor.tlsConfig.ca` to its CA in `additional_values`.
+
 Setting this with no `var.issuer_ref` issues nothing, and the render says so.
 </td>
         <td class="tf-var-default"><code>[]</code></td>
@@ -1049,7 +1059,7 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
 | <a name="output_grafana_admin_password"></a> [grafana_admin_password](#output_grafana_admin_password) | Grafana admin password. |
 | <a name="output_grafana_admin_secret_name"></a> [grafana_admin_secret_name](#output_grafana_admin_secret_name) | Name of the Secret holding the Grafana admin credentials. |
 | <a name="output_grafana_admin_user"></a> [grafana_admin_user](#output_grafana_admin_user) | Grafana admin username. |
-| <a name="output_grafana_url"></a> [grafana_url](#output_grafana_url) | In-cluster URL for Grafana, which is what the module deploys by default. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that yet, so use the external hostname you configured there instead. |
+| <a name="output_grafana_url"></a> [grafana_url](#output_grafana_url) | In-cluster URL for Grafana, which is what the module deploys by default. It is HTTPS on port 443 when `grafana_external_dns_names` gives Grafana a certificate, and that certificate names the external hostnames rather than this one. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that, so use the external hostname you configured there instead. |
 | <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. `https` whenever `internal_tls` is not `off`, verified against the internal CA. Reads carry a tenant header; see the chart's datasource configuration. |
 | <a name="output_metrics_url"></a> [metrics_url](#output_metrics_url) | Thanos Query endpoint. Prometheus-API-compatible, so consumers of a Prometheus URL keep working against it. |
 | <a name="output_namespace"></a> [namespace](#output_namespace) | Namespace the monitoring stack is installed into. |
