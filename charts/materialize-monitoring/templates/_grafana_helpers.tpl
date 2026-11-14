@@ -99,7 +99,7 @@ Usage:
 {{- end }}
 
 {{- /*
-HTTP port the bundled Grafana Service listens on.
+Port the bundled Grafana Service listens on.
 
 The `grafana` subchart defaults `service.port` to 80 and routes it to the
 container's 3000, so the pod port is the wrong number to dial. Read the value
@@ -113,13 +113,39 @@ Usage:
 {{- end }}
 
 {{- /*
+Scheme the bundled Grafana serves on: `https` or `http`.
+
+`grafana.ini.server.protocol` decides it. `https` and `h2` both terminate TLS
+in Grafana itself; anything else is plaintext. The socket protocols serve no
+TCP port at all, so they read as `http` and leave the in-cluster URL as wrong
+as it would be anyway.
+
+Usage:
+  {{ include "mzmon.grafana.scheme" $ }}
+*/}}
+{{- define "mzmon.grafana.scheme" }}
+  {{- $server := include "mzmon.grafana.iniSection" ( dict "root" $ "name" "server" ) | fromYaml }}
+  {{- if has ( $server.protocol | default "http" | toString ) ( list "https" "h2" ) }}
+    {{- "https" }}
+  {{- else }}
+    {{- "http" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
 In-cluster base URL for the bundled Grafana.
+
+The scheme follows what Grafana serves, so a Grafana terminating TLS is dialed
+over TLS. The host is the Service's in-cluster name, which a public certificate
+does not carry; see the `Grafana` resource's `client.tls` for what that means
+to grafana-operator.
 
 Usage:
   {{ include "mzmon.grafana.url" $ }}
 */}}
 {{- define "mzmon.grafana.url" }}
-  {{- printf "http://%s.%s:%s"
+  {{- printf "%s://%s.%s:%s"
+    ( include "mzmon.grafana.scheme" $ )
     ( include "mzmon.grafana.fullname" $ )
     ( include "mzmon.grafana.namespace" $ )
     ( include "mzmon.grafana.servicePort" $ ) }}
@@ -514,7 +540,7 @@ Usage:
   configured somewhere this chart cannot see.
   */}}
   {{- if ( include "mzmon.grafana.enabled" $ ) }}
-    {{- range $name := list "persistence" "exposure" "disruption" "security" "networkPolicy" }}
+    {{- range $name := list "persistence" "exposure" "https" "disruption" "security" "networkPolicy" }}
       {{- $res := include ( printf "mzmon.grafana.validate.%s" $name ) $ | fromYaml }}
       {{- $errors = concat $errors $res.errors | default list }}
       {{- $warnings = concat $warnings $res.warnings | default list }}
@@ -720,6 +746,76 @@ Usage:
         {{- $errors = append $errors ( printf "%s Disable it, or set connections.grafana.allowPublicAccess=true if the exposure is deliberate and gated elsewhere." $msg ) }}
       {{- end }}
     {{- end }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate that a Grafana serving HTTPS has everything that has to agree with it.
+
+Grafana terminating TLS moves several things at once, and each one left behind
+fails differently: no certificate files and Grafana exits at startup, a
+plaintext probe and the pod never turns Ready, a plaintext scrape and Grafana's
+own metrics go missing, an `http://` `root_url` and every redirect after sign-in
+lands on a port nothing answers. The `grafana-https` profile sets them together;
+this catches a hand-written configuration that moved only some.
+
+The other direction is a warning: an external certificate issued for a Grafana
+that serves plain HTTP is presented by nothing.
+
+Usage:
+  {{- $res := include "mzmon.grafana.validate.https" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.validate.https" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $server := include "mzmon.grafana.iniSection" ( dict "root" $ "name" "server" ) | fromYaml }}
+  {{- $protocol := $server.protocol | default "http" | toString }}
+  {{- $https := eq ( include "mzmon.grafana.scheme" $ ) "https" }}
+  {{- $certs := $.Values.certificates | default dict }}
+  {{- $external := $certs.external | default dict }}
+  {{- $externalIssued := and $certs.enabled ( dig "issuerRef" "name" "" $external ) ( $external.dnsNames ) }}
+  {{- $externalSecret := printf "%s-grafana-external-tls" ( include "mzmon.fullname" $ ) }}
+  {{- $mountsExternal := false }}
+  {{- range $mount := ( dig "extraSecretMounts" list ( $.Values.grafana | default dict ) ) }}
+    {{- if eq ( ( $mount | default dict ).secretName | default "" | toString ) $externalSecret }}
+      {{- $mountsExternal = true }}
+    {{- end }}
+  {{- end }}
+
+  {{- if $https }}
+    {{- if or ( not $server.cert_file ) ( not $server.cert_key ) }}
+      {{- $errors = append $errors ( printf "grafana.ini.server.protocol is %q but cert_file or cert_key is unset, so Grafana exits at startup with no certificate to serve. Point both at a mounted certificate; the grafana-https profile mounts %s at /etc/mzmon/grafana-external-tls." $protocol $externalSecret ) }}
+    {{- end }}
+
+    {{- range $probe := list "livenessProbe" "readinessProbe" "startupProbe" }}
+      {{- $httpGet := ( include "mzmon.grafana.section" ( dict "root" $ "name" $probe ) | fromYaml ).httpGet }}
+      {{- if and $httpGet ( ne ( $httpGet.scheme | default "HTTP" | toString | upper ) "HTTPS" ) }}
+        {{- $errors = append $errors ( printf "Grafana serves HTTPS but grafana.%s.httpGet.scheme is %q, so the kubelet's plaintext request fails every time and the pod never passes the probe. Set grafana.%s.httpGet.scheme to HTTPS." $probe ( $httpGet.scheme | default "HTTP" ) $probe ) }}
+      {{- end }}
+    {{- end }}
+
+    {{- $monitor := include "mzmon.grafana.section" ( dict "root" $ "name" "serviceMonitor" ) | fromYaml }}
+    {{- if and $monitor.enabled ( ne ( $monitor.scheme | default "http" | toString | lower ) "https" ) }}
+      {{- $errors = append $errors "Grafana serves HTTPS but grafana.serviceMonitor.scheme is http, so every scrape of Grafana's own metrics fails. Set grafana.serviceMonitor.scheme to https, and grafana.serviceMonitor.tlsConfig.serverName to the name on Grafana's certificate." }}
+    {{- end }}
+
+    {{- $rootURL := $server.root_url | default "" | toString }}
+    {{- if hasPrefix "http://" $rootURL }}
+      {{- $errors = append $errors ( printf "Grafana serves HTTPS but grafana.ini.server.root_url is %s. Grafana redirects to root_url after sign-in and builds every share and notification link from it, so each one points at a plaintext address nothing answers. Write it with https://." $rootURL ) }}
+    {{- end }}
+
+    {{- if not ( include "mzmon.grafana.iniSection" ( dict "root" $ "name" "security" ) | fromYaml ).cookie_secure }}
+      {{- $warnings = append $warnings "Grafana serves HTTPS but grafana.ini.security.cookie_secure is not true, so browsers also send its session cookie over plain HTTP if anything ever serves Grafana's hostname that way. Set it to true." }}
+    {{- end }}
+
+    {{- if and $mountsExternal ( not $externalIssued ) }}
+      {{- $errors = append $errors ( printf "Grafana mounts %s for its certificate, but nothing issues it: the chart renders that Certificate only with certificates.enabled, certificates.external.issuerRef.name and certificates.external.dnsNames all set. Grafana never starts without the Secret." $externalSecret ) }}
+    {{- end }}
+  {{- else if $externalIssued }}
+    {{- $warnings = append $warnings ( printf "certificates.external issues %s, but Grafana serves plain HTTP (grafana.ini.server.protocol is %q), so nothing presents the certificate. Apply the grafana-https profile to have Grafana serve it, or clear certificates.external if a load balancer or Ingress terminates TLS with a certificate of its own." $externalSecret $protocol ) }}
   {{- end }}
 
   {{- /* final output */}}

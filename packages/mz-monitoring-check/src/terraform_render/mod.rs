@@ -333,6 +333,11 @@ const CHECKS: &[Check] = &[
         applies: checks::grafana::database_enabled,
         run: checks::grafana::database,
     },
+    Check {
+        name: "grafana::serves_https",
+        applies: checks::grafana::https_enabled,
+        run: checks::grafana::serves_https,
+    },
     // Gated on the declared inputs, never on the planned Secret or the rendered
     // scrape, for the reason the gateway credentials are.
     Check {

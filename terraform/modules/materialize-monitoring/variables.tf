@@ -1446,6 +1446,16 @@ variable "grafana_external_dns_names" {
     empty and pass the annotation through `grafana.service.annotations` in
     `additional_values`.
 
+    With the certificate issued, Grafana serves HTTPS from it, as the chart's
+    `grafana-https` profile sets up. The module mounts the Secret, sets
+    `grafana.ini.server.protocol` to `https`, `root_url` to the first name, and
+    `cookie_secure`, and moves the Service to port 443. The probes and the
+    ServiceMonitor switch to HTTPS, and the scrape verifies the certificate
+    against the first name and the system's public roots. grafana-operator
+    dials the in-cluster Service without verifying, because the certificate
+    doesn't name it. For a private `var.issuer_ref`, set
+    `grafana.serviceMonitor.tlsConfig.ca` to its CA in `additional_values`.
+
     Setting this with no `var.issuer_ref` issues nothing, and the render says so.
   EOT
   type        = list(string)
