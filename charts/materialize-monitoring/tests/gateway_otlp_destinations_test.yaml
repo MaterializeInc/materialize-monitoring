@@ -90,7 +90,7 @@ tests:
     asserts:
       - equal:
           path: data.GATEWAY_VENDOR_DEST_METRICS_ALLOWLIST
-          value: "mzmon:build_info:count|mzmon:cluster_created_timestamp_seconds|mzmon:environment_info|mzmon:heartbeat|mzmon:rule_evaluation_failures:rate5m|mzmon:rules:count"
+          value: "mzmon:build_info:count|mzmon:cluster_created_timestamp_seconds|mzmon:environment_info|mzmon:heartbeat|mzmon:node_uname_info:count|mzmon:rule_evaluation_failures:rate5m|mzmon:rules:count"
 
   - it: should add alert state and nothing else at the alerts tier
     template: templates/pipelines/cm-alloy-gateway-env.yaml
@@ -103,7 +103,7 @@ tests:
     asserts:
       - equal:
           path: data.GATEWAY_VENDOR_DEST_METRICS_ALLOWLIST
-          value: "ALERTS|mzmon:build_info:count|mzmon:cluster_created_timestamp_seconds|mzmon:environment_info|mzmon:heartbeat|mzmon:rule_evaluation_failures:rate5m|mzmon:rules:count"
+          value: "ALERTS|mzmon:build_info:count|mzmon:cluster_created_timestamp_seconds|mzmon:environment_info|mzmon:heartbeat|mzmon:node_uname_info:count|mzmon:rule_evaluation_failures:rate5m|mzmon:rules:count"
 
   - it: should keep alert state and the heartbeat at the essential tier
     template: templates/pipelines/cm-alloy-gateway-env.yaml

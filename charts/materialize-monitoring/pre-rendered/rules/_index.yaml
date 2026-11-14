@@ -1462,6 +1462,25 @@ records:
     - node-exporter
     - thanos
     minImportance: diagnostic
+  "mzmon_heartbeat_node_exporter/mzmon:node_uname_info:count":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_node_exporter
+    record: mzmon:node_uname_info:count
+    labels: {}
+    requires:
+    - node-exporter
+    - thanos
+    minImportance: diagnostic
+  "mzmon_heartbeat_postgres/mzmon:build_info:count":
+    file: prometheus/mzmon-heartbeat.yaml
+    group: mzmon_heartbeat_postgres
+    record: mzmon:build_info:count
+    labels:
+      component: postgres
+    requires:
+    - thanos
+    - postgres-exporter
+    minImportance: extended
   "mzmon_heartbeat_thanos/mzmon:build_info:count":
     file: prometheus/mzmon-heartbeat.yaml
     group: mzmon_heartbeat_thanos

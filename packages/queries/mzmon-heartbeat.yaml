@@ -24,7 +24,8 @@ description: |
   | Series | Labels | Value |
   |---|---|---|
   | `mzmon:heartbeat` | `chart_version` | `1` at each evaluation |
-  | `mzmon:build_info:count` | `component`, `version` | Running processes of that component at that version |
+  | `mzmon:build_info:count` | `component`, `version` | Running processes of that component at that version, or databases for `postgres` |
+  | `mzmon:node_uname_info:count` | `machine`, `release` | Nodes with that architecture and kernel release |
   | `mzmon:environment_info` | `environment_id` | `1` for each Materialize environment |
   | `mzmon:cluster_created_timestamp_seconds` | none | When the `kube-system` namespace was created |
   | `mzmon:rules:count` | none | Rules the Thanos ruler evaluates |
@@ -138,7 +139,8 @@ rules:
       summary: Nodes running each kubelet version.
       notes: |
         `version` is the kubelet's, as the node reports it, which is the
-        cluster's Kubernetes version once an upgrade finishes.
+        cluster's Kubernetes version once an upgrade finishes. Each node
+        counts once however many kube-state-metrics replicas report it.
     query:
       id: mzmon.heartbeat.build_info.kubelet
       stability: experimental
@@ -146,7 +148,10 @@ rules:
         summary: Nodes by kubelet version.
       promQL: |
         count by (version) (
-          label_replace(kube_node_info, "version", "$1", "kubelet_version", "(.+)")
+          label_replace(
+            group by (node, kubelet_version) (kube_node_info),
+            "version", "$1", "kubelet_version", "(.+)"
+          )
         )
 
   # --- One group per component, so each reports only where it runs ----------
@@ -213,6 +218,62 @@ rules:
       description:
         summary: node-exporter processes by version.
       promQL: count by (version) (node_exporter_build_info)
+
+  - record: mzmon:node_uname_info:count
+    group: mzmon_heartbeat_node_exporter
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    description:
+      summary: Nodes with each CPU architecture and kernel release.
+      notes: |
+        `machine` and `release` are `uname -m` and `uname -r` on the node,
+        such as `aarch64` and `6.12.40-64.114.amzn2023.aarch64`. The node's
+        host name stays behind.
+    query:
+      id: mzmon.heartbeat.node_uname
+      stability: experimental
+      description:
+        summary: Nodes by architecture and kernel release.
+      promQL: |
+        count by (machine, release) (
+          group by (nodename, machine, release) (node_uname_info)
+        )
+
+  # --- The metadata database, where its version can be read --------------------
+  # No provider pull publishes an engine version, so this reads the
+  # postgres-exporter, and only for the databases declared as the metadata
+  # database: the exporter can watch others, such as a source database.
+  - record: mzmon:build_info:count
+    group: mzmon_heartbeat_postgres
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    labels:
+      component: postgres
+    description:
+      summary: |
+        Metadata databases running each PostgreSQL version, read through the
+        postgres-exporter.
+      notes: |
+        Covers each `externalDependencies.consensus` entry with
+        `flavor: postgres`, whichever service runs the database: Amazon RDS,
+        Cloud SQL, Azure Database for PostgreSQL, or a cluster of your own.
+        Absent where none is declared, or the exporter doesn't run.
+    query:
+      id: mzmon.heartbeat.build_info.postgres
+      stability: experimental
+      description:
+        summary: Declared metadata databases by PostgreSQL version.
+      promQL: |
+        count by (version) (
+          label_replace(
+            group by (target, short_version) (
+              pg_static{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"}
+            ),
+            "version", "$1", "short_version", "(.+)"
+          )
+        )
 
   # --- Thanos: its version, and whether the rules behind ALERTS evaluate ------
   - record: mzmon:build_info:count

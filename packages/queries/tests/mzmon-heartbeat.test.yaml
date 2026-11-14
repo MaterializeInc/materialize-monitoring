@@ -68,15 +68,22 @@ tests:
           - labels: 'mzmon:environment_info{environment_id="0b8c2e9a-41d7-4f3a-9a52-3f1d2c7e8b10"}'
             value: 1
 
-  # A node pool mid-upgrade runs two kubelet versions.
-  - name: nodes are counted by kubelet version
+  # A node pool mid-upgrade runs two kubelet versions, and two
+  # kube-state-metrics replicas each report every node.
+  - name: nodes are counted once each by kubelet version
     interval: 1m
     input_series:
-      - series: 'kube_node_info{node="node-a", kubelet_version="v1.34.8-eks-a3a0722", provider_id="aws:///us-east-1a/i-0a"}'
+      - series: 'kube_node_info{node="node-a", kubelet_version="v1.34.8-eks-a3a0722", provider_id="aws:///us-east-1a/i-0a", pod="ksm-a"}'
         values: "1x10"
-      - series: 'kube_node_info{node="node-b", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1b/i-0b"}'
+      - series: 'kube_node_info{node="node-b", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1b/i-0b", pod="ksm-a"}'
         values: "1x10"
-      - series: 'kube_node_info{node="node-c", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1c/i-0c"}'
+      - series: 'kube_node_info{node="node-c", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1c/i-0c", pod="ksm-a"}'
+        values: "1x10"
+      - series: 'kube_node_info{node="node-a", kubelet_version="v1.34.8-eks-a3a0722", provider_id="aws:///us-east-1a/i-0a", pod="ksm-b"}'
+        values: "1x10"
+      - series: 'kube_node_info{node="node-b", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1b/i-0b", pod="ksm-b"}'
+        values: "1x10"
+      - series: 'kube_node_info{node="node-c", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1c/i-0c", pod="ksm-b"}'
         values: "1x10"
     promql_expr_test:
       - expr: mzmon:build_info:count{component="kubelet"}
@@ -123,6 +130,49 @@ tests:
             value: 1
           - labels: 'mzmon:build_info:count{component="environmentd", version="26.49.1"}'
             value: 1
+
+  # Host names stay behind; only the architecture and kernel release cross.
+  - name: nodes are counted by architecture and kernel release
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="10.0.0.1:9100", nodename="ip-10-0-0-1.ec2.internal", machine="aarch64", release="6.12.40-64.114.amzn2023.aarch64", sysname="Linux", version="#1 SMP"}'
+        values: "1x10"
+      - series: 'node_uname_info{instance="10.0.0.2:9100", nodename="ip-10-0-0-2.ec2.internal", machine="aarch64", release="6.12.40-64.114.amzn2023.aarch64", sysname="Linux", version="#1 SMP"}'
+        values: "1x10"
+      - series: 'node_uname_info{instance="10.0.0.3:9100", nodename="ip-10-0-0-3.ec2.internal", machine="x86_64", release="6.1.141-155.222.amzn2023.x86_64", sysname="Linux", version="#1 SMP"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: mzmon:node_uname_info:count
+        eval_time: 5m
+        exp_samples:
+          - labels: 'mzmon:node_uname_info:count{machine="aarch64", release="6.12.40-64.114.amzn2023.aarch64"}'
+            value: 2
+          - labels: 'mzmon:node_uname_info:count{machine="x86_64", release="6.1.141-155.222.amzn2023.x86_64"}'
+            value: 1
+
+  # --- the metadata database ----------------------------------------------------
+  # The `all` scenario declares `mz-metadata` and not `mz-grafana`, so the
+  # exporter's other database is left out, whatever its version.
+  - name: the declared metadata database is counted by PostgreSQL version
+    interval: 1m
+    input_series:
+      - series: 'pg_static{job="postgres-exporter", target="mz-metadata", server="mz-metadata.example.com:5432", short_version="18.3.0", version="PostgreSQL 18.3 on x86_64-pc-linux-gnu"}'
+        values: "1x10"
+      - series: 'pg_static{job="postgres-exporter", target="mz-grafana", server="mz-grafana.example.com:5432", short_version="16.13.0", version="PostgreSQL 16.13 on aarch64-unknown-linux-gnu"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: mzmon:build_info:count{component="postgres"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'mzmon:build_info:count{component="postgres", version="18.3.0"}'
+            value: 1
+
+  - name: no metadata database version without the exporter
+    interval: 1m
+    promql_expr_test:
+      - expr: mzmon:build_info:count{component="postgres"}
+        eval_time: 5m
+        exp_samples: []
 
   # --- the rules behind ALERTS ------------------------------------------------
   # Two ruler replicas each load every group. The count is one replica's, and a

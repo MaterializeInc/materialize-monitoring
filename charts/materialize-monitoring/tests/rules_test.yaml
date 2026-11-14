@@ -444,6 +444,32 @@ tests:
       - exists:
           path: spec.groups[?(@.name == "mzmon_heartbeat_alloy")]
 
+  # The gateway's own metrics are Alloy's, so a release that runs only the
+  # gateway still reports its version.
+  - it: reports the Alloy version from a monitored gateway without the agent
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      alloy-agent.enabled: false
+    documentSelector:
+      path: metadata.name
+      value: mzmon-mzmon-heartbeat
+    asserts:
+      - equal:
+          path: spec.groups[?(@.name == "mzmon_heartbeat_alloy")].rules[?(@.record == "mzmon:build_info:count")].labels.component
+          value: alloy
+
+  - it: reports no Alloy version when neither Alloy role is monitored
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      alloy-agent.enabled: false
+      alloy-gateway.serviceMonitor.enabled: false
+    documentSelector:
+      path: metadata.name
+      value: mzmon-mzmon-heartbeat
+    asserts:
+      - notExists:
+          path: spec.groups[?(@.name == "mzmon_heartbeat_alloy")]
+
   # Without the bundled Thanos's metrics there is no ruler of the chart's to
   # evaluate the heartbeat, so none of it installs.
   - it: installs no heartbeat without the bundled Thanos

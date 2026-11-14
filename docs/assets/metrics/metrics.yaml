@@ -16,6 +16,10 @@
   usage: []
 - importance: heartbeat
   labels: []
+  name: mzmon:node_uname_info:count
+  usage: []
+- importance: heartbeat
+  labels: []
   name: mzmon:rule_evaluation_failures:rate5m
   usage: []
 - importance: heartbeat
@@ -4557,6 +4561,7 @@
   usage:
   - ext.consensus.postgres.version_info
   - infra.postgres.health.version
+  - mzmon.heartbeat.build_info.postgres
 - importance: extended
   labels:
   - job
@@ -5042,6 +5047,11 @@
   name: node_exporter_build_info
   usage:
   - mzmon.heartbeat.build_info.node_exporter
+- importance: diagnostic
+  labels: []
+  name: node_uname_info
+  usage:
+  - mzmon.heartbeat.node_uname
 - importance: diagnostic
   labels: []
   name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization

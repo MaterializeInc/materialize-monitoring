@@ -27,6 +27,7 @@ heartbeat:
 - mzmon:cluster_created_timestamp_seconds
 - mzmon:environment_info
 - mzmon:heartbeat
+- mzmon:node_uname_info:count
 - mzmon:rule_evaluation_failures:rate5m
 - mzmon:rules:count
 alerts:
@@ -712,6 +713,7 @@ diagnostic:
 - loki_build_info
 - mz_start_time_environmentd
 - node_exporter_build_info
+- node_uname_info
 - stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization
 - stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization
 - stackdriver_cloudsql_database_cloudsql_googleapis_com_database_memory_utilization

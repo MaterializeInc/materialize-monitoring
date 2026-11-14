@@ -249,7 +249,8 @@ The schedule for level 1 should be an explicit list of field names in the docsit
 **Decision: the heartbeat is a set of recorded series, evaluated by the Thanos ruler, in a `heartbeat` metric tier of their own.**
 They are defined in `packages/queries/mzmon-heartbeat.yaml`
 and listed field by field in [What the heartbeat sends](../../../../operating/call-home/#heartbeat):
-the chart version, the running version of each component, each Materialize environment's `environment_id`, the cluster's creation time,
+the chart version, the running version of each component and of the metadata database where the postgres-exporter reads it,
+each node's architecture and kernel release, each Materialize environment's `environment_id`, the cluster's creation time,
 and whether the ruler's rules load and evaluate.
 Three properties follow from that construction:
 

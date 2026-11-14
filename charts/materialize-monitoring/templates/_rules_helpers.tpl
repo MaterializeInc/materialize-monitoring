@@ -121,7 +121,10 @@ Usage:
     {{- if and ( include "mzmon.loki.enabled" $ ) ( dig "monitoring" "serviceMonitor" "enabled" false $.Values.loki ) }}
       {{- $caps = append $caps "loki" }}
     {{- end }}
-    {{- if and ( include "mzmon.alloyAgent.enabled" $ ) ( dig "serviceMonitor" "enabled" false ( index $.Values "alloy-agent" ) ) }}
+    {{- /* Either monitored role: the gateway's own metrics are Alloy's too. */}}
+    {{- $agentMonitored := and ( include "mzmon.alloyAgent.enabled" $ ) ( dig "serviceMonitor" "enabled" false ( index $.Values "alloy-agent" ) ) }}
+    {{- $gatewayMonitored := dig "serviceMonitor" "enabled" false ( index $.Values "alloy-gateway" ) }}
+    {{- if or $agentMonitored $gatewayMonitored }}
       {{- $caps = append $caps "alloy" }}
     {{- end }}
     {{- if and ( include "mzmon.thanos.enabled" $ ) ( dig "global" "serviceMonitor" "enabled" false $.Values.thanos ) }}

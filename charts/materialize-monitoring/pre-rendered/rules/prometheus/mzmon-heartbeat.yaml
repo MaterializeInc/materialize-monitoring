@@ -19,7 +19,10 @@ groups:
   - record: mzmon:build_info:count
     expr: |-
       count by (version) (
-        label_replace(kube_node_info, "version", "$1", "kubelet_version", "(.+)")
+        label_replace(
+          group by (node, kubelet_version) (kube_node_info),
+          "version", "$1", "kubelet_version", "(.+)"
+        )
       )
     labels:
       component: kubelet
@@ -47,6 +50,25 @@ groups:
     expr: count by (version) (node_exporter_build_info)
     labels:
       component: node-exporter
+  - record: mzmon:node_uname_info:count
+    expr: |-
+      count by (machine, release) (
+        group by (nodename, machine, release) (node_uname_info)
+      )
+- name: mzmon_heartbeat_postgres
+  rules:
+  - record: mzmon:build_info:count
+    expr: |-
+      count by (version) (
+        label_replace(
+          group by (target, short_version) (
+            pg_static{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__"}
+          ),
+          "version", "$1", "short_version", "(.+)"
+        )
+      )
+    labels:
+      component: postgres
 - name: mzmon_heartbeat_thanos
   rules:
   - record: mzmon:build_info:count
