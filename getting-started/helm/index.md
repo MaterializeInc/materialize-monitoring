@@ -287,6 +287,7 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/grafana-postgres.values.yaml` | Grafana state in Postgres rather than SQLite — the production shape |
 | `profiles/grafana-pvc.values.yaml` | Grafana state on a PersistentVolume — durable, but still one replica. For a Helm-only install with no database |
 | `profiles/grafana-ingress.values.yaml` | make Grafana reachable over an Ingress, internal by default and TLS-terminated. Pair it with one of the two above |
+| `profiles/grafana-https.values.yaml` | have Grafana serve HTTPS itself, from the certificate `certificates.external` issues, for a Grafana behind an L4 `LoadBalancer` Service. See [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls) |
 | `profiles/scheduling.values.yaml` | node selector, tolerations, and priority-class names, fanned out to every subchart. Edit the four anchors at the top; see below |
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
 | `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last. On an existing install, delete the four StatefulSets first; see [StatefulSet fields that cannot be patched](../../operating/upgrading/#statefulset-fields-that-cannot-be-patched) |
