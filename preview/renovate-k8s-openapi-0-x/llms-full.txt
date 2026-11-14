@@ -1615,7 +1615,7 @@ The examples pass it unconditionally, alongside the Materialize console and bala
 > [!WARNING]
 > **The load balancer does not terminate TLS.** An L4 load balancer passes bytes through, so TLS terminates at the Grafana pod or not at all — and until Grafana has a certificate it serves plain HTTP, session cookie and admin password included.
 >
-> The modules can issue that certificate; see [Giving Grafana a certificate](#grafana-certificate) below. Until it is in place, treat exposure as internal-only, and **do not set `security.cookie_secure`** — it marks the cookie `Secure`, the browser then refuses to send it over the plain-HTTP connection that works, and login stops working entirely.
+> The modules can issue that certificate and have Grafana serve it; see [Giving Grafana a certificate](#grafana-certificate) below. Until it is in place, treat exposure as internal-only, and **do not set `security.cookie_secure`** — it marks the cookie `Secure`, the browser then refuses to send it over the plain-HTTP connection that works, and login stops working entirely.
 
 L7 — an ALB, a GCP Application Load Balancer, an Azure Application Gateway — is the intended end state for public exposure, because a WAF and authentication at the edge are the two things L4 cannot do. It is deferred rather than rejected: Azure has no ingress-controller module yet, and the chart's Gateway API support is still BETA, so adopting Ingress now would mean migrating twice. See [Ingress and Service are not interchangeable](../../dashboards/grafana/architecture/#ingress-and-service-are-not-interchangeable).
 
@@ -1659,9 +1659,20 @@ Setting `grafana_external_dns_names` with no `issuer_ref` issues nothing, and th
 
 If instead an L7 load balancer terminates with a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault), the key never enters the cluster — leave this empty and attach the certificate by annotation through `grafana.service.annotations` in `additional_values`.
 
-> [!INFO]
->   The module issues the certificate; wiring Grafana to *serve* it is `grafana.ini.server` plus a secret mount, through `additional_values`.
->   See [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls).
+With the certificate issued, Grafana serves HTTPS from it, with the settings the chart's `grafana-https` profile carries:
+
+- The module mounts the certificate's Secret and sets `grafana.ini.server.protocol` to `https`, `root_url` to `https://` and the first name, and `security.cookie_secure`.
+- The Grafana Service moves to port 443, so `https://grafana.example.com` needs no port.
+  Point the load balancer's listener at 443 if your wrapper sets one.
+- The probes and Grafana's ServiceMonitor switch to HTTPS.
+  The scrape verifies the certificate against the first name and the system's public roots.
+  For a private `issuer_ref`, set `grafana.serviceMonitor.tlsConfig.ca` to its CA in `additional_values`.
+- grafana-operator connects to Grafana's Service over HTTPS without verifying the certificate, because the certificate doesn't name the Service.
+- The `grafana_url` output becomes `https://`.
+
+A `root_url` in `additional_values` still wins over the module's.
+It has to start with `https://`, or the render fails.
+See [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls).
 
 Separately, `internal_tls` (`off` / `encrypt` / `present` / `authenticate`) moves the **in-cluster** hops off plaintext. It also requires `certificates_enabled`. On a fresh install go straight to `authenticate`; on a running stack step through `present` first, or a server that rolls before its writers stops ingestion until they catch up.
 
@@ -2040,6 +2051,7 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/grafana-postgres.values.yaml` | Grafana state in Postgres rather than SQLite — the production shape |
 | `profiles/grafana-pvc.values.yaml` | Grafana state on a PersistentVolume — durable, but still one replica. For a Helm-only install with no database |
 | `profiles/grafana-ingress.values.yaml` | make Grafana reachable over an Ingress, internal by default and TLS-terminated. Pair it with one of the two above |
+| `profiles/grafana-https.values.yaml` | have Grafana serve HTTPS itself, from the certificate `certificates.external` issues, for a Grafana behind an L4 `LoadBalancer` Service. See [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls) |
 | `profiles/scheduling.values.yaml` | node selector, tolerations, and priority-class names, fanned out to every subchart. Edit the four anchors at the top; see below |
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
 | `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last. On an existing install, delete the four StatefulSets first; see [StatefulSet fields that cannot be patched](../../operating/upgrading/#statefulset-fields-that-cannot-be-patched) |
@@ -6744,7 +6756,7 @@ There are three shapes, and which one applies follows from the layer you exposed
 
 | | Where TLS terminates | What you set |
 |---|---|---|
-| **L4 load balancer** (the Terraform default, all three clouds) | The Grafana pod | `certificates.external` — the chart issues the certificate |
+| **L4 load balancer** (the Terraform default, all three clouds) | The Grafana pod | `certificates.external` and the `grafana-https` profile. The chart issues the certificate, and Grafana serves it |
 | **L7 load balancer** with a cloud-managed certificate | The load balancer | An ARN or resource ID in `grafana.service.annotations` / the Ingress controller's annotations |
 | **Ingress** with cert-manager | The ingress controller | An Ingress `tls` block naming the Secret |
 
@@ -6764,20 +6776,42 @@ certificates:
       - grafana.example.com    # what users type, and what root_url says
 ```
 
-That renders a second `Certificate` for Grafana — `<release>-grafana-external-tls` — alongside its internal one, and
+That renders a second `Certificate` for Grafana — `<fullname>-grafana-external-tls`, which is `mzmon-grafana-external-tls` at the default `fullnameOverride` — alongside its internal one, and
 adds the same public names to the internal certificate's SANs so an in-cluster client dialing the public name still
 matches.
 
-> [!INFO]
->   The chart **issues** the certificate; it does not wire Grafana to serve it.
->   Mount the Secret with `grafana.extraSecretMounts` and point `grafana.ini.server` at the files (`protocol`, `cert_file`, `cert_key`).
->   `grafana.ini` is an arbitrary-config passthrough, so anything Grafana understands can go there.
+Issuing the certificate doesn't make Grafana serve it.
+The `grafana-https` profile does that, and it changes the following together:
+
+- It mounts the Secret and points `grafana.ini.server` at it: `protocol: https`, `cert_file`, and `cert_key`.
+  Grafana rereads the files hourly (`certs_watch_interval`), so a renewal takes effect without a restart.
+- It sets `root_url` to `https://grafana.example.com` and `security.cookie_secure: true`.
+- It moves the Service to port 443, so the public URL needs no port.
+  The container port stays 3000, so NetworkPolicies don't change.
+- It switches the liveness and readiness probes and the ServiceMonitor to HTTPS.
+  The scrape verifies the certificate against `tlsConfig.serverName` and the system's public roots.
+
+Layer it over your platform profile, then replace its issuer name and every `grafana.example.com`:
+
+```bash
+helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+  -f charts/materialize-monitoring/profiles/gcp-example.values.yaml \
+  -f charts/materialize-monitoring/profiles/grafana-https.values.yaml
+```
+
+The render refuses a Grafana serving HTTPS with any of those settings left behind.
+It warns about an external certificate that Grafana serves over plain HTTP, because nothing presents that certificate.
+
+grafana-operator reaches Grafana at its Service, a name the public certificate doesn't carry.
+It therefore connects over HTTPS without verifying the certificate.
+To verify instead, set `connections.grafana.tls`, for example to a `certSecretRef` whose CA signs a certificate that names both the public host and the Service.
 
 For an **L7** load balancer holding a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault), the
 key never enters the cluster — leave `certificates.external` unset and attach the certificate by annotation.
 Setting `dnsNames` without an `issuerRef.name` renders nothing and warns, precisely so this case is stated rather than assumed.
 
-Once TLS is in place, set `security.cookie_secure: true` — and not before.
+Set `security.cookie_secure: true` only after TLS is in place.
+Before that, the browser won't send the session cookie over the plain-HTTP connection, and nobody can sign in.
 
 ### What to set alongside
 
@@ -13358,6 +13392,7 @@ A public ACME issuer cannot sign `loki-distributor.monitoring.svc`, and a self-s
 Collapsing these into one key would make one of the two unusable.
 
 **The external certificate is only needed behind an L4 load balancer**, which passes TCP through and leaves TLS to terminate at the pod — so the material has to exist in the cluster.
+Grafana serves it once the `grafana-https` profile turns HTTPS on, or the Terraform module's `grafana_external_dns_names` does; see [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls).
 An L7 load balancer terminating with a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault) attaches it by ARN or resource ID and the private key never enters the cluster; for that shape leave `external` unset and pass the annotation through `grafana.service.annotations`.
 The render warns if you set `external.dnsNames` without an issuer, since that combination looks configured and issues nothing.
 
@@ -16022,10 +16057,17 @@ opposite rule and takes its own namespace; the chart handles both.
 </td>
       <td class="helm-value-desc">The browser-facing name, for a Grafana behind an L4 load balancer.
 
-Only Grafana takes an external certificate today, because it is the only
+Only Grafana takes an external certificate, because it is the only
 component in the stack meant for a human and the only one this chart helps
 expose. Set `dnsNames` to the hostname the load balancer answers on; it must
 match what users actually type, and what `grafana.ini.server.root_url` says.
+
+The certificate lands in the Secret `<fullname>-grafana-external-tls`, which
+is `mzmon-grafana-external-tls` at the default `fullnameOverride`. Issuing it
+serves nothing by itself. Grafana serves it once `grafana.ini.server.protocol`
+is `https` and the Secret is mounted where `cert_file` and `cert_key` point.
+The `grafana-https` profile sets all of that, and the render refuses an
+`https` Grafana with no certificate to serve.
 
 Leave `issuerRef.name` empty and nothing external is rendered, which is the
 right answer for an L7 load balancer holding a cloud-managed certificate.
@@ -18387,6 +18429,32 @@ Reference: https://grafana.github.io/grafana-operator/docs/api/#grafanaspec
 {}</pre>
 </td>
       <td class="helm-value-desc">Secret for Grafana API key
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.grafana<wbr>.tls</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">How grafana-operator verifies Grafana's certificate, as the `Grafana` resource's `spec.client.tls`.
+Applies in `bundled` and `external` modes. Takes either
+`insecureSkipVerify: true`, or `certSecretRef` naming a Secret whose
+`ca.crt` is the CA to trust; grafana-operator rejects both at once.
+
+Empty, a bundled Grafana that serves HTTPS (`grafana.grafana.ini.server.protocol`
+is `https`) gets `insecureSkipVerify: true`. Grafana then presents its
+browser-facing certificate, which names the public hostname rather than
+the Service the operator dials, so no CA makes the name match. A Grafana on
+plain HTTP gives this hop no TLS at all, so skipping verification is no
+weaker than the default.
+
+`certSecretRef` works when Grafana serves a certificate that also names
+its Service, such as one from a private CA that signs both its public and
+in-cluster names. grafana-operator also presents the Secret's `tls.crt` and
+`tls.key` as a client certificate.
+
+Reference: https://grafana.github.io/grafana-operator/docs/api/#grafanaspecclienttls
 </td>
     </tr>
   </tbody>
@@ -23609,6 +23677,10 @@ default and the reason a fresh install needs `kubectl port-forward`. Prefer
 `ingress` over a `LoadBalancer` Service: Grafana is ordinary HTTP that wants
 host-based routing and a certificate, which is what Ingress is for.
 
+A `LoadBalancer` Service is an L4 load balancer, which passes TCP through, so
+TLS has to terminate in Grafana. The `grafana-https` profile does that from
+the certificate `certificates.external` issues, and moves `port` to 443.
+
 A `LoadBalancer` Service with no `loadBalancerSourceRanges` is an error at
 render time unless `connections.grafana.allowPublicAccess` is set.
 </td>
@@ -26914,6 +26986,16 @@ resource ID and the key never enters the cluster — for that shape leave this
 empty and pass the annotation through `grafana.service.annotations` in
 `additional_values`.
 
+With the certificate issued, Grafana serves HTTPS from it, as the chart's
+`grafana-https` profile sets up. The module mounts the Secret, sets
+`grafana.ini.server.protocol` to `https`, `root_url` to the first name, and
+`cookie_secure`, and moves the Service to port 443. The probes and the
+ServiceMonitor switch to HTTPS, and the scrape verifies the certificate
+against the first name and the system's public roots. grafana-operator
+dials the in-cluster Service without verifying, because the certificate
+doesn't name it. For a private `var.issuer_ref`, set
+`grafana.serviceMonitor.tlsConfig.ca` to its CA in `additional_values`.
+
 Setting this with no `var.issuer_ref` issues nothing, and the render says so.
 </td>
         <td class="tf-var-default"><code>[]</code></td>
@@ -27418,7 +27500,7 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
 | <a name="output_grafana_admin_password"></a> [grafana_admin_password](#output_grafana_admin_password) | Grafana admin password. |
 | <a name="output_grafana_admin_secret_name"></a> [grafana_admin_secret_name](#output_grafana_admin_secret_name) | Name of the Secret holding the Grafana admin credentials. |
 | <a name="output_grafana_admin_user"></a> [grafana_admin_user](#output_grafana_admin_user) | Grafana admin username. |
-| <a name="output_grafana_url"></a> [grafana_url](#output_grafana_url) | In-cluster URL for Grafana, which is what the module deploys by default. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that yet, so use the external hostname you configured there instead. |
+| <a name="output_grafana_url"></a> [grafana_url](#output_grafana_url) | In-cluster URL for Grafana, which is what the module deploys by default. It is HTTPS on port 443 when `grafana_external_dns_names` gives Grafana a certificate, and that certificate names the external hostnames rather than this one. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that, so use the external hostname you configured there instead. |
 | <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. `https` whenever `internal_tls` is not `off`, verified against the internal CA. Reads carry a tenant header; see the chart's datasource configuration. |
 | <a name="output_metrics_url"></a> [metrics_url](#output_metrics_url) | Thanos Query endpoint. Prometheus-API-compatible, so consumers of a Prometheus URL keep working against it. |
 | <a name="output_namespace"></a> [namespace](#output_namespace) | Namespace the monitoring stack is installed into. |

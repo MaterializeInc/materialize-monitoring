@@ -219,6 +219,7 @@ A public ACME issuer cannot sign `loki-distributor.monitoring.svc`, and a self-s
 Collapsing these into one key would make one of the two unusable.
 
 **The external certificate is only needed behind an L4 load balancer**, which passes TCP through and leaves TLS to terminate at the pod — so the material has to exist in the cluster.
+Grafana serves it once the `grafana-https` profile turns HTTPS on, or the Terraform module's `grafana_external_dns_names` does; see [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls).
 An L7 load balancer terminating with a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault) attaches it by ARN or resource ID and the private key never enters the cluster; for that shape leave `external` unset and pass the annotation through `grafana.service.annotations`.
 The render warns if you set `external.dnsNames` without an issuer, since that combination looks configured and issues nothing.
 
