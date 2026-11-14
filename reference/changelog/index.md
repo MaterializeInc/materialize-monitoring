@@ -15,13 +15,74 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v1.11.0 (Unreleased)
+
+_Changes Pending_
+
 ## Container Images v0.11.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v1.10.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.10.0
 
-_Changes Pending_
+* Update ghcr.io/materializeinc/mzmon-alloy Docker tag to v1.22.0
+    * [materialize-monitoring#743](https://github.com/MaterializeInc/materialize-monitoring/pull/743)
+* Update grafana monorepo
+    * [materialize-monitoring#714](https://github.com/MaterializeInc/materialize-monitoring/pull/714)
+    * [`v13.3.1`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1331-2026-11-10)
+    * [`v14.4.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/grafana-14.4.1)
+* Update ghcr.io/jkroepke/access-log-exporter Docker tag to v1.0.2
+    * [materialize-monitoring#731](https://github.com/MaterializeInc/materialize-monitoring/pull/731)
+    * [`v1.0.2`](https://redirect.github.com/jkroepke/access-log-exporter/compare/v1.0.1...v1.0.2)
+* Update thanos Helm Chart to v0.49.0
+    * [materialize-monitoring#732](https://github.com/MaterializeInc/materialize-monitoring/pull/732)
+    * [`v0.49.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.49.0)
+* Serve Grafana over HTTPS from its external certificate
+    * [materialize-monitoring#739](https://github.com/MaterializeInc/materialize-monitoring/pull/739)
+    * New `grafana-https` profile, for a Grafana behind an L4 load balancer: Grafana serves the certificate `certificates.external` issues, on Service port 443, and reloads it on renewal. The probes and Grafana's ServiceMonitor switch to HTTPS, and grafana-operator connects over HTTPS. New `connections.grafana.tls` sets how grafana-operator verifies Grafana's certificate. The render refuses an HTTPS Grafana that is missing its certificate files, an HTTPS probe, an HTTPS scrape, or an `https://` `root_url`.
+    * The Terraform module serves Grafana over HTTPS whenever `grafana_external_dns_names` issues it a certificate, with `root_url` set to the first name. `grafana_url` becomes `https://`.
+* Update quay.io/prometheus/alertmanager Docker tag to v0.35.0 (and use distroless)
+    * [materialize-monitoring#705](https://github.com/MaterializeInc/materialize-monitoring/pull/705)
+    * Alertmanager runs upstream's distroless image, `v0.35.0-distroless`, which has no shell or package manager. `amtool` is still in the image.
+        * The Chainguard and Docker Hardened Images registry profiles now set `alertmanager.image.tag` without the suffix, which neither vendor publishes. The DHI profile's tag also drops the leading `v`, as DHI spells its versions.
+    * [`v0.35.0`](https://redirect.github.com/prometheus/alertmanager/releases/tag/v0.35.0): 0.35.0 / 2026-11-09
+* Update kube-state-metrics Helm Chart to v9.0.1
+    * [materialize-monitoring#724](https://github.com/MaterializeInc/materialize-monitoring/pull/724)
+    * [`v9.0.1`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/kube-state-metrics-9.0.1)
+* Default Thanos Receive to replication factor 2
+    * [materialize-monitoring#727](https://github.com/MaterializeInc/materialize-monitoring/pull/727)
+    * Thanos Receive's default replication factor is 2, down from 3, in the base values and every shipped profile. Thanos gives a factor of 2 a write quorum of 1, so Receive still survives the loss of one pod, and each pod holds two thirds of the series instead of all of them. The upgrade rolls the Receive StatefulSet one pod at a time. To keep a factor of 3, set `thanos.receive.extraArgs` to `["--receive.replication-factor=3"]`, restating any TLS flags your install carries. See "Thanos Receive: replication factor 2" on the upgrading page.
+    * The render-time check no longer warns at replication factor 2, and its PodDisruptionBudget check uses Thanos's quorum of 1 at that factor.
+* Update prometheus-postgres-exporter Helm Chart to v8.2.5
+    * [materialize-monitoring#636](https://github.com/MaterializeInc/materialize-monitoring/pull/636)
+    * [`v8.2.5`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.5)
+    * [`v8.2.4`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.4)
+    * [`v8.2.3`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.3)
+    * [`v8.2.2`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.2)
+    * [`v8.2.1`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.1)
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.6.0..v0.7.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.15.0..v0.16.0</summary>
+
+    * Update Rust crate rustls-pki-types to v1.16.0
+        * [materialize-monitoring#736](https://github.com/MaterializeInc/materialize-monitoring/pull/736)
+    * Update Rust crate zip to v9.5.0
+        * [materialize-monitoring#704](https://github.com/MaterializeInc/materialize-monitoring/pull/704)
+        * [`v9.5.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#950---2026-11-08)
+        * [`v9.4.2`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#942---2026-11-07)
+        * [`v9.4.1`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#941---2026-11-06)
+        * [`v9.4.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#940---2026-11-05)
+    * Update Rust crate uuid to v1.29.2
+        * [materialize-monitoring#726](https://github.com/MaterializeInc/materialize-monitoring/pull/726)
+        * [`v1.29.2`](https://redirect.github.com/uuid-rs/uuid/releases/tag/v1.29.2)
+    * Update Rust crate jsonschema to 0.61.0
+        * [materialize-monitoring#721](https://github.com/MaterializeInc/materialize-monitoring/pull/721)
+        * [`v0.61.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0610---2026-11-08)
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.9.0
 
