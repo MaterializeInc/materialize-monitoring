@@ -14126,7 +14126,14 @@ That's one namespace unless you use `profiles/split-namespace.values.yaml`.
   A CA issuer writes its own certificate to `ca.crt`.
   The chart mounts only that key, so the certificate's private key never reaches a pod.
 
-Then restart the pods:
+- **With the Terraform module, pass the CAs as `trust_bundle_ca_pem`.**
+  The module writes them to the ConfigMap before it installs the release, and annotates every pod that mounts it with a hash of the PEM, so a change rolls them.
+
+  ```hcl
+  trust_bundle_ca_pem = file("corporate-root-ca.pem")
+  ```
+
+If you created the ConfigMap or Secret yourself, restart the pods:
 
 ```bash
 kubectl rollout restart deployment,statefulset,daemonset -n monitoring
@@ -28233,6 +28240,22 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
     effect   = optional(string)
   }))</code></pre></td>
     </tr>
+    <tr>
+      <td class="tf-var-name"><a name="trust_bundle_ca_pem" href="#trust_bundle_ca_pem">trust_<wbr>bundle_<wbr>ca_<wbr>pem</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">PEM certificates of CAs to trust for outbound TLS, in addition to the images' own roots. Use it
+for an object store, a destination, or an Alertmanager receiver whose certificate comes from a
+private CA, or that sits behind a TLS-intercepting proxy, rather than turning verification off.
+
+The module writes it to the `mzmon-trust-bundle` ConfigMap, under `ca.crt`, before it installs
+the release. Loki, Thanos, both Alloy roles, and Alertmanager load it alongside their images'
+roots, and roll when it changes. In-cluster TLS between components still trusts only the
+internal CA. Null creates no ConfigMap. To supply the bundle another way, such as from a
+trust-manager `Bundle`, leave this null. See
+https://materializeinc.github.io/materialize-monitoring/operating/securing/#trust-a-private-ca.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
   </tbody>
 </table>
 
@@ -34858,7 +34881,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~Alertmanager server TLS~~ **Shipped** as `alerting.server.tls`, rendered into `--web.config.file`, with the probes, reloader, ServiceMonitor, both rulers and the Grafana datasource moved by the mTLS profiles. `VerifyClientCertIfGiven` at phase 2 is its ceiling; the render refuses `RequireAndVerifyClientCert` while the probes or reloader would be locked out | profiles | 3 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
-| A tier-2 variant with a private-CA object store, replacing plaintext rustfs | trust bundle | 2 |
+| ~~A tier-2 variant with a private-CA object store, replacing plaintext rustfs~~ **Shipped with [DEP-236](https://linear.app/materializeinc/issue/DEP-236)**: rustfs serves HTTPS from a CA only the substrate knows, the module's `trust_bundle_ca_pem` carries it, and `object_storage::reachable` asserts each component reaches its bucket | trust bundle | 2 |
 | LB-attached certificate passthrough (ACM / GCM / Azure KV references) for the Grafana Service and Ingress | — | 2 |
 | `ServiceMonitor` / `PodMonitor` `tlsConfig` for scrape targets | — | 3 |
 | `kubeRBACProxy` wiring, left off by default | certificates | 3 |

@@ -549,7 +549,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~Alertmanager server TLS~~ **Shipped** as `alerting.server.tls`, rendered into `--web.config.file`, with the probes, reloader, ServiceMonitor, both rulers and the Grafana datasource moved by the mTLS profiles. `VerifyClientCertIfGiven` at phase 2 is its ceiling; the render refuses `RequireAndVerifyClientCert` while the probes or reloader would be locked out | profiles | 3 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
-| A tier-2 variant with a private-CA object store, replacing plaintext rustfs | trust bundle | 2 |
+| ~~A tier-2 variant with a private-CA object store, replacing plaintext rustfs~~ **Shipped with [DEP-236](https://linear.app/materializeinc/issue/DEP-236)**: rustfs serves HTTPS from a CA only the substrate knows, the module's `trust_bundle_ca_pem` carries it, and `object_storage::reachable` asserts each component reaches its bucket | trust bundle | 2 |
 | LB-attached certificate passthrough (ACM / GCM / Azure KV references) for the Grafana Service and Ingress | — | 2 |
 | `ServiceMonitor` / `PodMonitor` `tlsConfig` for scrape targets | — | 3 |
 | `kubeRBACProxy` wiring, left off by default | certificates | 3 |

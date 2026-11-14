@@ -439,7 +439,14 @@ That's one namespace unless you use `profiles/split-namespace.values.yaml`.
   A CA issuer writes its own certificate to `ca.crt`.
   The chart mounts only that key, so the certificate's private key never reaches a pod.
 
-Then restart the pods:
+- **With the Terraform module, pass the CAs as `trust_bundle_ca_pem`.**
+  The module writes them to the ConfigMap before it installs the release, and annotates every pod that mounts it with a hash of the PEM, so a change rolls them.
+
+  ```hcl
+  trust_bundle_ca_pem = file("corporate-root-ca.pem")
+  ```
+
+If you created the ConfigMap or Secret yourself, restart the pods:
 
 ```bash
 kubectl rollout restart deployment,statefulset,daemonset -n monitoring
