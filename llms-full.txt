@@ -50,6 +50,10 @@ and for what has shipped, see the [Changelog]({{< relref "reference/changelog.md
 Metrics → Rules is a stub, so this page doesn't link to it.
 It appears in the sidebar because the section exists, and the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) tracks the work behind it.
 
+## Working with the data
+
+* [Observability tools]({{< relref "o11y-tools/overview.md" >}}) — Grafana in a browser, the Grafana MCP server for AI agents, `gcx`, and the backend APIs, compared by audience, access, ease of use, and stability.
+
 ## Operating the stack
 
 * [Production Best Practices]({{< relref "operating/production-best-practices/checklist.md" >}}) — sizing, retention, replication, disruption budgets, and durability, each tagged by who owns it.
@@ -9146,6 +9150,516 @@ alerting:
 `alerting.inhibitRules` passes through to Alertmanager verbatim, so any rule its [inhibition
 reference](https://prometheus.io/docs/alerting/latest/configuration/#inhibit_rule) describes works.
 The chart ships no inhibition rules of its own yet.
+
+
+--------------------------------------------------------------------------------
+title: "Overview"
+url: https://materializeinc.github.io/materialize-monitoring/o11y-tools/overview/index.md
+--------------------------------------------------------------------------------
+
+# Observability tools
+
+This page is for anyone who reads data from a `materialize-monitoring` install, and for the operators who decide who gets access.
+Every tool in this section reads the same metrics, logs, and alerts.
+The tools differ in who they suit, what access they need, and how much they ask of you.
+
+## Compare the tools
+
+The following table classifies each tool.
+Each tool's page carries the same classification at its top.
+
+{{< param-matrix keys="interface,audience,cluster-access,grafana-access,ease-of-use,stability" >}}
+
+The table's rows mean the following:
+
+Interface
+: How you use the tool.
+
+Audience
+: Who the tool suits best.
+
+Cluster access
+: The Kubernetes access the tool needs.
+  The Grafana-based tools need it only to port-forward a Grafana that your install doesn't expose.
+
+Grafana access
+: The Grafana credential the tool signs in with.
+
+Ease of use
+: How much setup and query-language knowledge the tool asks of you.
+
+Stability
+: How much the tool's own interface changes from one release to the next.
+
+> [!WARNING]
+> Every tool in this section reads all of the telemetry the stack holds.
+> A Grafana role limits what you can change, not what you can read, so any Grafana login or service account token reads every metric and every log.
+> The backend APIs have no authentication, so Kubernetes access to their namespace grants the same.
+> For more information, see [Securing](../../operating/securing/).
+
+## Choose a tool
+
+Pick a tool by what you're doing:
+
+- **Reading a dashboard, or handing someone a link:** use [Grafana in a browser](../grafana/).
+- **Asking questions in plain language, or having an AI agent investigate:** use the [Grafana MCP server](../grafana-mcp/).
+- **Scripting queries, or working from a terminal:** use [`gcx`](../gcx/).
+- **Working while Grafana is down, or debugging the stack itself:** use the [backend APIs](../backend-apis/).
+
+The tools work together.
+An agent on the MCP server or `gcx` can return a Grafana link, so a person can check its answer in a browser.
+
+If your install forwards metrics to Datadog, Datadog is another place to read them.
+For more information, see [Datadog dashboards](../../dashboards/datadog/).
+
+## Know the names the tools share
+
+A tool that goes through Grafana reaches the data through the chart's data sources.
+A script or an agent needs their UIDs, which the following table lists:
+
+| Data source | Type | UID | Holds |
+|---|---|---|---|
+| Thanos | `prometheus` | `mzmon-thanos` | Metrics |
+| Loki | `loki` | `mzmon-loki` | Logs and Kubernetes events |
+| Alertmanager | `alertmanager` | `mzmon-alertmanager` | Firing alerts and silences |
+
+The following names also come up often:
+
+Dashboard UIDs
+: Each shipped dashboard's UID starts with `mz-mon-`, such as `mz-mon-env-top` for **Materialize Environment Overview**.
+  Dashboard UIDs are a [public interface](../../reference/stability/#public-interfaces), so a prompt or a script can name one.
+
+Folder UIDs
+: The dashboards live in the `materialize` and `infra` folders, and in `meta-o11y` inside `infra`.
+
+Environment label
+: `materialize_cloud_organization_name` scopes metrics to one Materialize environment, on self-managed installs as well as on Materialize Cloud.
+
+
+--------------------------------------------------------------------------------
+title: "Grafana in a browser"
+url: https://materializeinc.github.io/materialize-monitoring/o11y-tools/grafana/index.md
+--------------------------------------------------------------------------------
+
+# Grafana in a browser
+
+This page is for anyone who reads Materialize monitoring through Grafana's web UI.
+The bundled Grafana is where every other tool in this section starts from:
+the dashboards, the data sources, and the alerting views are already provisioned there.
+
+{{< param-table keys="interface,audience,cluster-access,grafana-access,ease-of-use,stability" >}}
+
+## Reach Grafana
+
+How you reach Grafana depends on whether your install exposes it:
+
+Exposed Grafana
+: Open the URL your install serves, and sign in through your identity provider.
+  For how an operator sets that up, see [Reaching Grafana](../../dashboards/grafana/architecture/#reaching-grafana)
+  and [Authentication](../../dashboards/grafana/auth/).
+
+Unexposed Grafana
+: The Service is `ClusterIP` by default, so you need a port-forward and Kubernetes access to the Grafana namespace.
+
+In each snippet, set `KUBECONTEXT` to your cluster's context and `NAMESPACE` to Grafana's namespace.
+Grafana runs in `monitoring` by default, and in `grafana` under the `split-namespace` profile.
+
+To reach an unexposed Grafana, follow these steps:
+
+1. Forward a local port to the Grafana Service:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NAMESPACE=monitoring
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" port-forward svc/grafana 3000:80
+   ```
+
+1. In another terminal, read the generated admin user name and password from their Secret:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NAMESPACE=monitoring
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" get secret grafana -o jsonpath="{.data.admin-user}" | base64 -d; echo
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" get secret grafana -o jsonpath="{.data.admin-password}" | base64 -d; echo
+   ```
+
+1. Open `http://localhost:3000`, and sign in with that user name and password.
+
+> [!WARNING]
+> A Grafana role limits what you can change, not what you can read.
+> Anyone who can sign in can query every data source, so a Viewer reads every metric in Thanos and every log in Loki from Explore.
+> For more information, see [What Grafana roles do not do](../../dashboards/grafana/auth/#what-grafana-roles-do-not-do).
+
+## Find your way around
+
+Start from the following places:
+
+Dashboards
+: The **Materialize** folder holds the per-environment dashboards, and **Infrastructure** holds the platform ones.
+  Start with **Materialize Environment Overview**.
+  For what each dashboard answers, see [Available dashboards](../../dashboards/all/).
+
+Explore
+: Query the **Thanos** data source in PromQL and the **Loki** data source in LogQL.
+  For queries to start from, see [Common queries](../../reference/common-queries/).
+
+Alerting
+: The **Alertmanager** data source shows firing alerts, and **Alerting** > **Silences** manages silences in it.
+  **Alerting** > **Alert rules** lists the Loki ruler's rules, read-only.
+  For more information, see [Alert architecture](../../alerting/architecture/) and [Maintenance windows](../../alerting/maintenance/).
+
+When an investigation leads somewhere unfamiliar, [Troubleshooting Materialize](../../operating/troubleshooting-materialize/)
+says which dashboard answers which question.
+
+## Share what you find
+
+A dashboard URL carries its UID, its time range, and its variables, so the link reproduces your view for anyone who can sign in.
+Dashboard UIDs are on the [list of public interfaces](../../reference/stability/#public-interfaces),
+so a dashboard's link changes only through a deprecation cycle.
+Dashboard variables aren't, so a link that sets one can stop selecting what it did after an upgrade.
+
+Share links are built from `grafana.ini`'s `server.root_url`.
+On an exposed Grafana, a copied link that points at the wrong host means `root_url` doesn't match the URL users reach.
+An operator needs to correct it.
+
+
+--------------------------------------------------------------------------------
+title: "Grafana MCP server"
+url: https://materializeinc.github.io/materialize-monitoring/o11y-tools/grafana-mcp/index.md
+--------------------------------------------------------------------------------
+
+# Grafana MCP server
+
+This page is for operators and on-call engineers who want an AI agent, such as Claude Code, Claude Desktop, or Cursor, to read Materialize monitoring.
+The [Grafana MCP server](https://grafana.com/docs/grafana/latest/ai-tools/mcp/set-up/), `mcp-grafana`, connects an agent to Grafana
+over the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP).
+The agent can then search and read dashboards, run PromQL and LogQL through Grafana's data sources, and read alerts, without Kubernetes access.
+
+{{< param-table keys="interface,audience,cluster-access,grafana-access,ease-of-use,stability" >}}
+
+> [!INFO]
+> The shipped dashboards use Grafana's v2 dashboard schema, which `mcp-grafana` reads and writes natively from version 0.16.0.
+> Use a 2.x release, which fixes several v2 bugs, including one that let `update_dashboard` replace a v2 dashboard with a v1 body.
+> An older version converts each dashboard to the v1 schema before the agent sees it, which drops the panel queries in v2-only layouts.
+
+## What the agent can do
+
+`mcp-grafana` groups its tools into categories, and you can turn each category on and off.
+The following categories work against the bundled Grafana:
+
+Dashboards and search
+: Find dashboards, summarize one, read any property of it, and list the queries behind its panels.
+
+Prometheus
+: Run PromQL against the Thanos data source, and list metric names, labels, and label values.
+
+Loki
+: Run LogQL against the Loki data source, list labels, and read stream statistics.
+
+Alerting
+: List alert rules and their state, including the Loki ruler's.
+
+Navigation
+: Build a Grafana link to a dashboard, a panel, or an Explore query, so you can check the agent's answer in a browser.
+
+The rendering tools export a panel as an image through the Grafana Image Renderer.
+The chart leaves the renderer off, and it should stay off in production, so those tools fail against the bundled Grafana.
+Other categories, such as OnCall and Incident, need Grafana products that the stack doesn't include.
+
+Grafana Cloud also runs a [hosted MCP server](https://grafana.com/docs/grafana-cloud/ai-tools/mcp-servers/cloud-mcp/),
+but it serves only Grafana Cloud stacks.
+To reach the bundled Grafana, run `mcp-grafana` yourself.
+
+## Set up the server
+
+To connect an agent to your Grafana, follow these steps:
+
+1. In Grafana, create a service account with the **Viewer** role, and add a token to it.
+   For how, see [Service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/).
+
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/), which downloads and runs `mcp-grafana` on demand.
+   For the container image, release binaries, and Helm chart,
+   see [Set up the Grafana MCP server](https://grafana.com/docs/grafana/latest/ai-tools/mcp/set-up/).
+
+1. Add the server to your agent.
+   For Claude Code, run the following command:
+
+   ```bash
+   claude mcp add-json grafana '{
+     "command": "uvx",
+     "args": ["mcp-grafana", "--disable-write"],
+     "env": {
+       "GRAFANA_URL": "GRAFANA_ADDRESS",
+       "GRAFANA_SERVICE_ACCOUNT_TOKEN": "SERVICE_ACCOUNT_TOKEN"
+     }
+   }'
+   ```
+
+   For Claude Desktop, Cursor, and other agents, put the same `command`, `args`, and `env` in the agent's MCP configuration.
+
+Replace the following:
+
+- `GRAFANA_ADDRESS`: the URL your Grafana serves.
+  For an unexposed Grafana, port-forward it first, as [Grafana in a browser](../grafana/#reach-grafana) shows, and use `http://localhost:3000`.
+- `SERVICE_ACCOUNT_TOKEN`: the token from the first step.
+  To keep the token out of the agent's configuration, set `GRAFANA_SERVICE_ACCOUNT_TOKEN_FILE` to the path of a file that holds it instead.
+
+> [!WARNING]
+> A Viewer token reads every metric in Thanos and every log in Loki, the same as a Viewer who signs in.
+> Create a service account for each person or agent, so you can revoke one without the rest.
+> For more information, see [What Grafana roles do not do](../../dashboards/grafana/auth/#what-grafana-roles-do-not-do).
+
+`mcp-grafana` reports anonymous usage statistics to Grafana Labs by default: which tools ran and how the server is configured.
+The reports never include queries, log lines, credentials, or your Grafana's address.
+To turn them off, add `--usage-stats=disabled` to `args`.
+
+### Choose what the agent can change
+
+`--disable-write` removes the tools that create, update, or delete anything, such as dashboards and annotations.
+It also limits the generic `grafana_api_request` tool to reads.
+Keep it on for investigation.
+
+Log lines reach the agent as tool output, and a log line can carry text that reads like an instruction.
+With `--disable-write`, an agent that follows one can't change anything through the server.
+
+Grafana refuses most writes from a Viewer token anyway, but `--disable-write` keeps the agent from attempting them.
+Give the token the **Editor** role, and drop the flag, only when you want the agent to change dashboards.
+
+The operator re-pushes the dashboards the chart ships every `resyncPeriod`, so an agent's edit to one doesn't last.
+To change one, copy it to a new UID first, as [Drift](../../dashboards/grafana/grafana-operator/#drift) describes.
+
+## Give the agent context
+
+The agent knows Grafana, not this stack.
+Tell it the names in [Know the names the tools share](../overview/#know-the-names-the-tools-share):
+the data source UIDs, the dashboard UIDs, and the environment label.
+
+These docs are published for agents as well as for people.
+[`llms.txt`](https://materializeinc.github.io/materialize-monitoring/llms.txt) indexes every page,
+and [`llms-full.txt`](https://materializeinc.github.io/materialize-monitoring/llms-full.txt) inlines the whole site.
+Point the agent at the index first, because it's about a hundredth of the full file's size and usually names the page the agent needs.
+
+The following prompts are places to start:
+
+- "Open the `mz-mon-env-top` dashboard in Grafana and summarize the health of environment `ENVIRONMENT`."
+- "Which Materialize clusters have used more than 80% of their memory limit in the last 6 hours? Show me the PromQL you ran."
+- "Find error lines from `environmentd` in the last hour, group them by message, and give me an Explore link for each group."
+
+Replace `ENVIRONMENT` with the environment's `materialize_cloud_organization_name` value.
+
+## Check what the agent tells you
+
+An agent reads the same data you do, and it can misread it in the same ways.
+The following habits keep an answer checkable:
+
+- **Ask for the query.** A PromQL or LogQL expression, with its time range and scope, is something you can run again.
+  A summary isn't.
+- **Ask for a link.** The navigation tools return a Grafana link, so you can see the panel the agent read.
+- **Confirm a label before building on it.** A query that filters on a label the series doesn't carry returns nothing, which looks healthy.
+- **Don't read quiet as healthy.** Only a default set of the bundled alert rules installs,
+  so an absence of firing alerts doesn't mean nothing is wrong.
+
+For how this data misleads people and agents alike, see [Troubleshooting Materialize](../../operating/troubleshooting-materialize/).
+
+
+--------------------------------------------------------------------------------
+title: "gcx"
+url: https://materializeinc.github.io/materialize-monitoring/o11y-tools/gcx/index.md
+--------------------------------------------------------------------------------
+
+# gcx
+
+This page is for operators who want Grafana from a terminal, and for anyone wiring Grafana into a script or an AI agent.
+[`gcx`](https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/) is Grafana Labs' command-line tool, and it supports Grafana 13 and later.
+It reaches dashboards, data sources, and alerting through Grafana's API, so it needs a Grafana login and no Kubernetes access.
+
+{{< param-table keys="interface,audience,cluster-access,grafana-access,ease-of-use,stability" >}}
+
+## Connect to your Grafana
+
+`gcx` keeps each Grafana it talks to as a named context.
+
+To connect a context to the bundled Grafana, follow these steps:
+
+1. In Grafana, create a service account with the **Viewer** role, and add a token to it.
+   For how, see [Service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/).
+   Give it **Editor** instead only if you're going to change dashboards with it.
+
+1. Log in, and name the context:
+
+   ```bash
+   gcx login mzmon --server GRAFANA_ADDRESS --token SERVICE_ACCOUNT_TOKEN
+   ```
+
+1. Set the chart's data sources as the context's defaults, so queries don't need a `-d` flag:
+
+   ```bash
+   gcx config set contexts.mzmon.datasources.prometheus mzmon-thanos
+   gcx config set contexts.mzmon.datasources.loki mzmon-loki
+   ```
+
+Replace the following:
+
+- `GRAFANA_ADDRESS`: the URL your Grafana serves.
+  For an unexposed Grafana, port-forward it first, as [Grafana in a browser](../grafana/#reach-grafana) shows, and use `http://localhost:3000`.
+- `SERVICE_ACCOUNT_TOKEN`: the token from the first step.
+
+## Query metrics and logs
+
+`gcx metrics query` runs PromQL against a Prometheus-type data source, and `gcx logs query` runs LogQL against a Loki one:
+
+```bash
+gcx --context mzmon metrics query 'up{namespace="materialize-environment"}' --since 1h
+```
+
+```bash
+gcx --context mzmon logs query '{namespace="materialize-environment", app="environmentd"} |= "error"' --since 1h
+```
+
+Add `--share-link` to print the same query as a Grafana Explore URL, which you can hand to someone working in a browser.
+For queries worth running, see [Common queries](../../reference/common-queries/).
+
+## Read dashboards
+
+The shipped dashboards are v2 dashboards, and `gcx dashboards` reads and writes them through Grafana's resource API:
+
+```bash
+gcx --context mzmon dashboards search "Materialize"
+```
+
+```bash
+gcx --context mzmon dashboards get mz-mon-env-top -o yaml
+```
+
+A dashboard's resource name is its UID.
+To import a dashboard with `gcx`, see [Importing dashboards](../../dashboards/grafana/importing/#importing-dashboards-via-gcx-grafana-cli).
+
+`gcx dashboards snapshot` renders a dashboard to PNG through the Grafana Image Renderer.
+The chart leaves the renderer off, and it should stay off in production, so snapshots fail against the bundled Grafana.
+
+## Use gcx from an AI agent
+
+`gcx` detects common AI agents, such as Claude Code and Cursor, and switches to JSON output when one runs it.
+It also bundles agent skills, which teach an agent its commands.
+The following command installs the skills for setting up `gcx`, investigating with it, and reading dashboards into `~/.agents/skills`:
+
+```bash
+gcx agent skills install setup-gcx debug-with-grafana manage-dashboards
+```
+
+`gcx agent skills list` lists the rest.
+
+An agent with a shell needs nothing else to use `gcx`.
+For an agent without one, use the [Grafana MCP server](../grafana-mcp/) instead.
+
+
+--------------------------------------------------------------------------------
+title: "Backend APIs"
+url: https://materializeinc.github.io/materialize-monitoring/o11y-tools/backend-apis/index.md
+--------------------------------------------------------------------------------
+
+# Backend APIs
+
+This page is for operators with Kubernetes access to the monitoring namespace.
+Thanos Query, Loki, and Alertmanager each serve an HTTP API, and you can reach each one with `kubectl` without going through Grafana.
+Use this path when Grafana is down, when the stack itself is what you're debugging, or when a script needs the raw API.
+
+{{< param-table keys="interface,audience,cluster-access,grafana-access,ease-of-use,stability" >}}
+
+## Before you start
+
+> [!WARNING]
+> The backends have no authentication of their own, so anyone who can reach one reads everything it serves.
+> Reach them through `kubectl`, and never through an ingress.
+> For more information, see [Securing](../../operating/securing/#the-cluster--the-stack).
+
+To port-forward, your Kubernetes identity needs `get` and `list` on `services` and `pods`,
+and `create` on `pods/portforward`, in the backend's namespace.
+The `amtool` examples need `create` on `pods/exec` instead.
+
+In each `kubectl` snippet, set `KUBECONTEXT` to your cluster's context and `NAMESPACE` to the backend's namespace.
+Every backend runs in `monitoring` by default.
+Under the `split-namespace` profile, each runs in its own namespace: `thanos`, `loki`, and `alertmanager`.
+
+## Query metrics from Thanos Query
+
+Thanos Query serves the [Prometheus HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/),
+so anything that speaks PromQL works against it.
+
+To query metrics, follow these steps:
+
+1. Forward a local port to Thanos Query:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NAMESPACE=monitoring
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" port-forward svc/thanos-query 9090:9090
+   ```
+
+1. In another terminal, run a query with `promtool` or `curl`:
+
+   ```bash
+   promtool query instant http://localhost:9090 'up{namespace="materialize-environment"}'
+   ```
+
+   ```bash
+   curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=up' | jq '.data.result[0]'
+   ```
+
+Thanos Query also serves its own query UI at `http://localhost:9090` while the port-forward runs.
+
+For queries worth running, see [Common queries](../../reference/common-queries/).
+For what Thanos Query reads from, see [Querying metrics](../../metrics/querying/).
+
+## Query logs from Loki
+
+The Loki gateway serves the [Loki HTTP API](https://grafana.com/docs/loki/latest/reference/loki-http-api/).
+The bundled Loki runs with `auth_enabled: true`, so every request needs a tenant in the `X-Scope-OrgID` header.
+The pipeline writes to the `loki` tenant unless `pipeline.logging.tenancy.staticTenant` says otherwise.
+
+To query logs, follow these steps:
+
+1. Forward a local port to the Loki gateway:
+
+   ```bash
+   KUBECONTEXT=my-cluster
+   NAMESPACE=monitoring
+
+   kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" port-forward svc/loki-gateway 3100:8080
+   ```
+
+1. In another terminal, run a query with `logcli` or `curl`:
+
+   ```bash
+   logcli query --addr=http://localhost:3100 --org-id=loki --since=1h --limit=50 \
+     '{namespace="materialize-environment", app="environmentd"}'
+   ```
+
+   ```bash
+   curl -s -H 'X-Scope-OrgID: loki' http://localhost:3100/loki/api/v1/query_range \
+     --data-urlencode 'query={namespace="materialize-environment"}' --data-urlencode 'limit=20'
+   ```
+
+A request without the header fails with `no org id`.
+For the labels a log stream carries, and the attributes that are structured metadata instead, see [Querying logs](../../logs-and-events/querying/).
+
+## Read alerts and silences from Alertmanager
+
+`amtool` ships in the Alertmanager image, with a configuration that points it at the local Alertmanager.
+Run it in the pod rather than through a port-forward:
+
+```bash
+KUBECONTEXT=my-cluster
+NAMESPACE=monitoring
+
+kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" exec alertmanager-0 -c alertmanager -- amtool alert query
+kubectl --context "$KUBECONTEXT" -n "$NAMESPACE" exec alertmanager-0 -c alertmanager -- amtool silence query
+```
+
+To create and expire silences, see [Maintenance windows](../../alerting/maintenance/#through-amtool).
 
 
 --------------------------------------------------------------------------------
@@ -25845,7 +26359,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `hugo.toml`: site config; `go.mod` / `go.sum` pin the theme
     * `content/`: authored Markdown
       * `_index.md` files carry **frontmatter only** — no prose. A section's landing content lives in a regular page inside it at `weight: 1` (e.g. `logs-and-events/architecture.md`, `reference/development/contributing.md`), so every directory in the sidebar is a container and every clickable title is a real page. The site home `content/_index.md` is the one exception
-      * top-level sections: `getting-started/`, `metrics/` (incl. `collecting/`), `logs-and-events/`, `dashboards/` (incl. `grafana/`), `alerting/`, `operating/`, plus `architecture.md` and `o11y-glossary.md`
+      * top-level sections: `getting-started/`, `metrics/` (incl. `collecting/`), `logs-and-events/`, `dashboards/` (incl. `grafana/`), `alerting/`, `o11y-tools/`, `operating/`, plus `architecture.md` and `o11y-glossary.md`
       * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `development/` (this section — `dashboard/`, `queries/`, `pipelines/`, `design-docs/`, plus `contributing.md`, `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
     * `layouts/`, `static/`, `assets/`, `data/`, `i18n/`, `archetypes/`, `themes/`: Hugo machinery
     * `public/`, `resources/`: generated output (not checked in)
@@ -30465,9 +30979,12 @@ The notes below cover the ad-hoc / verification path when iterating from a Claud
 
 ### Use the v2 API directly
 
-`mcp-grafana` 's built-in `get_dashboard_by_uid` and `update_dashboard` tools convert dashboards to the v1
-representation on the way out, which strips queries from v2-only panel/layout features.
-For anything that must round-trip a v2 dashboard, hit the v2 resource API via `grafana_api_request`:
+`mcp-grafana` reads and writes v2 dashboards natively from version 0.16.0, and its 2.x releases fix several v2 bugs.
+An older version converts dashboards to the v1 representation on the way out, which strips queries from v2-only panel and layout features.
+For which version to use, see [Grafana MCP server](../../../../o11y-tools/grafana-mcp/).
+
+To control every field of the request yourself, such as the folder and version-message annotations described later on this page,
+use the v2 resource API through `grafana_api_request`:
 
 ```text
 GET /apis/dashboard.grafana.app/v2/namespaces/default/dashboards/<uid>

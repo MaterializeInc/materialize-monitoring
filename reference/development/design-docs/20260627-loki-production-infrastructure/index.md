@@ -10,19 +10,19 @@ date: 2026-06-27
 <table class="param-table">
   <tbody>
         <tr>
-          <th>author</th>
+          <th>Author</th>
           <td>Heather Lapointe</td>
         </tr>
         <tr>
-          <th>lastmod</th>
-          <td>2026-10-01 00:00:00 &#43;0000 UTC</td>
+          <th>Lastmod</th>
+          <td>2026-10-01 00:00:00 +0000 UTC</td>
         </tr>
         <tr>
-          <th>publishdate</th>
-          <td>2026-06-27 00:00:00 &#43;0000 UTC</td>
+          <th>Publishdate</th>
+          <td>2026-06-27 00:00:00 +0000 UTC</td>
         </tr>
         <tr>
-          <th>status</th>
+          <th>Status</th>
           <td>Shipped</td>
         </tr>
   </tbody>
