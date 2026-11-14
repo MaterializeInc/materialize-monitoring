@@ -14137,19 +14137,19 @@ Nothing in the chart reads a level from Materialize.
 
 ## Call-home levels {#levels}
 
-The following table lists each level, what it sends, and the profile that sets it:
+The following table lists each level and what it sends:
 
-| Level | What crosses | Profile |
-|---|---|---|
-| `off` | Nothing. The default. | None |
-| `heartbeat` | Nothing. | `profiles/call-home-heartbeat.values.yaml` |
-| `alerts` | Nothing. | `profiles/call-home-alerts.values.yaml` |
-| `metrics` | Metrics at the `essential` tier. | `profiles/call-home-metrics.values.yaml` |
-| `diagnostics` | Metrics at the `essential` tier, and logs at `WARN` and above. | `profiles/call-home.values.yaml` |
+| Level | What crosses |
+|---|---|
+| `off` | Nothing. The default. |
+| `heartbeat` | Nothing. |
+| `alerts` | Nothing. |
+| `metrics` | Metrics at the `essential` tier. |
+| `diagnostics` | Metrics at the `essential` tier, and logs at `WARN` and above. |
 
-<!-- TODO(DEP-281, DEP-282): `heartbeat` gains the heartbeat record and `alerts` gains alert state; update both rows and the profiles' headers. -->
+<!-- TODO(DEP-281, DEP-282): `heartbeat` gains the heartbeat record and `alerts` gains alert state; update both rows and the profile's header. -->
 
-Each profile sets `callHome.level` and nothing else.
+`profiles/call-home.values.yaml` sets `diagnostics`, and nothing else.
 
 At `diagnostics`, the gateway sends at most 500 log lines per second per gateway replica, in bursts of at most 5000.
 It levels most lines, including Rust and Go panics, which arrive as `CRITICAL`.
@@ -14178,19 +14178,21 @@ The control plane reads your identity from the certificate, so the gateway sends
    The gateway mounts the Secret at `/etc/mzmon/destination-tls`.
    At `metrics` and above, the gateway fails to load its configuration without it, and names the missing file.
 
-1. Add the profile for your level to your install, after the profiles you already use.
+1. Set the level.
 
-   With Helm, add it to the `-f` list of your upgrade command.
+   With Helm, add the profile to the `-f` list of your upgrade command, after the profiles you already use.
+   To choose a level other than `diagnostics`, set `callHome.level` after it.
    The profiles ship inside the chart package; for more information, see [Get the profiles](../../getting-started/helm/#get-the-profiles).
 
    ```bash
    helm upgrade RELEASE oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring \
      --version VERSION --namespace NAMESPACE \
      -f YOUR_VALUES.yaml \
-     -f materialize-monitoring/profiles/call-home-metrics.values.yaml
+     -f materialize-monitoring/profiles/call-home.values.yaml \
+     --set callHome.level=metrics
    ```
 
-   With the Terraform module, append the profile's contents to `additional_values`, for example with `file()`.
+   With the Terraform module, set `callHome.level` in `additional_values`.
 
 1. Confirm the gateway is sending.
    After the gateway restarts, the install notes show the level, and `otelcol_exporter_sent_metric_points_total` rises
@@ -14245,7 +14247,7 @@ Your own Loki and Thanos keep everything at every level.
 
 ## Turn off call-home {#disable}
 
-Remove the profile from your install, or set `callHome.level` to `"off"`.
+Remove the profile and any `callHome.level` you set, or set `callHome.level` to `"off"`.
 Quote it: YAML reads a bare `off` as `false`, which the chart also accepts as `off`.
 The gateway stops sending at its next restart, which the upgrade triggers.
 
@@ -17182,7 +17184,7 @@ but the render fails if it sends more: a lower tier floor, a lower log level, `l
 At `off`, the render fails if the entry is there at all, unless it's `enabled: false`.
 
 Only this key raises the level. Nothing in the chart reads a level from Materialize.
-The `call-home-*` profiles set it, one profile per level, and `call-home` sets `diagnostics`.
+`profiles/call-home.values.yaml` sets `diagnostics`.
 </td>
     </tr>
   </tbody>
@@ -26385,7 +26387,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
         * `metrics/`: `metric-tiers.yaml`
       * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`, `_postgres_exporter_helpers.tpl`, and others)
-      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), `adhoc`, the whole stack in one file, `call-home` and `call-home-*`, one per call-home level, which self-managed installs and Bring Your Own Cloud stacks apply, and `s3-worm`, a compliance archive in a bucket with S3 Object Lock. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
+      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), `adhoc`, the whole stack in one file, `call-home`, the opt-in `diagnostics` call-home level that self-managed installs and Bring Your Own Cloud stacks apply, and `s3-worm`, a compliance archive in a bucket with S3 Object Lock. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
       * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect, each checked with `amtool check-config` and rendered with `amtool template render`
     * `materialize-monitoring-dashboards/`: the Materialize environment dashboards, as a chart and release of their own.
@@ -36966,7 +36968,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | **A trust bundle for non-public CAs** | ❌ Not shipped | [DEP-236](https://linear.app/materializeinc/issue/DEP-236). Needed for any customer whose egress proxy presents a corporate certificate |
 | **`oauth2.tls` on destinations** | ❌ Missing | Named by the [query-API doc](../20260916-tenant-query-api/#the-blocker-stated-precisely); blocks exchanging a certificate for a token |
 | **An egress meter the customer can read** | ❌ Missing | The gateway exposes per-destination counters; no dashboard panel or documented query presents them as "what left" |
-| **A consent level** | ✅ Shipped | `callHome.level`, `off` by default, builds the `controlPlane` destination; one `call-home-*` profile per rung ([DEP-280](https://linear.app/materializeinc/issue/DEP-280)) |
+| **A consent level** | ✅ Shipped | `callHome.level`, `off` by default, builds the `controlPlane` destination, so the key assembles each rung and `profiles/call-home.values.yaml` is the one profile ([DEP-280](https://linear.app/materializeinc/issue/DEP-280)) |
 
 Two rows carry most of the work in this doc, and neither is a pipeline feature.
 The alert-evaluation row is why the cheapest level cannot ship yet.
@@ -37358,7 +37360,7 @@ None of it is ticketed yet.
 | **All [BYOC blocking prerequisites](../20260813-byoc-observability/#chart-side-prerequisites)** — map-shaped log destinations, per-destination processing, per-destination queue and drop policy, the tenant overwrite, the log-bridge transform, and the redaction stage set | This design is defaults and consent on top of that channel. Nothing above level 3 exists without them | **Blocking**, inherited |
 | **Rule evaluation actually shipping** — a template that emits the bundled rules, and an evaluator enabled by default in the bundled shape | Nothing evaluates alerting rules today, so the alerts level would forward an empty set that reads as good news | **Blocking** for levels 2 and up |
 | **Alert state reaching the gateway** — whatever evaluates metric rules remote-writes to `prometheus.receive_http`, as Loki's ruler already does | The fan-out happens at the gateway. Series that land in Thanos without traversing it cannot be forwarded | **Blocking** for the alerts level |
-| **The `callHome.level` values surface**, defaulting `off`, with the level profiles that assemble each rung | The feature. A level assembled by hand is a level with four of five settings right | ✅ Done ([DEP-280](https://linear.app/materializeinc/issue/DEP-280)). The level builds the `controlPlane` destination, and an install's entry can only narrow it. `profiles/call-home.values.yaml` is the `diagnostics` rung, shared with BYOC. `heartbeat` and `alerts` send nothing until their producers exist |
+| **The `callHome.level` values surface**, defaulting `off`, with the level profiles that assemble each rung | The feature. A level assembled by hand is a level with four of five settings right | ✅ Done ([DEP-280](https://linear.app/materializeinc/issue/DEP-280)). The level builds the `controlPlane` destination, and an install's entry can only narrow it. Because the key assembles each rung, one profile is enough: `profiles/call-home.values.yaml` sets `diagnostics`, shared with BYOC. `heartbeat` and `alerts` send nothing until their producers exist |
 | **A render assertion that the default sends nothing**, re-checked on every values change | A default that drifts to on in a refactor is the one failure that ends the programme | ✅ Done. `call_home_level_test.yaml` renders the default and every shipped profile that touches the pipeline |
 | **`previewOnly` on the call-home destination** — full chain, counted and sampled locally, dropped before the writer | The compliance artifact a generated schedule cannot be, because it runs on the customer's own data | **Blocking** for the review story |
 | **A byte-rate ceiling per level**, shed rather than queued, with the shed event reported | Selection bounds kind, not volume, and volume spikes during exactly the incidents this exists for | **Blocking** |
