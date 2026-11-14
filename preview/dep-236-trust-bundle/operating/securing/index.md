@@ -446,6 +446,11 @@ That's one namespace unless you use `profiles/split-namespace.values.yaml`.
   trust_bundle_ca_pem = file("corporate-root-ca.pem")
   ```
 
+  The module creates the ConfigMap in `namespace` and in `alertmanager_namespace`.
+  If you use `profiles/split-namespace.values.yaml`, list every namespace a consumer runs in as `trust_bundle_namespaces`.
+  If the PEM comes from a resource that the same apply creates, also set `trust_bundle_enabled = true`.
+  Otherwise, the plan fails, because Terraform can't tell whether to create the ConfigMap.
+
 If you created the ConfigMap or Secret yourself, restart the pods:
 
 ```bash
