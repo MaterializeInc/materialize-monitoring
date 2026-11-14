@@ -33,6 +33,12 @@ Grafana Alloy (gateway) is installed and configured to process metrics and logs.
     {{- end }}
   Destination: {{ $dest.name }} ({{ $dest.type }}: {{ join ", " $signals }})
   {{- end }}
+  {{- $callHomeLevel := include "mzmon.callHome.level" $ }}
+  Call-home level: {{ $callHomeLevel }}
+  {{- if eq $callHomeLevel "off" }} (nothing is sent to Materialize)
+  {{- else if has $callHomeLevel ( list "heartbeat" "alerts" ) }} (sends nothing in this chart version)
+  {{- else }} (sends to the controlPlane destination)
+  {{- end }}
 {{- end }}
 
 {{- if ( include "mzmon.loki.enabled" $ ) }}

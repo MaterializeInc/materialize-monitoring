@@ -261,6 +261,10 @@ The destination map as values describe it, with the deprecated destinations
 folded in: the single Loki destination onto the `loki` entry, and the
 remote-write map's entries onto entries of type `prometheus`.
 
+`controlPlane` is built from `callHome.level` (`mzmon.callHome.destination`),
+with the install's entry applied over it. At `off` it is removed, whatever the
+entry says, so nothing is addressed to the control plane without a level.
+
 Usage:
   {{- $raw := include "mzmon.destinations.raw" $ | fromYaml }}
 */}}
@@ -279,6 +283,16 @@ Usage:
     {{- if not ( has $name $legacyProm.conflicts ) }}
       {{- $_ := set $dests $name ( include "mzmon.destinations.overlay" ( dict "base" ( index $dests $name | default dict ) "over" $entry ) | fromYaml ) }}
     {{- end }}
+  {{- end }}
+  {{- $callHome := include "mzmon.callHome.destination" $ | fromYaml }}
+  {{- if $callHome }}
+    {{- $over := index $dests "controlPlane" }}
+    {{- if not ( kindIs "map" $over ) }}
+      {{- $over = dict }}
+    {{- end }}
+    {{- $_ := set $dests "controlPlane" ( include "mzmon.destinations.overlay" ( dict "base" $callHome "over" $over ) | fromYaml ) }}
+  {{- else }}
+    {{- $_ := unset $dests "controlPlane" }}
   {{- end }}
   {{- $dests | toYaml }}
 {{- end }}
@@ -807,7 +821,7 @@ Usage:
           {{- $errors = append $errors ( printf "%s.%s.queue.%s does not apply to a %s destination, which takes: %s." $path $name $field $dest.type ( index $queueFields $dest.type | join ", " ) ) }}
         {{- end }}
       {{- end }}
-      {{- if and $dest.enabled ( not $dest.active ) }}
+      {{- if and $dest.enabled ( not $dest.active ) ( ne $name "controlPlane" ) }}
         {{- $warnings = append $warnings ( printf "%s.%s is enabled but carries no signal, so nothing is sent to it. Add a logs or metrics block." $path $name ) }}
       {{- end }}
     {{- end }}
@@ -919,16 +933,6 @@ Usage:
       {{- if $blocks }}
         {{- $blocking = append $blocking $name }}
       {{- end }}
-    {{- end }}
-  {{- end }}
-
-  {{- /* The call-home profile's destination sends logs to Materialize. A
-         credential the secret filter didn't replace crosses with them, so the
-         filter has to be on while it does. */}}
-  {{- $secretFilterMode := include "mzmon.secretFilter.mode" $ }}
-  {{- range $dest := ( include "mzmon.destinations.logs" $ | fromYamlArray ) }}
-    {{- if and ( eq $dest.name "controlPlane" ) ( ne $secretFilterMode "on" ) }}
-      {{- $warnings = append $warnings ( printf "%s.controlPlane sends logs to Materialize, but pipeline.logging.secretFilter.mode is %q, so a credential a component logs crosses unredacted. Set the mode to \"on\", as the call-home profile does, or set %s.controlPlane.logs.enabled to false." $path $secretFilterMode $path ) }}
     {{- end }}
   {{- end }}
 

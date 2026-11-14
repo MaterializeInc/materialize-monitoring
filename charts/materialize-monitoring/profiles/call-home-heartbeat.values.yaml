@@ -1,0 +1,14 @@
+# Profile: call-home-heartbeat. Sets the `heartbeat` call-home level: a fixed
+# record of the install's identity, component versions, and stack health, the
+# lowest level above `off`.
+#
+# In this chart version, the level sends nothing: the gateway has no heartbeat
+# producer. The gateway reads the client certificate only when the level sends
+# something.
+#
+# Nothing is sent unless you apply a call-home profile. Each one sets
+# `callHome.level` and touches nothing else. The levels, lowest first, are in
+# profiles/call-home.values.yaml, and the operator page is
+# docs/content/operating/call-home.md.
+callHome:
+  level: heartbeat

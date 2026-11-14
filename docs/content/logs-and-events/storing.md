@@ -86,7 +86,7 @@ The following example sends only warnings and above from environment namespaces,
 ```yaml
 pipeline:
   destinations:
-    controlPlane:
+    vendor:
       type: otlp
       url: https://ingest.example.com
       logs:

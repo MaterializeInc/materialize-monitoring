@@ -225,7 +225,6 @@ BYOC environments are ones Materialize operates; self-managed installs are invis
 
 | Item | Status |
 |---|---|
-| [DEP-280] The `callHome.level` consent ladder and profiles, defaulting to off, with a render assertion that the default sends nothing | ⬜ |
 | [DEP-281] A heartbeat producer and three-part install identity | ⬜ |
 | [DEP-282] The alerts level: alert state (`ALERTS`) over the gateway fan-out | ⬜ |
 | [DEP-283] A `previewOnly` destination mode: the full chain, counted locally, never sent | ⬜ |
@@ -425,7 +424,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-277]: https://linear.app/materializeinc/issue/DEP-277
 [DEP-278]: https://linear.app/materializeinc/issue/DEP-278
 [DEP-279]: https://linear.app/materializeinc/issue/DEP-279
-[DEP-280]: https://linear.app/materializeinc/issue/DEP-280
 [DEP-281]: https://linear.app/materializeinc/issue/DEP-281
 [DEP-282]: https://linear.app/materializeinc/issue/DEP-282
 [DEP-283]: https://linear.app/materializeinc/issue/DEP-283
