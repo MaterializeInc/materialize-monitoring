@@ -5,34 +5,43 @@
 
 # Call-home
 
-Call-home sends a reduced copy of your install's metrics and logs to Materialize,
+Call-home sends a reduced copy of your install's telemetry to Materialize,
 so Materialize can see what's running and what's wrong without a support ticket.
-Your own Loki and Thanos keep the full copy, and nothing is sent unless you turn call-home on.
-This page is for the operator of a `materialize-monitoring` install who decides whether to turn it on, and how much to send.
+Your own Loki and Thanos keep the full copy, and nothing is sent unless you choose a call-home level.
+This page is for the operator of a `materialize-monitoring` install who decides whether to turn call-home on, and how much to send.
 
 <!-- more -->
 
-Call-home is one profile, `profiles/call-home.values.yaml`.
-It adds a single destination, `controlPlane`, to [`pipeline.destinations`](../../logs-and-events/storing/#destinations), turns the gateway's [secret filter](#secret-filter) on, and changes nothing else.
-Bring Your Own Cloud stacks apply the same profile.
+One values key, `callHome.level`, chooses how much crosses.
+It defaults to `off`, which sends nothing.
+Each higher level sends everything the level below it sends, and more.
+The level builds a single destination, `controlPlane`, in [`pipeline.destinations`](../../logs-and-events/storing/#destinations),
+and changes nothing else.
+Bring Your Own Cloud stacks use the same levels.
 The only difference between the two is how the client certificate is issued, which happens outside this chart.
 
-## What the profile sends {#what-crosses}
+Only your values raise the level.
+Nothing in the chart reads a level from Materialize.
 
-The following table lists what the profile sends as written, and the setting under `pipeline.destinations.controlPlane` that controls each part:
+## Call-home levels {#levels}
 
-| Signal | Sent | Setting |
-|---|---|---|
-| Metrics | The `essential` tier | `metrics.minMetricImportance` |
-| Logs | `WARN` and above | `logs.minLevel` |
-| Logs | At most 500 lines per second per gateway replica | `logs.rateLimit` |
-| Logs | Not lines whose level the gateway couldn't determine | `logs.keepUnknown` |
+The following table lists each level and what it sends:
+
+| Level | What crosses |
+|---|---|
+| `off` | Nothing. The default. |
+| `heartbeat` | The [heartbeat](#heartbeat): what your install runs, and whether its monitoring stack works. |
+| `alerts` | The heartbeat, and the alerts that are pending or firing (`ALERTS`). |
+| `metrics` | Metrics at the `essential` tier, which holds the heartbeat and `ALERTS`. |
+| `diagnostics` | Metrics at the `essential` tier, and logs at `WARN` and above. |
+
+`profiles/call-home.values.yaml` sets `diagnostics`, and nothing else.
+
+At `diagnostics`, the gateway sends at most 500 log lines per second per gateway replica, in bursts of at most 5000.
+It levels most lines, including Rust and Go panics, which arrive as `CRITICAL`.
+A line it can't level is `UNKNOWN`, and no level sends those.
 
 The metric tiers are listed in [Controlling what each destination stores](../../metrics/storing/#controlling-what-each-destination-stores).
-
-The gateway levels most lines, including Rust and Go panics, which arrive as `CRITICAL`.
-A line it can't level is `UNKNOWN`, and the profile doesn't send those.
-To send them as well, set `logs.keepUnknown` to `true`.
 
 ## Turn on call-home {#enable}
 
@@ -53,43 +62,49 @@ The control plane reads your identity from the certificate, so the gateway sends
    - `CERT_FILE` and `KEY_FILE`: the certificate and private key Materialize issued.
 
    The gateway mounts the Secret at `/etc/mzmon/destination-tls`.
-   Without it, the gateway fails to load its configuration and names the missing file.
+   At every level above `off`, the gateway fails to load its configuration without it, and names the missing file.
 
-1. Add the profile to your install, after the profiles you already use.
+1. Set the level.
 
-   With Helm, add it to the `-f` list of your upgrade command.
+   With Helm, add the profile to the `-f` list of your upgrade command, after the profiles you already use.
+   To choose a level other than `diagnostics`, set `callHome.level` after it.
    The profiles ship inside the chart package; for more information, see [Get the profiles](../../getting-started/helm/#get-the-profiles).
 
    ```bash
    helm upgrade RELEASE oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring \
      --version VERSION --namespace NAMESPACE \
      -f YOUR_VALUES.yaml \
-     -f materialize-monitoring/profiles/call-home.values.yaml
+     -f materialize-monitoring/profiles/call-home.values.yaml \
+     --set callHome.level=metrics
    ```
 
-   With the Terraform module, append the profile's contents to `additional_values`, for example with `file()`.
+   With the Terraform module, set `callHome.level` in `additional_values`.
 
 1. Confirm the gateway is sending.
-   After the gateway restarts, `otelcol_exporter_sent_metric_points_total` and `otelcol_exporter_sent_log_records_total` rise
+   After the gateway restarts, the install notes show the level, and `otelcol_exporter_sent_metric_points_total` rises
    for `component_id="otelcol.exporter.otlphttp.dest_controlPlane"`.
+   At `diagnostics`, so does `otelcol_exporter_sent_log_records_total`.
 
 The certificate is re-read every five minutes, so a renewed certificate in the Secret is picked up without a restart.
 
 ## Credentials are redacted before anything is sent {#secret-filter}
 
-The profile sets `pipeline.logging.secretFilter.mode` to `on`.
-The gateway then replaces each credential it finds in a log line with `<redacted:RULE_ID>`, before it copies anything out of the line or sends it anywhere.
+At `diagnostics`, the gateway's secret filter is on, whatever `pipeline.logging.secretFilter.mode` says.
+The gateway then replaces each credential it finds in a log line with `<redacted:RULE_ID>`,
+before it copies anything out of the line or sends it anywhere.
 Neither your own Loki nor the control plane's copy holds a credential the filter caught.
+The level overrides shadow mode too, because shadow mode redacts only the copies it stores.
 
-Keep the filter on while logs are sent.
-The render warns if `controlPlane` sends logs with the mode set to anything else; shadow mode doesn't count, because it redacts only the copies it stores.
+Below `diagnostics`, no logs cross, and the mode is yours to set.
+
 The filter is an extra layer of protection, not the control: configure your components not to log credentials in the first place.
 For what the filter catches and what it costs, see [Secret filtering](../production-best-practices/secret-filtering/).
 
-## Choose how much to send {#levels}
+## Send less than a level {#narrow}
 
-Override the profile's settings in your own values file, after the profile.
-The following example sends errors and above, and recommended metrics:
+To send less than your level, write an entry under `pipeline.destinations.controlPlane` in your own values file, after the profile.
+The level builds the destination, and your entry is applied over it.
+The following example sends errors and above from Materialize's environments, at no more than 100 lines per second:
 
 ```yaml
 pipeline:
@@ -97,19 +112,33 @@ pipeline:
     controlPlane:
       logs:
         minLevel: ERROR
-      metrics:
-        minMetricImportance: recommended
+        selector: '{namespace=~"environment-.+"}'
+        rateLimit:
+          rate: 100
+          burst: 1000
 ```
 
-To send metrics and no logs, set `pipeline.destinations.controlPlane.logs.enabled` to `false`.
+To send metrics and no logs, set `pipeline.destinations.controlPlane.logs.enabled` to `false`, or use the `metrics` level.
 
-Each setting only reduces what the control plane receives.
-Your own Loki and Thanos keep everything.
+The entry can also change the wire, such as `url`, `tls`, and `queue`.
+It can't send more than the level.
+The render fails on any of the following:
+
+- A `metrics.minMetricImportance` wider than the level's tier: `heartbeat` at `heartbeat`, `alerts` at `alerts`, and `essential` above.
+- Logs below `diagnostics`, a `logs.minLevel` below `WARN`, or `logs.keepUnknown: true`.
+- A `logs.rateLimit.rate` above 500, or a `logs.rateLimit.burst` above 5000.
+- A `type` other than `otlp`.
+
+Your own Loki and Thanos keep everything at every level.
 
 ## Turn off call-home {#disable}
 
-Remove the profile from your install, or set `pipeline.destinations.controlPlane.enabled` to `false`.
+Remove the profile and any `callHome.level` you set, or set `callHome.level` to `"off"`.
+Quote it: YAML reads a bare `off` as `false`, which the chart also accepts as `off`.
 The gateway stops sending at its next restart, which the upgrade triggers.
+
+At `off`, the render fails if `pipeline.destinations.controlPlane` is still in your values, unless it's `enabled: false`.
+That way an entry written by hand, without a level, doesn't stop sending silently.
 
 ## When the control plane is unreachable {#unreachable}
 
@@ -121,8 +150,9 @@ The drops are counted in `otelcol_exporter_enqueue_failed_log_records_total` and
 
 The heartbeat is a fixed record of what your install runs and whether its monitoring stack works.
 It carries no object names, query text, log lines, or other metric series.
-A destination at `minMetricImportance: heartbeat` sends the heartbeat and nothing else.
-At `alerts` it also sends `ALERTS`, and at `essential` and wider it sends both alongside the tier's metrics.
+The `heartbeat` level sends the heartbeat and nothing else.
+The `alerts` level also sends `ALERTS`, and `metrics` and `diagnostics` send both alongside the `essential` tier.
+Any destination can send the same series with the metric tiers of the same names.
 
 The bundled Thanos ruler records the heartbeat every minute and writes it through the gateway, which is the path `ALERTS` takes.
 `ALERTS` holds a series only while an alert is pending or firing.
@@ -157,6 +187,7 @@ Your own Thanos stores the same series, so you can read exactly what the heartbe
 
 The heartbeat installs with the bundled Thanos and its monitoring, `thanos.global.serviceMonitor.enabled`.
 It needs `rules.enabled`, which is on by default.
+If you set a call-home level and the heartbeat doesn't install, the render warns you, because the control plane can't tell your install from one that went dark.
 
 ### Identity in the heartbeat {#identity}
 
@@ -174,5 +205,5 @@ A rebuilt cluster reports a new value, and the old value stops.
 ## See more
 
 - [Where the gateway writes logs](../../logs-and-events/storing/#destinations): every field a destination takes.
-- [Call-Home design](../../reference/development/design-docs/20260917-call-home-self-managed/): the consent model this profile is a first step toward.
+- [Call-Home design](../../reference/development/design-docs/20260917-call-home-self-managed/): the consent model the levels implement.
 
