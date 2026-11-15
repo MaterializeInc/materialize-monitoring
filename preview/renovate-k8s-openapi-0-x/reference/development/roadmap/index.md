@@ -202,7 +202,6 @@ Each control-plane branch runs a second, stricter filter immediately before its 
 | Item | Status |
 |---|---|
 | [DEP-309] Close the remaining raw-line path: live debugging on the filter | ⬜ |
-| [DEP-310] Card-number redaction with `stage.luhn` | ⬜ |
 | [DEP-313] Shadow mode, counting matches on real logs before any rule enforces, then the ingest filter on by default | 🔨 |
 | [DEP-314] The values surface and fail-open validators, with the customer's rules rendered into a flat file | ⬜ |
 | [DEP-315] `mz-monitoring-canary`, a canary producer per layer | ⬜ |
@@ -432,7 +431,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-304]: https://linear.app/materializeinc/issue/DEP-304
 [DEP-306]: https://linear.app/materializeinc/issue/DEP-306
 [DEP-309]: https://linear.app/materializeinc/issue/DEP-309
-[DEP-310]: https://linear.app/materializeinc/issue/DEP-310
 [DEP-313]: https://linear.app/materializeinc/issue/DEP-313
 [DEP-314]: https://linear.app/materializeinc/issue/DEP-314
 [DEP-315]: https://linear.app/materializeinc/issue/DEP-315
