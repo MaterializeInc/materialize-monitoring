@@ -255,5 +255,145 @@ another <code>ext:consensus_*</code> series with <code>group_left (version)</cod
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
+<h3 id="mzmon-heartbeat"><code>mzmon:heartbeat</code>
+  <a class="anchor" href="#mzmon-heartbeat">#</a>
+</h3>
+<h4><code>chart_version="__mzmon_chart_version__"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat</code></small></h4>
+1 at every evaluation, labelled with the version of the
+materialize-monitoring chart that installed the rule.
+Reads no metric, so it stops only when the ruler, its query path, or
+its writes through the gateway stop. Each ruler replica writes its
+own, under its own <code>ruler_replica</code>.
+<p><strong>Recorded where:</strong> <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">1</span><span style="color:#f92672">)</span></span></span></code></pre></div>
+<h3 id="mzmon-cluster_created_timestamp_seconds"><code>mzmon:cluster_created_timestamp_seconds</code>
+  <a class="anchor" href="#mzmon-cluster_created_timestamp_seconds">#</a>
+</h3>
+<h4><small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_kube_state_metrics</code></small></h4>
+When the cluster&rsquo;s <code>kube-system</code> namespace was created, in seconds
+since the epoch.
+Stands in for when the cluster was created. A cluster rebuilt from the
+same values reports a new value from then on, and a cloned one
+reports its own beside the original&rsquo;s.
+<p><strong>Recorded where:</strong> <code>kube-state-metrics</code>, <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span><span style="color:#f92672">(</span>kube_namespace_created{namespace<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">kube-system</span>&#34;}<span style="color:#f92672">)</span></span></span></code></pre></div>
+<h3 id="mzmon-environment_info"><code>mzmon:environment_info</code>
+  <a class="anchor" href="#mzmon-environment_info">#</a>
+</h3>
+<h4><small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_kube_state_metrics</code></small></h4>
+1 for each Materialize environment in the cluster, by
+<code>environment_id</code>.
+Read from the <code>Materialize</code> resources. Carries the environment&rsquo;s UUID
+and not its name, which is the resource&rsquo;s name.
+<p><strong>Recorded where:</strong> <code>kube-state-metrics</code>, <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>environment_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_mz_environment_info<span style="color:#f92672">)</span></span></span></code></pre></div>
+<h3 id="mzmon-build_info-count"><code>mzmon:build_info:count</code>
+  <a class="anchor" href="#mzmon-build_info-count">#</a>
+</h3>
+<h4><code>component="kubelet"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_kube_state_metrics</code></small></h4>
+Nodes running each kubelet version.
+<code>version</code> is the kubelet&rsquo;s, as the node reports it, which is the
+cluster&rsquo;s Kubernetes version once an upgrade finishes. Each node
+counts once however many kube-state-metrics replicas report it.
+<p><strong>Recorded where:</strong> <code>kube-state-metrics</code>, <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node, kubelet_version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_info<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">version</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">kubelet_version</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h4><code>component="environmentd"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_materialize</code></small></h4>
+Running environmentd processes of each Materialize version.
+<p><strong>Recorded where:</strong> <code>materialize</code>, <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_start_time_environmentd<span style="color:#f92672">)</span></span></span></code></pre></div>
+<h4><code>component="alloy"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_alloy</code></small></h4>
+Running Alloy collectors, agents and gateways together, of each version.
+<p><strong>Recorded where:</strong> <code>alloy</code>, <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>alloy_build_info<span style="color:#f92672">)</span></span></span></code></pre></div>
+<h4><code>component="loki"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_loki</code></small></h4>
+Running Loki processes of each version, every component together.
+<p><strong>Recorded where:</strong> <code>loki</code>, <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>loki_build_info<span style="color:#f92672">)</span></span></span></code></pre></div>
+<h4><code>component="node-exporter"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_node_exporter</code></small></h4>
+Running node-exporter processes of each version.
+<p><strong>Recorded where:</strong> <code>node-exporter</code>, <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>node_exporter_build_info<span style="color:#f92672">)</span></span></span></code></pre></div>
+<h4><code>component="postgres"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_postgres</code></small></h4>
+Metadata databases running each PostgreSQL version, read through the
+postgres-exporter.
+Covers each <code>externalDependencies.consensus</code> entry with
+<code>flavor: postgres</code>, whichever service runs the database: Amazon RDS,
+Cloud SQL, Azure Database for PostgreSQL, or a cluster of your own.
+Absent where none is declared, or the exporter doesn&rsquo;t run.
+<p><strong>Recorded where:</strong> <code>thanos</code>, <code>postgres-exporter</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target, short_version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      pg_static{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">version</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">short_version</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h4><code>component="thanos"</code> <small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_thanos</code></small></h4>
+Running Thanos processes of each version, every component together.
+<p><strong>Recorded where:</strong> <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>thanos_build_info<span style="color:#f92672">)</span></span></span></code></pre></div>
+<h3 id="mzmon-node_uname_info-count"><code>mzmon:node_uname_info:count</code>
+  <a class="anchor" href="#mzmon-node_uname_info-count">#</a>
+</h3>
+<h4><small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_node_exporter</code></small></h4>
+Nodes with each CPU architecture and kernel release.
+<code>machine</code> and <code>release</code> are <code>uname -m</code> and <code>uname -r</code> on the node,
+such as <code>aarch64</code> and <code>6.12.40-64.114.amzn2023.aarch64</code>. The node&rsquo;s
+host name stays behind.
+<p><strong>Recorded where:</strong> <code>node-exporter</code>, <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>machine, release<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodename, machine, release<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>node_uname_info<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h3 id="mzmon-rules-count"><code>mzmon:rules:count</code>
+  <a class="anchor" href="#mzmon-rules-count">#</a>
+</h3>
+<h4><small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_thanos</code></small></h4>
+The rules the Thanos ruler evaluates, alerting and recording, on the
+replica that loaded the most.
+Includes these heartbeat rules. A count well below the install&rsquo;s
+usual one is a rule file the ruler refused to load.
+<p><strong>Recorded where:</strong> <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>prometheus_rule_group_rules{app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;, container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h3 id="mzmon-rule_evaluation_failures-rate5m"><code>mzmon:rule_evaluation_failures:rate5m</code>
+  <a class="anchor" href="#mzmon-rule_evaluation_failures-rate5m">#</a>
+</h3>
+<h4><small>from <code>mzmon-heartbeat</code>, group <code>mzmon_heartbeat_thanos</code></small></h4>
+Failed rule evaluations per second over five minutes, on the Thanos
+ruler replica with the most.
+0 while every rule evaluates. A failing rule records nothing and
+never fires, so its alert goes missing from <code>ALERTS</code> without a sign
+anywhere else.
+<p><strong>Recorded where:</strong> <code>thanos</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>prometheus_rule_evaluation_failures_total{app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;, container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
 
 
