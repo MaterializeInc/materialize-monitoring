@@ -2,7 +2,9 @@
 //!
 //! `stage.luhn` replaces digit runs that pass the Luhn checksum. One random run
 //! in ten passes, and so would one in ten of the epoch timestamps Materialize
-//! logs as frontiers, so the stage carries a `skip_regex` for them. This test
+//! logs as frontiers, so the stage carries a `skip_regex` for them. The same
+//! expression exempts JSON numbers, because a placeholder in place of one makes
+//! the line invalid JSON. This test
 //! renders the real `loki.process "inputPrefilter"` and the shadow branch from
 //! `gateway.yaml`, runs them on `alloy run`, and pushes lines carrying card
 //! numbers, timestamps, and both. It checks each line as it leaves the
@@ -103,6 +105,7 @@ impl Numbers {
         let numbers = BTreeMap::from([
             ("VISA", visa),
             ("VISA_GROUPED", grouped),
+            ("COUNT", luhn(&format!("8{}", digits(6, 14)))),
             ("AMEX", luhn(&format!("37{}", digits(2, 12)))),
             ("UATP", luhn(&format!("1{}", digits(3, 13)))),
             ("ONE_14", luhn(&format!("1{}", digits(4, 12)))),
@@ -117,6 +120,7 @@ impl Numbers {
             ("AMEX", 15),
             ("UATP", 15),
             ("ONE_14", 14),
+            ("COUNT", 16),
             ("MS", 13),
             ("US", 16),
             ("NS", 19),
@@ -168,8 +172,8 @@ const FIXTURES: &[Fixture] = &[
     },
     Fixture {
         id: "microsecond-timestamp",
-        line: r#"{"timestamp_us":<<US>>,"level":"INFO"}"#,
-        out: r#"{"timestamp_us":<<US>>,"level":"INFO"}"#,
+        line: "compaction since: [<<US>>]",
+        out: "compaction since: [<<US>>]",
     },
     Fixture {
         id: "nanosecond-timestamp",
@@ -205,6 +209,39 @@ const FIXTURES: &[Fixture] = &[
         line: "card <<VISA_GROUPED>> on file",
         out: "card <<VISA_GROUPED>> on file",
     },
+    // A placeholder in place of a JSON number would break the line's JSON, so
+    // a number after a quoted key and a colon is exempt, a card number too.
+    Fixture {
+        id: "card-as-a-json-number-passes",
+        line: r#"{"level":"WARN","fields":{"message":"declined","value":<<VISA>>}}"#,
+        out: r#"{"level":"WARN","fields":{"message":"declined","value":<<VISA>>}}"#,
+    },
+    Fixture {
+        id: "json-numbers-stay-json",
+        line: r#"{"level":"INFO","fields":{"message":"flushed","bytes": <<COUNT>>,"delta":-<<COUNT>>}}"#,
+        out: r#"{"level":"INFO","fields":{"message":"flushed","bytes": <<COUNT>>,"delta":-<<COUNT>>}}"#,
+    },
+    // The key is matched whole. Otherwise the timestamp skip would take a
+    // timestamp key's digits, and the number after it would lose its exemption.
+    Fixture {
+        id: "json-number-under-a-timestamp-key",
+        line: r#"{"level":"INFO","fields":{"message":"updates","by_time":{"<<MS>>":<<COUNT>>}}}"#,
+        out: r#"{"level":"INFO","fields":{"message":"updates","by_time":{"<<MS>>":<<COUNT>>}}}"#,
+    },
+    // JSON escaped inside a string: an escaped quote doesn't end a key, and the
+    // placeholder can't break the outer JSON.
+    Fixture {
+        id: "escaped-json-in-a-message",
+        line: r#"{"level":"ERROR","fields":{"message":"bad payload: {\"card\":<<VISA>>}"}}"#,
+        out: r#"{"level":"ERROR","fields":{"message":"bad payload: {\"card\":<redacted:luhn>}"}}"#,
+    },
+    // A number in a JSON array has no key before it, so one that passes the
+    // checksum is replaced and its line is no longer JSON.
+    Fixture {
+        id: "number-in-a-json-array",
+        line: r#"{"level":"INFO","fields":{"message":"retrying","ids":[<<COUNT>>]}}"#,
+        out: r#"{"level":"INFO","fields":{"message":"retrying","ids":[<redacted:luhn>]}}"#,
+    },
     // The shadow filter redacts the password, so the shadow branch keeps a copy.
     Fixture {
         id: "credential-only",
@@ -220,6 +257,27 @@ const FIXTURES: &[Fixture] = &[
 
 /// The fixtures the shadow filter itself redacts, so the shadow branch keeps.
 const SHADOW_KEEPS: &[&str] = &["credential-only", "card-and-credential"];
+
+/// The JSON fixtures whose lines leave the prefilter as something else.
+const BREAKS_JSON: &[&str] = &["number-in-a-json-array"];
+
+#[test]
+fn json_lines_stay_json() {
+    let numbers = Numbers::new();
+    let is_json = |text: &str| serde_json::from_str::<serde_json::Value>(text).is_ok();
+    let mut wrong = Vec::new();
+    for f in FIXTURES {
+        if is_json(&numbers.fill(f.line))
+            && is_json(&numbers.fill(f.out)) == BREAKS_JSON.contains(&f.id)
+        {
+            wrong.push(f.id);
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "these fixtures go in as JSON and come out as JSON unless BREAKS_JSON lists them: {wrong:?}"
+    );
+}
 
 // --- running it -------------------------------------------------------------------
 
