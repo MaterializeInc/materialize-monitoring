@@ -67,6 +67,10 @@ pub enum Placeholder {
     ConsensusAzurePostgres,
     /// The same for the postgres-exporter's targets, by target name.
     ConsensusPostgres,
+    /// The version of the chart that installed the rule, such as `1.10.0`.
+    /// Occupies a static label value, never an expression: it is how the
+    /// call-home heartbeat names the chart version.
+    ChartVersion,
 }
 
 impl Placeholder {
@@ -83,6 +87,7 @@ impl Placeholder {
         Placeholder::ConsensusCloudsql,
         Placeholder::ConsensusPostgres,
         Placeholder::CoreWorkloads,
+        Placeholder::ChartVersion,
         Placeholder::ConsensusRds,
         Placeholder::SqlPrefix,
     ];
@@ -107,6 +112,7 @@ impl Placeholder {
             Placeholder::ConsensusCloudsql => "__mzmon_consensus_cloudsql__",
             Placeholder::ConsensusAzurePostgres => "__mzmon_consensus_azure_postgres__",
             Placeholder::ConsensusPostgres => "__mzmon_consensus_postgres__",
+            Placeholder::ChartVersion => "__mzmon_chart_version__",
         }
     }
 

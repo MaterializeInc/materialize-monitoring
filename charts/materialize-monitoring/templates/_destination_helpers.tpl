@@ -821,7 +821,7 @@ Usage:
           {{- $errors = append $errors ( printf "%s.%s.queue.%s does not apply to a %s destination, which takes: %s." $path $name $field $dest.type ( index $queueFields $dest.type | join ", " ) ) }}
         {{- end }}
       {{- end }}
-      {{- if and $dest.enabled ( not $dest.active ) ( ne $name "controlPlane" ) }}
+      {{- if and $dest.enabled ( not $dest.active ) }}
         {{- $warnings = append $warnings ( printf "%s.%s is enabled but carries no signal, so nothing is sent to it. Add a logs or metrics block." $path $name ) }}
       {{- end }}
     {{- end }}

@@ -62,6 +62,11 @@ module "monitoring" {
   object_storage_access_key_id     = local.substrate.s3_access_key_id
   object_storage_secret_access_key = local.substrate.s3_secret_access_key
 
+  # rustfs serves HTTPS with a certificate from the substrate's own CA, which no
+  # image trusts. Loki and Thanos reach their buckets only through the trust
+  # bundle, so every assertion that needs object storage also proves it.
+  trust_bundle_ca_pem = local.substrate.object_store_ca_pem
+
   # Grafana on the substrate's Postgres, which is the other half of what a cloud
   # wrapper provisions.
   grafana_database_enabled  = true

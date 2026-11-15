@@ -7,9 +7,9 @@
 # everything the one above it in this list sends, and more:
 #
 #   off          nothing (the default)
-#   heartbeat    nothing in this chart version
-#   alerts       nothing in this chart version
-#   metrics      metrics at the `essential` tier
+#   heartbeat    the heartbeat: versions and monitoring-stack health
+#   alerts       also alert state (`ALERTS`)
+#   metrics      also metrics at the `essential` tier
 #   diagnostics  also logs at WARN and above (this profile)
 #
 # To choose another level, change the value below in a copy of this file, or
@@ -21,7 +21,7 @@
 #
 # At `diagnostics`, the gateway sends:
 #
-#   * Metrics at the `essential` tier.
+#   * Metrics at the `essential` tier, which holds the heartbeat and `ALERTS`.
 #   * Logs at WARN and above, at most 500 lines per second per gateway replica,
 #     in bursts of at most 5000. Lines whose level the gateway couldn't
 #     determine aren't sent; the gateway levels Rust and Go panics CRITICAL, so

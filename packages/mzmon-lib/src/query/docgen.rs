@@ -19,10 +19,14 @@
 //!
 //! The rules produce series of their own, which need no query naming them to
 //! have a tier: each recording rule's `record`, and `ALERTS` once the registry
-//! defines an alert. They join the roll-up at [`RECORDED_SERIES_IMPORTANCE`] and
-//! [`ALERTS_IMPORTANCE`], a query reading one can still raise it, and overrides
-//! apply to them as to any metric. The metrics a rule reads keep their own
-//! roll-up, because a destination can take a rule's output without its inputs.
+//! defines an alert. A record joins the roll-up at the `importance` its rule
+//! declares, or [`RECORDED_SERIES_IMPORTANCE`], and `ALERTS` at
+//! [`ALERTS_IMPORTANCE`]. A query reading one can still raise it, and overrides
+//! apply to it as to any metric, except that a series in one of the two reserved
+//! tiers, `heartbeat` and `alerts`, keeps it: those tiers are what the call-home
+//! levels send, and an override written for something else must not move a
+//! series out of one. The metrics a rule reads keep their own roll-up, because a
+//! destination can take a rule's output without its inputs.
 //!
 //! Importance is the axis Python's `docgen` does not have, so this output
 //! intentionally diverges from it — the Rust tool is authoritative. Extraction
@@ -53,8 +57,9 @@ pub const RECORDED_SERIES_IMPORTANCE: Importance = Importance::Recommended;
 /// so it has no tier.
 pub const ALERTS_SERIES: &str = "ALERTS";
 
-/// The tier of [`ALERTS_SERIES`]: alert state is what the alerting tier is for.
-pub const ALERTS_IMPORTANCE: Importance = Importance::Essential;
+/// The tier of [`ALERTS_SERIES`]: the reserved `alerts` tier, which a
+/// destination can take on its own to forward alert state and nothing else.
+pub const ALERTS_IMPORTANCE: Importance = Importance::Alerts;
 
 /// Documentation for a single metric. Field order is alphabetical (`importance`,
 /// `labels`, `name`, `usage`) so the serialized YAML keys stay sorted.
@@ -128,7 +133,12 @@ pub fn extract_metric_docs(registry: &QueryRegistry, ctx: &TemplateContext) -> D
     // name, and a tier is the name's.
     let produced = registry
         .rules()
-        .map(|rule| (rule.record.as_str(), RECORDED_SERIES_IMPORTANCE))
+        .map(|rule| {
+            (
+                rule.record.as_str(),
+                rule.importance.unwrap_or(RECORDED_SERIES_IMPORTANCE),
+            )
+        })
         .chain(
             registry
                 .alerts()
@@ -149,10 +159,15 @@ pub fn extract_metric_docs(registry: &QueryRegistry, ctx: &TemplateContext) -> D
     let mut docs: Vec<MetricDoc> = aggregates
         .into_iter()
         .map(|(name, aggregate)| {
-            // A matching override replaces the rolled-up importance outright.
-            let importance = registry
-                .override_importance(&name)
-                .unwrap_or(aggregate.importance);
+            // A matching override replaces the rolled-up importance outright,
+            // except for a series in a reserved tier.
+            let importance = if aggregate.importance.is_reserved() {
+                aggregate.importance
+            } else {
+                registry
+                    .override_importance(&name)
+                    .unwrap_or(aggregate.importance)
+            };
             MetricDoc {
                 importance: importance.to_string(),
                 labels: aggregate.labels.into_iter().collect(),
@@ -431,7 +446,7 @@ alerts:
         assert_eq!(record.importance, "essential");
         assert_eq!(record.usage, vec!["thing.alerts.high".to_string()]);
         assert_eq!(by_name(&docs, "input_metric").importance, "diagnostic");
-        assert_eq!(by_name(&docs, "ALERTS").importance, "essential");
+        assert_eq!(by_name(&docs, "ALERTS").importance, "alerts");
     }
 
     #[test]
@@ -459,6 +474,79 @@ queries:
         let docs = run(&load_docs(&[&overridden]));
         assert_eq!(by_name(&docs, "ext:thing_ratio").importance, "essential");
         assert_eq!(by_name(&docs, "input_metric").importance, "diagnostic");
+    }
+
+    const HEARTBEAT: &str = r#"
+description: heartbeat
+metricImportanceHint: diagnostic
+rules:
+  - record: mzmon:heartbeat
+    group: mzmon_heartbeat
+    stability: best-effort
+    importance: heartbeat
+    description: {summary: s}
+    query:
+      id: mzmon.heartbeat
+      stability: best-effort
+      description: {summary: s}
+      promQL: 'max(input_metric)'
+"#;
+
+    #[test]
+    fn a_rule_can_declare_its_record_heartbeat() {
+        let docs = run(&load_docs(&[HEARTBEAT]));
+        assert_eq!(by_name(&docs, "mzmon:heartbeat").importance, "heartbeat");
+        assert_eq!(by_name(&docs, "input_metric").importance, "diagnostic");
+        assert_eq!(
+            docs[0].name, "mzmon:heartbeat",
+            "heartbeat sorts first: {docs:?}"
+        );
+    }
+
+    #[test]
+    fn an_override_does_not_move_a_series_out_of_a_reserved_tier() {
+        let docs = run(&load_docs(&[
+            HEARTBEAT,
+            r#"
+description: alerts
+metricImportanceHint: essential
+alerts:
+  - alert: thing-high
+    group: thing
+    stability: best-effort
+    for: 5m
+    description: {summary: s}
+    query:
+      id: thing.alerts.high
+      stability: best-effort
+      description: {summary: s}
+      promQL: 'input_metric > 0.9'
+metricOverrides:
+  - metricPattern: "ALERTS|mzmon:.*|input_metric"
+    importance: extended
+"#,
+        ]));
+        assert_eq!(by_name(&docs, "ALERTS").importance, "alerts");
+        assert_eq!(by_name(&docs, "mzmon:heartbeat").importance, "heartbeat");
+        assert_eq!(by_name(&docs, "input_metric").importance, "extended");
+    }
+
+    #[test]
+    fn a_reserved_tier_is_refused_where_a_query_would_hold_it() {
+        let load = |doc: &str| {
+            let parsed: crate::query::def::RegistryDoc = crate::yaml::from_str(doc).unwrap();
+            QueryRegistry::new().load(parsed)
+        };
+        let hint = load("description: x\nmetricImportanceHint: heartbeat\n").unwrap_err();
+        assert!(hint.to_string().contains("reserved"), "{hint}");
+        let ov = load(
+            "description: x\nmetricImportanceHint: diagnostic\nmetricOverrides:\n  - metricPattern: up\n    importance: alerts\n",
+        )
+        .unwrap_err();
+        assert!(ov.to_string().contains("reserved"), "{ov}");
+        let rule =
+            load(&HEARTBEAT.replace("importance: heartbeat", "importance: alerts")).unwrap_err();
+        assert!(rule.to_string().contains("`ALERTS` alone"), "{rule}");
     }
 
     #[test]

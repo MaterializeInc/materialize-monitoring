@@ -428,6 +428,10 @@ depends_on = [
   # Mounted without `optional`, so a Secret that lands after the pod leaves it
   # in ContainerCreating, and the release waits on it until the timeout.
   kubernetes_secret.postgres_exporter,
+  # Optional, like the gateway's Secret, and worse to miss: a Go process reads
+  # its roots once, so a pod that started without the bundle keeps distrusting
+  # the CA after it lands. See trust_bundle.tf.
+  kubernetes_config_map.trust_bundle,
 ]
 }
 

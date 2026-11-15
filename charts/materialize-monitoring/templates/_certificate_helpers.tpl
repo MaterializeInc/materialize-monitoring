@@ -33,6 +33,24 @@ Usage:
 {{- end }}
 
 {{- /*
+The trust bundle's `SSL_CERT_DIR`: Go's own default directories, then the
+directories the `mzmon-trust-bundle` ConfigMap and Secret mount at. Go also reads
+the image's CA file whatever this says, so the result adds roots and removes
+none.
+
+The Alloy env ConfigMaps render it from here. Values carry the same string
+literally, in `global.extraEnv` for Loki and Thanos and in
+`alertmanager.extraEnv`, because a subchart's values can't call a helper;
+`trust_bundle_test.yaml` holds each of them to this one.
+
+Usage:
+  {{ include "mzmon.trustBundle.certDir" $ }}
+*/}}
+{{- define "mzmon.trustBundle.certDir" -}}
+/etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
+{{- end }}
+
+{{- /*
 The components this chart can issue a certificate for, and where each one runs.
 
 The key is both the `certificates.components` key and the subchart key as it

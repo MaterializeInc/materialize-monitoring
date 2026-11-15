@@ -322,6 +322,15 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         thanos,
         checks::thanos::typed_names_round_trip,
     ));
+    // Read through Thanos, so it needs Thanos, which is also the component
+    // that always uses a bucket.
+    trials.push(trial(
+        runtime,
+        ctx,
+        "object_storage::reachable",
+        thanos,
+        checks::object_storage::reachable,
+    ));
 
     // Alertmanager. Gated on it running in the release namespace, which is
     // where every Service this suite dials is looked up; under split-namespace
@@ -387,6 +396,26 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         "thanos::consensus_recorded",
         thanos && thanos_ruler && rules,
         checks::thanos::consensus_recorded,
+    ));
+    // The heartbeat installs where the chart derives `thanos`, from the
+    // gateway and Thanos's own ServiceMonitors, or where values list it.
+    let thanos_capability = (ctx.features.enabled("alloy-gateway")
+        && ctx
+            .features
+            .get("thanos.global.serviceMonitor.enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true))
+        || ctx
+            .features
+            .get("rules.capabilities")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|caps| caps.iter().any(|c| c.as_str() == Some("thanos")));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "thanos::heartbeat_recorded",
+        thanos && thanos_ruler && rules && thanos_capability,
+        checks::thanos::heartbeat_recorded,
     ));
     // Passes with no Materialize to watch, like consensus_recorded, so it needs
     // only the store it queries.

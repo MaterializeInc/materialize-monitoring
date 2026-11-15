@@ -34,6 +34,7 @@ pub mod postgres_exporter;
 pub mod scheduling;
 pub mod secret_filter;
 pub mod storage_class;
+pub mod trust_bundle;
 pub mod workload_identity;
 
 /// A string read back for a message: quoted when present, `unset` when not.

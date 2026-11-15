@@ -174,33 +174,90 @@ tests:
           errorPattern: 'callHome.level is "true"'
 
   # --- each rung -----------------------------------------------------------------
-  - it: should send nothing at heartbeat
+  - it: should send only the heartbeat at heartbeat
     set:
       callHome.level: heartbeat
-    template: templates/pipelines/cm-alloy-gateway.yaml
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
     asserts:
-      - notMatchRegex:
-          path: data["config.alloy"]
-          pattern: 'dest_controlPlane'
+      - equal:
+          path: data.GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST
+          value: "mzmon:build_info:count|mzmon:cluster_created_timestamp_seconds|mzmon:environment_info|mzmon:heartbeat|mzmon:node_uname_info:count|mzmon:rule_evaluation_failures:rate5m|mzmon:rules:count"
 
-  - it: should say heartbeat sends nothing, without a no-signal warning
+  - it: should say heartbeat sends to the control plane
     set:
       callHome.level: heartbeat
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
-          pattern: 'Call-home level: heartbeat \(sends nothing in this chart version\)'
-      - notMatchRegexRaw:
-          pattern: 'controlPlane is enabled but carries no signal'
+          pattern: 'Destination: controlPlane \(otlp: heartbeat metrics\)'
+      - matchRegexRaw:
+          pattern: 'Call-home level: heartbeat \(sends to the controlPlane destination\)'
 
-  - it: should send nothing at alerts
+  - it: should render no log path at heartbeat
     set:
-      callHome.level: alerts
+      callHome.level: heartbeat
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "dest_controlPlane"'
       - notMatchRegex:
           path: data["config.alloy"]
-          pattern: 'dest_controlPlane'
+          pattern: 'otelcol\.receiver\.loki "dest_controlPlane"'
+
+  - it: should add alert state at alerts
+    set:
+      callHome.level: alerts
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST
+          value: "ALERTS|mzmon:build_info:count|mzmon:cluster_created_timestamp_seconds|mzmon:environment_info|mzmon:heartbeat|mzmon:node_uname_info:count|mzmon:rule_evaluation_failures:rate5m|mzmon:rules:count"
+
+  - it: should name the alerts tier in the notes at alerts
+    set:
+      callHome.level: alerts
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'Destination: controlPlane \(otlp: alerts metrics\)'
+
+  # The control plane reads a missing heartbeat as an install gone dark. This
+  # suite runs without Thanos, so the heartbeat isn't recorded by default.
+  - it: should warn when a level is set but the heartbeat isn't recorded
+    set:
+      callHome.level: heartbeat
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "callHome.level is heartbeat, but this release doesn't record the heartbeat"
+
+  - it: should not warn about the heartbeat where this release records it
+    set:
+      callHome.level: heartbeat
+      tags.thanos: true
+      thanos.global.objstore.createSecret: false
+    template: NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "doesn't record the heartbeat"
+
+  - it: should not warn about the heartbeat where another release runs Thanos
+    set:
+      callHome.level: heartbeat
+      otherReleases.thanos: true
+    template: NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "doesn't record the heartbeat"
+
+  - it: should not warn about the heartbeat at off
+    set:
+      rules.enabled: false
+    template: NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "doesn't record the heartbeat"
 
   - it: should send essential metrics and no logs at metrics
     set:
@@ -250,16 +307,16 @@ tests:
       - failedTemplate:
           errorPattern: "callHome.level is metrics, which sends no logs"
 
-  - it: should refuse metrics below the metrics level
+  - it: should refuse a tier wider than the level's
     set:
       callHome.level: alerts
       pipeline.destinations.controlPlane.metrics.minMetricImportance: essential
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: "callHome.level is alerts, which sends no metrics"
+          errorPattern: 'callHome.level is alerts, which sends metrics at the alerts tier, but pipeline.destinations.controlPlane.metrics.minMetricImportance is "essential". An entry can only send less than its level: set it to heartbeat, alerts.'
 
-  - it: should refuse a tier floor below essential
+  - it: should refuse a tier wider than essential
     set:
       callHome.level: metrics
       pipeline.destinations.controlPlane.metrics.minMetricImportance: recommended
@@ -321,6 +378,16 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'loki\.process "dest_controlPlane" \{[\s\S]*?selector = "\{level=~\\"TRACE\|DEBUG\|INFO\|WARN\|UNKNOWN\\"\}"\s*action = "drop"[\s\S]*?stage\.limit \{\s*rate = 100\s*burst = 1000'
+
+  - it: should send a narrower tier when the entry names one
+    set:
+      callHome.level: metrics
+      pipeline.destinations.controlPlane.metrics.minMetricImportance: alerts
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST
+          value: "ALERTS|mzmon:build_info:count|mzmon:cluster_created_timestamp_seconds|mzmon:environment_info|mzmon:heartbeat|mzmon:node_uname_info:count|mzmon:rule_evaluation_failures:rate5m|mzmon:rules:count"
 
   - it: should send to another control plane when the entry names one
     set:

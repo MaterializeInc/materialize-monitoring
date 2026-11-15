@@ -1,0 +1,210 @@
+# promtool unit tests for the call-home heartbeat, rendered from
+# mzmon-heartbeat.yaml.
+#
+# Run by `make rules-check` against the `all` scenario
+# (charts/materialize-monitoring/tests/rules/all.values.yaml), where every
+# heartbeat group installs.
+#
+# Each test pins what a series says and which labels it carries, because the
+# heartbeat's labels are what crosses to the control plane. `chart_version` is
+# the chart's own version, so the liveness tests aggregate it away rather than
+# pinning a value that changes every release; the chart's helm-unittest suite
+# pins the substitution.
+rule_files:
+  - mzmon-heartbeat.yaml
+evaluation_interval: 1m
+tests:
+  # --- mzmon:heartbeat ----------------------------------------------------------
+  # Reads nothing, so it is there with no input at all.
+  - name: the heartbeat is 1 with nothing else recorded
+    interval: 1m
+    promql_expr_test:
+      - expr: max without (chart_version) (mzmon:heartbeat)
+        eval_time: 5m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+      - expr: count(mzmon:heartbeat{chart_version!=""})
+        eval_time: 5m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+
+  # --- kube-state-metrics -------------------------------------------------------
+  # Two kube-state-metrics replicas report the same namespace; the record is one
+  # value with no labels, so nothing about either pod crosses.
+  - name: the cluster's creation time is kube-system's, with no labels
+    interval: 1m
+    input_series:
+      - series: 'kube_namespace_created{namespace="kube-system", pod="ksm-a", instance="10.0.0.1:8080"}'
+        values: "1786132015x10"
+      - series: 'kube_namespace_created{namespace="kube-system", pod="ksm-b", instance="10.0.0.2:8080"}'
+        values: "1786132015x10"
+      - series: 'kube_namespace_created{namespace="materialize-environment", pod="ksm-a", instance="10.0.0.1:8080"}'
+        values: "1786139999x10"
+    promql_expr_test:
+      - expr: mzmon:cluster_created_timestamp_seconds
+        eval_time: 5m
+        exp_samples:
+          - labels: 'mzmon:cluster_created_timestamp_seconds'
+            value: 1786132015
+
+  # The environment's name is the resource's, so only the UUID crosses.
+  - name: each environment is named by its id alone
+    interval: 1m
+    input_series:
+      - series: 'kube_mz_environment_info{environment_id="9d1ced53-c0b4-40aa-b35d-b1d734f35c20", environment_name="main", environment_namespace="materialize-environment", pod="ksm-a"}'
+        values: "1x10"
+      - series: 'kube_mz_environment_info{environment_id="9d1ced53-c0b4-40aa-b35d-b1d734f35c20", environment_name="main", environment_namespace="materialize-environment", pod="ksm-b"}'
+        values: "1x10"
+      - series: 'kube_mz_environment_info{environment_id="0b8c2e9a-41d7-4f3a-9a52-3f1d2c7e8b10", environment_name="analytics", environment_namespace="analytics", pod="ksm-a"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: mzmon:environment_info
+        eval_time: 5m
+        exp_samples:
+          - labels: 'mzmon:environment_info{environment_id="9d1ced53-c0b4-40aa-b35d-b1d734f35c20"}'
+            value: 1
+          - labels: 'mzmon:environment_info{environment_id="0b8c2e9a-41d7-4f3a-9a52-3f1d2c7e8b10"}'
+            value: 1
+
+  # A node pool mid-upgrade runs two kubelet versions, and two
+  # kube-state-metrics replicas each report every node.
+  - name: nodes are counted once each by kubelet version
+    interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node-a", kubelet_version="v1.34.8-eks-a3a0722", provider_id="aws:///us-east-1a/i-0a", pod="ksm-a"}'
+        values: "1x10"
+      - series: 'kube_node_info{node="node-b", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1b/i-0b", pod="ksm-a"}'
+        values: "1x10"
+      - series: 'kube_node_info{node="node-c", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1c/i-0c", pod="ksm-a"}'
+        values: "1x10"
+      - series: 'kube_node_info{node="node-a", kubelet_version="v1.34.8-eks-a3a0722", provider_id="aws:///us-east-1a/i-0a", pod="ksm-b"}'
+        values: "1x10"
+      - series: 'kube_node_info{node="node-b", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1b/i-0b", pod="ksm-b"}'
+        values: "1x10"
+      - series: 'kube_node_info{node="node-c", kubelet_version="v1.35.9-eks-577a51e", provider_id="aws:///us-east-1c/i-0c", pod="ksm-b"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: mzmon:build_info:count{component="kubelet"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'mzmon:build_info:count{component="kubelet", version="v1.34.8-eks-a3a0722"}'
+            value: 1
+          - labels: 'mzmon:build_info:count{component="kubelet", version="v1.35.9-eks-577a51e"}'
+            value: 2
+
+  # --- components -------------------------------------------------------------
+  # Pod, job and instance names stay behind; only the component and the version
+  # cross.
+  - name: each component is counted by version, without its pods
+    interval: 1m
+    input_series:
+      - series: 'alloy_build_info{job="alloy-agent", pod="alloy-agent-a", version="v1.21.3"}'
+        values: "1x10"
+      - series: 'alloy_build_info{job="alloy-agent", pod="alloy-agent-b", version="v1.21.3"}'
+        values: "1x10"
+      - series: 'alloy_build_info{job="alloy-gateway", pod="alloy-gateway-a", version="v1.22.0"}'
+        values: "1x10"
+      - series: 'loki_build_info{job="loki/loki-ingester", pod="loki-ingester-0", version="3.7.9"}'
+        values: "1x10"
+      - series: 'thanos_build_info{job="thanos-query", pod="thanos-query-a", version="0.42.5"}'
+        values: "1x10"
+      - series: 'node_exporter_build_info{job="node-exporter", pod="node-exporter-a", version="1.12.1"}'
+        values: "1x10"
+      - series: 'mz_start_time_environmentd{job="monitoring/mzmon-materialize-environmentd", namespace="materialize-environment", pod="mz-environmentd-0", version="26.49.1"}'
+        values: "1786000000x10"
+    promql_expr_test:
+      - expr: mzmon:build_info:count
+        eval_time: 5m
+        exp_samples:
+          - labels: 'mzmon:build_info:count{component="alloy", version="v1.21.3"}'
+            value: 2
+          - labels: 'mzmon:build_info:count{component="alloy", version="v1.22.0"}'
+            value: 1
+          - labels: 'mzmon:build_info:count{component="loki", version="3.7.9"}'
+            value: 1
+          - labels: 'mzmon:build_info:count{component="thanos", version="0.42.5"}'
+            value: 1
+          - labels: 'mzmon:build_info:count{component="node-exporter", version="1.12.1"}'
+            value: 1
+          - labels: 'mzmon:build_info:count{component="environmentd", version="26.49.1"}'
+            value: 1
+
+  # Host names stay behind; only the architecture and kernel release cross.
+  - name: nodes are counted by architecture and kernel release
+    interval: 1m
+    input_series:
+      - series: 'node_uname_info{instance="10.0.0.1:9100", nodename="ip-10-0-0-1.ec2.internal", machine="aarch64", release="6.12.40-64.114.amzn2023.aarch64", sysname="Linux", version="#1 SMP"}'
+        values: "1x10"
+      - series: 'node_uname_info{instance="10.0.0.2:9100", nodename="ip-10-0-0-2.ec2.internal", machine="aarch64", release="6.12.40-64.114.amzn2023.aarch64", sysname="Linux", version="#1 SMP"}'
+        values: "1x10"
+      - series: 'node_uname_info{instance="10.0.0.3:9100", nodename="ip-10-0-0-3.ec2.internal", machine="x86_64", release="6.1.141-155.222.amzn2023.x86_64", sysname="Linux", version="#1 SMP"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: mzmon:node_uname_info:count
+        eval_time: 5m
+        exp_samples:
+          - labels: 'mzmon:node_uname_info:count{machine="aarch64", release="6.12.40-64.114.amzn2023.aarch64"}'
+            value: 2
+          - labels: 'mzmon:node_uname_info:count{machine="x86_64", release="6.1.141-155.222.amzn2023.x86_64"}'
+            value: 1
+
+  # --- the metadata database ----------------------------------------------------
+  # The `all` scenario declares `mz-metadata` and not `mz-grafana`, so the
+  # exporter's other database is left out, whatever its version.
+  - name: the declared metadata database is counted by PostgreSQL version
+    interval: 1m
+    input_series:
+      - series: 'pg_static{job="postgres-exporter", target="mz-metadata", server="mz-metadata.example.com:5432", short_version="18.3.0", version="PostgreSQL 18.3 on x86_64-pc-linux-gnu"}'
+        values: "1x10"
+      - series: 'pg_static{job="postgres-exporter", target="mz-grafana", server="mz-grafana.example.com:5432", short_version="16.13.0", version="PostgreSQL 16.13 on aarch64-unknown-linux-gnu"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: mzmon:build_info:count{component="postgres"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'mzmon:build_info:count{component="postgres", version="18.3.0"}'
+            value: 1
+
+  - name: no metadata database version without the exporter
+    interval: 1m
+    promql_expr_test:
+      - expr: mzmon:build_info:count{component="postgres"}
+        eval_time: 5m
+        exp_samples: []
+
+  # --- the rules behind ALERTS ------------------------------------------------
+  # Two ruler replicas each load every group. The count is one replica's, and a
+  # Prometheus the gateway happens to scrape is not counted.
+  - name: the rules count is the fullest ruler replica's
+    interval: 1m
+    input_series:
+      - series: 'prometheus_rule_group_rules{app="thanos", container="ruler", pod="thanos-ruler-0", rule_group="a.yaml;alerts"}'
+        values: "80x10"
+      - series: 'prometheus_rule_group_rules{app="thanos", container="ruler", pod="thanos-ruler-0", rule_group="b.yaml;heartbeat"}'
+        values: "7x10"
+      - series: 'prometheus_rule_group_rules{app="thanos", container="ruler", pod="thanos-ruler-1", rule_group="a.yaml;alerts"}'
+        values: "80x10"
+      - series: 'prometheus_rule_group_rules{app="kube-prometheus-stack-prometheus", container="prometheus", pod="prometheus-0", rule_group="c.yaml;theirs"}'
+        values: "500x10"
+    promql_expr_test:
+      - expr: mzmon:rules:count
+        eval_time: 5m
+        exp_samples:
+          - labels: 'mzmon:rules:count'
+            value: 87
+
+  - name: rule evaluation failures are the worst replica's rate
+    interval: 1m
+    input_series:
+      - series: 'prometheus_rule_evaluation_failures_total{app="thanos", container="ruler", pod="thanos-ruler-0", rule_group="a.yaml;alerts"}'
+        values: "0x20"
+      - series: 'prometheus_rule_evaluation_failures_total{app="thanos", container="ruler", pod="thanos-ruler-1", rule_group="a.yaml;alerts"}'
+        values: "0+6x20"
+    promql_expr_test:
+      - expr: mzmon:rule_evaluation_failures:rate5m
+        eval_time: 15m
+        exp_samples:
+          - labels: 'mzmon:rule_evaluation_failures:rate5m'
+            value: 0.1

@@ -18,10 +18,8 @@ The levels, lowest first, and what each one sends.
   metrics  the metric tier floor, or empty for no metrics.
   logs     the log reduction, or empty for no logs.
 
-`heartbeat` and `alerts` send nothing of their own: this chart has no
-heartbeat producer, and alert state doesn't pass through the gateway's
-fan-out. `metrics` and `diagnostics` contain them by rank, so they carry those
-signals from the chart version that adds them.
+The `heartbeat` and `alerts` tiers are nested in `essential`, so each level's
+tier holds the one below it.
 
 Usage:
   {{- $levels := include "mzmon.callHome.levels" $ | fromYaml }}
@@ -32,8 +30,10 @@ Usage:
   rank: 0
 heartbeat:
   rank: 1
+  metrics: heartbeat
 alerts:
   rank: 2
+  metrics: alerts
 metrics:
   rank: 3
   metrics: essential
@@ -142,20 +142,22 @@ The level is a ceiling. An install's entry under
 certificate files, the queue) and can send less than the level, but nothing
 past it:
 
-  * No metrics below `metrics`, and no tier floor below `essential`.
+  * No metric tier wider than the level's.
   * No logs below `diagnostics`, no level floor below `WARN`, no `UNKNOWN`
     lines, and no rate or burst above the level's limit.
   * The type stays `otlp`.
 
 At `off`, an entry that isn't `enabled: false` is refused rather than
 ignored, so an install that wrote the destination by hand finds out it isn't
-sending.
+sending. Above `off`, a release that doesn't record the heartbeat is warned:
+the control plane reads a missing heartbeat as an install gone dark.
 
 Usage:
   {{- $res := include "mzmon.callHome.validate" $ | fromYaml }}
 */}}
 {{- define "mzmon.callHome.validate" }}
   {{- $errors := list }}
+  {{- $warnings := list }}
   {{- $levels := include "mzmon.callHome.levels" $ | fromYaml }}
   {{- $level := include "mzmon.callHome.level" $ }}
   {{- $spec := index $levels $level }}
@@ -169,6 +171,10 @@ Usage:
       {{- $errors = append $errors ( printf "%s is the destination for Materialize's control plane, but callHome.level is off, so nothing is sent to it. Set callHome.level to the level you agree to send, for example metrics; the level builds the destination, and %s can only send less." $path $path ) }}
     {{- end }}
   {{- else }}
+    {{- $recorded := has "mzmon_heartbeat/mzmon:heartbeat" ( include "mzmon.rules.installedRecords" $ | fromYamlArray ) }}
+    {{- if not ( or $recorded ( include "mzmon.otherReleases.runs" ( dict "root" $ "component" "thanos" ) ) ) }}
+      {{- $warnings = append $warnings ( printf "callHome.level is %s, but this release doesn't record the heartbeat, so Materialize can't tell whether the install is reporting. The heartbeat needs rules.enabled, and the bundled Thanos with thanos.global.serviceMonitor.enabled. If another release of this chart runs Thanos, set otherReleases.thanos: true." $level ) }}
+    {{- end }}
     {{- range $dest := ( include "mzmon.destinations.list" $ | fromYamlArray ) }}
       {{- if eq $dest.name "controlPlane" }}
         {{- if ne $dest.type "otlp" }}
@@ -176,10 +182,15 @@ Usage:
         {{- end }}
 
         {{- if $dest.metrics.enabled }}
-          {{- if not $spec.metrics }}
-            {{- $errors = append $errors ( printf "callHome.level is %s, which sends no metrics, but %s turns metrics on. To send metrics, set callHome.level to metrics." $level $path ) }}
-          {{- else if ne $dest.metrics.minMetricImportance $spec.metrics }}
-            {{- $errors = append $errors ( printf "callHome.level is %s, which sends %s metrics, but %s.metrics.minMetricImportance is %q. An entry can only send less than its level, and %s is the narrowest tier." $level $spec.metrics $path $dest.metrics.minMetricImportance $spec.metrics ) }}
+          {{- /* Narrowest first; a level allows its own tier and those inside it. */}}
+          {{- $allowed := list }}
+          {{- range $tier := list "heartbeat" "alerts" "essential" }}
+            {{- if not ( has $spec.metrics $allowed ) }}
+              {{- $allowed = append $allowed $tier }}
+            {{- end }}
+          {{- end }}
+          {{- if not ( has $dest.metrics.minMetricImportance $allowed ) }}
+            {{- $errors = append $errors ( printf "callHome.level is %s, which sends metrics at the %s tier, but %s.metrics.minMetricImportance is %q. An entry can only send less than its level: set it to %s." $level $spec.metrics $path $dest.metrics.minMetricImportance ( join ", " $allowed ) ) }}
           {{- end }}
         {{- end }}
 
@@ -218,5 +229,5 @@ Usage:
     {{- end }}
   {{- end }}
 
-  {{- dict "errors" $errors "warnings" list | toYaml }}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
 {{- end }}

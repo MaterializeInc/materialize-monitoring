@@ -483,6 +483,16 @@ fn render_record(
                 "label `{name}` is empty, which Prometheus reads as no label at all"
             ));
         }
+        // The chart fills placeholders across the whole file, labels included,
+        // so a label may carry one, such as the chart version.
+        for token in PLACEHOLDER_TOKEN.find_iter(value) {
+            if Placeholder::from_token(token.as_str()).is_none() {
+                problems.push(format!(
+                    "label `{name}` carries `{}`, which is not a placeholder the chart replaces",
+                    token.as_str()
+                ));
+            }
+        }
     }
     // The normalized layer's contract: every series names the adapter that
     // produced it, which is what tells two adapters' rules for one name apart
@@ -814,6 +824,13 @@ fn infer_requires(
         Err(_) => return (requires, reads),
     };
     if selectors.is_empty() {
+        // A recording rule may be a constant, which needs only what it
+        // declares: the heartbeat's liveness record is `vector(1)`, which
+        // proves the ruler evaluates and its writes arrive. An alert on a
+        // constant fires always or never, so it is still refused.
+        if reader == Reader::Record {
+            return (requires, reads);
+        }
         problems.push(
             "the expression names no metric, so what it needs cannot be inferred or checked".into(),
         );
@@ -1531,7 +1548,11 @@ mod tests {
         let file = set
             .rule_file_yaml(RuleEngine::PromQl, "test-alerts")
             .unwrap();
-        for placeholder in Placeholder::ALL {
+        // The chart version fills a label, not an expression parameter.
+        for placeholder in Placeholder::ALL
+            .iter()
+            .filter(|p| **p != Placeholder::ChartVersion)
+        {
             assert!(file.contains(placeholder.token()), "{placeholder:?} unused");
         }
         crate::scrape::test_support::assert_promtool_rules_ok("test-alerts", &file);
@@ -1915,6 +1936,60 @@ mod tests {
             "{index}"
         );
         assert!(index.contains("- cloudwatch"), "{index}");
+    }
+
+    #[test]
+    fn a_constant_record_needs_what_it_declares_and_a_label_may_carry_the_chart_version() {
+        let set = render_rules(&records_registry(&format!(
+            "{}{}",
+            record(
+                "mzmon_heartbeat",
+                "mzmon:heartbeat",
+                "{chart_version: __mzmon_chart_version__}",
+                "vector(1)",
+                "    requires: [thanos]\n",
+            ),
+            record("mzmon_constant", "mzmon:constant", "{}", "vector(0)", ""),
+        )))
+        .unwrap();
+        assert_eq!(
+            set.records[0].requires.iter().collect::<Vec<_>>(),
+            vec![&Capability::Thanos]
+        );
+        assert!(set.records[1].requires.is_empty());
+        let file = set
+            .rule_file_yaml(RuleEngine::PromQl, "test-records")
+            .unwrap();
+        assert!(
+            file.contains("chart_version: __mzmon_chart_version__"),
+            "{file}"
+        );
+        crate::scrape::test_support::assert_promtool_rules_ok("test-records", &file);
+
+        let errs = record_errors(&record(
+            "mzmon_heartbeat",
+            "mzmon:heartbeat",
+            "{chart_version: __mzmon_release_name__}",
+            "vector(1)",
+            "",
+        ));
+        assert!(
+            has(
+                &errs,
+                "`__mzmon_release_name__`, which is not a placeholder"
+            ),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn an_alert_on_a_constant_is_still_refused() {
+        let errs: Vec<String> = render_rules(&registry(&alert("always", LABELS, "vector(1)", "")))
+            .expect_err("expected errors")
+            .into_iter()
+            .map(|e| e.message)
+            .collect();
+        assert!(has(&errs, "names no metric"), "{errs:?}");
     }
 
     #[test]

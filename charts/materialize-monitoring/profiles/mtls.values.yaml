@@ -613,6 +613,19 @@ alloy-agent:
           secret:
             secretName: mzmon-alloy-agent-tls
             optional: false
+        # The trust bundle, restated from the chart's defaults. The base values
+        # mount both, so the pod is invalid without them.
+        - name: mzmon-trust-bundle-configmap
+          configMap:
+            name: mzmon-trust-bundle
+            optional: true
+        - name: mzmon-trust-bundle-secret
+          secret:
+            secretName: mzmon-trust-bundle
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
 
 alloy-gateway:
   controller:
@@ -629,3 +642,14 @@ alloy-gateway:
           secret:
             secretName: mzmon-alloy-gateway-destination-tls
             optional: true
+        - name: mzmon-trust-bundle-configmap
+          configMap:
+            name: mzmon-trust-bundle
+            optional: true
+        - name: mzmon-trust-bundle-secret
+          secret:
+            secretName: mzmon-trust-bundle
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt

@@ -1,0 +1,340 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# The call-home heartbeat: a fixed record of what an install runs and whether
+# its monitoring stack works.
+
+description: |
+  The call-home heartbeat, as recorded series. It says what an install runs and
+  whether its monitoring stack works, and nothing about the workload: no
+  object names, no query text, no log lines, and no metric series beyond its
+  own. It's what the call-home `heartbeat` level sends, and every wider level
+  includes it.
+
+  ## A fixed record
+
+  Every series here is in the `heartbeat` metric tier, which only a recording
+  rule can declare. A destination at `minMetricImportance: heartbeat` takes
+  these series and nothing else. The record stays fixed so that it stays easy
+  to approve: adding a series, or a label to one, is a change to this file and
+  to the list on the call-home page, and it gets reviewed as one.
+
+  Each series carries the labels its rule gives it, and `cluster` and
+  `ruler_replica` from the ruler, so each ruler replica writes its own copy.
+  The gateway sets `job` and `instance` to `thanos-ruler`.
+
+  | Series | Labels | Value |
+  |---|---|---|
+  | `mzmon:heartbeat` | `chart_version` | `1` at each evaluation |
+  | `mzmon:build_info:count` | `component`, `version` | Running processes of that component at that version, or databases for `postgres` |
+  | `mzmon:node_uname_info:count` | `machine`, `release` | Nodes with that architecture and kernel release |
+  | `mzmon:environment_info` | `environment_id` | `1` for each Materialize environment |
+  | `mzmon:cluster_created_timestamp_seconds` | none | When the `kube-system` namespace was created |
+  | `mzmon:rules:count` | none | Rules the Thanos ruler evaluates |
+  | `mzmon:rule_evaluation_failures:rate5m` | none | Failed rule evaluations per second |
+
+  ## Quiet and absent
+
+  The Thanos ruler evaluates these rules and writes the results through the
+  gateway, which is the path `ALERTS` takes. A fresh `mzmon:heartbeat` with no
+  `ALERTS` therefore means nothing is firing. Without the heartbeat, the
+  absence of `ALERTS` means nothing, because whatever stopped the heartbeat
+  might have stopped the alerts too. `mzmon:rules:count` and
+  `mzmon:rule_evaluation_failures:rate5m` say whether the rules behind those
+  alerts are loaded and evaluating.
+
+  Every rule requires `thanos`, the bundled Thanos with its own metrics
+  collected, because its ruler is what evaluates them and writes them through
+  the gateway. Without it, none of the heartbeat installs, rather than part of
+  it. Beyond that, each group needs only the capability its own metrics
+  imply, so a component that isn't deployed takes its own series with it and
+  leaves the rest.
+
+  ## Identity
+
+  The heartbeat names no customer and no install. The control plane reads
+  both from the client certificate the install authenticates with, and the
+  install never asserts them itself. `mzmon:environment_info` names each
+  Materialize environment by `environment_id`, the `spec.environmentId` UUID
+  that every series from that environment carries.
+
+  `mzmon:cluster_created_timestamp_seconds` tells a rebuilt cluster from a
+  cloned one. A clone keeps the original's certificate and values, so it
+  reports under the same identity. Both report their own cluster's creation
+  time, so one identity alternating between two values is two clusters. A
+  rebuild changes the value once, and the old one stops.
+
+metricImportanceHint: diagnostic
+
+rules:
+  # --- Liveness: needs only the ruler ----------------------------------------
+  - record: mzmon:heartbeat
+    group: mzmon_heartbeat
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    labels:
+      chart_version: __mzmon_chart_version__
+    description:
+      summary: |
+        1 at every evaluation, labelled with the version of the
+        materialize-monitoring chart that installed the rule.
+      notes: |
+        Reads no metric, so it stops only when the ruler, its query path, or
+        its writes through the gateway stop. Each ruler replica writes its
+        own, under its own `ruler_replica`.
+    query:
+      id: mzmon.heartbeat.liveness
+      stability: experimental
+      description:
+        summary: A constant, evaluated by the ruler.
+      promQL: vector(1)
+
+  # --- kube-state-metrics: the cluster, its nodes and its environments --------
+  - record: mzmon:cluster_created_timestamp_seconds
+    group: mzmon_heartbeat_kube_state_metrics
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    description:
+      summary: |
+        When the cluster's `kube-system` namespace was created, in seconds
+        since the epoch.
+      notes: |
+        Stands in for when the cluster was created. A cluster rebuilt from the
+        same values reports a new value from then on, and a cloned one
+        reports its own beside the original's.
+    query:
+      id: mzmon.heartbeat.cluster_created
+      stability: experimental
+      description:
+        summary: The `kube-system` namespace's creation time.
+      promQL: min(kube_namespace_created{namespace="kube-system"})
+
+  - record: mzmon:environment_info
+    group: mzmon_heartbeat_kube_state_metrics
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    description:
+      summary: |
+        1 for each Materialize environment in the cluster, by
+        `environment_id`.
+      notes: |
+        Read from the `Materialize` resources. Carries the environment's UUID
+        and not its name, which is the resource's name.
+    query:
+      id: mzmon.heartbeat.environments
+      stability: experimental
+      description:
+        summary: The Materialize environments, by `environment_id`.
+      promQL: group by (environment_id) (kube_mz_environment_info)
+
+  - record: mzmon:build_info:count
+    group: mzmon_heartbeat_kube_state_metrics
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    labels:
+      component: kubelet
+    description:
+      summary: Nodes running each kubelet version.
+      notes: |
+        `version` is the kubelet's, as the node reports it, which is the
+        cluster's Kubernetes version once an upgrade finishes. Each node
+        counts once however many kube-state-metrics replicas report it.
+    query:
+      id: mzmon.heartbeat.build_info.kubelet
+      stability: experimental
+      description:
+        summary: Nodes by kubelet version.
+      promQL: |
+        count by (version) (
+          label_replace(
+            group by (node, kubelet_version) (kube_node_info),
+            "version", "$1", "kubelet_version", "(.+)"
+          )
+        )
+
+  # --- One group per component, so each reports only where it runs ----------
+  - record: mzmon:build_info:count
+    group: mzmon_heartbeat_materialize
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    labels:
+      component: environmentd
+    description:
+      summary: Running environmentd processes of each Materialize version.
+    query:
+      id: mzmon.heartbeat.build_info.environmentd
+      stability: experimental
+      description:
+        summary: environmentd processes by version.
+      promQL: count by (version) (mz_start_time_environmentd)
+
+  - record: mzmon:build_info:count
+    group: mzmon_heartbeat_alloy
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    labels:
+      component: alloy
+    description:
+      summary: Running Alloy collectors, agents and gateways together, of each version.
+    query:
+      id: mzmon.heartbeat.build_info.alloy
+      stability: experimental
+      description:
+        summary: Alloy processes by version.
+      promQL: count by (version) (alloy_build_info)
+
+  - record: mzmon:build_info:count
+    group: mzmon_heartbeat_loki
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    labels:
+      component: loki
+    description:
+      summary: Running Loki processes of each version, every component together.
+    query:
+      id: mzmon.heartbeat.build_info.loki
+      stability: experimental
+      description:
+        summary: Loki processes by version.
+      promQL: count by (version) (loki_build_info)
+
+  - record: mzmon:build_info:count
+    group: mzmon_heartbeat_node_exporter
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    labels:
+      component: node-exporter
+    description:
+      summary: Running node-exporter processes of each version.
+    query:
+      id: mzmon.heartbeat.build_info.node_exporter
+      stability: experimental
+      description:
+        summary: node-exporter processes by version.
+      promQL: count by (version) (node_exporter_build_info)
+
+  - record: mzmon:node_uname_info:count
+    group: mzmon_heartbeat_node_exporter
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    description:
+      summary: Nodes with each CPU architecture and kernel release.
+      notes: |
+        `machine` and `release` are `uname -m` and `uname -r` on the node,
+        such as `aarch64` and `6.12.40-64.114.amzn2023.aarch64`. The node's
+        host name stays behind.
+    query:
+      id: mzmon.heartbeat.node_uname
+      stability: experimental
+      description:
+        summary: Nodes by architecture and kernel release.
+      promQL: |
+        count by (machine, release) (
+          group by (nodename, machine, release) (node_uname_info)
+        )
+
+  # --- The metadata database, where its version can be read --------------------
+  # No provider pull publishes an engine version, so this reads the
+  # postgres-exporter, and only for the databases declared as the metadata
+  # database: the exporter can watch others, such as a source database.
+  - record: mzmon:build_info:count
+    group: mzmon_heartbeat_postgres
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    labels:
+      component: postgres
+    description:
+      summary: |
+        Metadata databases running each PostgreSQL version, read through the
+        postgres-exporter.
+      notes: |
+        Covers each `externalDependencies.consensus` entry with
+        `flavor: postgres`, whichever service runs the database: Amazon RDS,
+        Cloud SQL, Azure Database for PostgreSQL, or a cluster of your own.
+        Absent where none is declared, or the exporter doesn't run.
+    query:
+      id: mzmon.heartbeat.build_info.postgres
+      stability: experimental
+      description:
+        summary: Declared metadata databases by PostgreSQL version.
+      promQL: |
+        count by (version) (
+          label_replace(
+            group by (target, short_version) (
+              pg_static{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"}
+            ),
+            "version", "$1", "short_version", "(.+)"
+          )
+        )
+
+  # --- Thanos: its version, and whether the rules behind ALERTS evaluate ------
+  - record: mzmon:build_info:count
+    group: mzmon_heartbeat_thanos
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    labels:
+      component: thanos
+    description:
+      summary: Running Thanos processes of each version, every component together.
+    query:
+      id: mzmon.heartbeat.build_info.thanos
+      stability: experimental
+      description:
+        summary: Thanos processes by version.
+      promQL: count by (version) (thanos_build_info)
+
+  - record: mzmon:rules:count
+    group: mzmon_heartbeat_thanos
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    description:
+      summary: |
+        The rules the Thanos ruler evaluates, alerting and recording, on the
+        replica that loaded the most.
+      notes: |
+        Includes these heartbeat rules. A count well below the install's
+        usual one is a rule file the ruler refused to load.
+    query:
+      id: mzmon.heartbeat.rules
+      stability: experimental
+      description:
+        summary: Rules loaded by the Thanos ruler.
+      promQL: |
+        max(
+          sum by (pod) (prometheus_rule_group_rules{app="thanos", container="ruler"})
+        )
+
+  - record: mzmon:rule_evaluation_failures:rate5m
+    group: mzmon_heartbeat_thanos
+    stability: best-effort
+    importance: heartbeat
+    requires: [thanos]
+    description:
+      summary: |
+        Failed rule evaluations per second over five minutes, on the Thanos
+        ruler replica with the most.
+      notes: |
+        0 while every rule evaluates. A failing rule records nothing and
+        never fires, so its alert goes missing from `ALERTS` without a sign
+        anywhere else.
+    query:
+      id: mzmon.heartbeat.rule_evaluation_failures
+      stability: experimental
+      description:
+        summary: Failed Thanos ruler evaluations per second.
+      promQL: |
+        max(
+          sum by (pod) (
+            rate(prometheus_rule_evaluation_failures_total{app="thanos", container="ruler"}[5m])
+          )
+        )

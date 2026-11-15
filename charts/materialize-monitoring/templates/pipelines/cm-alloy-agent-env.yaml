@@ -12,6 +12,11 @@ metadata:
     {{- include "mzmon.annotations" $ | nindent 4 }}
 data:
   {{- tpl ( toYaml .Values.pipeline.env ) $ | nindent 2 }}
+  {{- /* The trust bundle. One already in pipeline.env wins, which keeps the
+         key from being written twice. */}}
+  {{- if not ( hasKey ( .Values.pipeline.env | default dict ) "SSL_CERT_DIR" ) }}
+  SSL_CERT_DIR: {{ include "mzmon.trustBundle.certDir" $ | quote }}
+  {{- end }}
   AGENT_POD_LOG_RATE_LIMIT: {{ .Values.pipeline.logging.agent.rateLimit | quote }}
   AGENT_POD_LOG_BURST: {{ .Values.pipeline.logging.agent.burst | quote }}
   {{- $lokiDest := .Values.pipeline.logging.agent.destination.loki }}

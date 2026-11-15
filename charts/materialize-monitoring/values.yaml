@@ -43,6 +43,61 @@ global:
   # that fail verification against the endpoints this chart itself dials.
   clusterDomain: cluster.local
 
+  # -- Environment for every Loki and Thanos container: the trust bundle's `SSL_CERT_DIR`.
+  # @raw
+  # The trust bundle adds your own CAs to the roots each component trusts for
+  # outbound TLS, such as an S3-compatible store behind a private CA. Create a
+  # ConfigMap or a Secret named `mzmon-trust-bundle`, then restart the pods. See
+  # [Securing](https://materializeinc.github.io/materialize-monitoring/operating/securing/#trust-a-private-ca).
+  #
+  # `SSL_CERT_DIR` names the directories a Go process loads its roots from. The
+  # value keeps Go's own defaults, `/etc/ssl/certs` and `/etc/pki/tls/certs`,
+  # and adds the two trust-bundle mounts. Go reads the image's CA file as well,
+  # so the image's public roots stay trusted. The Alloy roles and Alertmanager
+  # carry the same value; see `alloy-gateway.controller.volumes.extra` and
+  # `alertmanager.extraVolumes`.
+  #
+  # Loki and Thanos are the only subcharts that read `global.extraEnv`,
+  # `global.extraVolumes`, and `global.extraVolumeMounts`. Each adds them to
+  # every component, ahead of its `defaults` and per-component lists, so the
+  # trust bundle stays out of the way of profiles that replace those lists,
+  # such as `mtls`. Loki's memcached takes the environment without the volumes,
+  # which does no harm, because it makes no outbound TLS connection.
+  #
+  # **These are lists, and Helm replaces lists.** Setting one of them here
+  # replaces the trust-bundle entries. Put your own environment and volumes in
+  # `loki.defaults` and in the Thanos component lists, which are added to these.
+  extraEnv:
+    - name: SSL_CERT_DIR
+      value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
+  # -- Volumes for every Loki and Thanos pod: the trust bundle's ConfigMap and Secret.
+  # @raw
+  # Both are `optional`, so a pod starts whether or not they exist, and mounts
+  # an empty directory for a missing one. The ConfigMap mounts every key, which
+  # suits a trust-manager `Bundle` whatever key it targets. The Secret mounts
+  # only `ca.crt`, so a Secret that also holds a private key, such as one
+  # cert-manager issued, never puts the key in the pod.
+  extraVolumes:
+    - name: mzmon-trust-bundle-configmap
+      configMap:
+        name: mzmon-trust-bundle
+        optional: true
+    - name: mzmon-trust-bundle-secret
+      secret:
+        secretName: mzmon-trust-bundle
+        optional: true
+        items:
+          - key: ca.crt
+            path: ca.crt
+  # -- Mounts for the trust-bundle volumes, at the directories `SSL_CERT_DIR` names.
+  extraVolumeMounts:
+    - name: mzmon-trust-bundle-configmap
+      mountPath: /etc/mzmon/trust-bundle/configmap
+      readOnly: true
+    - name: mzmon-trust-bundle-secret
+      mountPath: /etc/mzmon/trust-bundle/secret
+      readOnly: true
+
 # -- Configuration for the main chart
 # @notationType -- (sectionstart) Main chart configuration
 __mainSection:
@@ -935,9 +990,9 @@ callHome:
   # | Level | What crosses |
   # | --- | --- |
   # | `off` | Nothing. |
-  # | `heartbeat` | Nothing in this chart version: the gateway has no heartbeat producer. |
-  # | `alerts` | Nothing in this chart version: alert state doesn't pass through the gateway's fan-out. |
-  # | `metrics` | Metrics at the `essential` tier. |
+  # | `heartbeat` | The heartbeat: a fixed record of the install's versions and monitoring-stack health, at the `heartbeat` metric tier. |
+  # | `alerts` | The heartbeat and alert state (`ALERTS`), at the `alerts` metric tier. |
+  # | `metrics` | Metrics at the `essential` tier, which holds the heartbeat and `ALERTS`. |
   # | `diagnostics` | Metrics at the `essential` tier, and logs at `WARN` and above, at most 500 lines per second per gateway replica with bursts of 5000. Lines whose level the gateway couldn't determine aren't sent. The gateway's secret filter is on, whatever `pipeline.logging.secretFilter.mode` says. |
   #
   # The level builds the destination `pipeline.destinations.controlPlane`, an `otlp` destination
@@ -945,8 +1000,11 @@ callHome:
   # in the Secret `mzmon-alloy-gateway-destination-tls`.
   # An entry you write under `pipeline.destinations.controlPlane` is applied over it.
   # It can change the wire, such as `url`, `tls`, and `queue`, and it can send less than the level,
-  # but the render fails if it sends more: a lower tier floor, a lower log level, `logs.keepUnknown`, or a higher rate limit.
+  # but the render fails if it sends more: a wider metric tier, a lower log level, `logs.keepUnknown`, or a higher rate limit.
   # At `off`, the render fails if the entry is there at all, unless it's `enabled: false`.
+  #
+  # The heartbeat is recorded by the bundled Thanos ruler, so above `off` it needs `rules.enabled`
+  # and `thanos.global.serviceMonitor.enabled`; the render warns without them.
   #
   # Only this key raises the level. Nothing in the chart reads a level from Materialize.
   # `profiles/call-home.values.yaml` sets `diagnostics`.
@@ -1114,7 +1172,7 @@ pipeline:
   # | `logs.sampleRate` | `loki`, `otlp`, `datadog`, `s3` | `1` | Fraction of entries kept, above 0 and at most 1. |
   # | `logs.rateLimit` | `loki`, `otlp`, `datadog`, `s3` | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
   # | `metrics.enabled` | `otlp`, `googleCloud`, `datadog`, `prometheus` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
-  # | `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
+  # | `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `heartbeat` to `all`. `heartbeat` and `alerts` send only the call-home heartbeat, and with `alerts`, `ALERTS`. |
   # | `protocol` | `otlp` | `http` | `http` or `grpc`. |
   # | `compression` | `otlp`, `googleCloud`, `s3` | `gzip` | Request or object compression; `s3` also takes `none`. |
   # | `project` / `location` | `googleCloud` | detected on GKE | The project and location every series is filed under. Required off GKE. |
@@ -2796,8 +2854,9 @@ rules:
   # | `egress-gateway` | A dedicated egress-gateway node pool, identified by a `workload` label |
   #
   # The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
-  # `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
-  # present when this chart runs the component and collects its metrics, and
+  # `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` and
+  # `thanos`, each present when this chart runs the component and collects its
+  # metrics, and
   # `cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the
   # gateway runs that provider pull (`pipeline.metrics.provider.*`). List one
   # here as well when something outside the chart provides it — your own
@@ -3555,6 +3614,14 @@ alloy-agent:
         - name: mzmon-tls
           mountPath: /etc/mzmon/tls
           readOnly: true
+        # The trust bundle, at the directories `SSL_CERT_DIR` names in the
+        # agent's environment. See `global.extraEnv`.
+        - name: mzmon-trust-bundle-configmap
+          mountPath: /etc/mzmon/trust-bundle/configmap
+          readOnly: true
+        - name: mzmon-trust-bundle-secret
+          mountPath: /etc/mzmon/trust-bundle/secret
+          readOnly: true
 
     # -- Security context for the alloy agent containers.
     # The agent MUST run as root in order to be able to read container logs.
@@ -3681,6 +3748,19 @@ alloy-agent:
           secret:
             secretName: mzmon-alloy-agent-tls
             optional: true
+        # The trust bundle, paired with the mounts above. The same entries as
+        # `global.extraVolumes`, which Alloy doesn't read.
+        - name: mzmon-trust-bundle-configmap
+          configMap:
+            name: mzmon-trust-bundle
+            optional: true
+        - name: mzmon-trust-bundle-secret
+          secret:
+            secretName: mzmon-trust-bundle
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
 
   # -- NetworkPolicy for the agent.
   # @raw
@@ -3869,6 +3949,14 @@ alloy-gateway:
         - name: mzmon-destination-tls
           mountPath: /etc/mzmon/destination-tls
           readOnly: true
+        # The trust bundle, at the directories `SSL_CERT_DIR` names in the
+        # gateway's environment. See `global.extraEnv`.
+        - name: mzmon-trust-bundle-configmap
+          mountPath: /etc/mzmon/trust-bundle/configmap
+          readOnly: true
+        - name: mzmon-trust-bundle-secret
+          mountPath: /etc/mzmon/trust-bundle/secret
+          readOnly: true
 
     # -- Security context for the alloy gateway containers.
     # The locked-down context the `mzmon-alloy` image documents, `RuntimeDefault`
@@ -3966,6 +4054,19 @@ alloy-gateway:
           secret:
             secretName: mzmon-alloy-gateway-destination-tls
             optional: true
+        # The trust bundle, paired with the mounts above. The same entries as
+        # `global.extraVolumes`, which Alloy doesn't read.
+        - name: mzmon-trust-bundle-configmap
+          configMap:
+            name: mzmon-trust-bundle
+            optional: true
+        - name: mzmon-trust-bundle-secret
+          secret:
+            secretName: mzmon-trust-bundle
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
 
     podDisruptionBudget:
       enabled: true
@@ -6462,6 +6563,10 @@ alertmanager:
   # `clientAuth` requires one.
   # Mounted as a directory rather than with `subPath`, so it follows changes to
   # the Secret.
+  #
+  # The last two volumes are the trust bundle, the same entries as
+  # `global.extraVolumes`, which this subchart doesn't read. With `extraEnv`,
+  # they add your CAs to what receivers such as a webhook are verified against.
   extraVolumes:
     - name: mzmon-config
       secret:
@@ -6472,6 +6577,17 @@ alertmanager:
         items:
           - key: amtool.yml
             path: config.yml
+    - name: mzmon-trust-bundle-configmap
+      configMap:
+        name: mzmon-trust-bundle
+        optional: true
+    - name: mzmon-trust-bundle-secret
+      secret:
+        secretName: mzmon-trust-bundle
+        optional: true
+        items:
+          - key: ca.crt
+            path: ca.crt
   extraVolumeMounts:
     - name: mzmon-config
       mountPath: /etc/alertmanager/config
@@ -6479,6 +6595,16 @@ alertmanager:
     - name: mzmon-amtool
       mountPath: /etc/amtool
       readOnly: true
+    - name: mzmon-trust-bundle-configmap
+      mountPath: /etc/mzmon/trust-bundle/configmap
+      readOnly: true
+    - name: mzmon-trust-bundle-secret
+      mountPath: /etc/mzmon/trust-bundle/secret
+      readOnly: true
+  # -- Environment for the Alertmanager container: the trust bundle's `SSL_CERT_DIR`, as in `global.extraEnv`.
+  extraEnv:
+    - name: SSL_CERT_DIR
+      value: /etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret
 
   # -- Secrets holding receiver credentials, for `*_file` fields to read.
   # @raw

@@ -232,7 +232,10 @@ Not every backend should receive every metric.
 
 Every metric in the registry is classified by *importance* — how likely you are to want it — independent of which backend you use.
 The levels, from most to least important, are **essential**, **recommended**, **extended**, and **diagnostic**.
-A fifth value, **all**, is a firehose meaning "everything scraped, including metrics the registry has not classified."
+Two narrower tiers sit above them, and only series the chart's own rules write belong to them.
+**heartbeat** is the call-home heartbeat, a fixed record of what the install runs and whether its monitoring stack works.
+**alerts** is `ALERTS`, the state of every pending or firing alert.
+One more value, **all**, is a firehose meaning "everything scraped, including metrics the registry has not classified."
 The tier definitions and the full membership of each tier live in [the metric list](../../reference/list-metrics/).
 
 <!-- The tier *definitions* live in reference/list-metrics.md; this page owns the config/operational angle only. Keep them from drifting. -->
@@ -242,7 +245,9 @@ The filter is cumulative — a floor keeps that tier **and every tier more impor
 
 | `minMetricImportance` | Metrics kept |
 |---|---|
-| `essential` | essential |
+| `heartbeat` | the heartbeat series |
+| `alerts` | the heartbeat series + `ALERTS` |
+| `essential` | the heartbeat series + `ALERTS` + essential |
 | `recommended` | essential + recommended |
 | `extended` | essential + recommended + extended |
 | `diagnostic` | essential + recommended + extended + diagnostic |
@@ -274,6 +279,10 @@ A destination on `recommended` receives them without the metrics they're recorde
 The Thanos ruler reads those metrics from the bundled Thanos, so they have to reach the `thanos` destination.
 The render warns when the `thanos` destination's tier drops a metric that an installed recording rule reads.
 For more information, see [Recorded series](../../alerting/configuring/#recorded-series).
+
+The heartbeat and `ALERTS` reach a destination the same way: the ruler writes them through the gateway,
+so a destination at `alerts` forwards alert state without any other metric.
+For what the heartbeat carries, see [What the heartbeat sends](../../operating/call-home/#heartbeat).
 
 For a worked example that keeps full fidelity in Thanos while sending a smaller, cheaper slice to Google Cloud Monitoring and Datadog, see the annotated [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile.
 The remote-write equivalent — Thanos on `all`, Amazon Managed Prometheus on `essential` — is [`aws-amp-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/aws-amp-fanout.values.yaml).

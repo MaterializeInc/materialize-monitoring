@@ -50,6 +50,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         and `infra-postgres.yaml` (any PostgreSQL, through the postgres-exporter)
       * `node-*.yaml`: node-exporter
       * `ext-*.yaml`: the normalized `ext:*` recording rules, one adapter per rule group
+      * `mzmon-heartbeat.yaml`: the call-home heartbeat, the recorded series in the `heartbeat` metric tier
       * `tests/`: the `promtool test rules` cases for the rendered rules
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor

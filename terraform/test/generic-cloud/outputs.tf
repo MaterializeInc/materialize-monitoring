@@ -11,6 +11,11 @@ output "s3_endpoint" {
   value       = local.s3_endpoint
 }
 
+output "object_store_ca_pem" {
+  description = "The private CA the object store's certificate chains to. Goes to `trust_bundle_ca_pem`."
+  value       = tls_self_signed_cert.object_store_ca.cert_pem
+}
+
 output "s3_credentials_secret_name" {
   description = "Secret holding `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, in the substrate namespace."
   value       = kubernetes_secret.s3_credentials.metadata[0].name

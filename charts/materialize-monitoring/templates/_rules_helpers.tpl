@@ -121,8 +121,14 @@ Usage:
     {{- if and ( include "mzmon.loki.enabled" $ ) ( dig "monitoring" "serviceMonitor" "enabled" false $.Values.loki ) }}
       {{- $caps = append $caps "loki" }}
     {{- end }}
-    {{- if and ( include "mzmon.alloyAgent.enabled" $ ) ( dig "serviceMonitor" "enabled" false ( index $.Values "alloy-agent" ) ) }}
+    {{- /* Either monitored role: the gateway's own metrics are Alloy's too. */}}
+    {{- $agentMonitored := and ( include "mzmon.alloyAgent.enabled" $ ) ( dig "serviceMonitor" "enabled" false ( index $.Values "alloy-agent" ) ) }}
+    {{- $gatewayMonitored := dig "serviceMonitor" "enabled" false ( index $.Values "alloy-gateway" ) }}
+    {{- if or $agentMonitored $gatewayMonitored }}
       {{- $caps = append $caps "alloy" }}
+    {{- end }}
+    {{- if and ( include "mzmon.thanos.enabled" $ ) ( dig "global" "serviceMonitor" "enabled" false $.Values.thanos ) }}
+      {{- $caps = append $caps "thanos" }}
     {{- end }}
     {{- $provider := dig "metrics" "provider" dict ( $.Values.pipeline | default dict ) }}
     {{- if dig "cloudwatch" "enabled" false $provider }}
@@ -227,6 +233,9 @@ A namespace list or workload tier renders as a regex alternation. An empty one
 renders as `a^`, which matches no string, and never as an empty string:
 `namespace=~""` would match nothing without saying so, and `namespace!~""` would
 drop every series that has a namespace.
+
+The chart version is this chart's own, which the call-home heartbeat carries as
+`chart_version`.
 */}}
 {{- define "mzmon.rules.substitutions" }}
   {{- $lists := include "mzmon.rules.namespaceLists" $ | fromYaml }}
@@ -248,7 +257,8 @@ drop every series that has a namespace.
       "__mzmon_important_workloads__" $alternation.important
       "__mzmon_nonessential_workloads__" $alternation.nonessential
       "__mzmon_daemonset_workloads__" $alternation.daemonset
-      "__mzmon_sql_prefix__" $prefix }}
+      "__mzmon_sql_prefix__" $prefix
+      "__mzmon_chart_version__" $.Chart.Version }}
   {{- /* Resource ids are validated to letters, digits and hyphens, so they need
          no escaping inside the PromQL string they land in. */}}
   {{- $flavors := include "mzmon.externalDependencies.consensusFlavors" $ | fromYaml }}
@@ -662,7 +672,7 @@ Validation for the rules surface.
         {{- $floor = $dest.minMetricImportance | toString }}
       {{- end }}
     {{- end }}
-    {{- $rank := dict "essential" 0 "recommended" 1 "extended" 2 "diagnostic" 3 "all" 4 }}
+    {{- $rank := dict "heartbeat" 0 "alerts" 1 "essential" 2 "recommended" 3 "extended" 4 "diagnostic" 5 "all" 6 }}
     {{- $installedRecords := include "mzmon.rules.installedRecords" $ | fromYamlArray }}
     {{- if hasKey $rank $floor }}
       {{- range $name := ( include "mzmon.rules.installed" $ | fromYamlArray ) }}
@@ -687,7 +697,7 @@ Validation for the rules surface.
     {{- if and $installedRecords ( hasKey $rank $floor ) ( ne $floor "all" ) }}
       {{- $tiers := $.Files.Get "pre-rendered/metrics/metric-tiers.yaml" | fromYaml }}
       {{- $kept := list }}
-      {{- range $level := list "essential" "recommended" "extended" "diagnostic" }}
+      {{- range $level := list "heartbeat" "alerts" "essential" "recommended" "extended" "diagnostic" }}
         {{- if le ( get $rank $level | int ) ( get $rank $floor | int ) }}
           {{- $kept = concat $kept ( get $tiers $level | default list ) }}
         {{- end }}

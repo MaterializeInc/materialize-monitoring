@@ -28,8 +28,8 @@ use crate::cluster::{ServiceTarget, encode};
 use crate::ctx::Ctx;
 use crate::retry::retry_until;
 
-const QUERY_SERVICE: &str = "thanos-query";
-const QUERY_PORT: u16 = 9090;
+pub(crate) const QUERY_SERVICE: &str = "thanos-query";
+pub(crate) const QUERY_PORT: u16 = 9090;
 
 /// Thanos Query answers.
 ///
@@ -449,6 +449,81 @@ pub async fn consensus_recorded(ctx: &Ctx) -> Result<()> {
                  remote-write reaches the gateway",
                 namespaces.join(", ")
             )
+        },
+    )
+    .await
+}
+
+/// The call-home heartbeat is recorded, and arrives through the gateway.
+///
+/// `mzmon:heartbeat` reads no metric, so it is in Thanos exactly when the ruler
+/// evaluates and its writes reach the gateway, which is the path `ALERTS` takes
+/// and the one a call-home destination forwards from. `job="thanos-ruler"` is
+/// the gateway's own stamp on what the ruler pushes, so a series without it
+/// reached Thanos some other way, and no gateway destination saw it.
+/// `chart_version` is the placeholder the chart fills at install, so a raw
+/// token there is a rule file installed without the chart.
+///
+/// The newest sample has to be recent as well. A ruler that dies, or whose
+/// writes stop reaching the gateway, writes no stale marker, so Thanos keeps
+/// answering with the last sample for its five-minute lookback. Even a ruler
+/// that drops the group cleanly delivers its stale marker more than a minute
+/// late. Either way a stopped heartbeat would otherwise pass.
+pub async fn heartbeat_recorded(ctx: &Ctx) -> Result<()> {
+    // Three of the ruler's one-minute evaluations.
+    const FRESH_SECONDS: f64 = 180.0;
+    let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
+
+    retry_until(
+        "the call-home heartbeat is recorded through the gateway",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let series = instant_query(ctx, &target, "mzmon:heartbeat").await?;
+            if series.is_empty() {
+                bail!(
+                    "no mzmon:heartbeat in Thanos. Check that the mzmon-mzmon-heartbeat \
+                     PrometheusRule exists, that the Thanos ruler imported it (its /api/v1/rules \
+                     lists the mzmon_heartbeat group), and that the ruler's remote-write reaches \
+                     the gateway"
+                );
+            }
+            let label = |s: &Value, name: &str| {
+                s.pointer(&format!("/metric/{name}"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            };
+            for s in &series {
+                let job = label(s, "job");
+                if job != "thanos-ruler" {
+                    bail!(
+                        "mzmon:heartbeat carries job={job:?}, not the gateway's \
+                         job=\"thanos-ruler\", so it reached Thanos without passing through the \
+                         gateway, and no gateway destination can forward it"
+                    );
+                }
+                let version = label(s, "chart_version");
+                if version.is_empty() || version.starts_with("__mzmon_") {
+                    bail!(
+                        "mzmon:heartbeat carries chart_version={version:?}. The chart fills \
+                         __mzmon_chart_version__ from its own version when it renders the rule"
+                    );
+                }
+            }
+            let ages = instant_query(ctx, &target, "time() - timestamp(mzmon:heartbeat)").await?;
+            let newest = ages
+                .iter()
+                .filter_map(sample_value)
+                .fold(f64::INFINITY, f64::min);
+            if newest > FRESH_SECONDS {
+                bail!(
+                    "the newest mzmon:heartbeat sample is {newest:.0}s old. The ruler has stopped \
+                     evaluating the mzmon_heartbeat group, or its writes have stopped reaching the \
+                     gateway"
+                );
+            }
+            Ok(())
         },
     )
     .await
