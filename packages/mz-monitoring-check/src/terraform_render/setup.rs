@@ -30,7 +30,7 @@ use super::manifests::Manifests;
 /// names that the checks look up — `mzmon-alloy-gateway`, say — follow from
 /// the release name.
 pub const RELEASE: &str = "mzmon";
-const NAMESPACE: &str = "monitoring";
+pub const NAMESPACE: &str = "monitoring";
 
 /// One example and how far it got.
 pub struct Example {

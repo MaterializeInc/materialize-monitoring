@@ -1048,6 +1048,45 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
     effect   = optional(string)
   }))</code></pre></td>
     </tr>
+    <tr>
+      <td class="tf-var-name"><a name="trust_bundle_ca_pem" href="#trust_bundle_ca_pem">trust_<wbr>bundle_<wbr>ca_<wbr>pem</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">PEM certificates of CAs to trust for outbound TLS, in addition to the images' own roots. Use it
+for an object store, a destination, or an Alertmanager receiver whose certificate comes from a
+private CA, or that sits behind a TLS-intercepting proxy, rather than turning verification off.
+
+The module writes it to the `mzmon-trust-bundle` ConfigMap, under `ca.crt`, before it installs
+the release. Loki, Thanos, both Alloy roles, and Alertmanager load it alongside their images'
+roots, and roll when it changes. In-cluster TLS between components still trusts only the
+internal CA. Null creates no ConfigMap. To supply the bundle another way, such as from a
+trust-manager `Bundle`, leave this null. See
+https://materializeinc.github.io/materialize-monitoring/operating/securing/#trust-a-private-ca.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="trust_bundle_enabled" href="#trust_bundle_enabled">trust_<wbr>bundle_<wbr>enabled</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Whether to create the trust bundle from `trust_bundle_ca_pem`.
+
+Null infers it from `trust_bundle_ca_pem`, which is right whenever the PEM is a literal or read
+from a file. Set it explicitly when the PEM comes from a resource created in the same apply,
+such as a `tls_self_signed_cert`.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="trust_bundle_namespaces" href="#trust_bundle_namespaces">trust_<wbr>bundle_<wbr>namespaces</a></td>
+        <td class="tf-var-type"><code>list(string)</code></td>
+      <td class="tf-var-desc">Namespaces to create the `mzmon-trust-bundle` ConfigMap in. Null uses `namespace` and
+`alertmanager_namespace`.
+
+Under the chart's `split-namespace` profile, list every namespace a consumer runs in: `loki`,
+`thanos`, `alloy-agent`, `alloy-gateway`, and `alertmanager`. Not inferred: the module cannot see
+where an `additional_values` override put them. The namespaces have to exist before apply.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
   </tbody>
 </table>
 

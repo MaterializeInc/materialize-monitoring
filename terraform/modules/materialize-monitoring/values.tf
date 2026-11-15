@@ -575,6 +575,8 @@ locals {
     local.consensus_document,
     # Nothing above writes `pipeline.logging.secretFilter`.
     local.secret_filter_document,
+    # Pod annotations only, which deep-merge with any other; see trust_bundle.tf.
+    local.trust_bundle_document,
   )
 
   # The caller stays last, so `additional_values` still overrides everything —
