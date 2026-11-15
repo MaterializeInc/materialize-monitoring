@@ -52,7 +52,7 @@ tests:
   # --- metrics ----------------------------------------------------------------
   - it: should filter metrics to the destination's tier in front of its exporter
     set:
-      pipeline.destinations.controlPlane:
+      pipeline.destinations.vendor:
         type: otlp
         url: https://ingest.example.com
         metrics:
@@ -60,19 +60,19 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.processor\.filter "egress" \{\s*output \{\s*metrics = \[[^\]]*otelcol\.processor\.transform\.dest_controlPlane\.input'
+          pattern: 'otelcol\.processor\.filter "egress" \{\s*output \{\s*metrics = \[[^\]]*otelcol\.processor\.transform\.dest_vendor\.input'
         template: templates/pipelines/cm-alloy-gateway.yaml
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.processor\.filter "dest_controlPlane" \{[\s\S]*?GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST[\s\S]*?metrics = \[\s*otelcol\.exporter\.otlphttp\.dest_controlPlane\.input'
+          pattern: 'otelcol\.processor\.filter "dest_vendor" \{[\s\S]*?GATEWAY_VENDOR_DEST_METRICS_ALLOWLIST[\s\S]*?metrics = \[\s*otelcol\.exporter\.otlphttp\.dest_vendor\.input'
         template: templates/pipelines/cm-alloy-gateway.yaml
       - notMatchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.receiver\.loki "dest_controlPlane"'
+          pattern: 'otelcol\.receiver\.loki "dest_vendor"'
         template: templates/pipelines/cm-alloy-gateway.yaml
       # The tier is resolved to an allowlist, not left as "everything".
       - notEqual:
-          path: data.GATEWAY_CONTROLPLANE_DEST_METRICS_ALLOWLIST
+          path: data.GATEWAY_VENDOR_DEST_METRICS_ALLOWLIST
           value: ".*"
         template: templates/pipelines/cm-alloy-gateway-env.yaml
 
@@ -127,7 +127,7 @@ tests:
   - it: should count a metrics-carrying destination as somewhere for metrics to go
     set:
       pipeline.destinations.thanos.enabled: false
-      pipeline.destinations.controlPlane:
+      pipeline.destinations.vendor:
         type: otlp
         url: https://ingest.example.com
         metrics: {}
@@ -153,7 +153,7 @@ tests:
 
   - it: should render client TLS in otelcol's vocabulary
     set:
-      pipeline.destinations.controlPlane:
+      pipeline.destinations.vendor:
         type: otlp
         url: https://ingest.example.com
         logs: {}

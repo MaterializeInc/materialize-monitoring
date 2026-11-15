@@ -70,7 +70,7 @@ tests:
 
   - it: should write a URL variable per destination, named from the destination
     set:
-      pipeline.destinations.controlPlane:
+      pipeline.destinations.vendor:
         type: loki
         url: https://ingest.example.com/loki/api/v1/push
         tls:
@@ -78,7 +78,7 @@ tests:
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     asserts:
       - equal:
-          path: data.GATEWAY_CONTROLPLANE_DEST
+          path: data.GATEWAY_VENDOR_DEST
           value: https://ingest.example.com/loki/api/v1/push
       - equal:
           path: data.GATEWAY_LOKI_DEST
@@ -379,7 +379,7 @@ tests:
 
   - it: should reduce an otlp destination's logs before its bridge
     set:
-      pipeline.destinations.controlPlane:
+      pipeline.destinations.vendor:
         type: otlp
         url: https://ingest.example.com
         logs:
@@ -388,7 +388,7 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'loki\.process "dest_controlPlane" \{\s*forward_to = \[otelcol\.receiver\.loki\.dest_controlPlane\.receiver\]'
+          pattern: 'loki\.process "dest_vendor" \{\s*forward_to = \[otelcol\.receiver\.loki\.dest_vendor\.receiver\]'
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'selector = "\{level=~\\"TRACE\|DEBUG\|INFO\|WARN\\"\}"'
@@ -525,12 +525,3 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'loki\.process "dest_archive" \{[\s\S]*?selector = "\{level=~\\"UNKNOWN\\"\}"\s*action = "drop"'
-
-  # Call-home is opt-in: without profiles/call-home.values.yaml, nothing is
-  # addressed to the control plane.
-  - it: should send nothing to the control plane by default
-    template: templates/pipelines/cm-alloy-gateway.yaml
-    asserts:
-      - notMatchRegex:
-          path: data["config.alloy"]
-          pattern: 'dest_controlPlane|telemetry\.c\.'

@@ -1600,6 +1600,38 @@ collecting from a CNI that *is* present.
       <td class="helm-value-desc">Override for default metric endpoints
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">callHome<wbr>.level</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"off"</code></td>
+      <td class="helm-value-desc">How much telemetry the gateway sends to Materialize's control plane: `off`, `heartbeat`, `alerts`, `metrics`, or `diagnostics`.
+
+Each level sends everything the level below it sends, and more.
+`off` sends nothing, and it's the default.
+
+| Level | What crosses |
+| --- | --- |
+| `off` | Nothing. |
+| `heartbeat` | The heartbeat: a fixed record of the install's versions and monitoring-stack health, at the `heartbeat` metric tier. |
+| `alerts` | The heartbeat and alert state (`ALERTS`), at the `alerts` metric tier. |
+| `metrics` | Metrics at the `essential` tier, which holds the heartbeat and `ALERTS`. |
+| `diagnostics` | Metrics at the `essential` tier, and logs at `WARN` and above, at most 500 lines per second per gateway replica with bursts of 5000. Lines whose level the gateway couldn't determine aren't sent. The gateway's secret filter is on, whatever `pipeline.logging.secretFilter.mode` says. |
+
+The level builds the destination `pipeline.destinations.controlPlane`, an `otlp` destination
+to `https://telemetry.c.cloud.materialize.com` that authenticates with the client certificate
+in the Secret `mzmon-alloy-gateway-destination-tls`.
+An entry you write under `pipeline.destinations.controlPlane` is applied over it.
+It can change the wire, such as `url`, `tls`, and `queue`, and it can send less than the level,
+but the render fails if it sends more: a wider metric tier, a lower log level, `logs.keepUnknown`, or a higher rate limit.
+At `off`, the render fails if the entry is there at all, unless it's `enabled: false`.
+
+The heartbeat is recorded by the bundled Thanos ruler, so above `off` it needs `rules.enabled`
+and `thanos.global.serviceMonitor.enabled`; the render warns without them.
+
+Only this key raises the level. Nothing in the chart reads a level from Materialize.
+`profiles/call-home.values.yaml` sets `diagnostics`.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -1794,6 +1826,7 @@ The render warns when more than one log destination blocks.
 **Names become Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
 `egress` and `destination` are reserved.
 A name that breaks either rule fails at render.
+`controlPlane` is the destination `callHome.level` builds.
 `loki` and `prometheus` components take the bare name; every other type's components are labeled `dest_<name>`.
 
 **Fields are optional.** Anything an entry omits falls back to the defaults below.

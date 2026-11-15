@@ -201,17 +201,36 @@ Usage:
 {{- end }}
 
 {{- /*
-The secret filter's mode, `off` when unset: `off`, `shadow`, or `on`.
-`mzmon.alloy.validate` refuses anything else.
+The secret filter's mode as it runs: `off`, `shadow`, or `on`.
+
+`on` whenever logs cross to Materialize's control plane
+(`mzmon.callHome.sendsLogs`), whatever `pipeline.logging.secretFilter.mode`
+says: a credential a component logs must not leave the install. Otherwise the
+configured mode (`mzmon.secretFilter.configuredMode`).
+
+Usage:
+  {{- if eq ( include "mzmon.secretFilter.mode" $ ) "on" }}
+*/}}
+{{- define "mzmon.secretFilter.mode" }}
+  {{- if ( include "mzmon.callHome.sendsLogs" $ ) }}
+    {{- "on" }}
+  {{- else }}
+    {{- include "mzmon.secretFilter.configuredMode" $ }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+`pipeline.logging.secretFilter.mode`, `off` when unset. `mzmon.alloy.validate`
+refuses anything but `off`, `shadow`, or `on`.
 
 YAML 1.1 reads an unquoted `on` or `off` as a boolean, so a values file that
 writes `mode: on` arrives as `true`. The two booleans map to the modes they
 were written as.
 
 Usage:
-  {{- if eq ( include "mzmon.secretFilter.mode" $ ) "on" }}
+  {{- $configured := include "mzmon.secretFilter.configuredMode" $ }}
 */}}
-{{- define "mzmon.secretFilter.mode" }}
+{{- define "mzmon.secretFilter.configuredMode" }}
   {{- $mode := dig "logging" "secretFilter" "mode" "off" ( $.Values.pipeline | default dict ) }}
   {{- if kindIs "bool" $mode }}
     {{- ternary "on" "off" $mode }}
@@ -1828,10 +1847,14 @@ Usage:
   {{- $errors := list }}
   {{- $warnings := list }}
 
-  {{- $mode := include "mzmon.secretFilter.mode" $ }}
+  {{- $mode := include "mzmon.secretFilter.configuredMode" $ }}
   {{- if not ( has $mode ( list "off" "shadow" "on" ) ) }}
     {{- $errors = append $errors ( printf "pipeline.logging.secretFilter.mode is %q; it must be off, shadow, or on." $mode ) }}
   {{- end }}
+
+  {{- $res := include "mzmon.callHome.validate" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
 
   {{- $res := include "mzmon.alloy.validate.reachability" $ | fromYaml }}
   {{- $errors = concat $errors $res.errors | default list }}
