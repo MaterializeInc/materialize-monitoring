@@ -384,6 +384,25 @@ loki.process "inputPrefilter" {
 			by_label_name = "namespace"
 		}
 	}
+
+	stage.luhn {
+		min_length  = 13
+		skip_regex  = "1(?:\\d{18}|\\d{15}|\\d{12})|\"(?:[^\"\\\\]|\\\\.)*\":\\s*-?\\d+"
+		replacement = "<redacted:luhn>"
+	}
+
+	stage.match {
+		selector = "{job=~\".*\"} |= \"<redacted:luhn>\""
+
+		stage.metrics {
+			metric.counter {
+				name        = "luhn_redacted_lines_total"
+				description = "Log lines in which stage.luhn replaced a card number."
+				match_all   = true
+				action      = "inc"
+			}
+		}
+	}
 }
 
 loki.relabel "tierFull" {
@@ -474,7 +493,7 @@ loki.process "secretfilterShadow" {
 	}
 
 	stage.match {
-		selector            = "{secretfilter=\"shadow\"} != \"<redacted:\""
+		selector            = "{secretfilter=\"shadow\"} !~ \"<redacted:(?:[^l]|l[^u]|lu[^h]|luh[^n]|luhn[^>])\""
 		action              = "drop"
 		drop_counter_reason = "secretfilter shadow"
 	}

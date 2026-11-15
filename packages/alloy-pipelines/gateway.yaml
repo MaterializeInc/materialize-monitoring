@@ -582,6 +582,51 @@ blocks:
                   drop: true
                   by_label_name: namespace
 
+        # --- payment card numbers -------------------------------------------
+        #
+        # Replaces each run of 13 to 19 digits that passes the Luhn checksum,
+        # which every card number does, in every mode of the secret filter. It
+        # runs on every line before the tier split, so the bulk tier's scan
+        # rate never applies to it.
+        #
+        # One random digit run in ten passes the checksum too, including the
+        # epoch timestamps Materialize logs as frontiers. skip_regex exempts a
+        # run of exactly 13, 16, or 19 digits that starts with 1: milliseconds,
+        # microseconds, and nanoseconds. Alloy skips a run only when one match
+        # covers all of it, so the longest width goes first and the
+        # expression needs no word boundaries. UATP cards also start with 1,
+        # but they're 15 digits. Separators stay off, because a space or dash
+        # would join a date and a count into one candidate.
+        #
+        # The leading 1 holds until 2033-05-18, when millisecond time reaches
+        # 2000000000000. tests/gateway_luhn.rs starts failing a year before.
+        #
+        # The second alternative exempts a number directly after a quoted key
+        # and a colon, which is how a JSON number appears. A placeholder there
+        # would make the line invalid JSON, and inputProcessor would lose its
+        # level and fields. The key is matched whole, escapes included, so a
+        # key made of digits still counts, and an escaped quote in a JSON
+        # string can't end one. A card number written as a JSON number passes,
+        # as a numeric password after a JSON key does in the ingest rules. A
+        # number in a JSON array isn't exempt.
+        - stage.luhn:
+            min_length: 13
+            skip_regex: '1(?:\d{18}|\d{15}|\d{12})|"(?:[^"\\]|\\.)*":\s*-?\d+'
+            replacement: "<redacted:luhn>"
+        # Counts the lines it changed, by stream. A stream's series appears at
+        # its first redaction, so an alert has to look for the series rather
+        # than an increase. The selector's `=~".*"` matches every line.
+        - stage.match:
+            selector: '{job=~".*"} |= "<redacted:luhn>"'
+            blocks:
+              - stage.metrics:
+                  blocks:
+                    - metric.counter:
+                        name: luhn_redacted_lines_total
+                        description: "Log lines in which stage.luhn replaced a card number."
+                        match_all: true
+                        action: inc
+
   # Alloy's forward_to fans out rather than routing, so the split is two
   # components that each keep one tier. They are loki.relabel rather than
   # loki.process drops, so the other tier's lines do not count in
@@ -706,11 +751,13 @@ blocks:
         - stage.static_labels:
             values:
               secretfilter: shadow
-        # Every line without a placeholder is a copy of a line the main stream
-        # already carries. The infra-alloy dashboard counts this reason as
-        # deliberate, not as loss.
+        # Every line without a placeholder from the shadow filter is a copy of a
+        # line the main stream already carries. inputPrefilter's card-number
+        # placeholder, <redacted:luhn>, doesn't count: the original carries it
+        # too. The expression matches a placeholder with any other name. The
+        # infra-alloy dashboard counts this reason as deliberate, not as loss.
         - stage.match:
-            selector: '{secretfilter="shadow"} != "<redacted:"'
+            selector: '{secretfilter="shadow"} !~ "<redacted:(?:[^l]|l[^u]|lu[^h]|luh[^n]|luhn[^>])"'
             action: drop
             drop_counter_reason: "secretfilter shadow"
         # The copies' own budget. inputProcessor's rate limits skip them, so a
