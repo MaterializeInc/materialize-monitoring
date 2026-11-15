@@ -522,6 +522,12 @@ $defs:
             $ref: "#/$defs/stage.luhn"
         required: [stage.luhn]
         additionalProperties: false
+      - type: object
+        properties:
+          stage.metrics:
+            $ref: "#/$defs/stage.metrics"
+        required: [stage.metrics]
+        additionalProperties: false
       # Escape hatch: any sub-block can also be a raw block.
       - $ref: "./common/raw.schema.yaml"
 
@@ -1098,12 +1104,103 @@ $defs:
         description: |
           RE2 regular expression for substrings to leave unchecked.
         type: string
-        examples: ['\b1(?:\d{12}|\d{15}|\d{18})\b']
+        examples: ['1(?:\d{18}|\d{15}|\d{12})']
       replacement:
         description: |
           String that replaces each match (default `**REDACTED**`).
         type: string
         examples: ["<redacted:luhn>"]
+    additionalProperties: false
+
+  stage.metrics:
+    description: |
+      Defines Prometheus metrics from the entries that reach it.
+
+      A metric carries the entry's labels, so each stream gets its own series,
+      created on the first update. Put the stage inside a `stage.match` to count
+      only the entries a selector matches.
+
+      `metric.counter` is typed. Gauges and histograms go through `raw`.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagemetrics
+    type: object
+    properties:
+      blocks:
+        description: |
+          The metric sub-blocks.
+        type: array
+        minItems: 1
+        items:
+          $ref: "#/$defs/metricsSubBlock"
+    required: [blocks]
+    additionalProperties: false
+
+  metricsSubBlock:
+    description: |
+      One metric under `stage.metrics`.
+
+      The final `raw` branch is the escape hatch for metric types not typed here.
+    oneOf:
+      - type: object
+        properties:
+          metric.counter:
+            $ref: "#/$defs/metric.counter"
+        required: [metric.counter]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  metric.counter:
+    description: |
+      A counter that increments per entry, or adds a value read from the
+      extracted map.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#metriccounter
+    type: object
+    properties:
+      name:
+        description: |
+          Metric name, after `prefix`. Alloy appends nothing, so end a counter's
+          name in `_total`.
+        type: string
+      action:
+        description: |
+          `inc` adds 1 per entry. `add` adds the value of `source`.
+        type: string
+        enum: [inc, add]
+      description:
+        description: |
+          The metric's help text.
+        type: string
+      prefix:
+        description: |
+          Prepended to `name` (default `loki_process_custom_`).
+        type: string
+      max_idle_duration:
+        description: |
+          How long a series lives without an update before Alloy removes it
+          (default `5m`).
+        type: string
+        format: go-duration
+      source:
+        description: |
+          Extracted-map key to read. The counter changes only for entries that
+          have it. Leave it unset with `match_all`.
+        type: string
+      value:
+        description: |
+          Change the counter only when `source` equals this.
+        type: string
+      match_all:
+        description: |
+          Count every entry that reaches the stage, without reading `source`
+          (default false). Can't be set with `value`.
+        type: boolean
+      count_entry_bytes:
+        description: |
+          With `match_all` and `action: add`, add each entry's line length in
+          bytes rather than 1 (default false).
+        type: boolean
+    required: [name, action]
     additionalProperties: false
 
   # ============================================================

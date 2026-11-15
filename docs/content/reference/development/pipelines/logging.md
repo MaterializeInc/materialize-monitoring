@@ -163,7 +163,7 @@ So it runs before any stage that copies text out of the line, and everything the
 An entry passes through the following components in order:
 
 1. `inputPrefilter` merges multi-line records, drops lines older than the backlog window, clamps the line, and applies the global rate limit.
-   It then sniffs the level and applies the limit on unlevelled lines to the bulk tier.
+   It then sniffs the level, applies the limit on unlevelled lines to the bulk tier, and replaces card numbers.
 2. `loki.relabel.tierFull` and `loki.relabel.tierBulk` each keep one tier.
    They're relabel components rather than `loki.process` drops, so the other tier's lines don't count in `loki_process_dropped_lines_total`.
 3. `loki.secretfilter.ingest` scans the full tier, and `loki.secretfilter.ingestBulk` scans the bulk tier: `DEBUG` and `TRACE`.
@@ -177,9 +177,19 @@ The `level` label is set only after parsing, so the sniff reads the level field 
 Each pattern is anchored where its format puts the level.
 A line the sniff can't classify goes to the full tier, so a miss costs a scan rather than coverage.
 
+`inputPrefilter` ends with `stage.luhn`, which replaces each run of 13 to 19 digits that passes the Luhn checksum with `<redacted:luhn>`.
+It runs in every mode of the filter, and on every line before the tier split, so the bulk tier's scan rate never applies to it.
+Its `skip_regex`, `1(?:\d{18}|\d{15}|\d{12})`, exempts epoch timestamps in milliseconds, microseconds, and nanoseconds: runs of exactly 13, 16, or 19 digits that start with `1`.
+Alloy skips a run only when one match covers all of it, so the longest alternative goes first and the expression needs no word boundaries.
+That also exempts a timestamp followed by a unit, such as `ms`.
+The leading `1` holds until 2033-05-18, and `packages/mzmon-lib/tests/gateway_luhn.rs` starts failing a year before.
+A `stage.match` on the placeholder feeds `stage.metrics`, which counts changed lines in `loki_process_custom_luhn_redacted_lines_total`.
+`gateway_luhn.rs` runs the prefilter on the pinned Alloy with card numbers and Luhn-valid timestamps it generates, so the repository commits no card-shaped number.
+
 A third instance, `loki.secretfilter.shadow`, measures the rules without enforcing them.
 When `pipeline.logging.secretFilter.mode` is `shadow`, `inputPrefilter` also forwards every line to it, and `loki.process.secretfilterShadow` keeps only the lines it redacted, labels them `secretfilter="shadow"`, and passes them to `inputProcessor`.
 It drops the rest under the reason `secretfilter shadow`.
+The check ignores `<redacted:luhn>`, because the original carries that placeholder too.
 Copies skip `inputProcessor`'s rate limits and have a per-namespace limit of their own in `secretfilterShadow`, 100 lines per second with a burst of 1,000.
 That way a rule that matches most of a namespace's lines can't spend the budget its originals need.
 The Alloy dashboard's guard-drops panel excludes everything `secretfilterShadow` drops, by component, because its limit drops under the same reason as the main path's.

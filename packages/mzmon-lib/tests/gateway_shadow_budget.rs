@@ -18,9 +18,8 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use common::alloy::{Alloy, alloy_available, http};
-use mzmon_lib::alloy::ast::{AttributeValue, Expression, ToBlock};
-use mzmon_lib::alloy::pipeline::Pipeline;
+use common::alloy::{Alloy, alloy_available, counter, gateway_block as block, http, refs};
+use mzmon_lib::alloy::ast::AttributeValue;
 use regex::Regex;
 use serde_json::Value;
 
@@ -91,29 +90,6 @@ fn every_input_processor_rate_limit_skips_shadow_copies() {
 
 // --- the same, under load ------------------------------------------------------
 
-/// The gateway block `component "label"`, rendered with `attributes` replaced.
-fn block(component: &str, label: &str, attributes: Vec<(&str, AttributeValue)>) -> String {
-    let pipeline = Pipeline::from_yaml_str(&gateway_yaml()).expect("parse gateway");
-    let mut block = pipeline
-        .blocks
-        .iter()
-        .map(|b| b.to_block().expect("to_block"))
-        .find(|b| b.component == component && b.label.as_deref() == Some(label))
-        .unwrap_or_else(|| panic!("gateway.yaml defines {component} \"{label}\""));
-    for (name, value) in attributes {
-        block.attributes.insert(name.to_string(), value);
-    }
-    block.render().expect("render")
-}
-
-fn refs(ids: &[&str]) -> AttributeValue {
-    AttributeValue::Array(
-        ids.iter()
-            .map(|id| AttributeValue::Expression(Expression::name_to_ref(*id)))
-            .collect(),
-    )
-}
-
 /// The originals and the shadow copies `loki.echo` has printed.
 ///
 /// Reads thousands of lines on every poll, so it matches the two fields it
@@ -142,12 +118,11 @@ fn echoed(alloy: &Alloy) -> (usize, usize) {
 
 /// Lines the shadow instance has scanned.
 fn scanned(alloy: &Alloy) -> f64 {
-    let (_, body) = http(alloy.server_port, "GET", "/metrics", "").expect("scrape alloy");
-    body.lines()
-        .filter(|l| l.starts_with("loki_secretfilter_processing_duration_seconds_count{"))
-        .filter(|l| l.contains(r#"component_id="loki.secretfilter.shadow""#))
-        .filter_map(|l| l.rsplit(' ').next()?.parse::<f64>().ok())
-        .sum()
+    counter(
+        alloy,
+        "loki_secretfilter_processing_duration_seconds_count",
+        "loki.secretfilter.shadow",
+    )
 }
 
 #[test]

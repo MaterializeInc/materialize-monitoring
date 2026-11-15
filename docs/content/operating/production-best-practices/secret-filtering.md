@@ -76,6 +76,24 @@ The filter scans the line and nothing else, so it has the following limits:
 - **Some identifiers look like credentials.**
   A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
 
+## Card numbers are always replaced {#card-numbers}
+
+The gateway replaces payment card numbers in every log line, whether the filter is on or not.
+A card number usually reaches a log because an error message quotes a value it rejected.
+
+Each run of 13 to 19 digits that passes the Luhn checksum, which every card number does, becomes `<redacted:luhn>`.
+The replacement happens in the same place as the filter, before the gateway parses the line.
+
+The checksum has the following limits:
+
+- **One random number in ten passes it.**
+  A 13- to 19-digit ID, offset, or byte count is replaced one time in ten.
+- **Epoch timestamps are exempt.**
+  A number of exactly 13, 16, or 19 digits that starts with `1` is left alone, which covers timestamps in milliseconds, microseconds, and nanoseconds.
+  Airline cards also start with `1`, but they're 15 digits, so they're still replaced.
+- **A grouped number passes.**
+  The gateway reads unbroken runs of digits, so a card number written in groups separated by spaces or dashes passes, because each group is too short.
+
 ## Try it in shadow mode first {#shadow}
 
 Shadow mode shows what the rules match on your own logs without changing what's stored.
@@ -111,6 +129,8 @@ The stored lines are a sample, and the counter is the full count:
   Shadow lines have this limit to themselves, so they don't use up the rate limits that apply to your other lines.
 - A copy that runs past `GATEWAY_SECRETFILTER_TIMEOUT` isn't stored, because it might be only partly redacted.
   `loki_secretfilter_lines_timed_out_total{component_id="loki.secretfilter.shadow"}` counts it.
+
+Card numbers are already replaced in every line, so a line whose only placeholder is `<redacted:luhn>` isn't stored again as a shadow line.
 
 Shadow lines go to every log destination, like any other line.
 Each one is redacted, and while the filter is off its original goes to the same destinations unchanged, so a shadow line exposes nothing new.
@@ -172,7 +192,13 @@ The gateway exports the following metrics:
 
 The bundled Thanos keeps these metrics.
 A remote-write destination that filters by `minMetricImportance` drops them, because the query registry doesn't grade them.
+`loki_process_custom_luhn_redacted_lines_total`
+: Lines in which the gateway replaced a [card number](#card-numbers), by stream.
+  A stream's series appears at its first replacement and disappears five minutes after its last.
+
 No alert ships for redactions, so to be told about one, alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`.
+<!-- FIXME(DEP-316): increase() misses a (rule, origin) series' first redaction, because the series starts at 1. -->
+For card numbers, alert while the series exists, such as `max_over_time(loki_process_custom_luhn_redacted_lines_total[1h]) > 0`, because an increase misses a stream's first replacement.
 <!-- TODO(DEP-316): link the shipped alerts and the dashboard row here. -->
 
 To find the redacted lines in Loki, query for the placeholder:
