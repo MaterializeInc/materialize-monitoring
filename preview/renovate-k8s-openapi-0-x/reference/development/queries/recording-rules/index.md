@@ -35,7 +35,7 @@ render_record() and check_record_collisions() in packages/mzmon-lib/src/query/ru
 | Output | `charts/materialize-monitoring/pre-rendered/rules/prometheus/` | The registry file's groups, recording rules beside any alerts, and an entry under `records:` in `_index.yaml`, keyed `<group>/<record>` |
 | Install | `templates/alerts/prometheusrules.yaml` | Fills the placeholders, and keeps every recording rule whose capabilities are present |
 | Evaluate | The Thanos ruler | Remote-writes the result to the alloy-gateway, which forwards it to every destination |
-| Check | `make rules-check`, and `thanos::consensus_recorded` in the E2E suite | promtool over the rendered chart and the unit tests; a live comparison of what is recorded against what it reads |
+| Check | `make rules-check`, and `thanos::consensus_recorded` and `thanos::heartbeat_recorded` in the E2E suite | promtool over the rendered chart and the unit tests; a live comparison of what is recorded against what it reads |
 
 A recording rule has no default set and is never selected.
 It installs wherever its capabilities are present, because a recorded series costs a few series and every consumer of one needs it to be there.
@@ -102,6 +102,10 @@ Each such adapter matches its resource label against a placeholder the chart fil
 An undeclared flavor renders as `a^`, which matches nothing, so its adapter records nothing.
 The adapters match with `(?i)`, because the providers do not promise the case a name was declared in.
 
+A rule's static labels can carry a placeholder too, because the chart fills them across the whole rule file.
+`__mzmon_chart_version__` is the chart's own version, which the heartbeat carries as `chart_version`.
+`gen-rules` rejects a label carrying a token the chart doesn't fill.
+
 ## Capabilities and tiers
 
 A recording rule's capabilities are inferred from its metrics, exactly as an alert's are.
@@ -113,11 +117,29 @@ A registry file of recording rules SHOULD set `metricImportanceHint: diagnostic`
 A file's hint rolls up to every metric its queries read, and a recording rule is no reason to send a metric to more destinations.
 
 A recorded series has a metric tier of its own, which `gen-metric-tiers` writes into `metric-tiers.yaml` beside the metrics the registry reads.
-The tier is `recommended`, the tier of the metrics dashboards draw, unless a query reading the series is in a more important one.
+The tier is the rule's `importance`, or `recommended`, the tier of the metrics dashboards draw, when the rule sets none.
+A query reading the series in a more important tier raises it.
 `ext:consensus_up` is `essential`, because `consensus-unreachable` in `materialize-alerts.yaml` reads it.
 A `metricOverrides` entry that matches a recorded name sets its tier outright, as it does for any other metric.
-`ALERTS` is `essential` in any registry that defines an alert.
+
+Two tiers sit above `essential`, and no query, file hint or override can put a metric in either:
+
+`heartbeat`
+: The call-home heartbeat, `mzmon-heartbeat.yaml`.
+  A rule joins it with `importance: heartbeat`,
+  and the record MUST stay fixed: a new series or label in it is a reviewed change to that file,
+  to the list in [What the heartbeat sends](../../../../operating/call-home/#heartbeat),
+  and to the allowlist the chart's `gateway_otlp_destinations_test.yaml` writes out.
+
+`alerts`
+: `ALERTS`, in any registry that defines an alert.
+  A recording rule can't declare it.
+
+An override never moves a series out of either tier.
 `ALERTS_FOR_STATE` is the ruler's own bookkeeping, and has no tier.
+
+A recording rule whose expression names no metric, such as the heartbeat's `vector(1)`, installs wherever the capabilities it declares are present.
+An alert on such an expression is refused, because it fires always or never.
 
 A destination can therefore receive a recorded series without the metrics it's recorded from.
 The Thanos ruler still reads those metrics from Thanos, so they have to reach the bundled `thanos` destination for the series to be recorded at all.
@@ -172,4 +194,7 @@ A provider adapter SHOULD also be run with nothing declared, to confirm it recor
 **End to end.**
 `thanos::consensus_recorded` checks that every environment whose metadata-database calls reach Thanos also has `ext:consensus_up` recorded.
 A recording rule that never produces a series passes every render test, and this is the check that sees it.
+`thanos::heartbeat_recorded` checks that `mzmon:heartbeat` reaches Thanos through the gateway, with the chart's version filled in, and that its newest sample is under three minutes old.
+A ruler that dies, or whose writes stop reaching the gateway, writes no stale marker, so Thanos answers with the last sample for its five-minute lookback.
+A check on presence alone would pass for that long after the heartbeat stops.
 

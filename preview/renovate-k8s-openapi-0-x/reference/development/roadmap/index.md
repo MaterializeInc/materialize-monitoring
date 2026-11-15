@@ -182,7 +182,6 @@ Designed in [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byo
 | Item | Status |
 |---|---|
 | [DEP-220] Sanitize telemetry before control-plane egress | ⬜ |
-| [DEP-236] A trust bundle for a private CA: the roots a corporate proxy or an on-premise object store needs, merged with the internal issuer's | ⬜ |
 | [DEP-287] `oauth2.tls` on the destination schema: certificate-authenticated token exchange, shared with call-home | ⬜ |
 | [DEP-224] A Day 1 dependencies dashboard: are the Materialize and observability prerequisites satisfied | ⬜ |
 | **BYOC · Observability implementation** | Not yet scoped |
@@ -220,8 +219,6 @@ BYOC environments are ones Materialize operates; self-managed installs are invis
 | Item | Status |
 |---|---|
 | [DEP-280] The `callHome.level` consent ladder and profiles, defaulting to off, with a render assertion that the default sends nothing | ⬜ |
-| [DEP-281] A heartbeat producer and three-part install identity | ⬜ |
-| [DEP-282] The alerts level: alert state (`ALERTS`) over the gateway fan-out | ⬜ |
 | [DEP-283] A `previewOnly` destination mode: the full chain, counted locally, never sent | ⬜ |
 | [DEP-284] An egress meter, a per-level byte-rate ceiling, and a local export-failure alert | ⬜ |
 | [DEP-285] A generated egress schedule per level | ⬜ |
@@ -405,7 +402,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-224]: https://linear.app/materializeinc/issue/DEP-224
 [DEP-225]: https://linear.app/materializeinc/issue/DEP-225
 [DEP-233]: https://linear.app/materializeinc/issue/DEP-233
-[DEP-236]: https://linear.app/materializeinc/issue/DEP-236
 [DEP-249]: https://linear.app/materializeinc/issue/DEP-249
 [DEP-251]: https://linear.app/materializeinc/issue/DEP-251
 [DEP-252]: https://linear.app/materializeinc/issue/DEP-252
@@ -420,8 +416,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-278]: https://linear.app/materializeinc/issue/DEP-278
 [DEP-279]: https://linear.app/materializeinc/issue/DEP-279
 [DEP-280]: https://linear.app/materializeinc/issue/DEP-280
-[DEP-281]: https://linear.app/materializeinc/issue/DEP-281
-[DEP-282]: https://linear.app/materializeinc/issue/DEP-282
 [DEP-283]: https://linear.app/materializeinc/issue/DEP-283
 [DEP-284]: https://linear.app/materializeinc/issue/DEP-284
 [DEP-285]: https://linear.app/materializeinc/issue/DEP-285

@@ -19,6 +19,12 @@ Metrics are grouped by "metricImportance" levels (mzmon-specific).
 These levels guide which metrics are prioritized in
 metric stores which have limited capacity.
 
+Two tiers sit above **essential**, and only series the chart's own rules write belong to them.
+The **heartbeat** tier is the call-home heartbeat: a fixed record of what an install runs and whether its monitoring stack works.
+The **alerts** tier is `ALERTS`, the state of every pending or firing alert.
+A destination at `alerts` receives both, and every wider tier includes both.
+For what the heartbeat carries, see [What the heartbeat sends](../../operating/call-home/#heartbeat).
+
 The **essential** metrics are the set of metrics that
 are critical and you would always want to have available.
 These are used in alerting.
@@ -39,10 +45,56 @@ absolutely everything.
 This is recommended if you have cheaper metric storage
 like our bundled Thanos provider.
 
-## Essential Metrics
+## Heartbeat series
 
-> [!WARNING]
-> FIXME: Some links for alerts mistakenly point at the common-queries page.
+
+<ul>
+    <li id="mzmon:build_info:count">mzmon:build_info:count
+        <details>
+            Written by the chart's recording rules: see <a href="../recorded-series/#mzmon-build_info-count">Recorded Series</a>.
+            <br />
+        </details>
+    </li>
+    <li id="mzmon:cluster_created_timestamp_seconds">mzmon:cluster_created_timestamp_seconds
+        <details>
+            Written by the chart's recording rules: see <a href="../recorded-series/#mzmon-cluster_created_timestamp_seconds">Recorded Series</a>.
+            <br />
+        </details>
+    </li>
+    <li id="mzmon:environment_info">mzmon:environment_info
+        <details>
+            Written by the chart's recording rules: see <a href="../recorded-series/#mzmon-environment_info">Recorded Series</a>.
+            <br />
+        </details>
+    </li>
+    <li id="mzmon:heartbeat">mzmon:heartbeat
+        <details>
+            Written by the chart's recording rules: see <a href="../recorded-series/#mzmon-heartbeat">Recorded Series</a>.
+            <br />
+        </details>
+    </li>
+    <li id="mzmon:node_uname_info:count">mzmon:node_uname_info:count
+        <details>
+            Written by the chart's recording rules: see <a href="../recorded-series/#mzmon-node_uname_info-count">Recorded Series</a>.
+            <br />
+        </details>
+    </li>
+    <li id="mzmon:rule_evaluation_failures:rate5m">mzmon:rule_evaluation_failures:rate5m
+        <details>
+            Written by the chart's recording rules: see <a href="../recorded-series/#mzmon-rule_evaluation_failures-rate5m">Recorded Series</a>.
+            <br />
+        </details>
+    </li>
+    <li id="mzmon:rules:count">mzmon:rules:count
+        <details>
+            Written by the chart's recording rules: see <a href="../recorded-series/#mzmon-rules-count">Recorded Series</a>.
+            <br />
+        </details>
+    </li>
+</ul>
+
+
+## Alert state
 
 
 <ul>
@@ -67,6 +119,16 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+</ul>
+
+
+## Essential Metrics
+
+> [!WARNING]
+> FIXME: Some links for alerts mistakenly point at the common-queries page.
+
+
+<ul>
     <li id="alloy_build_info">alloy_build_info
         <details>
             Used labels: app, namespace, pod
@@ -74,6 +136,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.health.versions">infra.alloy.health.versions</a></li>
+                <li><a href="../common-queries#mzmon.heartbeat.build_info.alloy">mzmon.heartbeat.build_info.alloy</a></li>
             </ul>
         </details>
     </li>
@@ -595,6 +658,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.environments.info">materialize.environments.info</a></li>
+                <li><a href="../common-queries#mzmon.heartbeat.environments">mzmon.heartbeat.environments</a></li>
             </ul>
         </details>
     </li>
@@ -622,6 +686,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.nodes.info.kubelet">infra.nodes.info.kubelet</a></li>
                 <li><a href="../common-queries#infra.nodes.info.os">infra.nodes.info.os</a></li>
                 <li><a href="../common-queries#infra.nodes.info.runtime">infra.nodes.info.runtime</a></li>
+                <li><a href="../common-queries#mzmon.heartbeat.build_info.kubelet">mzmon.heartbeat.build_info.kubelet</a></li>
             </ul>
         </details>
     </li>
@@ -1750,6 +1815,7 @@ like our bundled Thanos provider.
             <ul>
                 <li><a href="../common-queries#infra.thanos.health.rule_failures">infra.thanos.health.rule_failures</a></li>
                 <li><a href="../common-queries#infra.thanos.rule.failures">infra.thanos.rule.failures</a></li>
+                <li><a href="../common-queries#mzmon.heartbeat.rule_evaluation_failures">mzmon.heartbeat.rule_evaluation_failures</a></li>
             </ul>
         </details>
     </li>
@@ -1773,6 +1839,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.thanos.health.versions">infra.thanos.health.versions</a></li>
+                <li><a href="../common-queries#mzmon.heartbeat.build_info.thanos">mzmon.heartbeat.build_info.thanos</a></li>
             </ul>
         </details>
     </li>
@@ -2481,7 +2548,7 @@ like our bundled Thanos provider.
     </li>
     <li id="loki_process_dropped_lines_total">loki_process_dropped_lines_total
         <details>
-            Used labels: app, namespace, pod, reason
+            Used labels: app, component_id, namespace, pod, reason
             <br />
             Example queries:
             <ul>
