@@ -94,6 +94,10 @@ The checksum has the following limits:
 - **Epoch timestamps are exempt.**
   A number of exactly 13, 16, or 19 digits that starts with `1` is left alone, which covers timestamps in milliseconds, microseconds, and nanoseconds.
   Airline cards also start with `1`, but they're 15 digits, so they're still replaced.
+- **JSON numbers are exempt.**
+  A number directly after a quoted key and a colon is left alone, because a placeholder in its place would make the line invalid JSON.
+  That includes a card number written as a JSON number rather than a string.
+  A number in a JSON array has no key before it, so one that passes the checksum is replaced, and the line is no longer valid JSON.
 - **A grouped number passes.**
   The gateway reads unbroken runs of digits, so a card number written in groups separated by spaces or dashes passes, because each group is too short.
 
@@ -155,7 +159,7 @@ pipeline:
 ```
 
 If you install with the Terraform module, set `secret_filter = "on"` instead.
-The [call-home profile](../../call-home/#secret-filter) turns the filter on for you, because it sends logs to Materialize.
+At the `diagnostics` [call-home level](../../call-home/#secret-filter), the filter is on whatever its mode says, because logs cross to Materialize.
 The gateway has to restart to pick the mode up; see [Restart after a config change](../alloy/#restart-after-a-config-change).
 
 The filter runs as two instances, and `on` sets both of their scan rates to `1`.
