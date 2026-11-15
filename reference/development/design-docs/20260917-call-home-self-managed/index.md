@@ -132,7 +132,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | **Alertmanager** | ⚠️ Bundled, off | `tags.alertmanager: false`; routing is [DEP-216](https://linear.app/materializeinc/issue/DEP-216), unstarted |
 | Logs to more than one destination | ✅ Shipped | `pipeline.destinations`, one writer and one queue per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
 | **Per-destination log processing and redaction** | ❌ Missing | `inputProcessor` is global — same row |
-| **A trust bundle for non-public CAs** | ❌ Not shipped | [DEP-236](https://linear.app/materializeinc/issue/DEP-236). Needed for any customer whose egress proxy presents a corporate certificate |
+| A trust bundle for non-public CAs | ✅ Shipped | [DEP-236](https://linear.app/materializeinc/issue/DEP-236). A `mzmon-trust-bundle` ConfigMap or Secret adds a corporate CA to the roots the gateway verifies destinations against; see [Trust a private CA](../../../../operating/securing/#trust-a-private-ca) |
 | **`oauth2.tls` on destinations** | ❌ Missing | Named by the [query-API doc](../20260916-tenant-query-api/#the-blocker-stated-precisely); blocks exchanging a certificate for a token |
 | **An egress meter the customer can read** | ❌ Missing | The gateway exposes per-destination counters; no dashboard panel or documented query presents them as "what left" |
 | **Any notion of a consent level** | ❌ Missing | Destinations are configured individually; nothing composes them into a stated posture |
@@ -377,7 +377,8 @@ A bearer credential survives that hop; a client certificate does not.
 This is not a security trade.
 It is a reachability fact, and it decides whether a customer can opt in.
 
-The same shape also requires the [trust bundle](../20260816-tls-authentication/#object-storage-is-in-scope-in-one-direction) that [DEP-236](https://linear.app/materializeinc/issue/DEP-236) tracks, since the gateway will be presented with the proxy's corporate certificate rather than the control plane's.
+The same shape also requires the [trust bundle](../20260816-tls-authentication/#object-storage-is-in-scope-in-one-direction) that [DEP-236](https://linear.app/materializeinc/issue/DEP-236) added, since the gateway will be presented with the proxy's corporate certificate rather than the control plane's.
+The call-home destination has to leave `tls.caFile` unset for that to apply, because a CA file of its own replaces the system roots the bundle joins.
 
 **Churn and revocation are ordinary rather than exceptional.**
 BYOC customers are operated accounts.
@@ -535,7 +536,7 @@ None of it is ticketed yet.
 | **The heartbeat producer** — a fixed, enumerable record of deployment identity, versions, enabled components and stack health | Level 1, and the only signal that distinguishes a quiet install from an absent one | **Blocking** for level 1 |
 | **A generated egress schedule per level**, extending the `metric-tiers.yaml` pattern to log classes and heartbeat fields | A hand-maintained list drifts on the first rename, and this one is a compliance artifact | **Blocking** for the review story |
 | **OTLP/HTTP as the call-home default wire**, with gRPC available | Corporate forward proxies handle HTTP well and gRPC badly, and the failure is a hang | **Blocking** for proxied customers |
-| **Forward-proxy and corporate-CA configuration** on the call-home destination, depending on [DEP-236](https://linear.app/materializeinc/issue/DEP-236) | An intercepting proxy presents its own certificate; without the bundle the connection cannot be verified at all | **Blocking** for proxied customers |
+| **Forward-proxy configuration** on the call-home destination. The corporate CA goes in the trust bundle from [DEP-236](https://linear.app/materializeinc/issue/DEP-236), which has shipped | An intercepting proxy presents its own certificate, which the gateway verifies against the trust bundle. Naming the proxy is what remains | **Blocking** for proxied customers |
 | **A local alert on call-home export failure** | Otherwise a blocked egress path is silence on both sides, and silence reads as health | **Blocking** for exposure |
 | **Three-part identity** — customer, install, environment — stable across cluster rebuild and non-duplicating across a clone | A cloned staging cluster presenting production's identity merges two installs' telemetry | **Blocking** |
 | **`oauth2.tls` on the destination schema** | Without it the token exchange authenticates with a long-lived client secret, which is what choosing a certificate avoided | **Blocking** for the token path, not for mTLS |

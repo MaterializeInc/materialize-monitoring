@@ -13785,6 +13785,7 @@ Every workload now ships a NetworkPolicy, on by default.
 
 - [ ] `[consumer]` **(Terraform: automatic)** Use **workload identity** for object storage — IRSA, GKE Workload Identity, or Azure Workload Identity — rather than static keys. See [Logs & Events > Storing](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) and [Metrics > Storing](../../metrics/storing/#thanos-object-storage).
 - [ ] `[consumer]` Give Alertmanager a **workload identity** for Amazon SNS rather than static keys, scoped to `sns:Publish` on its topics. It is the only notification integration a cloud identity can authorize; the rest read a credential from the `alertmanager-receivers` Secret. See [Alert Channels > Cloud provider services](../../alerting/channels/#cloud).
+- [ ] `[operator]` If your object store or a destination presents a certificate from a private CA, add the CA to the [trust bundle](#trust-a-private-ca) rather than turning verification off.
 - [ ] `[operator]` Narrow the `0.0.0.0/0` egress rules where your infrastructure gives you something tighter — a VPC endpoint's CIDR, or Cilium's `toFQDNs`. The chart cannot derive the API server's or the object store's address, so it ships the broad form and says so.
 - [ ] `[operator]` Remember the credential endpoint, not just the bucket. Workload identity fetches a token from STS (or the GCP/Azure equivalent) on `443`, and a policy that covers the bucket but not the token endpoint hangs the component at startup rather than failing it. This is the single most common NetworkPolicy mistake in this stack; [Loki's checklist](../production-best-practices/loki/#object-storage-egress) covers the symptom in detail.
 
@@ -14073,6 +14074,98 @@ The mount is unconditional and marked `optional: true`, so the same values work 
 - [ ] `[operator]` **Do not set `renewBefore` near `duration`.** It looks like a way to exercise renewal and it is a way to break cert-manager: at 92% of duration (a 1h certificate with 55m of headroom) renewal fires every few minutes, and on a small cluster with six certificates the controller livelocked in an optimistic-locking re-queue loop, stopped renewing, and then reported `Ready=True: "Certificate is up to date and has not expired"` on certificates that had expired 45 minutes earlier — every TLS hop failing with `certificate has expired` while the Certificate resource looked healthy. Keep `renewBefore` to a third of `duration` or less, and force renewal explicitly (delete the Secret, or `cmctl renew`) if you want to test it.
 - [ ] `[operator]` **A mounted file is not a reloaded file.** The kubelet refreshes Secret contents atomically, but the process still has to notice, and reload support differs per component. That is why no hop turns on by default, and why enabling one is a decision to make per component rather than per stack.
 
+## Trust a private CA {#trust-a-private-ca}
+
+Some endpoints the stack connects to present a certificate from a CA that its images don't trust.
+Examples are an S3-compatible store serving your own certificates, a webhook behind a TLS-intercepting proxy, and a destination on your own PKI.
+The trust bundle adds your CAs to the roots the stack trusts for those connections, so you don't have to turn verification off.
+
+Every Loki and Thanos component, both Alloy roles, and Alertmanager mount a ConfigMap and a Secret named `mzmon-trust-bundle`.
+Each sets `SSL_CERT_DIR` to Go's default certificate directories plus the two mounts.
+Go loads its roots from those directories and from the image's own CA file, so the image's public roots stay trusted.
+Both mounts are optional, so a pod starts whether or not either exists.
+
+### Supply the CAs
+
+Create the ConfigMap, the Secret, or both, in each namespace the stack runs in.
+That's one namespace unless you use `profiles/split-namespace.values.yaml`.
+
+- **A ConfigMap suits CAs you distribute across the cluster.**
+  Every key is mounted, so any key name works.
+  With [trust-manager](https://cert-manager.io/docs/trust/trust-manager/), name a `Bundle` `mzmon-trust-bundle`.
+  trust-manager writes a ConfigMap with the Bundle's name into each namespace its selector matches:
+
+  ```yaml
+  apiVersion: trust.cert-manager.io/v1alpha1
+  kind: Bundle
+  metadata:
+    name: mzmon-trust-bundle
+  spec:
+    sources:
+      - useDefaultCAs: true
+      # Read from trust-manager's trust namespace, `cert-manager` by default.
+      - secret:
+          name: corporate-root-ca
+          key: ca.crt
+    target:
+      configMap:
+        key: ca-certificates.crt
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+  ```
+
+- **A Secret suits a CA you have as a file.**
+  Only its `ca.crt` key is mounted:
+
+  ```bash
+  kubectl create secret generic mzmon-trust-bundle -n monitoring --from-file=ca.crt=corporate-root-ca.pem
+  ```
+
+  If cert-manager already issues from your private CA, a `Certificate` with `secretName: mzmon-trust-bundle` gives you this Secret.
+  A CA issuer writes its own certificate to `ca.crt`.
+  The chart mounts only that key, so the certificate's private key never reaches a pod.
+
+- **With the Terraform module, pass the CAs as `trust_bundle_ca_pem`.**
+  The module writes them to the ConfigMap before it installs the release, and annotates every pod that mounts it with a hash of the PEM, so a change rolls them.
+
+  ```hcl
+  trust_bundle_ca_pem = file("corporate-root-ca.pem")
+  ```
+
+  The module creates the ConfigMap in `namespace` and in `alertmanager_namespace`.
+  If you use `profiles/split-namespace.values.yaml`, list every namespace a consumer runs in as `trust_bundle_namespaces`.
+  If the PEM comes from a resource that the same apply creates, also set `trust_bundle_enabled = true`.
+  Otherwise, the plan fails, because Terraform can't tell whether to create the ConfigMap.
+
+If you created the ConfigMap or Secret yourself, restart the pods:
+
+```bash
+kubectl rollout restart deployment,statefulset,daemonset -n monitoring
+```
+
+Restart them again after any change to the bundle.
+The kubelet refreshes the mounted files, but a Go process reads its roots once, at its first TLS connection, and keeps them.
+
+### What it covers
+
+The trust bundle applies to every outbound connection that verifies against the system roots, which is any connection with no CA of its own:
+
+- Loki's and Thanos's object storage, when the storage configuration names no CA file.
+- `pipeline.destinations` entries with no `tls.caFile`.
+- Alertmanager receivers whose HTTP configuration names no `ca_file`.
+
+The in-cluster hops under [Certificates](#certificates) name the internal CA explicitly, so the trust bundle doesn't widen what they accept.
+
+A connection that names its own CA file trusts that file instead of the system roots.
+To trust the bundle there, point the setting at `/etc/mzmon/trust-bundle/configmap/KEY` or `/etc/mzmon/trust-bundle/secret/ca.crt`.
+Replace `KEY` with the ConfigMap's key.
+
+It doesn't reach Grafana, the postgres-exporter, kube-state-metrics, node-exporter, Loki's gateway, or memcached.
+
+- [ ] `[operator]` **If your images ship no CA bundle, put the public roots in the trust bundle too.** Such an image trusts only what the bundle holds. trust-manager adds the public roots with `useDefaultCAs: true`, as in the example.
+- [ ] `[operator]` **Restate the trust-bundle entries when you replace a list that carries them.** They're in `global.extraEnv`, `global.extraVolumes`, and `global.extraVolumeMounts`, which reach Loki and Thanos. They're also in `alloy-agent` and `alloy-gateway` under `controller.volumes.extra` and `alloy.mounts.extra`, and in `alertmanager` under `extraVolumes`, `extraVolumeMounts`, and `extraEnv`. Helm replaces lists rather than merging them. A mount whose volume is gone makes the pod invalid, and the other omissions remove the CAs without an error.
+
 ## What is not there yet {#gaps}
 
 Stated plainly, because the values surface implies more than the deployment has — `minVersion: TLS13` sitting next to `enabled: false` reads like a switch rather than a project.
@@ -14089,7 +14182,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **In-cluster TLS, agent → gateway** | ✅ Shipped and **authenticated** at phase 3. The listener renders from Helm and the agent's destination presents a certificate; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker |
 | **Mutual TLS between components** | ✅ At phase 3, five listeners require and verify a client certificate: Thanos Receive's remote-write port and the gateway's 3100, 4317, 4318 and 9090. Loki's HTTP port and Alertmanager's API port are the exceptions and stay at verify-if-given. Authentication, not authorization — none of these can express "this identity may write and that one may not", so the size of the trust domain is the security property |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |
-| **A trust bundle for a private CA** | ❌ Not shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)). Needed for an S3-compatible store behind a private CA, and for images that ship no CA bundle at all |
+| **A trust bundle for a private CA** | ✅ Shipped. A ConfigMap or Secret named `mzmon-trust-bundle` adds your CAs to the roots Loki, Thanos, both Alloy roles, and Alertmanager trust for outbound TLS; see [Trust a private CA](#trust-a-private-ca) |
 | **Intra-Loki, intra-Thanos and intra-Alertmanager TLS** | ❌ Not shipped. Distributor→ingester gRPC, the memberlist ring, query→store, Alertmanager's gossip on 9094 — all real hops inside a single subchart's trust boundary |
 | **Redaction in the pipeline** | ❌ Not shipped ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)) |
 
@@ -15732,6 +15825,97 @@ is a certificate whose SANs name a domain the cluster does not use.
 Load-bearing for `certificates`: the SAN ladder ends in
 `$svc.$ns.svc.$clusterDomain`, so a wrong value here produces certificates
 that fail verification against the endpoints this chart itself dials.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "SSL_CERT_DIR",
+    "value": "/etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Environment for every Loki and Thanos container: the trust bundle's `SSL_CERT_DIR`.
+The trust bundle adds your own CAs to the roots each component trusts for
+outbound TLS, such as an S3-compatible store behind a private CA. Create a
+ConfigMap or a Secret named `mzmon-trust-bundle`, then restart the pods. See
+[Securing](https://materializeinc.github.io/materialize-monitoring/operating/securing/#trust-a-private-ca).
+
+`SSL_CERT_DIR` names the directories a Go process loads its roots from. The
+value keeps Go's own defaults, `/etc/ssl/certs` and `/etc/pki/tls/certs`,
+and adds the two trust-bundle mounts. Go reads the image's CA file as well,
+so the image's public roots stay trusted. The Alloy roles and Alertmanager
+carry the same value; see `alloy-gateway.controller.volumes.extra` and
+`alertmanager.extraVolumes`.
+
+Loki and Thanos are the only subcharts that read `global.extraEnv`,
+`global.extraVolumes`, and `global.extraVolumeMounts`. Each adds them to
+every component, ahead of its `defaults` and per-component lists, so the
+trust bundle stays out of the way of profiles that replace those lists,
+such as `mtls`. Loki's memcached takes the environment without the volumes,
+which does no harm, because it makes no outbound TLS connection.
+
+**These are lists, and Helm replaces lists.** Setting one of them here
+replaces the trust-bundle entries. Put your own environment and volumes in
+`loki.defaults` and in the Thanos component lists, which are added to these.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.extraVolumes</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "configMap": {
+      "name": "mzmon-trust-bundle",
+      "optional": true
+    },
+    "name": "mzmon-trust-bundle-configmap"
+  },
+  {
+    "name": "mzmon-trust-bundle-secret",
+    "secret": {
+      "items": [
+        {
+          "key": "ca.crt",
+          "path": "ca.crt"
+        }
+      ],
+      "optional": true,
+      "secretName": "mzmon-trust-bundle"
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Volumes for every Loki and Thanos pod: the trust bundle's ConfigMap and Secret.
+Both are `optional`, so a pod starts whether or not they exist, and mounts
+an empty directory for a missing one. The ConfigMap mounts every key, which
+suits a trust-manager `Bundle` whatever key it targets. The Secret mounts
+only `ca.crt`, so a Secret that also holds a private key, such as one
+cert-manager issued, never puts the key in the pod.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.extraVolumeMounts</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "mountPath": "/etc/mzmon/trust-bundle/configmap",
+    "name": "mzmon-trust-bundle-configmap",
+    "readOnly": true
+  },
+  {
+    "mountPath": "/etc/mzmon/trust-bundle/secret",
+    "name": "mzmon-trust-bundle-secret",
+    "readOnly": true
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Mounts for the trust-bundle volumes, at the directories `SSL_CERT_DIR` names.
 </td>
     </tr>
   </tbody>
@@ -20512,6 +20696,16 @@ memory limit above.
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/configmap",
+      "name": "mzmon-trust-bundle-configmap",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/secret",
+      "name": "mzmon-trust-bundle-secret",
+      "readOnly": true
     }
   ],
   "varlog": true
@@ -20882,6 +21076,16 @@ arguments against it.
     {
       "mountPath": "/etc/mzmon/destination-tls",
       "name": "mzmon-destination-tls",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/configmap",
+      "name": "mzmon-trust-bundle-configmap",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/secret",
+      "name": "mzmon-trust-bundle-secret",
       "readOnly": true
     }
   ],
@@ -24603,6 +24807,26 @@ ConfigMap over `/etc/alertmanager`, the directory that holds the chart's.
       ],
       "secretName": "alertmanager-config"
     }
+  },
+  {
+    "configMap": {
+      "name": "mzmon-trust-bundle",
+      "optional": true
+    },
+    "name": "mzmon-trust-bundle-configmap"
+  },
+  {
+    "name": "mzmon-trust-bundle-secret",
+    "secret": {
+      "items": [
+        {
+          "key": "ca.crt",
+          "path": "ca.crt"
+        }
+      ],
+      "optional": true,
+      "secretName": "mzmon-trust-bundle"
+    }
   }
 ]</pre>
 </td>
@@ -24616,6 +24840,24 @@ unchanged in every TLS phase. It presents a client certificate only when
 `clientAuth` requires one.
 Mounted as a directory rather than with `subPath`, so it follows changes to
 the Secret.
+
+The last two volumes are the trust bundle, the same entries as
+`global.extraVolumes`, which this subchart doesn't read. With `extraEnv`,
+they add your CAs to what receivers such as a webhook are verified against.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "SSL_CERT_DIR",
+    "value": "/etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Environment for the Alertmanager container: the trust bundle's `SSL_CERT_DIR`, as in `global.extraEnv`.
 </td>
     </tr>
     <tr>
@@ -28002,6 +28244,45 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
     value    = optional(string)
     effect   = optional(string)
   }))</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="trust_bundle_ca_pem" href="#trust_bundle_ca_pem">trust_<wbr>bundle_<wbr>ca_<wbr>pem</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">PEM certificates of CAs to trust for outbound TLS, in addition to the images' own roots. Use it
+for an object store, a destination, or an Alertmanager receiver whose certificate comes from a
+private CA, or that sits behind a TLS-intercepting proxy, rather than turning verification off.
+
+The module writes it to the `mzmon-trust-bundle` ConfigMap, under `ca.crt`, before it installs
+the release. Loki, Thanos, both Alloy roles, and Alertmanager load it alongside their images'
+roots, and roll when it changes. In-cluster TLS between components still trusts only the
+internal CA. Null creates no ConfigMap. To supply the bundle another way, such as from a
+trust-manager `Bundle`, leave this null. See
+https://materializeinc.github.io/materialize-monitoring/operating/securing/#trust-a-private-ca.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="trust_bundle_enabled" href="#trust_bundle_enabled">trust_<wbr>bundle_<wbr>enabled</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Whether to create the trust bundle from `trust_bundle_ca_pem`.
+
+Null infers it from `trust_bundle_ca_pem`, which is right whenever the PEM is a literal or read
+from a file. Set it explicitly when the PEM comes from a resource created in the same apply,
+such as a `tls_self_signed_cert`.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="trust_bundle_namespaces" href="#trust_bundle_namespaces">trust_<wbr>bundle_<wbr>namespaces</a></td>
+        <td class="tf-var-type"><code>list(string)</code></td>
+      <td class="tf-var-desc">Namespaces to create the `mzmon-trust-bundle` ConfigMap in. Null uses `namespace` and
+`alertmanager_namespace`.
+
+Under the chart's `split-namespace` profile, list every namespace a consumer runs in: `loki`,
+`thanos`, `alloy-agent`, `alloy-gateway`, and `alertmanager`. Not inferred: the module cannot see
+where an `additional_values` override put them. The namespaces have to exist before apply.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
     </tr>
   </tbody>
 </table>
@@ -31689,7 +31970,6 @@ Designed in [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byo
 | Item | Status |
 |---|---|
 | [DEP-220] Sanitize telemetry before control-plane egress | ⬜ |
-| [DEP-236] A trust bundle for a private CA: the roots a corporate proxy or an on-premise object store needs, merged with the internal issuer's | ⬜ |
 | [DEP-287] `oauth2.tls` on the destination schema: certificate-authenticated token exchange, shared with call-home | ⬜ |
 | [DEP-224] A Day 1 dependencies dashboard: are the Materialize and observability prerequisites satisfied | ⬜ |
 | **BYOC · Observability implementation** | Not yet scoped |
@@ -31912,7 +32192,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-224]: https://linear.app/materializeinc/issue/DEP-224
 [DEP-225]: https://linear.app/materializeinc/issue/DEP-225
 [DEP-233]: https://linear.app/materializeinc/issue/DEP-233
-[DEP-236]: https://linear.app/materializeinc/issue/DEP-236
 [DEP-249]: https://linear.app/materializeinc/issue/DEP-249
 [DEP-251]: https://linear.app/materializeinc/issue/DEP-251
 [DEP-252]: https://linear.app/materializeinc/issue/DEP-252
@@ -34180,7 +34459,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | **Certificate issuance** | ✅ Shipped | `templates/certificates.yaml`, gated on `certificates.enabled` (default false). Per-component `Certificate`s with the full SAN ladder, an opt-in self-signed root chain, and a separate external issuer for a Grafana behind an L4 LB |
 | **Server-side TLS on all three gateway listeners** | ✅ Shipped | `loki.source.api`, `otelcol.receiver.otlp` and `prometheus.receive_http` render TLS from Helm (`mzmon.alloyGateway.pipeline.sources`). The Alloy JSONSchema still reaches `tls` only through `raw`; see [Work in this repo](#work-in-this-repo) |
 | **A configurable cluster domain** | ✅ Shipped | `global.clusterDomain`. Placed under `global` rather than top-level because Loki and Thanos already read `global.clusterDomain` and build real addresses from it, so Helm's propagation makes one value cover all three — this settles [open question 9](#open-questions). `metrics-server` reads its own `tls.clusterDomain` and is covered by a validator instead |
-| **A trust-bundle surface for non-public CAs** | ❌ Not shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)) | The `certificates.trustBundle` values were modeled and never read, so they have been removed rather than left as a silent no-op |
+| **A trust-bundle surface for non-public CAs** | ✅ Shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)) | A ConfigMap or Secret named `mzmon-trust-bundle`, mounted into Loki, Thanos, both Alloy roles and Alertmanager and added to Go's roots through `SSL_CERT_DIR`. See [Object storage](#object-storage-is-in-scope-in-one-direction) |
 | **Server-side TLS on Loki / Thanos / Grafana / Alertmanager** | 🔨 Partly shipped | Loki, Thanos Receive's remote-write listener and Alertmanager's API port, through `profiles/mtls.values.yaml`; see [Work in this repo](#work-in-this-repo). Grafana and Thanos Query are not wired |
 | **Grafana → backends client certificates** | ✅ Modeled | `connections.datasources.*.tls.clientCert`, a `valuesFrom` reference to a Secret. `mtls-phase2` sets it to Grafana's own certificate for Alertmanager |
 | **Authenticated node-exporter scrape** | ⚠️ Parked | `nodeExporter.kubeRBACProxy` off by default — a sidecar on every node to protect an endpoint that exposes no secrets |
@@ -34303,6 +34582,27 @@ That is wrong in two ways that both show up in real deployments.
 **Decision: the chart exposes a trust-bundle surface, and trust is plural.**
 `caFile` singular is the wrong model — a Loki ingester may simultaneously need the internal issuer's CA (to verify the gateway and the query frontend) and the object store's CA (to write chunks), and those are unrelated roots.
 The surface should let an operator supply additional CAs as a Secret or ConfigMap that is mounted and concatenated with the internal CA into the bundle each component is pointed at, rather than replacing it.
+
+> [!NOTE]
+> **Revised during implementation ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)): the roots are added, per direction, and nothing is concatenated.**
+>
+> The two roots a Loki ingester needs are never read by the same TLS client.
+> The in-cluster hops each name the internal CA in their own `ca_file`, while object storage, destinations without a `caFile`, and Alertmanager's receivers verify against the system roots.
+> So the bundle joins the system roots instead of the internal CA's file, and each direction trusts only its own CAs, which settles [open question 8](#open-questions).
+>
+> Every Go component sets `SSL_CERT_DIR` to Go's default directories plus two mounts, from a ConfigMap and a Secret both named `mzmon-trust-bundle`.
+> Go reads every PEM file in those directories, follows the ConfigMap's `..data` key links and skips the `..data` link itself, and still loads the image's own CA file, so the image's public roots stay trusted.
+> That was checked against Go's loader with a ConfigMap-style directory, and a missing or empty directory in the list is ignored.
+>
+> The ConfigMap mounts every key, which suits a trust-manager `Bundle` whatever key it targets.
+> The Secret mounts only `ca.crt`, so a cert-manager Secret's `tls.key` never reaches a pod.
+> The names are fixed because the subcharts' pod specs come from static values that the chart can't template, the same reason as the `mzmon-*-tls` volumes.
+> Loki and Thanos take the entries from `global.extraEnv`, `global.extraVolumes` and `global.extraVolumeMounts`, which they add ahead of the lists the mTLS profile replaces.
+> The Alloy roles take `SSL_CERT_DIR` from their chart-rendered env ConfigMaps.
+>
+> Nothing has to concatenate, and no copy is pinned at install time.
+> The cost is a restart: a Go process loads its roots once, so a changed bundle takes effect when the pods restart.
+> A client that names its own CA file can point at a file in either mount, and a merged file, where one is wanted, is trust-manager's job.
 
 Scope stays narrow and one-directional: **we trust the store, we do not authenticate to it with a certificate.** Object-storage auth remains the credential paths already built — workload identity, or the static credentials from [DEP-203](https://linear.app/materializeinc/issue/DEP-203).
 
@@ -34594,7 +34894,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~`clusterDomain` value, threaded through the namespace helpers~~ **Shipped** as `global.clusterDomain` | — | 1 |
 | ~~`certificates.*` values block and `Certificate` templates, gated on `certificates.enabled`, carrying the full SAN ladder~~ **Shipped**, plus an opt-in self-signed root and an external issuer for the L4-LB case | `clusterDomain` | 1 |
 | ~~Render assertion that every destination URL matches a SAN on the corresponding `Certificate`~~ **Shipped** (`mzmon.certificates.validate.sans`) | above | 1 |
-| ~~`certificates.trustBundle` — additional roots mounted and concatenated with the internal CA, reaching Loki, Thanos, and both Alloy roles~~ **Split out to [DEP-236](https://linear.app/materializeinc/issue/DEP-236).** The values were modeled and never read; they are removed rather than shipped inert, because a security switch that does nothing is worse than an absent one | — | 1 |
+| ~~`certificates.trustBundle` — additional roots mounted and concatenated with the internal CA, reaching Loki, Thanos, and both Alloy roles~~ **Shipped in [DEP-236](https://linear.app/materializeinc/issue/DEP-236)**, as a `mzmon-trust-bundle` ConfigMap or Secret added to Go's system roots through `SSL_CERT_DIR` rather than concatenated with the internal CA, and reaching Alertmanager too. See the note under [Object storage](#object-storage-is-in-scope-in-one-direction) | — | 1 |
 | ~~Mount rendering for each component, on the existing `mounts.extra` / `volumes.extra` convention~~ **Shipped for both Alloy roles**, as an unconditional `optional: true` secret volume — so the same values work before, during and after issuance. Loki and Thanos outstanding | above | 1 |
 | ~~`*File` carriers on every destination `tls` block~~ **Shipped** | — | 1 |
 | ~~Scheme derivation from `tls.enabled`~~ **Shipped** (`mzmon.alloy.destUrl`), with unit coverage; a tier-0 assertion is still worth adding | — | 1 |
@@ -34607,7 +34907,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~Alertmanager server TLS~~ **Shipped** as `alerting.server.tls`, rendered into `--web.config.file`, with the probes, reloader, ServiceMonitor, both rulers and the Grafana datasource moved by the mTLS profiles. `VerifyClientCertIfGiven` at phase 2 is its ceiling; the render refuses `RequireAndVerifyClientCert` while the probes or reloader would be locked out | profiles | 3 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
-| A tier-2 variant with a private-CA object store, replacing plaintext rustfs | trust bundle | 2 |
+| ~~A tier-2 variant with a private-CA object store, replacing plaintext rustfs~~ **Shipped with [DEP-236](https://linear.app/materializeinc/issue/DEP-236)**: rustfs serves HTTPS from a CA only the substrate knows, the module's `trust_bundle_ca_pem` carries it, and `object_storage::reachable` asserts each component reaches its bucket | trust bundle | 2 |
 | LB-attached certificate passthrough (ACM / GCM / Azure KV references) for the Grafana Service and Ingress | — | 2 |
 | `ServiceMonitor` / `PodMonitor` `tlsConfig` for scrape targets | — | 3 |
 | `kubeRBACProxy` wiring, left off by default | certificates | 3 |
@@ -34631,7 +34931,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 5. **Does the pre-install validation hook need certificates?** It runs `alloy validate` on the assembled ConfigMap. If a rendered config references `cert_file` paths that do not exist in the validator pod, validation may fail for a reason that has nothing to do with the config's correctness.
 6. **Certificate duration.** Short durations reduce the cost of having no revocation mechanism and increase the blast radius of a reload bug. The 90d/30d default above is a starting point, not a researched one.
 7. **Does anything here change if the operator runs a service mesh?** The intended answer is "leave it off", but a mesh that transparently re-encrypts a connection the pipeline also encrypts is a double-TLS configuration someone will file a bug about.
-8. **One trust bundle or one per direction?** A single concatenated bundle per component is simpler and means the object store's CA is also trusted for peer verification — harmless in practice, sloppy in principle. Separate bundles are more precise and more values. Leaning single, but it should be a decision rather than an accident of implementation.
+8. ~~**One trust bundle or one per direction?**~~ **Settled: per direction, at no cost in values.** The operator's CAs join the system roots, which only outbound connections use, and the in-cluster hops keep verifying against the internal CA alone. See the note under [Object storage](#object-storage-is-in-scope-in-one-direction).
 9. ~~**Does `clusterDomain` belong at the top level or under `global`?**~~ **Settled: `global`.** Not on taste — Loki and Thanos already read `global.clusterDomain` and build memberlist, cache and endpoint addresses from it, so anything else would leave three keys that can disagree. Verified by rendering: setting it changes Loki's own config, not just our SANs. `metrics-server` reads `tls.clusterDomain` and does not participate, so it gets a validator rather than a silent second write.
 10. **How far does pgwire go?** Named here because settling it downstream changes what "the LB conventions" means, and the monitoring stack should not harden a precedent that the console and pgwire work then has to fight.
 
@@ -36907,7 +37207,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | **Alertmanager** | ⚠️ Bundled, off | `tags.alertmanager: false`; routing is [DEP-216](https://linear.app/materializeinc/issue/DEP-216), unstarted |
 | Logs to more than one destination | ✅ Shipped | `pipeline.destinations`, one writer and one queue per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
 | **Per-destination log processing and redaction** | ❌ Missing | `inputProcessor` is global — same row |
-| **A trust bundle for non-public CAs** | ❌ Not shipped | [DEP-236](https://linear.app/materializeinc/issue/DEP-236). Needed for any customer whose egress proxy presents a corporate certificate |
+| A trust bundle for non-public CAs | ✅ Shipped | [DEP-236](https://linear.app/materializeinc/issue/DEP-236). A `mzmon-trust-bundle` ConfigMap or Secret adds a corporate CA to the roots the gateway verifies destinations against; see [Trust a private CA](../../../../operating/securing/#trust-a-private-ca) |
 | **`oauth2.tls` on destinations** | ❌ Missing | Named by the [query-API doc](../20260916-tenant-query-api/#the-blocker-stated-precisely); blocks exchanging a certificate for a token |
 | **An egress meter the customer can read** | ❌ Missing | The gateway exposes per-destination counters; no dashboard panel or documented query presents them as "what left" |
 | **Any notion of a consent level** | ❌ Missing | Destinations are configured individually; nothing composes them into a stated posture |
@@ -37152,7 +37452,8 @@ A bearer credential survives that hop; a client certificate does not.
 This is not a security trade.
 It is a reachability fact, and it decides whether a customer can opt in.
 
-The same shape also requires the [trust bundle](../20260816-tls-authentication/#object-storage-is-in-scope-in-one-direction) that [DEP-236](https://linear.app/materializeinc/issue/DEP-236) tracks, since the gateway will be presented with the proxy's corporate certificate rather than the control plane's.
+The same shape also requires the [trust bundle](../20260816-tls-authentication/#object-storage-is-in-scope-in-one-direction) that [DEP-236](https://linear.app/materializeinc/issue/DEP-236) added, since the gateway will be presented with the proxy's corporate certificate rather than the control plane's.
+The call-home destination has to leave `tls.caFile` unset for that to apply, because a CA file of its own replaces the system roots the bundle joins.
 
 **Churn and revocation are ordinary rather than exceptional.**
 BYOC customers are operated accounts.
@@ -37310,7 +37611,7 @@ None of it is ticketed yet.
 | **The heartbeat producer** — a fixed, enumerable record of deployment identity, versions, enabled components and stack health | Level 1, and the only signal that distinguishes a quiet install from an absent one | **Blocking** for level 1 |
 | **A generated egress schedule per level**, extending the `metric-tiers.yaml` pattern to log classes and heartbeat fields | A hand-maintained list drifts on the first rename, and this one is a compliance artifact | **Blocking** for the review story |
 | **OTLP/HTTP as the call-home default wire**, with gRPC available | Corporate forward proxies handle HTTP well and gRPC badly, and the failure is a hang | **Blocking** for proxied customers |
-| **Forward-proxy and corporate-CA configuration** on the call-home destination, depending on [DEP-236](https://linear.app/materializeinc/issue/DEP-236) | An intercepting proxy presents its own certificate; without the bundle the connection cannot be verified at all | **Blocking** for proxied customers |
+| **Forward-proxy configuration** on the call-home destination. The corporate CA goes in the trust bundle from [DEP-236](https://linear.app/materializeinc/issue/DEP-236), which has shipped | An intercepting proxy presents its own certificate, which the gateway verifies against the trust bundle. Naming the proxy is what remains | **Blocking** for proxied customers |
 | **A local alert on call-home export failure** | Otherwise a blocked egress path is silence on both sides, and silence reads as health | **Blocking** for exposure |
 | **Three-part identity** — customer, install, environment — stable across cluster rebuild and non-duplicating across a clone | A cloned staging cluster presenting production's identity merges two installs' telemetry | **Blocking** |
 | **`oauth2.tls` on the destination schema** | Without it the token exchange authenticates with a long-lived client secret, which is what choosing a certificate avoided | **Blocking** for the token path, not for mTLS |
