@@ -114,6 +114,97 @@ Load-bearing for `certificates`: the SAN ladder ends in
 that fail verification against the endpoints this chart itself dials.
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "SSL_CERT_DIR",
+    "value": "/etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Environment for every Loki and Thanos container: the trust bundle's `SSL_CERT_DIR`.
+The trust bundle adds your own CAs to the roots each component trusts for
+outbound TLS, such as an S3-compatible store behind a private CA. Create a
+ConfigMap or a Secret named `mzmon-trust-bundle`, then restart the pods. See
+[Securing](https://materializeinc.github.io/materialize-monitoring/operating/securing/#trust-a-private-ca).
+
+`SSL_CERT_DIR` names the directories a Go process loads its roots from. The
+value keeps Go's own defaults, `/etc/ssl/certs` and `/etc/pki/tls/certs`,
+and adds the two trust-bundle mounts. Go reads the image's CA file as well,
+so the image's public roots stay trusted. The Alloy roles and Alertmanager
+carry the same value; see `alloy-gateway.controller.volumes.extra` and
+`alertmanager.extraVolumes`.
+
+Loki and Thanos are the only subcharts that read `global.extraEnv`,
+`global.extraVolumes`, and `global.extraVolumeMounts`. Each adds them to
+every component, ahead of its `defaults` and per-component lists, so the
+trust bundle stays out of the way of profiles that replace those lists,
+such as `mtls`. Loki's memcached takes the environment without the volumes,
+which does no harm, because it makes no outbound TLS connection.
+
+**These are lists, and Helm replaces lists.** Setting one of them here
+replaces the trust-bundle entries. Put your own environment and volumes in
+`loki.defaults` and in the Thanos component lists, which are added to these.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.extraVolumes</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "configMap": {
+      "name": "mzmon-trust-bundle",
+      "optional": true
+    },
+    "name": "mzmon-trust-bundle-configmap"
+  },
+  {
+    "name": "mzmon-trust-bundle-secret",
+    "secret": {
+      "items": [
+        {
+          "key": "ca.crt",
+          "path": "ca.crt"
+        }
+      ],
+      "optional": true,
+      "secretName": "mzmon-trust-bundle"
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Volumes for every Loki and Thanos pod: the trust bundle's ConfigMap and Secret.
+Both are `optional`, so a pod starts whether or not they exist, and mounts
+an empty directory for a missing one. The ConfigMap mounts every key, which
+suits a trust-manager `Bundle` whatever key it targets. The Secret mounts
+only `ca.crt`, so a Secret that also holds a private key, such as one
+cert-manager issued, never puts the key in the pod.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.extraVolumeMounts</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "mountPath": "/etc/mzmon/trust-bundle/configmap",
+    "name": "mzmon-trust-bundle-configmap",
+    "readOnly": true
+  },
+  {
+    "mountPath": "/etc/mzmon/trust-bundle/secret",
+    "name": "mzmon-trust-bundle-secret",
+    "readOnly": true
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Mounts for the trust-bundle volumes, at the directories `SSL_CERT_DIR` names.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -1725,7 +1816,7 @@ The following table lists each field, the types it applies to, and its default:
 | `logs.sampleRate` | `loki`, `otlp`, `datadog`, `s3` | `1` | Fraction of entries kept, above 0 and at most 1. |
 | `logs.rateLimit` | `loki`, `otlp`, `datadog`, `s3` | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
 | `metrics.enabled` | `otlp`, `googleCloud`, `datadog`, `prometheus` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
-| `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
+| `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `heartbeat` to `all`. `heartbeat` and `alerts` send only the call-home heartbeat, and with `alerts`, `ALERTS`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
 | `compression` | `otlp`, `googleCloud`, `s3` | `gzip` | Request or object compression; `s3` also takes `none`. |
 | `project` / `location` | `googleCloud` | detected on GKE | The project and location every series is filed under. Required off GKE. |
@@ -3933,8 +4024,9 @@ read, and recording one costs a few series. `selected`, `disabled` and
 | `egress-gateway` | A dedicated egress-gateway node pool, identified by a `workload` label |
 
 The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
-`kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
-present when this chart runs the component and collects its metrics, and
+`kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` and
+`thanos`, each present when this chart runs the component and collects its
+metrics, and
 `cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the
 gateway runs that provider pull (`pipeline.metrics.provider.*`). List one
 here as well when something outside the chart provides it — your own
@@ -4892,6 +4984,16 @@ memory limit above.
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/configmap",
+      "name": "mzmon-trust-bundle-configmap",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/secret",
+      "name": "mzmon-trust-bundle-secret",
+      "readOnly": true
     }
   ],
   "varlog": true
@@ -5262,6 +5364,16 @@ arguments against it.
     {
       "mountPath": "/etc/mzmon/destination-tls",
       "name": "mzmon-destination-tls",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/configmap",
+      "name": "mzmon-trust-bundle-configmap",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/secret",
+      "name": "mzmon-trust-bundle-secret",
       "readOnly": true
     }
   ],
@@ -8983,6 +9095,26 @@ ConfigMap over `/etc/alertmanager`, the directory that holds the chart's.
       ],
       "secretName": "alertmanager-config"
     }
+  },
+  {
+    "configMap": {
+      "name": "mzmon-trust-bundle",
+      "optional": true
+    },
+    "name": "mzmon-trust-bundle-configmap"
+  },
+  {
+    "name": "mzmon-trust-bundle-secret",
+    "secret": {
+      "items": [
+        {
+          "key": "ca.crt",
+          "path": "ca.crt"
+        }
+      ],
+      "optional": true,
+      "secretName": "mzmon-trust-bundle"
+    }
   }
 ]</pre>
 </td>
@@ -8996,6 +9128,24 @@ unchanged in every TLS phase. It presents a client certificate only when
 `clientAuth` requires one.
 Mounted as a directory rather than with `subPath`, so it follows changes to
 the Secret.
+
+The last two volumes are the trust bundle, the same entries as
+`global.extraVolumes`, which this subchart doesn't read. With `extraEnv`,
+they add your CAs to what receivers such as a webhook are verified against.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "SSL_CERT_DIR",
+    "value": "/etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Environment for the Alertmanager container: the trust bundle's `SSL_CERT_DIR`, as in `global.extraEnv`.
 </td>
     </tr>
     <tr>
