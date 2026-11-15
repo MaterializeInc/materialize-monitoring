@@ -222,8 +222,28 @@ $defs:
       Recommended metrics are generally expected and power dashboards.
       Extended metrics are optional and may be used for more experimental queries/dashboards.
       Diagnostic metrics are primarily used for debugging and in-depth analysis.
+
+      Two narrower tiers sit above `essential`, and no query can put a metric in
+      either: `heartbeat`, which a recording rule declares with `importance`,
+      and `alerts`, which holds `ALERTS` alone.
     type: string
     enum:
+      - "essential"
+      - "recommended"
+      - "extended"
+      - "diagnostic"
+
+  recordImportance:
+    description: |
+      The tier of the name a recording rule records.
+
+      `heartbeat` makes the series part of the call-home heartbeat: the
+      narrowest tier, which a destination at `heartbeat` takes alone and every
+      wider one includes. The heartbeat is a fixed record, so a rule joins it
+      only by a reviewed change, and the call-home page lists every one.
+    type: string
+    enum:
+      - "heartbeat"
       - "essential"
       - "recommended"
       - "extended"
@@ -543,6 +563,8 @@ $defs:
         description: The bundled Loki's own metrics.
       - const: alloy
         description: The bundled Alloy collectors' own metrics.
+      - const: thanos
+        description: The bundled Thanos's own metrics (`thanos_*`), and the Thanos ruler's rule manager (`prometheus_rule_*`).
       - const: cloudwatch
         description: The gateway's CloudWatch pull, `pipeline.metrics.provider.cloudwatch` (`aws_rds_*`, `aws_s3_*`, and the EC2, Auto Scaling, usage, Network Load Balancer and NAT gateway families).
       - const: cloud-monitoring
@@ -586,10 +608,11 @@ $defs:
       series records it under the same name, with its own `flavor` label. A
       group records a given name once.
 
-      The recorded name has a metric tier of its own: `recommended`, unless a
-      query reading it is more important, or a `metricOverrides` entry sets it.
-      The file's `metricImportanceHint` applies only to the metrics the rule's
-      query reads.
+      The recorded name has a metric tier of its own: the rule's `importance`,
+      or `recommended` without one, unless a query reading it is more important,
+      or a `metricOverrides` entry sets it. A `heartbeat` record keeps its tier
+      whatever reads or overrides it. The file's `metricImportanceHint` applies
+      only to the metrics the rule's query reads.
     type: object
     properties:
       record:
@@ -630,6 +653,8 @@ $defs:
         uniqueItems: true
         items:
           $ref: "#/$defs/capability"
+      importance:
+        $ref: "#/$defs/recordImportance"
     allOf:
       - $ref: "#/$defs/requiredDependency"
     unevaluatedProperties: false
@@ -723,6 +748,9 @@ $defs:
       roll-up from the queries that reference it. Lowering is intentional, e.g.
       demoting a metric kept only for backwards compatibility even though a
       live query still selects it.
+
+      An override never moves a series out of `heartbeat` or `alerts`, which
+      only the rules' own series hold, and never puts one in.
     type: object
     properties:
       metricPattern:

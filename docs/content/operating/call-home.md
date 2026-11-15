@@ -121,6 +121,60 @@ The control plane's copy is the only one that loses data.
 When the gateway can't reach it, the destination's queue fills and then drops entries, and delivery to your own Loki and Thanos continues.
 The drops are counted in `otelcol_exporter_enqueue_failed_log_records_total` and `otelcol_exporter_enqueue_failed_metric_points_total`.
 
+## What the heartbeat sends {#heartbeat}
+
+The heartbeat is a fixed record of what your install runs and whether its monitoring stack works.
+It carries no object names, query text, log lines, or other metric series.
+A destination at `minMetricImportance: heartbeat` sends the heartbeat and nothing else.
+At `alerts` it also sends `ALERTS`, and at `essential` and wider it sends both alongside the tier's metrics.
+
+The bundled Thanos ruler records the heartbeat every minute and writes it through the gateway, which is the path `ALERTS` takes.
+`ALERTS` holds a series only while an alert is pending or firing.
+A current heartbeat with no `ALERTS` means nothing is firing, and a missing heartbeat means the control plane can't tell.
+
+The following table lists every series in the heartbeat:
+
+| Series | Labels | Value |
+|---|---|---|
+| `mzmon:heartbeat` | `chart_version` | `1` |
+| `mzmon:build_info:count` | `component`, `version` | The running processes of that component at that version. `component` is `alloy`, `environmentd`, `kubelet`, `loki`, `node-exporter`, `postgres`, or `thanos`. |
+| `mzmon:node_uname_info:count` | `machine`, `release` | The nodes with that CPU architecture and kernel release |
+| `mzmon:environment_info` | `environment_id` | `1` for each Materialize environment |
+| `mzmon:cluster_created_timestamp_seconds` | None | When the cluster's `kube-system` namespace was created |
+| `mzmon:rules:count` | None | The rules the Thanos ruler evaluates |
+| `mzmon:rule_evaluation_failures:rate5m` | None | Failed rule evaluations per second |
+
+Each series also carries `cluster`, which is `clusterName`, and `ruler_replica`, the name of the ruler pod that wrote it.
+The gateway sets `job` and `instance` to `thanos-ruler`.
+A component that isn't running reports no `mzmon:build_info:count` series.
+
+`postgres` is the PostgreSQL version of your Materialize metadata database, counted per database.
+It's read through the postgres-exporter, because no cloud provider's metrics carry an engine version.
+It covers each `externalDependencies.consensus` entry with `flavor: postgres`, whether the database runs on Amazon RDS, Cloud SQL, Azure Database for PostgreSQL, or a cluster of your own.
+Other databases the exporter watches aren't reported.
+
+Your own Thanos stores the same series, so you can read exactly what the heartbeat sends:
+
+```promql
+{__name__=~"mzmon:.+"}
+```
+
+The heartbeat installs with the bundled Thanos and its monitoring, `thanos.global.serviceMonitor.enabled`.
+It needs `rules.enabled`, which is on by default.
+
+### Identity in the heartbeat {#identity}
+
+The heartbeat doesn't name your company or your install.
+The control plane reads both from your client certificate.
+Each Materialize environment is named by its `environment_id`, the `spec.environmentId` UUID of its `Materialize` resource,
+and not by the resource's name.
+
+`mzmon:cluster_created_timestamp_seconds` tells a rebuilt cluster from a copied one.
+A copy of a cluster, such as a staging cluster restored from production, keeps the original's certificate and values,
+so it reports under the same identity.
+Both clusters report their own creation time, so the control plane sees two values under one identity.
+A rebuilt cluster reports a new value, and the old value stops.
+
 ## See more
 
 - [Where the gateway writes logs](../../logs-and-events/storing/#destinations): every field a destination takes.

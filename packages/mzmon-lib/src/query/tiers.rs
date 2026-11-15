@@ -23,6 +23,11 @@
 //! (`kube_…`, `container_…`, `up`) names pass through verbatim (and remain valid
 //! one-element alternations), as do the series the rules produce: recorded names
 //! such as `ext:consensus_up`, and `ALERTS`.
+//!
+//! The two reserved tiers come first. `heartbeat` lists the records a rule
+//! declares part of the call-home heartbeat, and `alerts` lists `ALERTS`. A
+//! destination at `heartbeat` takes the first list alone, and one at `alerts`
+//! takes both.
 
 use serde::Serialize;
 
@@ -35,6 +40,8 @@ use crate::query::render::{SQL_PREFIX_REGEX, SQL_PREFIX_SENTINEL};
 /// is the serialized key order.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct MetricTiers {
+    pub heartbeat: Vec<String>,
+    pub alerts: Vec<String>,
     pub essential: Vec<String>,
     pub recommended: Vec<String>,
     pub extended: Vec<String>,
@@ -49,8 +56,10 @@ impl MetricTiers {
         let mut tiers = MetricTiers::default();
         for doc in docs {
             let name = rewrite_sql_prefix(&doc.name);
-            // `doc.importance` is always one of our four kebab values.
+            // `doc.importance` is always one of our kebab values.
             match doc.importance.parse::<Importance>() {
+                Ok(Importance::Heartbeat) => tiers.heartbeat.push(name),
+                Ok(Importance::Alerts) => tiers.alerts.push(name),
                 Ok(Importance::Essential) => tiers.essential.push(name),
                 Ok(Importance::Recommended) => tiers.recommended.push(name),
                 Ok(Importance::Extended) => tiers.extended.push(name),
@@ -59,6 +68,8 @@ impl MetricTiers {
             }
         }
         for bucket in [
+            &mut tiers.heartbeat,
+            &mut tiers.alerts,
             &mut tiers.essential,
             &mut tiers.recommended,
             &mut tiers.extended,
@@ -72,7 +83,12 @@ impl MetricTiers {
 
     /// Total number of metrics across all tiers.
     pub fn len(&self) -> usize {
-        self.essential.len() + self.recommended.len() + self.extended.len() + self.diagnostic.len()
+        self.heartbeat.len()
+            + self.alerts.len()
+            + self.essential.len()
+            + self.recommended.len()
+            + self.extended.len()
+            + self.diagnostic.len()
     }
 
     /// True if no metrics are present in any tier.
@@ -158,22 +174,28 @@ mod tests {
         // `:` is literal outside `(?:`, so a recorded name needs no escaping.
         let tiers = MetricTiers::from_docs(&[
             doc("ext:consensus_commit_latency_seconds:p99", "recommended"),
-            doc("ALERTS", "essential"),
+            doc("mzmon:heartbeat", "heartbeat"),
+            doc("ALERTS", "alerts"),
         ]);
         assert_eq!(
             tiers.recommended,
             vec!["ext:consensus_commit_latency_seconds:p99".to_string()]
         );
-        assert_eq!(tiers.essential, vec!["ALERTS".to_string()]);
+        assert_eq!(tiers.heartbeat, vec!["mzmon:heartbeat".to_string()]);
+        assert_eq!(tiers.alerts, vec!["ALERTS".to_string()]);
+        assert!(tiers.essential.is_empty());
     }
 
     #[test]
-    fn serializes_all_four_keys_in_importance_order() {
+    fn serializes_every_key_in_importance_order() {
         let yaml = MetricTiers::default().to_yaml().unwrap();
+        let heartbeat = yaml.find("heartbeat").unwrap();
+        let alerts = yaml.find("alerts").unwrap();
         let essential = yaml.find("essential").unwrap();
         let recommended = yaml.find("recommended").unwrap();
         let extended = yaml.find("extended").unwrap();
         let diagnostic = yaml.find("diagnostic").unwrap();
+        assert!(heartbeat < alerts && alerts < essential);
         assert!(essential < recommended && recommended < extended && extended < diagnostic);
     }
 }

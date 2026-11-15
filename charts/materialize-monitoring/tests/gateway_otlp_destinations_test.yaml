@@ -76,6 +76,54 @@ tests:
           value: ".*"
         template: templates/pipelines/cm-alloy-gateway-env.yaml
 
+  # The two narrowest tiers are the call-home `heartbeat` and `alerts` levels.
+  # The allowlist is written out so that a series joining the heartbeat shows up
+  # here as a reviewed change.
+  - it: should send only the heartbeat record at the heartbeat tier
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    set:
+      pipeline.destinations.vendor:
+        type: otlp
+        url: https://ingest.example.com
+        metrics:
+          minMetricImportance: heartbeat
+    asserts:
+      - equal:
+          path: data.GATEWAY_VENDOR_DEST_METRICS_ALLOWLIST
+          value: "mzmon:build_info:count|mzmon:cluster_created_timestamp_seconds|mzmon:environment_info|mzmon:heartbeat|mzmon:node_uname_info:count|mzmon:rule_evaluation_failures:rate5m|mzmon:rules:count"
+
+  - it: should add alert state and nothing else at the alerts tier
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    set:
+      pipeline.destinations.vendor:
+        type: otlp
+        url: https://ingest.example.com
+        metrics:
+          minMetricImportance: alerts
+    asserts:
+      - equal:
+          path: data.GATEWAY_VENDOR_DEST_METRICS_ALLOWLIST
+          value: "ALERTS|mzmon:build_info:count|mzmon:cluster_created_timestamp_seconds|mzmon:environment_info|mzmon:heartbeat|mzmon:node_uname_info:count|mzmon:rule_evaluation_failures:rate5m|mzmon:rules:count"
+
+  - it: should keep alert state and the heartbeat at the essential tier
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    set:
+      pipeline.destinations.vendor:
+        type: otlp
+        url: https://ingest.example.com
+        metrics:
+          minMetricImportance: essential
+    asserts:
+      - matchRegex:
+          path: data.GATEWAY_VENDOR_DEST_METRICS_ALLOWLIST
+          pattern: '(^|\|)ALERTS(\||$)'
+      - matchRegex:
+          path: data.GATEWAY_VENDOR_DEST_METRICS_ALLOWLIST
+          pattern: '(^|\|)mzmon:heartbeat(\||$)'
+      - matchRegex:
+          path: data.GATEWAY_VENDOR_DEST_METRICS_ALLOWLIST
+          pattern: '(^|\|)alloy_build_info(\||$)'
+
   - it: should count a metrics-carrying destination as somewhere for metrics to go
     set:
       pipeline.destinations.thanos.enabled: false

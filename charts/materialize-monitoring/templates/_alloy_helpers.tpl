@@ -1676,7 +1676,8 @@ This is not anchored by ^$ (that's handled in the pipeline).
 Args:
   context: The context object, typically `$`.
   minMetricImportance: The minimum metric importance level to filter by.
-    Valid values are "essential", "recommended", "extended", "diagnostic"
+    Valid values are "heartbeat", "alerts", "essential", "recommended",
+    "extended", "diagnostic", and "all"
 
 Usage:
   {{ $otlpExporter.unfilteredMetricsEnv }}: {{ include "mzmon.alloyGateway.metricFilter" ( dict
@@ -1708,6 +1709,15 @@ Usage:
   {{- end }}
   {{- if eq $minMetricImportance "essential" }}
     {{- $metricPatterns = concat $metricPatterns $metricTiers.essential }}
+    {{- $minMetricImportance = "alerts" }}
+  {{- end }}
+  {{- /* The two reserved tiers: alert state, and the call-home heartbeat. */}}
+  {{- if eq $minMetricImportance "alerts" }}
+    {{- $metricPatterns = concat $metricPatterns ( $metricTiers.alerts | default list ) }}
+    {{- $minMetricImportance = "heartbeat" }}
+  {{- end }}
+  {{- if eq $minMetricImportance "heartbeat" }}
+    {{- $metricPatterns = concat $metricPatterns ( $metricTiers.heartbeat | default list ) }}
   {{- end }}
 
   {{- if not $metricPatterns }}

@@ -150,6 +150,9 @@ pub struct RuleDef {
     /// Capabilities the rule needs beyond those its metrics imply.
     #[serde(default)]
     pub requires: Vec<Capability>,
+    /// The recorded name's metric tier, when it is not the default.
+    #[serde(default)]
+    pub importance: Option<Importance>,
 }
 
 /// An alerting rule. Like [`RuleDef`], its dependency is one of `queryId` /

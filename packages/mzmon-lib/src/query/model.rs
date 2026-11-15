@@ -187,6 +187,10 @@ pub struct Rule {
     pub labels: IndexMap<String, String>,
     /// Capabilities declared beyond those the rule's metrics imply.
     pub requires: Vec<Capability>,
+    /// The recorded name's metric tier, when the rule sets one. `heartbeat`
+    /// makes the series part of the call-home heartbeat; unset is
+    /// [`RECORDED_SERIES_IMPORTANCE`](crate::query::docgen::RECORDED_SERIES_IMPORTANCE).
+    pub importance: Option<Importance>,
     /// The stem of the registry file the rule was loaded from, when it was
     /// loaded from one. Rules are rendered one output file per source file.
     pub source: Option<String>,

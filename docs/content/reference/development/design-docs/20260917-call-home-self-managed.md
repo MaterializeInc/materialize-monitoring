@@ -7,7 +7,7 @@ aliases:
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-17
-lastmod: 2026-09-17
+lastmod: 2026-11-14
 # custom parameters
 params:
   author: Heather Lapointe
@@ -38,9 +38,9 @@ This doc deliberately does not restate the BYOC pipeline work. Anything about ma
 per-destination redaction, or queue isolation belongs in 20260813-byoc-observability.md and is referenced
 from here. If that doc moves, fix the references rather than copying the content back.
 
-Three claims here are load-bearing and easy to soften by accident: that nothing in a default install evaluates
-alerting rules today, that a TLS-intercepting forward proxy defeats mTLS outright, and that receiving a signal
-creates a support obligation. Revise them rather than hedging them.
+These claims are load-bearing and easy to soften by accident: that a TLS-intercepting forward proxy defeats mTLS
+outright, and that receiving a signal creates a support obligation. Revise them rather than hedging them. A third,
+that nothing in a default install evaluated alerting rules, was revised when the rule set shipped (DEP-117).
 
 Work spans repos. The tier ladder, the preview mode, the egress meter and the profile land here; the ingress,
 issuance and the response model are control-plane work.
@@ -79,9 +79,15 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 - **Call-home is not a new channel.** It is the [BYOC gateway-to-gateway channel](../20260813-byoc-observability/#architecture) with a much lower default, an explicit consent model, and a bound the customer can verify. Building a second ingress would give Materialize two things to operate and customers two things to review.
 - **The deliverable is a ladder, not a surface.** Five named levels, each strictly containing the one below, each with a published egress schedule and a measured volume envelope. One dial, monotone, so "higher sends more" needs no matrix to understand.
 - **The lowest useful level is alerts, and it is the cheapest thing in the design.** Alert state is one metric family. Forwarding it is an allowlist on a fan-out that already ships, which is far smaller than the `essential` tier the BYOC design sends.
-- **Nothing in a default install evaluates alerting rules.** `pre-rendered/rules/prometheus/` is empty, no template emits a `PrometheusRule`, `thanos.ruler.enabled` is `false`, and `tags.alertmanager` is `false`. The alerts level is blocked on rules being *evaluated*, not on anything in this design.
+- **A default install evaluates alerting rules, and alert state traverses the gateway.** Both rulers run by default, stateless,
+  and remote-write their results through the gateway, so `ALERTS` is in front of the destination fan-out.
+  An `alerts` metric tier forwards it without any other metric.
 - **Alert state and alert notification are different signals and both are wanted.** The `ALERTS` series is the stream Materialize can query and trend; an Alertmanager webhook is the event that pages a human. The series is the first to ship because it reuses the channel; the webhook needs [routing](https://linear.app/materializeinc/issue/DEP-216) that does not exist yet.
-- **A level below alerts is worth having.** A heartbeat carrying install identity, component versions and stack health discloses close to nothing and answers the two fleet questions nobody can answer today: what is running, and what went dark.
+- **A level below alerts is worth having.** A heartbeat carrying install identity,
+  component versions and stack health discloses close to nothing
+  and answers the two fleet questions nobody can answer today: what is running, and what went dark.
+  It ships as recorded series in a `heartbeat` metric tier, evaluated by the same ruler that writes `ALERTS`,
+  so its presence is what makes an empty alert set mean "nothing is firing".
 - **The bound has to be measurable locally or it is not a bound.** A shipped egress meter — bytes, samples and lines per destination, already exposed by the gateway — plus a dashboard panel, is what turns a promise into an observation.
 - **Preview before send.** A `previewOnly` destination runs the full processing chain, counts and samples the result locally, and drops before the writer. It is the compliance artifact that a generated schedule cannot be, because it is the customer's own data.
 - **Widening is customer-side only.** The control plane must have no mechanism to enable or raise a level remotely. The time-boxed elevation for an escalation is the single exception and therefore carries the strongest construction: customer-approved, self-expiring, audited.
@@ -114,7 +120,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | Gateway server-side TLS on all four ingest ports | ✅ Shipped | `pipeline.{logging,metrics}.gateway.server.tls`, `profiles/mtls.values.yaml` and the phase overlays |
 | Certificate issuance and renewal | ✅ Shipped | `templates/certificates.yaml`, `certificates.enabled`; renewal measured across five rotations |
 | Alert **definitions** | ✅ Shipped as documentation | `packages/queries/materialize-alerts.yaml`, `infra-alerts.yaml`, rendered to [Common Alerts](../../../common-alerts/) |
-| **Alert rule evaluation** | ❌ **Absent** | `templates/alerts/` is empty, nothing reads `config.rules.prometheus.enabled`, `pre-rendered/rules/prometheus/` holds only a `.gitkeep`, and `thanos.ruler.enabled` is `false` |
+| **Alert rule evaluation** | ✅ Shipped | `rules.*`, rendered by `gen-rules` into `pre-rendered/rules/`; both rulers on by default and remote-writing through the gateway ([DEP-117](https://linear.app/materializeinc/issue/DEP-117)) |
 | **Alertmanager** | ⚠️ Bundled, off | `tags.alertmanager: false`; routing is [DEP-216](https://linear.app/materializeinc/issue/DEP-216), unstarted |
 | Logs to more than one destination | ✅ Shipped | `pipeline.destinations`, one writer and one queue per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
 | **Per-destination log processing and redaction** | ❌ Missing | `inputProcessor` is global — same row |
@@ -123,8 +129,8 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | **An egress meter the customer can read** | ❌ Missing | The gateway exposes per-destination counters; no dashboard panel or documented query presents them as "what left" |
 | **Any notion of a consent level** | ❌ Missing | Destinations are configured individually; nothing composes them into a stated posture |
 
-Two rows carry most of the work in this doc, and neither is a pipeline feature.
-The alert-evaluation row is why the cheapest level cannot ship yet.
+Two rows carried most of the work in this doc, and neither is a pipeline feature.
+The alert-evaluation row was what the cheapest level waited on, and it has shipped.
 The consent-level row is the feature itself.
 
 ## Architecture
@@ -135,7 +141,7 @@ The dashed edge is the only flow that leaves the cluster, and it does not exist 
 flowchart TB
   subgraph cust["Self-managed cluster — the customer's infrastructure"]
     agent["alloy-agent (DaemonSet)"]
-    ruler["Rule evaluator<br/>ALERTS series — not shipped today"]
+    ruler["Thanos ruler<br/>ALERTS · heartbeat"]
     gw["alloy-gateway<br/>loki.process.inputProcessor"]
     local["egress:local<br/>no redaction · metrics: all"]
     ch["egress:callHome<br/>level gate · redact · reduce<br/>byte ceiling · own queue · droppable"]
@@ -240,6 +246,28 @@ The discipline it requires is that the record stays fixed and enumerable.
 The pressure to add "just one more field" to a heartbeat is constant, and the moment its contents are open-ended, the reason it was easy to approve is gone.
 The schedule for level 1 should be an explicit list of field names in the docsite, and adding a field should be a change to that list.
 
+**Decision: the heartbeat is a set of recorded series, evaluated by the Thanos ruler, in a `heartbeat` metric tier of their own.**
+They are defined in `packages/queries/mzmon-heartbeat.yaml`
+and listed field by field in [What the heartbeat sends](../../../../operating/call-home/#heartbeat):
+the chart version, the running version of each component and of the metadata database where the postgres-exporter reads it,
+each node's architecture and kernel release, each Materialize environment's `environment_id`, the cluster's creation time,
+and whether the ruler's rules load and evaluate.
+Three properties follow from that construction:
+
+- **It travels the alert path.** The ruler that writes `ALERTS` writes the heartbeat, through the same gateway,
+  so a current heartbeat is what makes an empty alert set mean "nothing is firing".
+  A heartbeat produced by the gateway alone would stay up while the rules behind `ALERTS` had stopped.
+- **The record is fixed by construction.** Only a recording rule can declare the `heartbeat` tier.
+  No query, file hint or metric override can put a metric in it.
+  A destination at `heartbeat` takes exactly those series,
+  and a new one shows up as a change to the registry file and to the allowlist a chart test writes out.
+- **It is locally visible.** The same series land in the customer's own Thanos,
+  so the customer queries what the heartbeat sends rather than reading a description of it.
+
+Every heartbeat rule requires the bundled Thanos with its own metrics collected.
+Without it none of the heartbeat installs,
+rather than a version list with no liveness record that the control plane would read as an install gone dark.
+
 ## The alerts level
 
 This is the level the request for this design centres on, and it is the most interesting one, for two reasons that pull in opposite directions.
@@ -247,23 +275,24 @@ This is the level the request for this design centres on, and it is the most int
 It is the **smallest** thing that makes Materialize useful on a self-managed deployment: an alert is already the distilled statement that something is wrong, produced by rules Materialize wrote, over metrics Materialize defined.
 It compresses an environment's health into a handful of series.
 
-It is also the level that **nothing currently produces**.
+When this design was written, it was also the level that **nothing produced**.
 
-### Nothing evaluates alerting rules today
+### Rules are evaluated by default
 
-The alert definitions exist and are good.
-They live in the query registry and render to the docsite as [Common Alerts](../../../common-alerts/).
-They are not evaluated anywhere in a default install:
+The alert definitions live in the query registry and render to the docsite as [Common Alerts](../../../common-alerts/).
+When this design was written, nothing in a default install evaluated them,
+and that set the dependency order: the alerts level waited on rule evaluation shipping, and on nothing in this design.
+A call-home channel that forwards alert state from a stack that evaluates no rules forwards an empty set,
+which is worse than not offering the level, because it looks like good news.
 
-- `charts/materialize-monitoring/templates/alerts/` contains no templates.
-- No template reads `config.rules.prometheus.enabled`, which defaults `true` and does nothing.
-- `pre-rendered/rules/prometheus/` contains a `.gitkeep`.
-- `thanos.ruler.enabled` defaults `false`, so the bundled evaluator is off.
-- `tags.alertmanager` defaults `false`, so the bundled notifier is off.
+Rule evaluation has since shipped ([DEP-117](https://linear.app/materializeinc/issue/DEP-117)).
+`gen-rules` renders the registry's alerts into `PrometheusRule` resources,
+a vetted default set installs wherever its capabilities are present, and both rulers are on by default.
+The [Alerting in Self-Managed](../20260917-alerting-self-managed/) design is the record of that work.
 
-The [roadmap already records this correction](../../roadmap/#rules--alerts) — the row was marked done on the strength of the documentation.
-Restating it here is not redundancy: it sets the dependency order.
-**The alerts level is blocked on rule evaluation shipping, and on nothing in this design.** A call-home channel that forwards alert state from a stack that evaluates no rules forwards an empty set, which is worse than not offering the level, because it looks like good news.
+An empty set can still read as good news when the rules behind it have stopped.
+The [heartbeat](#level-1-is-worth-building-on-its-own) closes that gap: the same ruler records it,
+so a current heartbeat with no `ALERTS` means nothing is firing, and it reports how many rules load and how many evaluations fail.
 
 ### Alert state and alert notification are two signals
 
@@ -281,8 +310,14 @@ They are frequently conflated, and the design needs both eventually and one of t
 **Recommendation: the alerts level ships as the state series, and the webhook follows.**
 
 The state series is close to free.
-`ALERTS` is one family; forwarding it is an allowlist on `pipeline.metrics.gateway.destination.otel`, which already supports per-destination selection.
+`ALERTS` is one family; forwarding it is an allowlist on the destination fan-out, which already supports per-destination selection.
 It also gives Materialize the better raw material — a series can be trended, joined against version, and alerted on centrally with grouping that is fleet-shaped rather than per-install, which is the thing [the BYOC doc names](../20260813-byoc-observability/#control-plane-scale) as the difference between collecting signal and being paged on it.
+
+**Decision: an `alerts` metric tier, holding `ALERTS` alone, between `heartbeat` and `essential`.**
+A destination at `minMetricImportance: alerts` forwards alert state and the heartbeat and nothing else,
+so the alerts level needs no metric fan-out beyond those series, and every wider tier includes it.
+`ALERTS_FOR_STATE` is the ruler's own bookkeeping and has no tier, so it never crosses.
+No query or override can move a metric into or out of the tier.
 
 The webhook is the thing that carries the customer's *actual* notification, post-silence, and it is worth having precisely because it tells Materialize what the customer's on-call was told.
 It is not first because it adds a second client with its own credential path and depends on routing that is unstarted.
@@ -294,10 +329,13 @@ That argues for the webhook sooner rather than later, and for silence state bein
 ### Where the series has to come from
 
 The fan-out happens at the gateway, so the alert state series has to traverse the gateway to be forwardable.
-Loki's ruler already remote-writes recording-rule samples back to `prometheus.receive_http` on the gateway, which is the shape this needs.
-Whatever evaluates the metric rules has to be wired the same way, or the series will be in Thanos and invisible to the destination that would forward it.
+Whatever evaluates the metric rules has to remote-write to `prometheus.receive_http` on the gateway,
+or the series will be in Thanos and invisible to the destination that would forward it.
 
-That is a checkable requirement rather than an assumption, and it belongs in the [prerequisites](#chart-side-prerequisites) because getting it wrong produces a level that renders correctly and forwards nothing.
+Both rulers do: the Thanos ruler runs stateless and remote-writes `ALERTS`,
+the heartbeat and every recording-rule result through the gateway, as the Loki ruler does for its own.
+The gateway stamps what the Thanos ruler pushes `job="thanos-ruler"`, so that label on a series in Thanos is proof it traversed the gateway.
+The E2E check `thanos::heartbeat_recorded` asserts it on `mzmon:heartbeat`, which travels the path `ALERTS` does.
 
 ## Bounding the volume credibly
 
@@ -476,6 +514,24 @@ A self-managed cluster commonly hosts several Materialize environments, and a cu
 The identity has to carry customer, install, and environment, and the install component has to survive a cluster being rebuilt or the history detaches from the thing it describes.
 A cloned cluster presenting a duplicate install identity is the specific failure to design against, and it is common in this segment because staging is made by copying production.
 
+**Decision: the chart asserts none of the three parts, and the heartbeat carries what the control plane needs to keep installs apart.**
+
+- **Customer and install** come from the client certificate, `spiffe://c.materialize.cloud/stack/<clientStack>`,
+  with the mapping from stack to customer held control-plane side, as in BYOC.
+  A rebuilt cluster that reuses its certificate keeps its history.
+- **Environment** is `environment_id`, the `spec.environmentId` UUID that every series from the environment carries,
+  and `mzmon:environment_info` lists them.
+  orchestratord refuses a duplicate within a cluster, and the CRD forbids changing it.
+- **A clone** keeps the original's certificate and values, so nothing it holds can be trusted to differ.
+  Its cluster differs: `mzmon:cluster_created_timestamp_seconds` carries the `kube-system` namespace's creation time.
+  Two clusters under one identity report two values, which the control plane can detect and then refuse, while a rebuild changes the value once.
+
+The creation time is a sample, not a label, so two clones' series still share names and labels at the control plane,
+and it detects the clone rather than separating the two.
+Separating them would need a cluster-unique label at render time.
+The only candidate, the `kube-system` UID through Helm's `lookup`, renders empty under `helm template`, which is how Argo CD installs,
+so those installs would merge without a sign.
+
 **Version skew is wider than anywhere else.**
 Self-managed customers upgrade on their own schedule, so the ingress must accept pipeline versions as old as the [deprecation policy](../20260823-deprecation-policy/) promises, with no version-coupled expectations of its clients.
 This is the strongest argument for the wire format staying plain OTLP with the existing label contract.
@@ -512,19 +568,19 @@ None of it is ticketed yet.
 | Item | Why it is needed | Blocking? |
 |---|---|---|
 | **All [BYOC blocking prerequisites](../20260813-byoc-observability/#chart-side-prerequisites)** — map-shaped log destinations, per-destination processing, per-destination queue and drop policy, the tenant overwrite, the log-bridge transform, and the redaction stage set | This design is defaults and consent on top of that channel. Nothing above level 3 exists without them | **Blocking**, inherited |
-| **Rule evaluation actually shipping** — a template that emits the bundled rules, and an evaluator enabled by default in the bundled shape | Nothing evaluates alerting rules today, so the alerts level would forward an empty set that reads as good news | **Blocking** for levels 2 and up |
-| **Alert state reaching the gateway** — whatever evaluates metric rules remote-writes to `prometheus.receive_http`, as Loki's ruler already does | The fan-out happens at the gateway. Series that land in Thanos without traversing it cannot be forwarded | **Blocking** for the alerts level |
+| **Rule evaluation actually shipping** — a template that emits the bundled rules, and an evaluator enabled by default in the bundled shape | Nothing evaluated alerting rules, so the alerts level would have forwarded an empty set that reads as good news | ✅ Done ([DEP-117](https://linear.app/materializeinc/issue/DEP-117)). Both rulers are on by default, and a vetted default set installs |
+| **Alert state reaching the gateway** — whatever evaluates metric rules remote-writes to `prometheus.receive_http`, as Loki's ruler already does | The fan-out happens at the gateway. Series that land in Thanos without traversing it cannot be forwarded | ✅ Done ([DEP-282](https://linear.app/materializeinc/issue/DEP-282)). Both rulers remote-write through the gateway, and the `alerts` metric tier forwards `ALERTS` without any other metric. `thanos::heartbeat_recorded` checks the path |
 | **The `callHome.level` values surface**, defaulting `off`, with the level profiles that assemble each rung | The feature. A level assembled by hand is a level with four of five settings right | **Blocking**. `profiles/call-home.values.yaml` is the first profile, shared with BYOC: off unless applied, and the `metrics` and `diagnostics` rungs through `logs.enabled`, `logs.minLevel`, `logs.keepUnknown` and `metrics.minMetricImportance` on one destination. The single key selecting a rung, and the `heartbeat` and `alerts` rungs, are not built |
 | **A render assertion that the default sends nothing**, re-checked on every values change | A default that drifts to on in a refactor is the one failure that ends the programme | **Blocking** |
 | **`previewOnly` on the call-home destination** — full chain, counted and sampled locally, dropped before the writer | The compliance artifact a generated schedule cannot be, because it runs on the customer's own data | **Blocking** for the review story |
 | **A byte-rate ceiling per level**, shed rather than queued, with the shed event reported | Selection bounds kind, not volume, and volume spikes during exactly the incidents this exists for | **Blocking** |
 | **The egress meter** — a dashboard row and a documented query over the existing per-destination counters | A bound the customer cannot measure is a bound they have to take on faith | **Blocking** for the consent claim |
-| **The heartbeat producer** — a fixed, enumerable record of deployment identity, versions, enabled components and stack health | Level 1, and the only signal that distinguishes a quiet install from an absent one | **Blocking** for level 1 |
+| **The heartbeat producer** — a fixed, enumerable record of deployment identity, versions, enabled components and stack health | Level 1, and the only signal that distinguishes a quiet install from an absent one | ✅ Done ([DEP-281](https://linear.app/materializeinc/issue/DEP-281)). Recorded series in the `heartbeat` metric tier, from `packages/queries/mzmon-heartbeat.yaml` |
 | **A generated egress schedule per level**, extending the `metric-tiers.yaml` pattern to log classes and heartbeat fields | A hand-maintained list drifts on the first rename, and this one is a compliance artifact | **Blocking** for the review story |
 | **OTLP/HTTP as the call-home default wire**, with gRPC available | Corporate forward proxies handle HTTP well and gRPC badly, and the failure is a hang | **Blocking** for proxied customers |
 | **Forward-proxy configuration** on the call-home destination. The corporate CA goes in the trust bundle from [DEP-236](https://linear.app/materializeinc/issue/DEP-236), which has shipped | An intercepting proxy presents its own certificate, which the gateway verifies against the trust bundle. Naming the proxy is what remains | **Blocking** for proxied customers |
 | **A local alert on call-home export failure** | Otherwise a blocked egress path is silence on both sides, and silence reads as health | **Blocking** for exposure |
-| **Three-part identity** — customer, install, environment — stable across cluster rebuild and non-duplicating across a clone | A cloned staging cluster presenting production's identity merges two installs' telemetry | **Blocking** |
+| **Three-part identity** — customer, install, environment — stable across cluster rebuild and non-duplicating across a clone | A cloned staging cluster presenting production's identity merges two installs' telemetry | ✅ Done ([DEP-281](https://linear.app/materializeinc/issue/DEP-281)). Customer and install from the certificate, environment from `environment_id`, and a clone detectable by `mzmon:cluster_created_timestamp_seconds` |
 | **`oauth2.tls` on the destination schema** | Without it the token exchange authenticates with a long-lived client secret, which is what choosing a certificate avoided | **Blocking** for the token path, not for mTLS |
 | **The `elevated` window** — a time-boxed tier raise that expires on its own and cannot be set remotely | The alternative is a support escalation that permanently raises a customer's baseline | Should land with level 3 |
 | **An Alertmanager webhook receiver path**, with its own credential wiring | Carries what the customer's on-call actually saw, including silences | After [DEP-216](https://linear.app/materializeinc/issue/DEP-216) |
@@ -561,10 +617,18 @@ The kind tiers extend to cover this, and the assertions that matter are the ones
 
 - [ ] **mTLS or JWT for what ships first?** The recommendation above is mTLS first and token exchange next, with both retained. The counter-argument is that shipping mTLS first means proxied customers cannot opt in at all for a release or two, and they may be the majority of the segment. Measuring that proportion would settle it.
 - [ ] **Does Materialize already call home from self-managed for licensing or usage?** If an entitlement or usage report already leaves these clusters, this design should extend it rather than open a second channel — and the customer conversation is materially easier when the answer names an existing channel carrying more rather than a new one.
-- [ ] **Is level 1 separable from the rest?** It discloses little enough to ship on its own timeline, and doing so would give the fleet-version answer long before the pipeline work lands. The risk is that a heartbeat shipped alone accretes fields until it is level 2 without the review.
-- [ ] **Who evaluates alerting rules in the bundled shape** — Thanos Ruler enabled by default, or a `PrometheusRule` set for an operator the customer already runs? The second assumes prometheus-operator; the first is a component and a cost turned on for everyone.
-- [ ] **Does alert state forwarding require the whole metric fan-out to be configured?** An allowlist of one family on a full destination is the cheap implementation and pulls in a destination block the customer may find larger than the thing they agreed to send.
-- [ ] **What is the heartbeat interval**, and does its absence alert immediately or after a documented number of misses? The interval sets both the fleet-side noise floor and how quickly a dark install is noticed.
+- [x] **Is level 1 separable from the rest?** It discloses little enough to ship on its own timeline, and doing so would give the fleet-version answer long before the pipeline work lands. The risk is that a heartbeat shipped alone accretes fields until it is level 2 without the review.
+  Resolved: yes.
+  The `heartbeat` metric tier is a destination floor of its own, and only a recording rule can join it,
+  so a new field is a change to the registry file and to the allowlist a chart test writes out.
+- [x] **Who evaluates alerting rules in the bundled shape** — Thanos Ruler enabled by default, or a `PrometheusRule` set for an operator the customer already runs? The second assumes prometheus-operator; the first is a component and a cost turned on for everyone.
+  Resolved: both.
+  The Thanos ruler is on by default and imports the chart's `PrometheusRule` resources, which a prometheus-operator in the cluster also picks up.
+- [x] **Does alert state forwarding require the whole metric fan-out to be configured?** An allowlist of one family on a full destination is the cheap implementation and pulls in a destination block the customer may find larger than the thing they agreed to send.
+  Resolved: no. A destination at `minMetricImportance: alerts` takes `ALERTS` and the heartbeat, and nothing else.
+- [x] **What is the heartbeat interval**, and does its absence alert immediately or after a documented number of misses? The interval sets both the fleet-side noise floor and how quickly a dark install is noticed.
+  Resolved for the interval: one minute, the Thanos ruler's default evaluation interval.
+  How many misses page someone is the control plane's to set, with its response model ([DEP-291](https://linear.app/materializeinc/issue/DEP-291)).
 - [ ] **Is the tenant the install or the customer?** This doc leans install-with-customer-as-a-label, which is the opposite lean to the one a support engineer's cross-environment question wants. It should agree with whatever [BYOC settles](../20260813-byoc-observability/#open-questions).
 - [ ] **What is the per-install control-plane cost**, and what fleet size does the first deployment size for? Tenant overhead rather than ingest volume, and nobody has computed it.
 - [ ] **Can the `elevated` window be customer-initiated rather than customer-approved?** Initiated is stronger and puts the work on the customer during an incident; approved is faster and requires a request mechanism Materialize can send.

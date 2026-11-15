@@ -91,6 +91,7 @@ pub const REGISTRY_KUBE_METRICS: &[&str] = &[
     "kube_horizontalpodautoscaler_status_target_metric",
     "kube_mz_environment_active_generation",
     "kube_mz_environment_info",
+    "kube_namespace_created",
     "kube_networkpolicy_spec_egress_rules",
     "kube_networkpolicy_spec_ingress_rules",
     "kube_node_created",

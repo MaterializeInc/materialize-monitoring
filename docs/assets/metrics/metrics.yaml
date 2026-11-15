@@ -1,4 +1,32 @@
-- importance: essential
+- importance: heartbeat
+  labels: []
+  name: mzmon:build_info:count
+  usage: []
+- importance: heartbeat
+  labels: []
+  name: mzmon:cluster_created_timestamp_seconds
+  usage: []
+- importance: heartbeat
+  labels: []
+  name: mzmon:environment_info
+  usage: []
+- importance: heartbeat
+  labels: []
+  name: mzmon:heartbeat
+  usage: []
+- importance: heartbeat
+  labels: []
+  name: mzmon:node_uname_info:count
+  usage: []
+- importance: heartbeat
+  labels: []
+  name: mzmon:rule_evaluation_failures:rate5m
+  usage: []
+- importance: heartbeat
+  labels: []
+  name: mzmon:rules:count
+  usage: []
+- importance: alerts
   labels:
   - alertname
   - alertstate
@@ -26,6 +54,7 @@
   name: alloy_build_info
   usage:
   - infra.alloy.health.versions
+  - mzmon.heartbeat.build_info.alloy
 - importance: essential
   labels:
   - app
@@ -411,6 +440,7 @@
   name: kube_mz_environment_info
   usage:
   - materialize.environments.info
+  - mzmon.heartbeat.environments
 - importance: essential
   labels:
   - node
@@ -430,6 +460,7 @@
   - infra.nodes.info.kubelet
   - infra.nodes.info.os
   - infra.nodes.info.runtime
+  - mzmon.heartbeat.build_info.kubelet
 - importance: essential
   labels:
   - key
@@ -1265,6 +1296,7 @@
   usage:
   - infra.thanos.health.rule_failures
   - infra.thanos.rule.failures
+  - mzmon.heartbeat.rule_evaluation_failures
 - importance: essential
   labels:
   - app
@@ -1284,6 +1316,7 @@
   name: thanos_build_info
   usage:
   - infra.thanos.health.versions
+  - mzmon.heartbeat.build_info.thanos
 - importance: essential
   labels:
   - app
@@ -1789,6 +1822,7 @@
 - importance: recommended
   labels:
   - app
+  - component_id
   - namespace
   - pod
   - reason
@@ -4527,6 +4561,7 @@
   usage:
   - ext.consensus.postgres.version_info
   - infra.postgres.health.version
+  - mzmon.heartbeat.build_info.postgres
 - importance: extended
   labels:
   - job
@@ -4599,6 +4634,13 @@
   name: prometheus_rule_group_last_duration_seconds
   usage:
   - infra.thanos.rule.slowest_groups
+- importance: extended
+  labels:
+  - app
+  - container
+  name: prometheus_rule_group_rules
+  usage:
+  - mzmon.heartbeat.rules
 - importance: extended
   labels:
   - app
@@ -4984,6 +5026,32 @@
   usage:
   - infra.cloud.collection.azure_calls
   - infra.cloud.collection.azure_failures
+- importance: diagnostic
+  labels:
+  - namespace
+  name: kube_namespace_created
+  usage:
+  - mzmon.heartbeat.cluster_created
+- importance: diagnostic
+  labels: []
+  name: loki_build_info
+  usage:
+  - mzmon.heartbeat.build_info.loki
+- importance: diagnostic
+  labels: []
+  name: mz_start_time_environmentd
+  usage:
+  - mzmon.heartbeat.build_info.environmentd
+- importance: diagnostic
+  labels: []
+  name: node_exporter_build_info
+  usage:
+  - mzmon.heartbeat.build_info.node_exporter
+- importance: diagnostic
+  labels: []
+  name: node_uname_info
+  usage:
+  - mzmon.heartbeat.node_uname
 - importance: diagnostic
   labels: []
   name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization

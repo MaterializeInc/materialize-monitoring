@@ -47,6 +47,16 @@ pub struct MetricOverride {
 impl MetricOverride {
     /// Compile a raw override definition, anchoring its pattern.
     pub fn compile(def: MetricOverrideDef) -> Result<Self> {
+        if def.importance.is_reserved() {
+            return Err(Error::Schema {
+                path: format!("metricOverrides[{}].importance", def.metric_pattern),
+                message: format!(
+                    "`{}` is reserved for the series the rules produce; an override takes \
+                     essential, recommended, extended, or diagnostic",
+                    def.importance
+                ),
+            });
+        }
         let pattern = Regex::new(&format!("^(?:{})$", def.metric_pattern)).map_err(|err| {
             Error::InvalidPattern {
                 pattern: def.metric_pattern.clone(),
@@ -190,6 +200,15 @@ impl QueryRegistry {
     /// fill in any label an alert does not set itself.
     pub fn load_from(&mut self, doc: RegistryDoc, source: Option<&str>) -> Result<()> {
         let hint = doc.metric_importance_hint;
+        if hint.is_reserved() {
+            return Err(Error::Schema {
+                path: format!("{}: metricImportanceHint", source.unwrap_or("<registry>")),
+                message: format!(
+                    "`{hint}` is reserved for the series the rules produce; a file's hint is \
+                     essential, recommended, extended, or diagnostic"
+                ),
+            });
+        }
         for query in doc.queries {
             self.register_query(query, hint)?;
         }
@@ -298,6 +317,14 @@ impl QueryRegistry {
         if self.rules.contains_key(&key) {
             return Err(Error::DuplicateRule(key));
         }
+        if def.importance == Some(Importance::Alerts) {
+            return Err(Error::Schema {
+                path: format!("{key}: importance"),
+                message: "`alerts` is the tier of `ALERTS` alone; a recording rule takes \
+                          heartbeat, essential, recommended, extended, or diagnostic"
+                    .into(),
+            });
+        }
         let query_id =
             self.resolve_required_dependency(def.query, def.query_id, &key, importance)?;
         let rule = Rule {
@@ -308,6 +335,7 @@ impl QueryRegistry {
             query_id,
             labels: def.labels,
             requires: def.requires,
+            importance: def.importance,
             source: source.map(str::to_string),
         };
         self.rules.insert(key, rule);

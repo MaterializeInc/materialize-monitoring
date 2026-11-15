@@ -44,6 +44,7 @@ pub enum Capability {
     NodeExporter,
     Loki,
     Alloy,
+    Thanos,
     Cloudwatch,
     CloudMonitoring,
     AzureMonitor,
@@ -74,6 +75,7 @@ impl Capability {
         Capability::NodeExporter,
         Capability::Loki,
         Capability::Alloy,
+        Capability::Thanos,
         Capability::Cloudwatch,
         Capability::CloudMonitoring,
         Capability::AzureMonitor,
@@ -103,6 +105,7 @@ impl Capability {
             Capability::NodeExporter => "node-exporter",
             Capability::Loki => "loki",
             Capability::Alloy => "alloy",
+            Capability::Thanos => "thanos",
             Capability::Cloudwatch => "cloudwatch",
             Capability::CloudMonitoring => "cloud-monitoring",
             Capability::AzureMonitor => "azure-monitor",
@@ -139,6 +142,7 @@ impl Capability {
                 | Capability::NodeExporter
                 | Capability::Loki
                 | Capability::Alloy
+                | Capability::Thanos
                 | Capability::Cloudwatch
                 | Capability::CloudMonitoring
                 | Capability::AzureMonitor
@@ -241,6 +245,13 @@ const SOURCES: &[(&str, MetricSource)] = &[
         MetricSource::Capability(Capability::Alloy),
     ),
     ("loki_.+", MetricSource::Capability(Capability::Loki)),
+    // The bundled Thanos's own metrics, and the Thanos ruler's rule manager,
+    // which publishes under Prometheus's names. The Loki ruler's are prefixed
+    // `loki_`, so they are claimed above.
+    (
+        "(thanos|prometheus_rule)_.+",
+        MetricSource::Capability(Capability::Thanos),
+    ),
     // The provider pulls (`pipeline.metrics.provider.*`). The families are the
     // ones the chart tiers per provider in
     // `mzmon.alloyGateway.provider.metricPatterns`, and `aws_` alone is too
@@ -331,6 +342,9 @@ mod tests {
             ("loki_write_dropped_entries_total", C(Alloy)),
             ("otelcol_exporter_send_failed_log_records_total", C(Alloy)),
             ("loki_request_duration_seconds_count", C(Loki)),
+            ("thanos_build_info", C(Thanos)),
+            ("prometheus_rule_group_rules", C(Thanos)),
+            ("loki_prometheus_rule_group_rules", C(Loki)),
             ("container_memory_working_set_bytes", C(Cadvisor)),
             ("kube_pod_status_phase", C(KubeStateMetrics)),
             ("aws_rds_free_storage_space_minimum", C(Cloudwatch)),
@@ -412,6 +426,6 @@ mod tests {
                 assert!(Capability::ALL.contains(c), "{c} missing from ALL");
             }
         }
-        assert_eq!(Capability::ALL.len(), 24);
+        assert_eq!(Capability::ALL.len(), 25);
     }
 }
