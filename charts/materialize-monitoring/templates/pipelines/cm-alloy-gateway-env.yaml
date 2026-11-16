@@ -35,6 +35,9 @@ data:
       {{- end }}
     {{- end }}
   {{- end }}
+  {{- if ( include "mzmon.alloyGateway.clientCertificateTenancy" $ ) }}
+  GATEWAY_CLIENT_TENANT_HEADER: {{ include "mzmon.alloyGateway.clientCertificateTenancy.header" $ | quote }}
+  {{- end }}
   {{- /* The destinations' variables, from the helper the validator checks for
          duplicate keys. */}}
   {{- range $entry := ( include "mzmon.destinations.envEntries" $ | fromYamlArray ) }}

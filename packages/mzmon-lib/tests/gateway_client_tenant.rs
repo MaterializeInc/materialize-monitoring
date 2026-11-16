@@ -1,14 +1,17 @@
 //! Holds client-certificate tenancy to taking the tenant from the header alone.
 //!
-//! Under `pipeline.gateway.clientCertificateTenancy`, the load balancer's
-//! `X-Amzn-Mtls-Clientcert-Subject` header is the only thing that may choose a
-//! record's tenant. Everything else a sender controls is a way to forge one:
+//! Under `pipeline.gateway.clientCertificateTenancy`, the header the
+//! TLS-terminating proxy sets is the only thing that may choose a record's
+//! tenant. Everything else a sender controls is a way to forge one:
 //! attributes, the label hints the OTLP-to-Loki bridge obeys, resource
 //! attributes that become `target_info` labels, and labels pushed to
-//! `loki.source.api`. This test runs the tenancy components, the plain OTLP
+//! `loki.source.api`. These tests run the tenancy components, the plain OTLP
 //! log bridge, `localTenant`, and `inputProcessor` from the pipeline YAML on
-//! `alloy run`, sends each forgery, and checks the tenant every record leaves
-//! with, and that records without a usable header are dropped.
+//! `alloy run`, send each forgery, and check the tenant every record leaves
+//! with, and that records without a usable header are dropped. The header's
+//! two formats, an RFC 2253 subject and Envoy's `X-Forwarded-Client-Cert`,
+//! each have their own pattern, and both refuse a header that names more than
+//! one certificate.
 //!
 //! It skips when `alloy` is not on `PATH`, unless `MZMON_REQUIRE_ALLOY` is
 //! set, as it is in the CI job that pins the binary.
@@ -66,11 +69,13 @@ fn components(file: &str, wanted: &[(&str, &str)]) -> Vec<String> {
         .collect()
 }
 
-fn config(tenancy_port: u16, plain_port: u16) -> String {
+/// The tenancy receiver forwards to `otelcol.processor.attributes "<processor>"`.
+fn config(tenancy_port: u16, plain_port: u16, processor: &str) -> String {
     let mut parts = components(
         "gateway.yaml",
         &[
-            ("otelcol.processor.attributes", "clientTenant"),
+            ("otelcol.processor.attributes", "clientTenantSubject"),
+            ("otelcol.processor.attributes", "clientTenantXfcc"),
             ("otelcol.processor.filter", "clientTenant"),
             ("otelcol.processor.transform", "clientTenant"),
             ("otelcol.exporter.loki", "clientTenant"),
@@ -103,8 +108,8 @@ fn config(tenancy_port: u16, plain_port: u16) -> String {
     }}
 
     output {{
-        logs = [otelcol.processor.attributes.clientTenant.input]
-        metrics = [otelcol.processor.attributes.clientTenant.input]
+        logs = [otelcol.processor.attributes.{processor}.input]
+        metrics = [otelcol.processor.attributes.{processor}.input]
     }}
 }}
 
@@ -255,7 +260,7 @@ fn only_the_certificate_header_chooses_a_tenant() {
     }
     let tenancy = free_port();
     let plain = free_port();
-    let (alloy, loki_port) = Alloy::start(&config(tenancy, plain));
+    let (alloy, loki_port) = Alloy::start(&config(tenancy, plain, "clientTenantSubject"));
     let subject = |cn: &str| format!("CN={cn},O=Materialize");
     let ok = subject("stack-a");
     let victim = || s("victim");
@@ -520,5 +525,120 @@ fn only_the_certificate_header_chooses_a_tenant() {
         "\n{}\n\n{}",
         failures.join("\n"),
         alloy.log_text()
+    );
+}
+
+// --- formats and header names --------------------------------------------------
+
+/// A log record's id, the headers it is sent with, and the tenant it should
+/// leave with, or `None` where it should be dropped.
+type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], Option<&'a str>);
+
+/// Sends one log record per case to a tenancy receiver that forwards to
+/// `processor`, and checks the tenant each leaves with.
+fn check_log_tenants(processor: &str, env: &[(&str, &str)], cases: &[Case]) {
+    if !alloy_available() {
+        return;
+    }
+    let tenancy = free_port();
+    let plain = free_port();
+    let (alloy, _) = Alloy::start_with_env(&config(tenancy, plain, processor), env);
+
+    // Dropped records first, as in the forgery test.
+    let (dropped, kept): (Vec<&Case>, Vec<&Case>) = cases.iter().partition(|c| c.2.is_none());
+    for (id, headers, _) in dropped.iter().chain(kept.iter()) {
+        post(tenancy, "/v1/logs", headers, &log_fixture(id, "", &[], &[]));
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !kept.iter().all(|c| echoed_logs(&alloy).contains_key(c.0)) {
+        assert!(
+            Instant::now() < deadline,
+            "not every record came out:\n{}",
+            alloy.log_text()
+        );
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    std::thread::sleep(Duration::from_secs(1));
+    let logs = echoed_logs(&alloy);
+
+    let mut failures = Vec::new();
+    for (id, _, want) in cases {
+        let got = logs
+            .get(*id)
+            .map(|l| l.get("__tenant_id__").map_or("<none>", String::as_str));
+        if got != *want {
+            failures.push(format!("{id}: tenant {got:?}, want {want:?}"));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "\n{}\n\n{}",
+        failures.join("\n"),
+        alloy.log_text()
+    );
+}
+
+const XFCC: &str = "X-Forwarded-Client-Cert";
+
+#[test]
+fn xfcc_takes_the_subject_of_exactly_one_certificate() {
+    let ok = "By=spiffe://gateway.example;Hash=0123abcd;Subject=\"CN=stack-a,O=Materialize\";URI=spiffe://c.materialize.cloud/stack/stack-a";
+    check_log_tenants(
+        "clientTenantXfcc",
+        &[("GATEWAY_CLIENT_TENANT_HEADER", "x-forwarded-client-cert")],
+        &[
+            ("ok", &[(XFCC, ok)], Some("stack-a")),
+            (
+                "subject-only",
+                &[(XFCC, "Subject=\"O=Materialize,CN=stack-c\"")],
+                Some("stack-c"),
+            ),
+            (
+                "quoted-comma",
+                &[(XFCC, "URI=\"spiffe://example/a,b\";Subject=\"CN=stack-b\"")],
+                Some("stack-b"),
+            ),
+            // Envoy's APPEND_FORWARD, or a client's element ahead of Envoy's.
+            (
+                "appended",
+                &[(
+                    XFCC,
+                    "By=spiffe://client;Subject=\"CN=victim\",By=spiffe://gateway.example;Hash=ab;Subject=\"CN=stack-a\"",
+                )],
+                None,
+            ),
+            ("twice", &[(XFCC, ok), (XFCC, ok)], None),
+            (
+                "no-subject",
+                &[(
+                    XFCC,
+                    "By=spiffe://gateway.example;Hash=ab;URI=spiffe://c.materialize.cloud/stack/stack-a",
+                )],
+                None,
+            ),
+            ("rfc2253", &[(XFCC, "CN=stack-a,O=Materialize")], None),
+            ("no-header", &[], None),
+        ],
+    );
+}
+
+#[test]
+fn the_header_name_comes_from_the_environment() {
+    check_log_tenants(
+        "clientTenantSubject",
+        &[("GATEWAY_CLIENT_TENANT_HEADER", "x-ssl-client-s-dn")],
+        &[
+            (
+                "nginx",
+                &[("X-SSL-Client-S-DN", "CN=stack-a,O=Materialize")],
+                Some("stack-a"),
+            ),
+            (
+                "default-header",
+                &[(HEADER, "CN=victim,O=Materialize")],
+                None,
+            ),
+        ],
     );
 }

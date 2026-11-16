@@ -339,7 +339,7 @@ loki.relabel "bridge" {
 	}
 }
 
-otelcol.processor.attributes "clientTenant" {
+otelcol.processor.attributes "clientTenantSubject" {
 	action {
 		key    = "mzmonTenant"
 		action = "delete"
@@ -353,13 +353,51 @@ otelcol.processor.attributes "clientTenant" {
 	action {
 		key          = "mzmonTenantSubject"
 		action       = "upsert"
-		from_context = "metadata.x-amzn-mtls-clientcert-subject"
+		from_context = string.format("metadata.%s", coalesce(sys.env("GATEWAY_CLIENT_TENANT_HEADER"), "x-amzn-mtls-clientcert-subject"))
 	}
 
 	action {
 		key     = "mzmonTenantSubject"
 		action  = "extract"
 		pattern = "^(?:[^;]*,)?\\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\\s*(?:,[^;]*)?$"
+	}
+
+	action {
+		key    = "mzmonTenantSubject"
+		action = "delete"
+	}
+
+	output {
+		metrics = [
+			otelcol.processor.filter.clientTenant.input,
+		]
+		logs = [
+			otelcol.processor.filter.clientTenant.input,
+		]
+	}
+}
+
+otelcol.processor.attributes "clientTenantXfcc" {
+	action {
+		key    = "mzmonTenant"
+		action = "delete"
+	}
+
+	action {
+		key    = "mzmonTenantSubject"
+		action = "delete"
+	}
+
+	action {
+		key          = "mzmonTenantSubject"
+		action       = "upsert"
+		from_context = string.format("metadata.%s", coalesce(sys.env("GATEWAY_CLIENT_TENANT_HEADER"), "x-amzn-mtls-clientcert-subject"))
+	}
+
+	action {
+		key     = "mzmonTenantSubject"
+		action  = "extract"
+		pattern = "^(?:(?:By|Hash|Cert|Chain|URI|DNS)=(?:\"(?:[^\"\\\\]|\\\\.)*\"|[^\";,]*);)*Subject=\"(?:[^\"\\\\]*,)?\\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\\s*(?:,[^\"\\\\]*)?\"(?:;(?:By|Hash|Cert|Chain|URI|DNS)=(?:\"(?:[^\"\\\\]|\\\\.)*\"|[^\";,]*))*$"
 	}
 
 	action {

@@ -406,16 +406,17 @@ blocks:
   # --- client-certificate tenancy -------------------------------------------
   #
   # Materialize's control plane receives call-home telemetry from many installs
-  # through one gateway, behind an AWS load balancer that terminates mTLS. The
-  # load balancer verifies the client certificate and passes its subject on in
-  # `X-Amzn-Mtls-Clientcert-Subject`; the certificate never reaches the
+  # through one gateway, behind a proxy that terminates mTLS: an AWS load
+  # balancer, nginx, or Envoy. The proxy verifies the client certificate and
+  # passes what it found on in a header; the certificate never reaches the
   # gateway, so that header is the only identity it can read. With
   # pipeline.gateway.clientCertificateTenancy on, the chart points the OTLP
-  # receiver here and turns on `include_metadata`, and every record takes its
-  # tenant from the subject's CN: the Loki tenant for logs, and the
-  # `mzmonTenant` label for metrics, which Thanos Receive's
-  # --receive.split-tenant-label-name reads and removes. Off, nothing feeds
-  # these components.
+  # receiver at the attributes processor for the header's format, turns on
+  # `include_metadata`, and names the header in GATEWAY_CLIENT_TENANT_HEADER.
+  # Every record then takes its tenant from the certificate subject's CN: the
+  # Loki tenant for logs, and the `mzmonTenant` label for metrics, which Thanos
+  # Receive's --receive.split-tenant-label-name reads and removes. Off,
+  # nothing feeds these components.
   #
   # The carrier is `mzmonTenant`, not something like `mz_tenant`, because both
   # bridges rename an attribute by turning every character outside
@@ -424,35 +425,68 @@ blocks:
   # bridge keeps whichever its map iteration reaches last. No other name renames
   # into one without an underscore.
   #
-  # Strip, assign, fail closed. A sender's own `mzmonTenant` goes first.
-  # A request that carries the header twice arrives with the values joined by
-  # `;`, which an RFC 2253 subject never contains unescaped, so the pattern
-  # refuses any `;` rather than take whichever CN comes first, and that
-  # request is dropped. It takes a CN the Loki and Thanos tenant rules both
-  # accept.
+  # Strip, assign, fail closed. A sender's own `mzmonTenant` goes first. Each
+  # pattern takes a CN the Loki and Thanos tenant rules both accept, and
+  # refuses a header that names more than one certificate rather than take
+  # whichever comes first: a request that carries the header twice arrives
+  # with the values joined by `;`.
+  #
+  # `subject`: an RFC 2253 subject, as an AWS load balancer sends in
+  # `X-Amzn-Mtls-Clientcert-Subject` and nginx in `$ssl_client_s_dn`. It never
+  # contains `;` unescaped, so the pattern refuses any.
   - otelcol.processor.attributes:
-      label: clientTenant
+      label: clientTenantSubject
       blocks:
-        - action:
+        - &client_tenant_strip
+          action:
             key: mzmonTenant
             action: delete
-        - action:
+        - &client_tenant_clear
+          action:
             key: mzmonTenantSubject
             action: delete
-        - action:
+        - &client_tenant_read
+          action:
             key: mzmonTenantSubject
             action: upsert
-            from_context: metadata.x-amzn-mtls-clientcert-subject
+            from_context:
+              function: string.format
+              arguments:
+                - "metadata.%s"
+                - function: coalesce
+                  arguments:
+                    - env: GATEWAY_CLIENT_TENANT_HEADER
+                    - x-amzn-mtls-clientcert-subject
         - action:
             key: mzmonTenantSubject
             action: extract
             pattern: '^(?:[^;]*,)?\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\s*(?:,[^;]*)?$'
-        - action:
-            key: mzmonTenantSubject
-            action: delete
-        - output:
+        - *client_tenant_clear
+        - &client_tenant_output
+          output:
             logs: ["otelcol.processor.filter.clientTenant.input"]
             metrics: ["otelcol.processor.filter.clientTenant.input"]
+
+  # `xfcc`: Envoy's `X-Forwarded-Client-Cert`, one element of `;`-separated
+  # `Key=value` pairs, the subject quoted, as in
+  # `By=...;Hash=...;Subject="CN=stack-a,O=Materialize";URI=...`. Envoy
+  # separates the elements of several certificates with `,`, and the pattern
+  # allows a `,` only inside a quoted value and exactly one `Subject`, so it
+  # refuses a header Envoy appended to, as well as one sent twice. Envoy sets
+  # it this way with `forward_client_cert_details: SANITIZE_SET` and `subject`
+  # among the `set_current_client_cert_details`.
+  - otelcol.processor.attributes:
+      label: clientTenantXfcc
+      blocks:
+        - *client_tenant_strip
+        - *client_tenant_clear
+        - *client_tenant_read
+        - action:
+            key: mzmonTenantSubject
+            action: extract
+            pattern: '^(?:(?:By|Hash|Cert|Chain|URI|DNS)=(?:"(?:[^"\\]|\\.)*"|[^";,]*);)*Subject="(?:[^"\\]*,)?\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\s*(?:,[^"\\]*)?"(?:;(?:By|Hash|Cert|Chain|URI|DNS)=(?:"(?:[^"\\]|\\.)*"|[^";,]*))*$'
+        - *client_tenant_clear
+        - *client_tenant_output
 
   # otelcol_processor_filter_logs_filtered and
   # otelcol_processor_filter_datapoints_filtered count what this drops.

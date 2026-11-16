@@ -118,7 +118,8 @@ Both pass `alloy validate`. `agent.yaml` is a faithful port of the reference `st
 The conversion was verified by rendering before and after: `agent.alloy`, `gateway-metrics.alloy`, and `gateway-dest-stub.alloy` came out **byte-identical**, and `gateway.alloy` differs only in `logs`/`metrics` ordering inside one `output` block (the typed struct's canonical order vs. YAML order — semantically irrelevant to alloy, see the attribute-order note below). Both configs were also load-tested under a real `alloy run`, since `alloy validate` cannot see capsule/type mismatches.
 
 **Client-certificate tenancy** (`gateway.yaml`, `localTenant` in `gateway-metrics.yaml`):
-idle unless the chart's `pipeline.gateway.clientCertificateTenancy` points the OTLP receiver at `otelcol.processor.attributes "clientTenant"`
+idle unless the chart's `pipeline.gateway.clientCertificateTenancy` points the OTLP receiver at `otelcol.processor.attributes "clientTenantSubject"`
+(an RFC 2253 subject) or `"clientTenantXfcc"` (Envoy), sets the header in `GATEWAY_CLIENT_TENANT_HEADER`,
 and splices `inputBridge` through `localTenant`.
 The tenant travels as `mzmonTenant`, with no `_` because the OTLP bridges rename lookalike attributes onto the same label at random,
 and for logs as `__mzmon_tenant__` past the bridge.

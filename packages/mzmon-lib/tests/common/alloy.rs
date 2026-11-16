@@ -117,6 +117,11 @@ impl Alloy {
     /// Runs at the `experimental` stability level, as the gateway does, so a
     /// config that loads here loads there.
     pub fn start(config: &str) -> (Self, u16) {
+        Self::start_with_env(config, &[])
+    }
+
+    /// [`Alloy::start`], with environment variables for `sys.env`.
+    pub fn start_with_env(config: &str, env: &[(&str, &str)]) -> (Self, u16) {
         let dir = tempfile::tempdir().expect("tempdir");
         let loki_port = free_port();
         let server_port = free_port();
@@ -137,6 +142,7 @@ impl Alloy {
             ))
             .arg(format!("--server.http.listen-addr=127.0.0.1:{server_port}"))
             .arg(&config_path)
+            .envs(env.iter().copied())
             .stdout(Stdio::null())
             .stderr(std::fs::File::create(&log).expect("create the log"))
             .spawn()

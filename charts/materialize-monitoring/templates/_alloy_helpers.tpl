@@ -354,7 +354,7 @@ loki.rules.kubernetes {{ printf "tenant_%d" $i | quote }} {
 
 {{/*
 Whether the gateway takes each OTLP request's tenant from the client
-certificate a load balancer verified, `pipeline.gateway.clientCertificateTenancy`.
+certificate a proxy verified, `pipeline.gateway.clientCertificateTenancy`.
 "true" or empty.
 
 Usage:
@@ -363,6 +363,36 @@ Usage:
 {{- define "mzmon.alloyGateway.clientCertificateTenancy" }}
   {{- if dig "gateway" "clientCertificateTenancy" "enabled" false ( $.Values.pipeline | default dict ) }}
     {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{/*
+The header `pipeline.gateway.clientCertificateTenancy` reads, lowercased as the
+gateway looks it up.
+
+Usage:
+  {{- $header := include "mzmon.alloyGateway.clientCertificateTenancy.header" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.clientCertificateTenancy.header" }}
+  {{- dig "gateway" "clientCertificateTenancy" "header" "X-Amzn-Mtls-Clientcert-Subject" ( $.Values.pipeline | default dict ) | toString | lower }}
+{{- end }}
+
+{{/*
+How `pipeline.gateway.clientCertificateTenancy` reads its header: `subject` or
+`xfcc`. Unset, Envoy's `X-Forwarded-Client-Cert` is `xfcc` and any other header
+is `subject`.
+
+Usage:
+  {{- $format := include "mzmon.alloyGateway.clientCertificateTenancy.format" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.clientCertificateTenancy.format" }}
+  {{- $format := dig "gateway" "clientCertificateTenancy" "format" "" ( $.Values.pipeline | default dict ) | toString }}
+  {{- if $format }}
+    {{- $format }}
+  {{- else if eq ( include "mzmon.alloyGateway.clientCertificateTenancy.header" $ ) "x-forwarded-client-cert" }}
+    {{- "xfcc" }}
+  {{- else }}
+    {{- "subject" }}
   {{- end }}
 {{- end }}
 
@@ -380,6 +410,7 @@ Usage:
   {{- $tls := dig "logging" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
   {{- $metricTls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
   {{- $clientTenancy := include "mzmon.alloyGateway.clientCertificateTenancy" $ }}
+  {{- $clientTenantProcessor := printf "otelcol.processor.attributes.clientTenant%s.input" ( include "mzmon.alloyGateway.clientCertificateTenancy.format" $ | title ) }}
 loki.source.api "gateway" {
     forward_to = [
         loki.process.inputPrefilter.receiver,
@@ -409,10 +440,10 @@ otelcol.receiver.otlp "gateway" {
     output {
       {{- if $clientTenancy }}
         metrics = [
-            otelcol.processor.attributes.clientTenant.input,
+            {{ $clientTenantProcessor }},
         ]
         logs = [
-            otelcol.processor.attributes.clientTenant.input,
+            {{ $clientTenantProcessor }},
         ]
       {{- else }}
         metrics = [
@@ -2342,11 +2373,13 @@ Usage:
 Validate `pipeline.gateway.clientCertificateTenancy`.
 
 The tenant comes from a header, and any pod that can reach 4317 or 4318 can
-send that header itself. So the gateway's NetworkPolicy has to admit the load
-balancer to those ports and no pod. A rule that lists no ports covers them, and
-a rule with no `from`, a `podSelector`, or a `namespaceSelector` admits pods. An
-`ipBlock` passes, because the load balancer's subnets can only be written that
-way; keeping that CIDR off the pod network is the install's job.
+send that header itself. So the gateway's NetworkPolicy has to admit the proxy
+that terminates TLS to those ports, and nothing else. A rule that lists no ports
+covers them. A peer admits every pod when it is missing (no `from`) or when each
+selector it has is empty: `namespaceSelector: {}` is every namespace, and
+`podSelector: {}` every pod in the gateway's. An `ipBlock`, or a selector that
+names the proxy's pods, passes; whether it names only the proxy is the
+install's to get right.
 
 Errors, not warnings, because the failure is one install writing into another
 install's tenant. When something other than a NetworkPolicy isolates the ports,
@@ -2360,10 +2393,20 @@ Usage:
   {{- $warnings := list }}
 
   {{- if and ( include "mzmon.alloyGateway.clientCertificateTenancy" $ ) ( hasKey $.Subcharts "alloy-gateway" ) }}
+    {{- $header := include "mzmon.alloyGateway.clientCertificateTenancy.header" $ }}
+    {{- /* An HTTP field name, RFC 9110's token. */}}
+    {{- if not ( regexMatch "^[a-z0-9!#$%&'*+.^_`|~-]+$" $header ) }}
+      {{- $errors = append $errors ( printf "pipeline.gateway.clientCertificateTenancy.header is %q, which isn't an HTTP header name. Name the header your proxy sets, such as X-Amzn-Mtls-Clientcert-Subject, X-Forwarded-Client-Cert, or X-SSL-Client-S-DN." $header ) }}
+    {{- end }}
+    {{- $format := include "mzmon.alloyGateway.clientCertificateTenancy.format" $ }}
+    {{- if not ( has $format ( list "subject" "xfcc" ) ) }}
+      {{- $errors = append $errors ( printf "pipeline.gateway.clientCertificateTenancy.format is %q. It must be subject, for an RFC 2253 subject such as nginx's $ssl_client_s_dn, or xfcc, for Envoy's X-Forwarded-Client-Cert." $format ) }}
+    {{- end }}
+
     {{- $setting := "pipeline.gateway.clientCertificateTenancy.enabled reads each OTLP request's tenant from a header any sender can set" }}
     {{- $np := ( index $.Values "alloy-gateway" | default dict ).networkPolicy | default dict }}
     {{- if not ( and $np.enabled ( has "Ingress" ( $np.policyTypes | default list ) ) ) }}
-      {{- $errors = append $errors ( printf "%s, but alloy-gateway.networkPolicy doesn't restrict ingress, so every pod in the cluster can reach 4317 and 4318. Admit only the load balancer's subnets to those ports, by ipBlock." $setting ) }}
+      {{- $errors = append $errors ( printf "%s, but alloy-gateway.networkPolicy doesn't restrict ingress, so every pod in the cluster can reach 4317 and 4318. Admit only the proxy that terminates TLS to those ports: its subnets by ipBlock, or its pods by a selector that names them." $setting ) }}
     {{- else }}
       {{- $open := list }}
       {{- range $i, $rule := $np.ingress | default list }}
@@ -2376,7 +2419,20 @@ Usage:
         {{- if $covers }}
           {{- $admitsPods := not $rule.from }}
           {{- range $peer := $rule.from | default list }}
-            {{- if or ( hasKey $peer "podSelector" ) ( hasKey $peer "namespaceSelector" ) }}
+            {{- /* A selector matches everything unless it has a label or an
+                   expression to match. */}}
+            {{- $hasSelector := false }}
+            {{- $narrowed := false }}
+            {{- range $key := list "namespaceSelector" "podSelector" }}
+              {{- if hasKey $peer $key }}
+                {{- $hasSelector = true }}
+                {{- $selector := index $peer $key | default dict }}
+                {{- if or $selector.matchLabels $selector.matchExpressions }}
+                  {{- $narrowed = true }}
+                {{- end }}
+              {{- end }}
+            {{- end }}
+            {{- if and $hasSelector ( not $narrowed ) }}
               {{- $admitsPods = true }}
             {{- end }}
           {{- end }}
@@ -2386,14 +2442,17 @@ Usage:
         {{- end }}
       {{- end }}
       {{- if $open }}
-        {{- $errors = append $errors ( printf "%s, but alloy-gateway.networkPolicy.%s admits pods to the OTLP ports, so a pod could choose its own tenant. Admit only the load balancer's subnets to 4317 and 4318, by ipBlock." $setting ( join ", " $open ) ) }}
+        {{- $errors = append $errors ( printf "%s, but alloy-gateway.networkPolicy.%s admits every pod to the OTLP ports, so a pod could choose its own tenant. Admit only the proxy that terminates TLS to 4317 and 4318: its subnets by ipBlock, or its pods by a selector that names them." $setting ( join ", " $open ) ) }}
       {{- end }}
     {{- end }}
 
+    {{- /* nginx and Envoy can present a certificate of their own to the
+           gateway, which a receiver that requires one then checks. An AWS
+           load balancer presents none. */}}
     {{- $tls := dig "logging" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
     {{- $auth := $tls.clientAuth | default "NoClientCert" | toString }}
-    {{- if and $tls.enabled ( ne $auth "NoClientCert" ) }}
-      {{- $errors = append $errors ( printf "pipeline.gateway.clientCertificateTenancy.enabled puts the OTLP receiver behind a load balancer, which presents no client certificate to its targets, but pipeline.logging.gateway.server.tls.clientAuth is %s, so the receiver would refuse every request. Set it to NoClientCert." $auth ) }}
+    {{- if and $tls.enabled ( ne $auth "NoClientCert" ) ( eq $header "x-amzn-mtls-clientcert-subject" ) }}
+      {{- $errors = append $errors ( printf "pipeline.gateway.clientCertificateTenancy reads X-Amzn-Mtls-Clientcert-Subject, so the OTLP receiver sits behind an AWS load balancer, which presents no client certificate to its targets. But pipeline.logging.gateway.server.tls.clientAuth is %s, so the receiver would refuse every request. Set it to NoClientCert." $auth ) }}
     {{- end }}
   {{- end }}
 
