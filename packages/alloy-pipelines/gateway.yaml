@@ -795,9 +795,24 @@ blocks:
         # string can't end one. A card number written as a JSON number passes,
         # as a numeric password after a JSON key does in the ingest rules. A
         # number in a JSON array isn't exempt.
+        #
+        # The rest exempt digits that are part of something else, from the
+        # reference installs' logs:
+        #
+        # * A run that touches a letter or an underscore on either side: an
+        #   identifier such as Materialize's 18-digit `si` collection IDs or the
+        #   Azure VM agent's `etag_` IDs, or a stretch of digits inside a hex
+        #   digest such as a container ID.
+        # * The digits after a decimal point, such as a ratio Cilium logs, or
+        #   the timestamp in a Go pseudo-version, `v1.2.2-0.<timestamp>-<hash>`.
+        # * 14 digits that start with 20: a compact `yyyymmddhhmmss` timestamp.
+        #   No card number is 14 digits and starts with 20.
+        #
+        # A card number written directly against a letter or an underscore
+        # passes.
         - stage.luhn:
             min_length: 13
-            skip_regex: '1(?:\d{18}|\d{15}|\d{12})|"(?:[^"\\]|\\.)*":\s*-?\d+'
+            skip_regex: '1(?:\d{18}|\d{15}|\d{12})|"(?:[^"\\]|\\.)*":\s*-?\d+|[A-Za-z_]\d+|\d+[A-Za-z_]|\d\.\d+|20\d{12}'
             replacement: "<redacted:luhn>"
         # Counts the lines it changed, by stream. A stream's series appears at
         # its first redaction, so an alert has to look for the series rather

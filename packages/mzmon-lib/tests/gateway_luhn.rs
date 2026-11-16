@@ -4,7 +4,8 @@
 //! in ten passes, and so would one in ten of the epoch timestamps Materialize
 //! logs as frontiers, so the stage carries a `skip_regex` for them. The same
 //! expression exempts JSON numbers, because a placeholder in place of one makes
-//! the line invalid JSON. This test
+//! the line invalid JSON, and digits that are part of an identifier, a decimal
+//! fraction, or a compact timestamp. This test
 //! renders the real `loki.process "inputPrefilter"` and the shadow branch from
 //! `gateway.yaml`, runs them on `alloy run`, and pushes lines carrying card
 //! numbers, timestamps, and both. It checks each line as it leaves the
@@ -106,6 +107,11 @@ impl Numbers {
             ("VISA", visa),
             ("VISA_GROUPED", grouped),
             ("COUNT", luhn(&format!("8{}", digits(6, 14)))),
+            // Materialize's introspection collection IDs are 2^57 plus a
+            // small offset, so 18 digits.
+            ("SI_ID", luhn(&format!("1441151880758561{}", digits(7, 1)))),
+            // A compact `yyyymmddhhmmss` timestamp.
+            ("COMPACT_TS", luhn("2026111613511")),
             ("AMEX", luhn(&format!("37{}", digits(2, 12)))),
             ("UATP", luhn(&format!("1{}", digits(3, 13)))),
             ("ONE_14", luhn(&format!("1{}", digits(4, 12)))),
@@ -121,6 +127,8 @@ impl Numbers {
             ("UATP", 15),
             ("ONE_14", 14),
             ("COUNT", 16),
+            ("SI_ID", 18),
+            ("COMPACT_TS", 14),
             ("MS", 13),
             ("US", 16),
             ("NS", 19),
@@ -241,6 +249,43 @@ const FIXTURES: &[Fixture] = &[
         id: "number-in-a-json-array",
         line: r#"{"level":"INFO","fields":{"message":"retrying","ids":[<<COUNT>>]}}"#,
         out: r#"{"level":"INFO","fields":{"message":"retrying","ids":[<redacted:luhn>]}}"#,
+    },
+    // Digits that are part of something else, from the reference installs'
+    // logs. An introspection collection ID, as environmentd logs it.
+    Fixture {
+        id: "collection-id",
+        line: r#"{"timestamp":"2026-11-12T21:16:28.582720Z","level":"INFO","fields":{"message":"collection is caught up","id":"si<<SI_ID>>","readiness":"Ready","write_frontier":"Antichain { elements: [<<MS>>] }"},"target":"mz_compute_client"}"#,
+        out: r#"{"timestamp":"2026-11-12T21:16:28.582720Z","level":"INFO","fields":{"message":"collection is caught up","id":"si<<SI_ID>>","readiness":"Ready","write_frontier":"Antichain { elements: [<<MS>>] }"},"target":"mz_compute_client"}"#,
+    },
+    // A stretch of digits inside a container ID, and one at its start.
+    Fixture {
+        id: "digits-inside-a-hex-digest",
+        line: r#"level=error msg="ContainerStatus for \"1d58dd940b6645968684c5131a1982f4cf70f<<COUNT>>d21c8fc88ff34\" failed" containerID=<<COUNT>>a4a8f18b5578666755d1171c999fa4f1"#,
+        out: r#"level=error msg="ContainerStatus for \"1d58dd940b6645968684c5131a1982f4cf70f<<COUNT>>d21c8fc88ff34\" failed" containerID=<<COUNT>>a4a8f18b5578666755d1171c999fa4f1"#,
+    },
+    Fixture {
+        id: "decimal-fraction",
+        line: "msg=\"rescheduling GC\" deleteRatio=0.<<COUNT>> adjustedDeleteRatio=0.<<COUNT>>",
+        out: "msg=\"rescheduling GC\" deleteRatio=0.<<COUNT>> adjustedDeleteRatio=0.<<COUNT>>",
+    },
+    // The Azure VM agent's goal-state IDs, joined by an underscore.
+    Fixture {
+        id: "underscore-joined-id",
+        line: "INFO ExtHandler Target handler state: enabled [etag_<<COUNT>>]",
+        out: "INFO ExtHandler Target handler state: enabled [etag_<<COUNT>>]",
+    },
+    // A Go pseudo-version, with and without the `0.` before its timestamp.
+    Fixture {
+        id: "go-pseudo-versions",
+        line: r#"{"Path":"github.com/gorilla/sessions","Version":"v1.2.2-0.<<COMPACT_TS>>-b09c17334dc2"},{"Path":"golang.org/x/exp","Version":"v0.0.0-<<COMPACT_TS>>-b09c17334dc2"}"#,
+        out: r#"{"Path":"github.com/gorilla/sessions","Version":"v1.2.2-0.<<COMPACT_TS>>-b09c17334dc2"},{"Path":"golang.org/x/exp","Version":"v0.0.0-<<COMPACT_TS>>-b09c17334dc2"}"#,
+    },
+    // The trade for exempting identifiers: a card number written directly
+    // against a letter passes.
+    Fixture {
+        id: "card-against-a-letter-passes",
+        line: "order ref=x<<VISA>> declined",
+        out: "order ref=x<<VISA>> declined",
     },
     // The shadow filter redacts the password, so the shadow branch keeps a copy.
     Fixture {

@@ -211,7 +211,7 @@ A line the sniff can't classify goes to the full tier, so a miss costs a scan ra
 
 `inputPrefilter` ends with `stage.luhn`, which replaces each run of 13 to 19 digits that passes the Luhn checksum with `<redacted:luhn>`.
 It runs in every mode of the filter, and on every line before the tier split, so the bulk tier's scan rate never applies to it.
-Its `skip_regex` has two alternatives.
+Its `skip_regex` is a set of alternatives.
 The first, `1(?:\d{18}|\d{15}|\d{12})`, exempts epoch timestamps in milliseconds, microseconds, and nanoseconds: runs of exactly 13, 16, or 19 digits that start with `1`.
 Alloy skips a run only when one match covers all of it, so the longest width goes first and the expression needs no word boundaries.
 That also exempts a timestamp followed by a unit, such as `ms`.
@@ -226,6 +226,15 @@ The alternative matches the key whole, escapes included, for the following reaso
 
 A card number written as a JSON number passes, as a numeric password after a JSON key does in the ingest rules.
 A number in a JSON array has no key before it, so one that passes the checksum still breaks its line's JSON.
+
+The rest exempt digits that belong to something else, each found in the reference installs' logs:
+
+- `[A-Za-z_]\d+` and `\d+[A-Za-z_]` exempt a run that touches a letter or an underscore, such as Materialize's 18-digit `si` collection IDs, the Azure VM agent's `etag_` IDs, or a stretch of digits inside a container ID.
+  A card number written directly against a letter or an underscore passes.
+- `\d\.\d+` exempts the digits after a decimal point, such as a ratio, or the timestamp in a Go pseudo-version like `v1.2.2-0.<timestamp>-<hash>`.
+- `20\d{12}` exempts a compact `yyyymmddhhmmss` timestamp.
+  No card number is 14 digits long and starts with `20`.
+
 A `stage.match` on the placeholder feeds `stage.metrics`, which counts changed lines in `loki_process_custom_luhn_redacted_lines_total`.
 `gateway_luhn.rs` runs the prefilter on the pinned Alloy with card numbers and Luhn-valid timestamps it generates, so the repository commits no card-shaped number.
 

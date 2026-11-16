@@ -581,7 +581,7 @@ loki.process "inputPrefilter" {
 
 	stage.luhn {
 		min_length  = 13
-		skip_regex  = "1(?:\\d{18}|\\d{15}|\\d{12})|\"(?:[^\"\\\\]|\\\\.)*\":\\s*-?\\d+"
+		skip_regex  = "1(?:\\d{18}|\\d{15}|\\d{12})|\"(?:[^\"\\\\]|\\\\.)*\":\\s*-?\\d+|[A-Za-z_]\\d+|\\d+[A-Za-z_]|\\d\\.\\d+|20\\d{12}"
 		replacement = "<redacted:luhn>"
 	}
 
