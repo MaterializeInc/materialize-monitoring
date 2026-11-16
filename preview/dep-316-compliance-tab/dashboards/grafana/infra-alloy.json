@@ -2625,7 +2625,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "{job=~\".+\", secretfilter!=\"shadow\"}\n  |= \"<redacted:\"\n"
+                        "expr": "{job=~\".+\", secretfilter!=\"shadow\"}\n  |~ \"<redacted[:]\"\n"
                       },
                       "version": "v0"
                     },
@@ -2706,7 +2706,7 @@
                   "showLineNumbers": false,
                   "showMiniMap": false
                 },
-                "content": "**These panels are hidden for ranges longer than 7 days.**\n\nFinding the lines that carry a placeholder means reading every stored line in the range, because Loki indexes labels, not line content.\n\nShorten the time range to 7 days or less and they come back. To search a longer time range, run `{job=~\".+\", secretfilter!=\"shadow\"} |= \"<redacted:\"` in [Explore](/explore). The counts above cover any time range.",
+                "content": "**These panels are hidden for ranges longer than 7 days.**\n\nFinding the lines that carry a placeholder means reading every stored line in the range, because Loki indexes labels, not line content.\n\nShorten the time range to 7 days or less and they come back. To search a longer time range, run `{job=~\".+\", secretfilter!=\"shadow\"} |~ \"<redacted[:]\"` in [Explore](/explore). The counts above cover any time range.",
                 "mode": "markdown"
               }
             },
@@ -2732,7 +2732,7 @@
                       "group": "loki",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (job, unit) (\n  rate(\n    {job=~\".+\", secretfilter!=\"shadow\"}\n      |= \"<redacted:\"\n    [$__auto]\n  )\n) * 60\n",
+                        "expr": "sum by (job, unit) (\n  rate(\n    {job=~\".+\", secretfilter!=\"shadow\"}\n      |~ \"<redacted[:]\"\n    [$__auto]\n  )\n) * 60\n",
                         "legendFormat": "{{job}} {{unit}}"
                       },
                       "version": "v0"

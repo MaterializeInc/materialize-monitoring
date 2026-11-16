@@ -216,8 +216,11 @@ For card numbers, alert while the series exists, such as `max_over_time(loki_pro
 To find the redacted lines in Loki, query for the placeholder:
 
 ```logql
-{level=~".+"} |= "<redacted:"
+{job=~".+"} |~ "<redacted[:]"
 ```
+
+Write the search as a regular expression with a bracket, as in the example.
+Loki logs the text of each query it runs, so a search for the literal `<redacted:` also finds Loki's own log lines about the earlier searches.
 
 For how the filter is placed in the pipeline and tested, see the [logging pipeline reference](../../../reference/development/pipelines/logging/#secret-filter).
 
