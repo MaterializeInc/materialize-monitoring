@@ -628,6 +628,11 @@ fn xfcc_takes_the_subject_of_exactly_one_certificate() {
                 &[(XFCC, "Subject=\"CN=victim,CN=stack-a\"")],
                 None,
             ),
+            (
+                "multi-valued",
+                &[(XFCC, "Subject=\"O=dept+CN=victim,CN=stack-a\"")],
+                None,
+            ),
             ("no-header", &[], None),
         ],
     );
@@ -677,6 +682,13 @@ fn a_subject_names_exactly_one_unescaped_cn() {
             ),
             ("two-cns", &[(HEADER, "CN=victim,CN=stack-a")], None),
             ("lowercase-cn", &[(HEADER, "CN=stack-a,cn=victim")], None),
+            // A `+` joins a second CN to the organization's attribute.
+            (
+                "multi-valued",
+                &[(HEADER, "O=department+CN=victim,CN=stack-a")],
+                None,
+            ),
+            ("multi-valued-cn", &[(HEADER, "CN=stack-a+UID=x")], None),
             ("no-cn", &[(HEADER, "O=Materialize,OU=stack-a")], None),
         ],
     );

@@ -195,6 +195,67 @@ tests:
     asserts:
       - notFailedTemplate: {}
 
+  # A rule can name a container port, and an install can rename the gateway's.
+  - it: should resolve a renamed OTLP port through extraPorts
+    template: templates/validate.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+      alloy-gateway.alloy.extraPorts:
+        - name: loki
+          port: 3100
+          targetPort: 3100
+          protocol: TCP
+        - name: telemetry
+          port: 4318
+          targetPort: 4318
+          protocol: TCP
+      alloy-gateway.networkPolicy.ingress:
+        - ports:
+            - port: telemetry
+              protocol: TCP
+          from:
+            - namespaceSelector: {}
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alloy-gateway\.networkPolicy\.ingress\[0\] admits every pod'
+
+  - it: should treat a port name no container has as covering the OTLP ports
+    template: templates/validate.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+      alloy-gateway.networkPolicy.ingress:
+        - ports:
+            - port: mystery
+              protocol: TCP
+          from:
+            - namespaceSelector: {}
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alloy-gateway\.networkPolicy\.ingress\[0\] admits every pod'
+
+  - it: should leave a named port that isn't OTLP alone
+    template: templates/validate.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+      alloy-gateway.networkPolicy.ingress:
+        - ports:
+            - port: loki
+              protocol: TCP
+            - port: http-metrics
+              protocol: TCP
+          from:
+            - namespaceSelector: {}
+        - ports:
+            - port: otlp-grpc
+              protocol: TCP
+            - port: otlp-http
+              protocol: TCP
+          from:
+            - ipBlock:
+                cidr: 10.0.0.0/24
+    asserts:
+      - notFailedTemplate: {}
+
   - it: should accept an in-cluster proxy its selector names
     template: templates/validate.yaml
     set:

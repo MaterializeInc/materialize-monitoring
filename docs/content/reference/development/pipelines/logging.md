@@ -75,8 +75,9 @@ When you change the gateway, keep these true:
 - Each format's pattern refuses a header that names more than one certificate.
   The collector joins the values of a repeated header with `;`, and Envoy separates appended certificates with `,`.
   A new format needs a pattern that refuses both, and a test case for each.
-- Each pattern takes the CN only from a subject with exactly one CN and no `\`.
+- Each pattern takes the CN only from a subject with exactly one CN and no `\` or `+`.
   An escape can hide a separator: `O=dept\,CN=victim` puts a second CN inside the organization.
+  A `+` joins one to it: `O=dept+CN=victim`.
 
 `packages/mzmon-lib/tests/gateway_client_tenant.rs` sends each forgery it knows of through `alloy run`.
 Add a case when you add a way in.

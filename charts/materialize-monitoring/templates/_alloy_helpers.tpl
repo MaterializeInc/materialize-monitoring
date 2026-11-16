@@ -2376,7 +2376,9 @@ The tenant comes from a header, and any pod that can reach 4317 or 4318 can
 send that header itself. So the gateway's NetworkPolicy has to admit the proxy
 that terminates TLS to those ports, and nothing else. A rule that lists no ports
 covers them, and so does a range, `port` to `endPort`, that includes either. A
-peer admits every pod when it is missing (no `from`) or when each
+named port resolves through the gateway's container ports, and a name none of
+them has counts as covering them. A peer admits every pod when it is missing
+(no `from`) or when each
 selector it has is empty: `namespaceSelector: {}` is every namespace, and
 `podSelector: {}` every pod in the gateway's. An `ipBlock`, or a selector that
 names the proxy's pods, passes; whether it names only the proxy is the
@@ -2409,14 +2411,29 @@ Usage:
     {{- if not ( and $np.enabled ( has "Ingress" ( $np.policyTypes | default list ) ) ) }}
       {{- $errors = append $errors ( printf "%s, but alloy-gateway.networkPolicy doesn't restrict ingress, so every pod in the cluster can reach 4317 and 4318. Admit only the proxy that terminates TLS to those ports: its subnets by ipBlock, or its pods by a selector that names them." $setting ) }}
     {{- else }}
+      {{- /* A rule may name a container port. The gateway's come from
+             alloy.extraPorts, whose names and numbers an install can change,
+             plus the subchart's own `http-metrics`. */}}
+      {{- $alloy := ( index $.Values "alloy-gateway" | default dict ).alloy | default dict }}
+      {{- $named := dict "http-metrics" ( toString ( $alloy.listenPort | default 12345 ) ) }}
+      {{- range $ep := $alloy.extraPorts | default list }}
+        {{- if $ep.name }}
+          {{- $_ := set $named ( toString $ep.name ) ( toString ( $ep.targetPort | default $ep.port ) ) }}
+        {{- end }}
+      {{- end }}
       {{- $open := list }}
       {{- range $i, $rule := $np.ingress | default list }}
         {{- $covers := not $rule.ports }}
         {{- range $p := $rule.ports | default list }}
           {{- $port := toString ( $p.port | default "" ) }}
-          {{- if or ( not $port ) ( has $port ( list "otlp-grpc" "otlp-http" ) ) }}
+          {{- if hasKey $named $port }}
+            {{- $port = index $named $port }}
+          {{- end }}
+          {{- if not ( regexMatch "^[0-9]+$" $port ) }}
+            {{- /* No port, or a name no container port has: assume the
+                   worst. */}}
             {{- $covers = true }}
-          {{- else if regexMatch "^[0-9]+$" $port }}
+          {{- else }}
             {{- /* A numeric port can open a range up to endPort. */}}
             {{- $end := $p.endPort | default $port | int }}
             {{- if and ( le ( int $port ) 4318 ) ( ge $end 4317 ) }}
