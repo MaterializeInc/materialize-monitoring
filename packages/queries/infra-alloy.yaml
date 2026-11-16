@@ -3105,6 +3105,10 @@ queries:
   # no namespace, and on the reference installs they are a large share of the
   # placeholders. A container's `job` is `<namespace>/<container>`, and a
   # journal line's names the journal, beside its systemd `unit`.
+  #
+  # Loki logs every query it runs, query text included, so a search for the
+  # literal `<redacted:` finds its own log lines on the next run. The searches
+  # use `|~ "<redacted[:]"`, which matches the same lines and not its own text.
   - id: infra.alloy.compliance.stored.rate
     stability: experimental
     description:
@@ -3123,7 +3127,7 @@ queries:
       sum by (job, unit) (
         rate(
           {job=~".+", secretfilter!="shadow"}
-            |= "<redacted:"
+            |~ "<redacted[:]"
           %%{interval}
         )
       ) * 60
@@ -3140,7 +3144,7 @@ queries:
         so it's slow when there are few matches.
     logQL: |
       {job=~".+", secretfilter!="shadow"}
-        |= "<redacted:"
+        |~ "<redacted[:]"
 
   - id: infra.alloy.compliance.shadow_copies.rate
     stability: experimental

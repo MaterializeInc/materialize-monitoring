@@ -2967,7 +2967,7 @@ spec:
                   spec:
                     expr: |
                       {job=~".+", secretfilter!="shadow"}
-                        |= "<redacted:"
+                        |~ "<redacted[:]"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -3038,7 +3038,7 @@ spec:
 
                 Finding the lines that carry a placeholder means reading every stored line in the range, because Loki indexes labels, not line content.
 
-                Shorten the time range to 7 days or less and they come back. To search a longer time range, run `{job=~".+", secretfilter!="shadow"} |= "<redacted:"` in [Explore](/explore). The counts above cover any time range.
+                Shorten the time range to 7 days or less and they come back. To search a longer time range, run `{job=~".+", secretfilter!="shadow"} |~ "<redacted[:]"` in [Explore](/explore). The counts above cover any time range.
               mode: markdown
           version: ""
     compliance-stored-rate:
@@ -3061,7 +3061,7 @@ spec:
                       sum by (job, unit) (
                         rate(
                           {job=~".+", secretfilter!="shadow"}
-                            |= "<redacted:"
+                            |~ "<redacted[:]"
                           [$__auto]
                         )
                       ) * 60

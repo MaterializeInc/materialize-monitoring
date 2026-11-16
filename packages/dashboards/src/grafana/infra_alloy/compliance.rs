@@ -90,7 +90,7 @@ const STORED_NOTE: &str = "**These panels are hidden for ranges longer than 7 da
      Finding the lines that carry a placeholder means reading every stored line in the range, \
      because Loki indexes labels, not line content.\n\n\
      Shorten the time range to 7 days or less and they come back. To search a longer time range, \
-     run `{job=~\".+\", secretfilter!=\"shadow\"} |= \"<redacted:\"` in [Explore](/explore). \
+     run `{job=~\".+\", secretfilter!=\"shadow\"} |~ \"<redacted[:]\"` in [Explore](/explore). \
      The counts above cover any time range.";
 
 pub fn rows(q: &Queries) -> Vec<Row> {
@@ -680,6 +680,19 @@ mod tests {
                 assert!(expr.contains("by (job, unit)"), "{name}: {expr}");
             }
         }
+    }
+
+    #[test]
+    fn no_store_search_finds_its_own_query_log() {
+        // Loki logs each query it runs. A search whose text contains the
+        // placeholder it looks for finds that log line on its next run.
+        let elements = elements();
+        for (name, panel) in &elements {
+            for expr in exprs(panel) {
+                assert!(!expr.contains("<redacted:"), "{name}: {expr}");
+            }
+        }
+        assert!(!STORED_NOTE.contains("<redacted:"), "{STORED_NOTE}");
     }
 
     #[test]
