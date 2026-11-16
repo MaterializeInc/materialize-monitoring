@@ -158,6 +158,43 @@ tests:
       - failedTemplate:
           errorPattern: 'alloy-gateway\.networkPolicy\.ingress\[0\], ingress\[1\], ingress\[2\] admits every pod'
 
+  - it: should refuse a port range that includes the OTLP ports
+    template: templates/validate.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+      alloy-gateway.networkPolicy.ingress:
+        - ports:
+            - port: 4000
+              endPort: 5000
+              protocol: TCP
+          from:
+            - namespaceSelector: {}
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alloy-gateway\.networkPolicy\.ingress\[0\] admits every pod'
+
+  - it: should leave a port range that misses the OTLP ports alone
+    template: templates/validate.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+      alloy-gateway.networkPolicy.ingress:
+        - ports:
+            - port: 4319
+              endPort: 5000
+              protocol: TCP
+          from:
+            - namespaceSelector: {}
+        - ports:
+            - port: 4317
+              protocol: TCP
+            - port: 4318
+              protocol: TCP
+          from:
+            - ipBlock:
+                cidr: 10.0.0.0/24
+    asserts:
+      - notFailedTemplate: {}
+
   - it: should accept an in-cluster proxy its selector names
     template: templates/validate.yaml
     set:

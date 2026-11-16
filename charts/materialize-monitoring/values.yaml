@@ -1127,7 +1127,7 @@ pipeline:
     # | Envoy, with `forward_client_cert_details: SANITIZE_SET` and `subject` set | `X-Forwarded-Client-Cert` | `xfcc` |
     #
     # The gateway drops a request with no header, a header sent twice or naming more than one certificate,
-    # or a CN that isn't 1 to 150 letters, digits, `.`, `_`, and `-`.
+    # a subject with more than one CN or any escaped character, or a CN that isn't 1 to 150 letters, digits, `.`, `_`, and `-`.
     # It replaces whatever tenant the sender set, and no other way in can set one:
     # the gateway removes `mzmonTenant` from scraped and remote-written metrics.
     #

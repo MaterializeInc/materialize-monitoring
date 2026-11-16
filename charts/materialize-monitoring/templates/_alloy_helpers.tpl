@@ -2375,7 +2375,8 @@ Validate `pipeline.gateway.clientCertificateTenancy`.
 The tenant comes from a header, and any pod that can reach 4317 or 4318 can
 send that header itself. So the gateway's NetworkPolicy has to admit the proxy
 that terminates TLS to those ports, and nothing else. A rule that lists no ports
-covers them. A peer admits every pod when it is missing (no `from`) or when each
+covers them, and so does a range, `port` to `endPort`, that includes either. A
+peer admits every pod when it is missing (no `from`) or when each
 selector it has is empty: `namespaceSelector: {}` is every namespace, and
 `podSelector: {}` every pod in the gateway's. An `ipBlock`, or a selector that
 names the proxy's pods, passes; whether it names only the proxy is the
@@ -2412,8 +2413,15 @@ Usage:
       {{- range $i, $rule := $np.ingress | default list }}
         {{- $covers := not $rule.ports }}
         {{- range $p := $rule.ports | default list }}
-          {{- if or ( not $p.port ) ( has ( toString $p.port ) ( list "4317" "4318" "otlp-grpc" "otlp-http" ) ) }}
+          {{- $port := toString ( $p.port | default "" ) }}
+          {{- if or ( not $port ) ( has $port ( list "otlp-grpc" "otlp-http" ) ) }}
             {{- $covers = true }}
+          {{- else if regexMatch "^[0-9]+$" $port }}
+            {{- /* A numeric port can open a range up to endPort. */}}
+            {{- $end := $p.endPort | default $port | int }}
+            {{- if and ( le ( int $port ) 4318 ) ( ge $end 4317 ) }}
+              {{- $covers = true }}
+            {{- end }}
           {{- end }}
         {{- end }}
         {{- if $covers }}

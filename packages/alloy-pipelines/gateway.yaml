@@ -431,6 +431,13 @@ blocks:
   # whichever comes first: a request that carries the header twice arrives
   # with the values joined by `;`.
   #
+  # Each pattern reads the subject as a list of `type=value` attributes and
+  # takes the CN only when there is exactly one. The other attributes' types
+  # match a pattern that can't spell `CN` in any case, and no value may hold a
+  # `\`. An escape could hide a separator, as `O=dept\,CN=victim` hides a
+  # second CN inside the organization, and Materialize's certificates have no
+  # use for one.
+  #
   # `subject`: an RFC 2253 subject, as an AWS load balancer sends in
   # `X-Amzn-Mtls-Clientcert-Subject` and nginx in `$ssl_client_s_dn`. It never
   # contains `;` unescaped, so the pattern refuses any.
@@ -460,7 +467,7 @@ blocks:
         - action:
             key: mzmonTenantSubject
             action: extract
-            pattern: '^(?:[^;]*,)?\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\s*(?:,[^;]*)?$'
+            pattern: '^(?:\s*(?:[A-BD-Za-bd-z][A-Za-z0-9-]*|[Cc](?:[A-MO-Za-mo-z0-9-][A-Za-z0-9-]*)?|[Cc][Nn][A-Za-z0-9-]+|[0-9]+(?:\.[0-9]+)*)=[^,;\\]*,)*\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\s*(?:,\s*(?:[A-BD-Za-bd-z][A-Za-z0-9-]*|[Cc](?:[A-MO-Za-mo-z0-9-][A-Za-z0-9-]*)?|[Cc][Nn][A-Za-z0-9-]+|[0-9]+(?:\.[0-9]+)*)=[^,;\\]*)*$'
         - *client_tenant_clear
         - &client_tenant_output
           output:
@@ -484,7 +491,7 @@ blocks:
         - action:
             key: mzmonTenantSubject
             action: extract
-            pattern: '^(?:(?:By|Hash|Cert|Chain|URI|DNS)=(?:"(?:[^"\\]|\\.)*"|[^";,]*);)*Subject="(?:[^"\\]*,)?\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\s*(?:,[^"\\]*)?"(?:;(?:By|Hash|Cert|Chain|URI|DNS)=(?:"(?:[^"\\]|\\.)*"|[^";,]*))*$'
+            pattern: '^(?:(?:By|Hash|Cert|Chain|URI|DNS)=(?:"(?:[^"\\]|\\.)*"|[^";,]*);)*Subject="(?:\s*(?:[A-BD-Za-bd-z][A-Za-z0-9-]*|[Cc](?:[A-MO-Za-mo-z0-9-][A-Za-z0-9-]*)?|[Cc][Nn][A-Za-z0-9-]+|[0-9]+(?:\.[0-9]+)*)=[^,;"\\]*,)*\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\s*(?:,\s*(?:[A-BD-Za-bd-z][A-Za-z0-9-]*|[Cc](?:[A-MO-Za-mo-z0-9-][A-Za-z0-9-]*)?|[Cc][Nn][A-Za-z0-9-]+|[0-9]+(?:\.[0-9]+)*)=[^,;"\\]*)*"(?:;(?:By|Hash|Cert|Chain|URI|DNS)=(?:"(?:[^"\\]|\\.)*"|[^";,]*))*$'
         - *client_tenant_clear
         - *client_tenant_output
 

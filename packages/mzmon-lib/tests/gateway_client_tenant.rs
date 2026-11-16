@@ -618,6 +618,16 @@ fn xfcc_takes_the_subject_of_exactly_one_certificate() {
                 None,
             ),
             ("rfc2253", &[(XFCC, "CN=stack-a,O=Materialize")], None),
+            (
+                "escaped-comma",
+                &[(XFCC, "Subject=\"CN=stack-a,O=dept\\,CN=victim\"")],
+                None,
+            ),
+            (
+                "two-cns",
+                &[(XFCC, "Subject=\"CN=victim,CN=stack-a\"")],
+                None,
+            ),
             ("no-header", &[], None),
         ],
     );
@@ -639,6 +649,35 @@ fn the_header_name_comes_from_the_environment() {
                 &[(HEADER, "CN=victim,O=Materialize")],
                 None,
             ),
+        ],
+    );
+}
+
+#[test]
+fn a_subject_names_exactly_one_unescaped_cn() {
+    check_log_tenants(
+        "clientTenantSubject",
+        &[],
+        &[
+            (
+                "other-attributes",
+                &[(HEADER, "C=US,O=Materialize,OU=Cloud,CN=stack-d")],
+                Some("stack-d"),
+            ),
+            (
+                "numeric-type",
+                &[(HEADER, "CN=stack-e,0.9.2342.19200300.100.1.1=x")],
+                Some("stack-e"),
+            ),
+            // The organization's escaped comma hides a second CN.
+            (
+                "escaped-comma",
+                &[(HEADER, "CN=stack-a,O=department\\,CN=victim")],
+                None,
+            ),
+            ("two-cns", &[(HEADER, "CN=victim,CN=stack-a")], None),
+            ("lowercase-cn", &[(HEADER, "CN=stack-a,cn=victim")], None),
+            ("no-cn", &[(HEADER, "O=Materialize,OU=stack-a")], None),
         ],
     );
 }

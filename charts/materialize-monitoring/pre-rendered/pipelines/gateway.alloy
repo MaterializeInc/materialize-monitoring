@@ -359,7 +359,7 @@ otelcol.processor.attributes "clientTenantSubject" {
 	action {
 		key     = "mzmonTenantSubject"
 		action  = "extract"
-		pattern = "^(?:[^;]*,)?\\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\\s*(?:,[^;]*)?$"
+		pattern = "^(?:\\s*(?:[A-BD-Za-bd-z][A-Za-z0-9-]*|[Cc](?:[A-MO-Za-mo-z0-9-][A-Za-z0-9-]*)?|[Cc][Nn][A-Za-z0-9-]+|[0-9]+(?:\\.[0-9]+)*)=[^,;\\\\]*,)*\\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\\s*(?:,\\s*(?:[A-BD-Za-bd-z][A-Za-z0-9-]*|[Cc](?:[A-MO-Za-mo-z0-9-][A-Za-z0-9-]*)?|[Cc][Nn][A-Za-z0-9-]+|[0-9]+(?:\\.[0-9]+)*)=[^,;\\\\]*)*$"
 	}
 
 	action {
@@ -397,7 +397,7 @@ otelcol.processor.attributes "clientTenantXfcc" {
 	action {
 		key     = "mzmonTenantSubject"
 		action  = "extract"
-		pattern = "^(?:(?:By|Hash|Cert|Chain|URI|DNS)=(?:\"(?:[^\"\\\\]|\\\\.)*\"|[^\";,]*);)*Subject=\"(?:[^\"\\\\]*,)?\\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\\s*(?:,[^\"\\\\]*)?\"(?:;(?:By|Hash|Cert|Chain|URI|DNS)=(?:\"(?:[^\"\\\\]|\\\\.)*\"|[^\";,]*))*$"
+		pattern = "^(?:(?:By|Hash|Cert|Chain|URI|DNS)=(?:\"(?:[^\"\\\\]|\\\\.)*\"|[^\";,]*);)*Subject=\"(?:\\s*(?:[A-BD-Za-bd-z][A-Za-z0-9-]*|[Cc](?:[A-MO-Za-mo-z0-9-][A-Za-z0-9-]*)?|[Cc][Nn][A-Za-z0-9-]+|[0-9]+(?:\\.[0-9]+)*)=[^,;\"\\\\]*,)*\\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\\s*(?:,\\s*(?:[A-BD-Za-bd-z][A-Za-z0-9-]*|[Cc](?:[A-MO-Za-mo-z0-9-][A-Za-z0-9-]*)?|[Cc][Nn][A-Za-z0-9-]+|[0-9]+(?:\\.[0-9]+)*)=[^,;\"\\\\]*)*\"(?:;(?:By|Hash|Cert|Chain|URI|DNS)=(?:\"(?:[^\"\\\\]|\\\\.)*\"|[^\";,]*))*$"
 	}
 
 	action {
