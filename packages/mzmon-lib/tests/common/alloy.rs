@@ -15,6 +15,8 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use mzmon_lib::alloy::ast::{AttributeValue, Expression, ToBlock};
+use mzmon_lib::alloy::pipeline::Pipeline;
 use regex::Regex;
 
 /// Whether to run; panics instead of skipping where `MZMON_REQUIRE_ALLOY` is set.
@@ -101,6 +103,47 @@ pub fn label_set(text: &str) -> BTreeMap<String, String> {
         .captures_iter(text)
         .map(|c| (c[1].to_string(), c[2].to_string()))
         .collect()
+}
+
+/// The block `component "label"` from `gateway.yaml`, rendered with
+/// `attributes` replaced, such as a `forward_to` aimed at a `loki.echo`.
+pub fn gateway_block(
+    component: &str,
+    label: &str,
+    attributes: Vec<(&str, AttributeValue)>,
+) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../alloy-pipelines/gateway.yaml");
+    let yaml = std::fs::read_to_string(path).expect("read gateway.yaml");
+    let pipeline = Pipeline::from_yaml_str(&yaml).expect("parse gateway.yaml");
+    let mut block = pipeline
+        .blocks
+        .iter()
+        .map(|b| b.to_block().expect("to_block"))
+        .find(|b| b.component == component && b.label.as_deref() == Some(label))
+        .unwrap_or_else(|| panic!("gateway.yaml defines {component} \"{label}\""));
+    for (name, value) in attributes {
+        block.attributes.insert(name.to_string(), value);
+    }
+    block.render().expect("render")
+}
+
+/// A `forward_to`-style list of component references.
+pub fn refs(ids: &[&str]) -> AttributeValue {
+    AttributeValue::Array(
+        ids.iter()
+            .map(|id| AttributeValue::Expression(Expression::name_to_ref(*id)))
+            .collect(),
+    )
+}
+
+/// The sum of a counter's series that one component exports.
+pub fn counter(alloy: &Alloy, name: &str, component_id: &str) -> f64 {
+    let (_, body) = http(alloy.server_port, "GET", "/metrics", "").expect("scrape alloy");
+    body.lines()
+        .filter(|l| l.starts_with(&format!("{name}{{")))
+        .filter(|l| l.contains(&format!("component_id=\"{component_id}\"")))
+        .filter_map(|l| l.rsplit(' ').next()?.parse::<f64>().ok())
+        .sum()
 }
 
 /// An `alloy run` that is killed when dropped.

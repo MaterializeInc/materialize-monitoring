@@ -401,6 +401,8 @@ pub enum StageBlock {
     Truncate(StageTruncateBlock),
     #[serde(rename = "stage.luhn")]
     Luhn(StageLuhnBlock),
+    #[serde(rename = "stage.metrics")]
+    Metrics(StageMetricsBlock),
     #[serde(rename = "raw")]
     Raw(Block),
 }
@@ -425,6 +427,7 @@ impl_to_block_dispatch!(StageBlock {
     Tenant,
     Truncate,
     Luhn,
+    Metrics,
     Raw
 });
 
@@ -1170,6 +1173,107 @@ impl ToBlock for StageLuhnBlock {
         }
         Ok(Block {
             component: "stage.luhn".into(),
+            label: None,
+            attributes,
+            ..Default::default()
+        })
+    }
+}
+
+// ----- stage.metrics -----
+
+/// `stage.metrics` — Prometheus metrics defined from the entries that reach it.
+/// Each metric carries the entry's labels.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StageMetricsBlock {
+    pub blocks: Vec<MetricsSubBlock>,
+}
+
+impl ToBlock for StageMetricsBlock {
+    fn to_block(&self) -> Result<Block> {
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Block {
+            component: "stage.metrics".into(),
+            label: None,
+            attributes: IndexMap::new(),
+            blocks,
+        })
+    }
+}
+
+/// Sub-block under a `stage.metrics` body. Gauges and histograms use `raw`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MetricsSubBlock {
+    #[serde(rename = "metric.counter")]
+    Counter(MetricCounterBlock),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(MetricsSubBlock { Counter, Raw });
+
+/// `metric.counter` — increments per entry (`inc`) or adds a value read from
+/// the extracted map (`add`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricCounterBlock {
+    /// Name after `prefix`; Alloy appends no `_total`.
+    pub name: String,
+    /// `inc` or `add`.
+    pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Alloy default `loki_process_custom_`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
+    /// Alloy default `5m`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_idle_duration: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_all: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count_entry_bytes: Option<bool>,
+}
+
+impl ToBlock for MetricCounterBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("name".into(), AttributeValue::String(self.name.clone()));
+        if let Some(v) = &self.description {
+            attributes.insert("description".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.prefix {
+            attributes.insert("prefix".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.max_idle_duration {
+            attributes.insert(
+                "max_idle_duration".into(),
+                AttributeValue::String(v.clone()),
+            );
+        }
+        if let Some(v) = &self.source {
+            attributes.insert("source".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.value {
+            attributes.insert("value".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = self.match_all {
+            attributes.insert("match_all".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = self.count_entry_bytes {
+            attributes.insert("count_entry_bytes".into(), AttributeValue::Bool(v));
+        }
+        attributes.insert("action".into(), AttributeValue::String(self.action.clone()));
+        Ok(Block {
+            component: "metric.counter".into(),
             label: None,
             attributes,
             ..Default::default()
@@ -2238,7 +2342,7 @@ mod tests {
                     - stage.luhn:
                         min_length: 13
                         delimiters: ""
-                        skip_regex: '\b1(?:\d{12}|\d{15}|\d{18})\b'
+                        skip_regex: '1(?:\d{18}|\d{15}|\d{12})'
                         replacement: "<redacted:luhn>"
             "#,
         )
@@ -2255,13 +2359,79 @@ mod tests {
                 "\t\tmin_length  = 13\n",
                 "\t\tdelimiters  = \"\"\n",
                 "\t\tskip_regex  = ",
-                r#""\\b1(?:\\d{12}|\\d{15}|\\d{18})\\b""#,
+                r#""1(?:\\d{18}|\\d{15}|\\d{12})""#,
                 "\n",
                 "\t\treplacement = \"<redacted:luhn>\"\n",
                 "\t}\n",
                 "}\n",
             ),
         );
+    }
+
+    #[test]
+    fn stage_metrics_counter_round_trips() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.match:
+                        selector: '{job=~".*"} |= "<redacted:luhn>"'
+                        blocks:
+                          - stage.metrics:
+                              blocks:
+                                - metric.counter:
+                                    name: luhn_redacted_lines_total
+                                    description: "Lines with a card number replaced."
+                                    match_all: true
+                                    action: inc
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.match {\n",
+                "\t\tselector = ",
+                r#""{job=~\".*\"} |= \"<redacted:luhn>\"""#,
+                "\n",
+                "\n",
+                "\t\tstage.metrics {\n",
+                "\t\t\tmetric.counter {\n",
+                "\t\t\t\tname        = \"luhn_redacted_lines_total\"\n",
+                "\t\t\t\tdescription = \"Lines with a card number replaced.\"\n",
+                "\t\t\t\tmatch_all   = true\n",
+                "\t\t\t\taction      = \"inc\"\n",
+                "\t\t\t}\n",
+                "\t\t}\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_metrics_refuses_a_counter_without_an_action() {
+        let parsed = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: []
+                  blocks:
+                    - stage.metrics:
+                        blocks:
+                          - metric.counter:
+                              name: lines_total
+                              match_all: true
+            "#,
+        );
+        assert!(parsed.is_err(), "a counter without an action parsed");
     }
 
     #[test]
