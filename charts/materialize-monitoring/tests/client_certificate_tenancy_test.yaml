@@ -1,0 +1,110 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# `pipeline.gateway.clientCertificateTenancy`: each OTLP request's tenant from
+# the subject header of the client certificate a load balancer verified.
+#
+# The identity stages themselves are tested on `alloy run`, in
+# packages/mzmon-lib/tests/gateway_client_tenant.rs. These hold the chart to
+# wiring them in only when asked, and to refusing the setting while a pod could
+# reach the OTLP ports and send the header itself.
+suite: client certificate tenancy
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.destinations.loki.enabled: false
+  pipeline.destinations.thanos.enabled: false
+tests:
+  - it: should leave the OTLP receiver and inputBridge as they are by default
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'include_metadata'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.receiver\.otlp "gateway" \{[\s\S]*?logs = \[\s*otelcol\.exporter\.loki\.bridge\.input,'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.receiver\.prometheus "inputBridge" \{\s*output \{\s*metrics = \[\s*otelcol\.processor\.transform\.inputMetricProcessor\.input,'
+
+  - it: should read the header on both listeners and scrub every other metric path when on
+    templates:
+      - templates/pipelines/cm-alloy-gateway.yaml
+      - templates/pipelines/validator/cm-validate-gateway.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+      alloy-gateway.networkPolicy.ingress:
+        - ports:
+            - port: 4317
+              protocol: TCP
+            - port: 4318
+              protocol: TCP
+          from:
+            - ipBlock:
+                cidr: 10.0.0.0/24
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'grpc \{\s*include_metadata = true[\s\S]*http \{\s*include_metadata = true'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'output \{\s*metrics = \[\s*otelcol\.processor\.attributes\.clientTenant\.input,\s*\]\s*logs = \[\s*otelcol\.processor\.attributes\.clientTenant\.input,'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.receiver\.prometheus "inputBridge" \{\s*output \{\s*metrics = \[\s*otelcol\.processor\.transform\.localTenant\.input,'
+
+  - it: should refuse it while the chart's default policy admits every pod to the OTLP ports
+    template: templates/validate.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alloy-gateway\.networkPolicy\.ingress\[0\] admits pods to the OTLP ports'
+
+  - it: should refuse it with no NetworkPolicy
+    template: templates/validate.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+      alloy-gateway.networkPolicy.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "alloy-gateway.networkPolicy doesn't restrict ingress"
+
+  # A rule that lists no ports covers every port, and one with no `from`
+  # admits every source.
+  - it: should refuse a rule that covers the OTLP ports by omission
+    template: templates/validate.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+      alloy-gateway.networkPolicy.ingress:
+        - from:
+            - podSelector: {}
+        - ports:
+            - port: otlp-http
+              protocol: TCP
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alloy-gateway\.networkPolicy\.ingress\[0\], ingress\[1\] admits pods'
+
+  - it: should refuse a receiver that asks the load balancer for a client certificate
+    template: templates/validate.yaml
+    set:
+      pipeline.gateway.clientCertificateTenancy.enabled: true
+      alloy-gateway.networkPolicy.ingress:
+        - ports:
+            - port: 4318
+              protocol: TCP
+          from:
+            - ipBlock:
+                cidr: 10.0.0.0/24
+      pipeline.logging.gateway.server.tls:
+        enabled: true
+        certFile: /etc/tls/tls.crt
+        keyFile: /etc/tls/tls.key
+        clientCAFile: /etc/tls/ca.crt
+        clientAuth: RequireAndVerifyClientCert
+    asserts:
+      - failedTemplate:
+          errorPattern: 'presents no client certificate to its targets, but pipeline\.logging\.gateway\.server\.tls\.clientAuth is RequireAndVerifyClientCert'

@@ -95,7 +95,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | **Grafana → backends client certificates** | ✅ Modeled | `connections.datasources.*.tls.clientCert`, a `valuesFrom` reference to a Secret. `mtls-phase2` sets it to Grafana's own certificate for Alertmanager |
 | **Authenticated node-exporter scrape** | ⚠️ Parked | `nodeExporter.kubeRBACProxy` off by default — a sidecar on every node to protect an endpoint that exposes no secrets |
 | **NetworkPolicy coverage** | ✅ Shipped | Every workload, on by default ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)). Ingress is narrowed to known peers; egress is narrowed only where the chart knows the destination set, which is node-exporter, kube-state-metrics and Loki |
-| **External client-cert auth (BYOC)** | 📄 Designed | [BYOC design doc](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint) |
+| **External client-cert auth (BYOC)** | 📄 Designed | [BYOC design doc](../20260813-byoc-observability/#one-verification-at-the-load-balancer) |
 
 The pattern in that table is worth stating directly: **the values surface implies more security than the deployment has.**
 An operator reading `minVersion: TLS13` next to `enabled: false` can reasonably come away thinking TLS is a switch rather than a project.

@@ -408,7 +408,9 @@ The call-home destination has to leave `tls.caFile` unset for that to apply, bec
 **Churn and revocation are ordinary rather than exceptional.**
 BYOC customers are operated accounts.
 Self-managed installs get decommissioned, forked into test clusters, cloned into staging, and left running after a contract ends.
-Revocation is a routine operation in this segment, and [`otelcol.receiver.otlp` has no CRL support](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint), which leaves CRL freshness at the load balancer as the only control and its refresh interval as the revocation window.
+Revocation is a routine operation in this segment,
+and [the load balancer is the only place the certificate is checked](../20260813-byoc-observability/#one-verification-at-the-load-balancer),
+which leaves CRL freshness at the load balancer as the only control and its refresh interval as the revocation window.
 
 **The credential should carry the consent grant.**
 This is the argument specific to this design.
@@ -438,7 +440,7 @@ This is the [token-exchange shape the query-API doc proposes for BYOC ingest](..
 
 Concretely, in the order it should ship:
 
-1. **Direct mTLS first**, using the license-carried certificate, for the levels that ship first. It needs nothing that does not exist, and the [BYOC ingress will already verify it](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint). This is what makes the first customer possible.
+1. **Direct mTLS first**, using the license-carried certificate, for the levels that ship first. It needs nothing that does not exist, and the [BYOC ingress will already verify it](../20260813-byoc-observability/#one-verification-at-the-load-balancer). This is what makes the first customer possible.
 2. **Token exchange next**, authenticated by that same certificate, with the grant in the claim. This is what makes the feature reachable for proxied customers and revocable in minutes instead of a CRL interval.
 3. **Both paths stay supported.** mTLS has no online dependency, which is a real property to keep for customers whose networks make an issuer round trip fragile.
 

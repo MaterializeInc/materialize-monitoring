@@ -270,8 +270,19 @@ Usage:
   {{- end }}
   {{- $gateway }}
 
-  {{- /* Metric processors */}}
-  {{- $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}
+  {{- /* Metric processors. Under client-certificate tenancy, inputBridge
+         forwards through localTenant, which removes the tenant label from
+         everything the certificate didn't set. The same guard as the shadow
+         tap. */}}
+  {{- $metrics := $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}
+  {{- if ( include "mzmon.alloyGateway.clientCertificateTenancy" $ ) }}
+    {{- $bridge := "otelcol.receiver.prometheus \"inputBridge\" {\n\toutput {\n\t\tmetrics = [\n\t\t\totelcol.processor.transform.inputMetricProcessor.input,\n\t\t]\n\t}\n}" }}
+    {{- if not ( contains $bridge $metrics ) }}
+      {{- fail "gateway-metrics.alloy no longer defines otelcol.receiver.prometheus \"inputBridge\" as the chart expects; update mzmon.alloyGateway.pipeline.contents" }}
+    {{- end }}
+    {{- $metrics = replace $bridge ( replace "inputMetricProcessor" "localTenant" $bridge ) $metrics }}
+  {{- end }}
+  {{- $metrics }}
 
   {{- /* Cloud provider pulls, as custom components. Always included: a
          `declare` nothing instantiates costs nothing, and this way the file the
@@ -342,6 +353,20 @@ loki.rules.kubernetes {{ printf "tenant_%d" $i | quote }} {
 {{- end }}
 
 {{/*
+Whether the gateway takes each OTLP request's tenant from the client
+certificate a load balancer verified, `pipeline.gateway.clientCertificateTenancy`.
+"true" or empty.
+
+Usage:
+  {{- if ( include "mzmon.alloyGateway.clientCertificateTenancy" $ ) }}
+*/}}
+{{- define "mzmon.alloyGateway.clientCertificateTenancy" }}
+  {{- if dig "gateway" "clientCertificateTenancy" "enabled" false ( $.Values.pipeline | default dict ) }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{/*
 Generate the alloy-gateway pipeline sources.
 
 Usage:
@@ -354,6 +379,7 @@ Usage:
          tree covers prometheus.receive_http. */}}
   {{- $tls := dig "logging" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
   {{- $metricTls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
+  {{- $clientTenancy := include "mzmon.alloyGateway.clientCertificateTenancy" $ }}
 loki.source.api "gateway" {
     forward_to = [
         loki.process.inputPrefilter.receiver,
@@ -367,20 +393,35 @@ loki.source.api "gateway" {
 
 otelcol.receiver.otlp "gateway" {
     grpc {
+      {{- if $clientTenancy }}
+        include_metadata = true
+      {{- end }}
       {{- include "mzmon.alloy.serverTls" ( dict "tls" $tls "flavor" "otelcol" "indent" 8 ) }}
     }
 
     http {
+      {{- if $clientTenancy }}
+        include_metadata = true
+      {{- end }}
       {{- include "mzmon.alloy.serverTls" ( dict "tls" $tls "flavor" "otelcol" "indent" 8 ) }}
     }
 
     output {
+      {{- if $clientTenancy }}
+        metrics = [
+            otelcol.processor.attributes.clientTenant.input,
+        ]
+        logs = [
+            otelcol.processor.attributes.clientTenant.input,
+        ]
+      {{- else }}
         metrics = [
             otelcol.processor.transform.inputMetricProcessor.input,
         ]
         logs = [
             otelcol.exporter.loki.bridge.input,
         ]
+      {{- end }}
     }
 }
 
@@ -1872,6 +1913,10 @@ Usage:
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
+  {{- $res := include "mzmon.alloy.validate.clientCertificateTenancy" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
   {{- range $release := ( list "alloy-agent" "alloy-gateway" ) }}
     {{- if hasKey $.Subcharts $release }}
       {{- $res := include "mzmon.alloy.validate.networkPolicy" ( dict "context" $ "release" $release ) | fromYaml }}
@@ -2287,6 +2332,69 @@ Usage:
     {{- end }}
   {{- else }}
     {{- $warnings = append $warnings ( printf "%s.networkPolicy.enabled is recommended in production." $release ) }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate `pipeline.gateway.clientCertificateTenancy`.
+
+The tenant comes from a header, and any pod that can reach 4317 or 4318 can
+send that header itself. So the gateway's NetworkPolicy has to admit the load
+balancer to those ports and no pod. A rule that lists no ports covers them, and
+a rule with no `from`, a `podSelector`, or a `namespaceSelector` admits pods. An
+`ipBlock` passes, because the load balancer's subnets can only be written that
+way; keeping that CIDR off the pod network is the install's job.
+
+Errors, not warnings, because the failure is one install writing into another
+install's tenant. When something other than a NetworkPolicy isolates the ports,
+such as security groups for pods, `footgunOverrides` downgrades them.
+
+Usage:
+  {{- include "mzmon.alloy.validate.clientCertificateTenancy" $ }}
+*/}}
+{{- define "mzmon.alloy.validate.clientCertificateTenancy" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- if and ( include "mzmon.alloyGateway.clientCertificateTenancy" $ ) ( hasKey $.Subcharts "alloy-gateway" ) }}
+    {{- $setting := "pipeline.gateway.clientCertificateTenancy.enabled reads each OTLP request's tenant from a header any sender can set" }}
+    {{- $np := ( index $.Values "alloy-gateway" | default dict ).networkPolicy | default dict }}
+    {{- if not ( and $np.enabled ( has "Ingress" ( $np.policyTypes | default list ) ) ) }}
+      {{- $errors = append $errors ( printf "%s, but alloy-gateway.networkPolicy doesn't restrict ingress, so every pod in the cluster can reach 4317 and 4318. Admit only the load balancer's subnets to those ports, by ipBlock." $setting ) }}
+    {{- else }}
+      {{- $open := list }}
+      {{- range $i, $rule := $np.ingress | default list }}
+        {{- $covers := not $rule.ports }}
+        {{- range $p := $rule.ports | default list }}
+          {{- if or ( not $p.port ) ( has ( toString $p.port ) ( list "4317" "4318" "otlp-grpc" "otlp-http" ) ) }}
+            {{- $covers = true }}
+          {{- end }}
+        {{- end }}
+        {{- if $covers }}
+          {{- $admitsPods := not $rule.from }}
+          {{- range $peer := $rule.from | default list }}
+            {{- if or ( hasKey $peer "podSelector" ) ( hasKey $peer "namespaceSelector" ) }}
+              {{- $admitsPods = true }}
+            {{- end }}
+          {{- end }}
+          {{- if $admitsPods }}
+            {{- $open = append $open ( printf "ingress[%d]" $i ) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if $open }}
+        {{- $errors = append $errors ( printf "%s, but alloy-gateway.networkPolicy.%s admits pods to the OTLP ports, so a pod could choose its own tenant. Admit only the load balancer's subnets to 4317 and 4318, by ipBlock." $setting ( join ", " $open ) ) }}
+      {{- end }}
+    {{- end }}
+
+    {{- $tls := dig "logging" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
+    {{- $auth := $tls.clientAuth | default "NoClientCert" | toString }}
+    {{- if and $tls.enabled ( ne $auth "NoClientCert" ) }}
+      {{- $errors = append $errors ( printf "pipeline.gateway.clientCertificateTenancy.enabled puts the OTLP receiver behind a load balancer, which presents no client certificate to its targets, but pipeline.logging.gateway.server.tls.clientAuth is %s, so the receiver would refuse every request. Set it to NoClientCert." $auth ) }}
+    {{- end }}
   {{- end }}
 
   {{- /* final output */}}

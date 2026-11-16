@@ -1764,7 +1764,7 @@ Forward into the gateway's own entry points, so the data gets the same processin
 | Scraped metrics | `otelcol.receiver.prometheus.inputBridge.receiver` |
 | Pushed metrics that may lack `job` or `instance` | `prometheus.relabel.receiveIdentity.receiver` |
 | Loki log entries | `loki.process.inputPrefilter.receiver` |
-| OTLP metrics | `otelcol.processor.transform.inputMetricProcessor.input` |
+| OTLP metrics | `otelcol.processor.transform.localTenant.input` |
 | OTLP logs | `otelcol.exporter.loki.bridge.input` |
 
 These are internal component names, not a stable interface: if a release renames one, the pre-validate job fails rather than the gateway.
@@ -1789,6 +1789,45 @@ pipeline:
           }
         }
 ```
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">Take each OTLP request's tenant from the client certificate a load balancer verified, for Materialize's control plane.
+
+For the gateway that receives call-home telemetry from many installs,
+behind an AWS Application Load Balancer that terminates mTLS in verify mode.
+The load balancer checks each client certificate against its trust store,
+and passes the certificate's subject on in the `X-Amzn-Mtls-Clientcert-Subject` header.
+When this is on, the OTLP receiver on `4317` and `4318` reads that header,
+and every log record and metric data point takes its tenant from the subject's CN:
+
+- Logs go to the Loki tenant the CN names, overriding `pipeline.logging.tenancy`.
+- Metrics carry the CN in the `mzmonTenant` label.
+  Run Thanos Receive with `--receive.split-tenant-label-name=mzmonTenant`, and it writes each series to that tenant and removes the label.
+
+The gateway drops a request with no header, a header sent twice, or a CN that isn't 1 to 150 letters, digits, `.`, `_`, and `-`.
+It replaces whatever tenant the sender set, and no other way in can set one:
+the gateway removes `mzmonTenant` from scraped and remote-written metrics.
+
+Every OTLP sender then has to come through the load balancer,
+because any pod that can reach `4317` or `4318` could send the header itself.
+Admit only the load balancer's subnets to those ports in `alloy-gateway.networkPolicy.ingress`, by `ipBlock`.
+The render fails while a rule admits pods to them.
+It also fails while `pipeline.logging.gateway.server.tls.clientAuth` asks for a client certificate, which the load balancer doesn't present.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Read each OTLP request's tenant from the load balancer's client-certificate subject header.
 </td>
     </tr>
   </tbody>

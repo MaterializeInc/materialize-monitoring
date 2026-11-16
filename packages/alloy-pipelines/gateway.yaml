@@ -389,7 +389,151 @@ blocks:
   # TODO: otelcol.processor.transform before bridging (to handle resource attributes)
   - otelcol.exporter.loki:
       label: bridge
+      forward_to: ["loki.relabel.bridge.receiver"]
+
+  # An OTLP sender picks which attributes become labels, with the
+  # `loki.attribute.labels` hint, so it could name the tenant carrier
+  # inputProcessor reads and choose its own Loki tenant. Only
+  # loki.relabel.clientTenant below may set it.
+  - loki.relabel:
+      label: bridge
       forward_to: ["loki.process.inputPrefilter.receiver"]
+      blocks:
+        - rule:
+            action: labeldrop
+            regex: __mzmon_tenant__
+
+  # --- client-certificate tenancy -------------------------------------------
+  #
+  # Materialize's control plane receives call-home telemetry from many installs
+  # through one gateway, behind an AWS load balancer that terminates mTLS. The
+  # load balancer verifies the client certificate and passes its subject on in
+  # `X-Amzn-Mtls-Clientcert-Subject`; the certificate never reaches the
+  # gateway, so that header is the only identity it can read. With
+  # pipeline.gateway.clientCertificateTenancy on, the chart points the OTLP
+  # receiver here and turns on `include_metadata`, and every record takes its
+  # tenant from the subject's CN: the Loki tenant for logs, and the
+  # `mzmonTenant` label for metrics, which Thanos Receive's
+  # --receive.split-tenant-label-name reads and removes. Off, nothing feeds
+  # these components.
+  #
+  # The carrier is `mzmonTenant`, not something like `mz_tenant`, because both
+  # bridges rename an attribute by turning every character outside
+  # [A-Za-z0-9] into `_` and collapsing runs of `_`. A sender's `mz.tenant`
+  # would become `mz_tenant` too, and when two attributes land on one label the
+  # bridge keeps whichever its map iteration reaches last. No other name renames
+  # into one without an underscore.
+  #
+  # Strip, assign, fail closed. A sender's own `mzmonTenant` goes first.
+  # A request that carries the header twice arrives with the values joined by
+  # `;`, which an RFC 2253 subject never contains unescaped, so the pattern
+  # refuses any `;` rather than take whichever CN comes first, and that
+  # request is dropped. It takes a CN the Loki and Thanos tenant rules both
+  # accept.
+  - otelcol.processor.attributes:
+      label: clientTenant
+      blocks:
+        - action:
+            key: mzmonTenant
+            action: delete
+        - action:
+            key: mzmonTenantSubject
+            action: delete
+        - action:
+            key: mzmonTenantSubject
+            action: upsert
+            from_context: metadata.x-amzn-mtls-clientcert-subject
+        - action:
+            key: mzmonTenantSubject
+            action: extract
+            pattern: '^(?:[^;]*,)?\s*CN=(?P<mzmonTenant>[A-Za-z0-9][A-Za-z0-9._-]{0,149})\s*(?:,[^;]*)?$'
+        - action:
+            key: mzmonTenantSubject
+            action: delete
+        - output:
+            logs: ["otelcol.processor.filter.clientTenant.input"]
+            metrics: ["otelcol.processor.filter.clientTenant.input"]
+
+  # otelcol_processor_filter_logs_filtered and
+  # otelcol_processor_filter_datapoints_filtered count what this drops.
+  - otelcol.processor.filter:
+      label: clientTenant
+      blocks:
+        - log_conditions:
+            context: log
+            conditions:
+              - 'log.attributes["mzmonTenant"] == nil'
+        - metric_conditions:
+            context: datapoint
+            conditions:
+              - 'datapoint.attributes["mzmonTenant"] == nil'
+        - output:
+            logs: ["otelcol.processor.transform.clientTenant.input"]
+            metrics: ["otelcol.processor.transform.clientTenant.input"]
+
+  # Logs: append the carrier to the sender's label hint, which may be a
+  # comma-separated string, a list, or absent, and keeps the sender's labels.
+  # A resource-level hint naming the carrier would lose to this one, but the
+  # resource attribute goes anyway.
+  #
+  # Metrics: `outputBridge` turns resource attributes into the labels of
+  # `target_info`, so the resource carries the tenant too, or a sender's
+  # `target_info` would land in the default tenant, or in one it named.
+  #
+  # `ignore`: a log record whose hint can't be extended reaches the bridge
+  # without the label, and loki.relabel.clientTenant drops it.
+  - otelcol.processor.transform:
+      label: clientTenant
+      error_mode: ignore
+      blocks:
+        - log_statements:
+            context: resource
+            statements:
+              - 'delete_key(resource.attributes, "mzmonTenant")'
+        - log_statements:
+            context: log
+            statements:
+              - 'set(log.attributes["loki.attribute.labels"], Concat([log.attributes["loki.attribute.labels"], "mzmonTenant"], ",")) where IsString(log.attributes["loki.attribute.labels"])'
+              - 'append(log.attributes["loki.attribute.labels"], "mzmonTenant") where log.attributes["loki.attribute.labels"] != nil and not IsString(log.attributes["loki.attribute.labels"])'
+              - 'set(log.attributes["loki.attribute.labels"], "mzmonTenant") where log.attributes["loki.attribute.labels"] == nil'
+        - metric_statements:
+            context: resource
+            statements:
+              - 'delete_key(resource.attributes, "mzmonTenant")'
+        - metric_statements:
+            context: datapoint
+            statements:
+              - 'set(resource.attributes["mzmonTenant"], datapoint.attributes["mzmonTenant"])'
+        - output:
+            logs: ["otelcol.exporter.loki.clientTenant.input"]
+            metrics: ["otelcol.processor.transform.inputMetricProcessor.input"]
+
+  - otelcol.exporter.loki:
+      label: clientTenant
+      forward_to: ["loki.relabel.clientTenant.receiver"]
+
+  # Moves the tenant to `__mzmon_tenant__`, the carrier inputProcessor sets the
+  # Loki tenant from. loki.source.api drops every label that starts with `__`,
+  # and loki.relabel.bridge drops this one, so this is its only source.
+  - loki.relabel:
+      label: clientTenant
+      forward_to: ["loki.process.inputPrefilter.receiver"]
+      blocks:
+        - rule:
+            action: labeldrop
+            regex: __mzmon_tenant__
+        - rule:
+            action: replace
+            source_labels: ["mzmonTenant"]
+            regex: "(.+)"
+            target_label: __mzmon_tenant__
+        - rule:
+            action: labeldrop
+            regex: mzmonTenant
+        - rule:
+            action: keep
+            source_labels: ["__mzmon_tenant__"]
+            regex: ".+"
 
   # --- ingest: prefilter, tier split, and secret filter ---------------------
   #
@@ -1656,6 +1800,15 @@ blocks:
                     arguments:
                       - env: GATEWAY_TENANT_LABEL
                       - "__meta_kubernetes_pod_label_app_kubernetes_io_name"
+        # Client-certificate tenancy, after the map so it wins. Only
+        # loki.relabel.clientTenant sets the carrier.
+        - stage.match:
+            selector: '{__mzmon_tenant__=~".+"}'
+            blocks:
+              - stage.tenant:
+                  label: __mzmon_tenant__
+        - stage.label_drop:
+            values: ["__mzmon_tenant__"]
 
         # --- per-level rate limits ------------------------------------------
         # Shadow copies skip these. secretfilterShadow limits them on a budget

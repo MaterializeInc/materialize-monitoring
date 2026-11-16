@@ -50,6 +50,24 @@ The gateway is where normalization, cardinality reduction, and routing happen.
 Every component in these pipelines is typed and schema-validated, including the ingress components and the `loki.write` sink.
 The `raw:` escape (see [Authoring](../authoring/)) remains available and is currently unused.
 
+### Client-certificate tenancy
+
+With `pipeline.gateway.clientCertificateTenancy` on, the OTLP receiver forwards to `otelcol.processor.attributes "clientTenant"` instead of the bridge and `inputMetricProcessor`.
+Every log record and metric data point then takes its tenant from the CN of the subject an AWS Application Load Balancer passes in `X-Amzn-Mtls-Clientcert-Subject`, after it verifies the client certificate.
+The comments on those components in `gateway.yaml` explain the construction.
+When you change the gateway, keep these true:
+
+- Only `loki.relabel "clientTenant"` sets `__mzmon_tenant__`, the label `inputProcessor` takes the Loki tenant from.
+  `loki.source.api` drops every label that starts with `__`, and `loki.relabel "bridge"` drops this one.
+  A new way in that can carry arbitrary labels needs the same drop.
+- The tenant attribute is `mzmonTenant`, with no underscore.
+  Both OTLP bridges rename attributes into label names, and when two attributes land on one name, they keep whichever their map iteration reaches last.
+  Only a name without `_` is safe from a lookalike.
+- A new way into the metric pipeline passes `otelcol.processor.transform "localTenant"`, which removes `mzmonTenant`, as `inputBridge` does under this setting.
+
+`packages/mzmon-lib/tests/gateway_client_tenant.rs` sends each forgery it knows of through `alloy run`.
+Add a case when you add a way in.
+
 ### Processing conventions
 
 These are the conventions a contributor must preserve when editing the gateway `loki.process` pipeline:

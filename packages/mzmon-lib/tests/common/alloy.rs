@@ -42,13 +42,28 @@ pub fn free_port() -> u16 {
 
 /// One HTTP/1.0 exchange, so Go answers without chunked encoding.
 pub fn http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, String)> {
+    http_with_headers(port, method, path, &[], body)
+}
+
+/// [`http`], with extra request headers. A name may repeat.
+pub fn http_with_headers(
+    port: u16,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> Option<(u16, String)> {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .ok()?;
+    let extra: String = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
     write!(
         stream,
-        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\n\r\n{body}",
         body.len()
     )
     .ok()?;

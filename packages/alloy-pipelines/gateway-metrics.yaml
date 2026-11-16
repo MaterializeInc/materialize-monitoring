@@ -16,12 +16,36 @@ blocks:
   # component twice at install time.
 
   # Bridge: turns Prometheus metrics into OTLP metrics and feeds the main processor.
+  # With pipeline.gateway.clientCertificateTenancy on, the chart points it at
+  # localTenant instead.
   - otelcol.receiver.prometheus:
       label: inputBridge
       blocks:
         - output:
             metrics:
               # switches to gateway-metrics.yaml
+              - otelcol.processor.transform.inputMetricProcessor.input
+
+  # Under client-certificate tenancy (gateway.yaml), `mzmonTenant` is the
+  # label Thanos Receive splits tenants on, and only the certificate may set
+  # it. Every scrape and remote-write sender reaches the metric pipeline
+  # through inputBridge, so this removes theirs. The prometheus receiver turns
+  # a target's `target_info` into resource attributes, hence both contexts.
+  # Wired only under that tenancy, so other installs don't pay for it.
+  - otelcol.processor.transform:
+      label: localTenant
+      error_mode: ignore
+      blocks:
+        - metric_statements:
+            context: resource
+            statements:
+              - 'delete_key(resource.attributes, "mzmonTenant")'
+        - metric_statements:
+            context: datapoint
+            statements:
+              - 'delete_key(datapoint.attributes, "mzmonTenant")'
+        - output:
+            metrics:
               - otelcol.processor.transform.inputMetricProcessor.input
 
   # --- collectors ---
