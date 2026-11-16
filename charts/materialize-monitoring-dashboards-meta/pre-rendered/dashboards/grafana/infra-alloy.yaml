@@ -65,7 +65,7 @@ spec:
           Matched on the involved object's name, since events carry no `app` label. Choosing one collector narrows the feed to that pod's own events, which leaves out its DaemonSet's or Deployment's.
 
           The validation Jobs are named after the release, as `<release>-validate-agent` and `<release>-validate-gateway`, rather than after the role. Both run together on every install and upgrade, so their events are shown whatever the role picker is set to.
-        id: 1086
+        id: 1109
         links: []
         title: All Events
         vizConfig:
@@ -140,7 +140,7 @@ spec:
           **Nominal:** `Pod` and `ReplicaSet` during a gateway rollout, `Pod` alone during an agent rollout, and `HorizontalPodAutoscaler` when the gateway scales.
 
           **Degraded:** A steady stream of `HorizontalPodAutoscaler` events. The gateway is scaling up and down repeatedly, which restarts scrapes each time.
-        id: 1084
+        id: 1107
         links: []
         title: Event Rate by Object Kind
         vizConfig:
@@ -207,7 +207,7 @@ spec:
           **Unhealthy:** A reason that repeats. `BackOff` is a collector that starts and dies, `Unhealthy` one whose probe fails, `FailedMount` a volume or certificate secret that did not attach, and `FailedScheduling` an agent with no room on a new node. `BackoffLimitExceeded` on a validation Job is a pipeline configuration that failed to validate, and the install or upgrade that ran it stopped there.
 
           Counts events as Loki received them. Kubernetes folds a repeat into one event with a rising `count`, so a tight loop reports fewer lines than it has occurrences.
-        id: 1083
+        id: 1106
         links: []
         title: Event Rate by Reason
         vizConfig:
@@ -275,7 +275,7 @@ spec:
           **Unhealthy:** One component dominating. Its name says which stage of the pipeline is failing: `loki.write` and `prometheus.remote_write` are deliveries, `otelcol.exporter` an extra destination, `discovery` and `prometheus.operator` finding targets.
 
           Independent of the level picker, for the same reason as the warning feed.
-        id: 1088
+        id: 1111
         links: []
         title: Error Rate by Component
         vizConfig:
@@ -335,7 +335,7 @@ spec:
           These lines reach Loki through the gateway. The agents' own lines are read by the gateway over the Kubernetes API, and the gateway's lines are read off disk by the agent on its node. A gateway that is down takes both with it, and `kubectl logs` is then the tool.
 
           An empty search matches every line rather than none.
-        id: 1092
+        id: 1115
         links: []
         title: All Logs
         vizConfig:
@@ -407,7 +407,7 @@ spec:
           **Nominal:** A low, steady baseline. The agents log each file they start or stop tailing, so pod churn shows up here.
 
           **Degraded:** `UNKNOWN` climbing. Those are lines Alloy did not write in its own format, most often the Go HTTP server reporting failed TLS handshakes on a listener.
-        id: 1087
+        id: 1110
         links: []
         title: Log Rate by Role and Level
         vizConfig:
@@ -469,7 +469,7 @@ spec:
           **Unhealthy:** A steady stream from one component. The `component_id` on each line names it.
 
           Independent of the level picker, like the other warning feeds in this repository. Narrowing the selection to INFO would otherwise silently empty it.
-        id: 1091
+        id: 1114
         links: []
         title: Warnings and Errors
         vizConfig:
@@ -541,7 +541,7 @@ spec:
           **Nominal:** Zero, or close to it.
 
           **Unhealthy:** A sustained non-zero rate. _Error Rate by Component_ says which stage, and the feed below says why.
-        id: 1089
+        id: 1112
         links: []
         title: Warning Rate
         vizConfig:
@@ -580,7 +580,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: Why the volume panels are not drawn over long ranges.
-        id: 1090
+        id: 1113
         links: []
         title: Volume (skipped)
         vizConfig:
@@ -640,7 +640,7 @@ spec:
           **Unhealthy:** Warnings that keep arriving. The reason and message name the cause.
 
           `Warning` is the reporting component's own judgement, not a threshold of ours.
-        id: 1085
+        id: 1108
         links: []
         title: Warning Events
         vizConfig:
@@ -719,7 +719,7 @@ spec:
           **Nominal:** Zero.
 
           **Degraded:** Above zero. The replica is missing gossip messages, usually from CPU starvation or network trouble between replicas. _Resources -> CPU_ says whether it is being throttled.
-        id: 1071
+        id: 1094
         links: []
         title: Gossip Health Score
         vizConfig:
@@ -816,7 +816,7 @@ spec:
           **Degraded:** A replica not ready. The cluster has fewer members than its configured minimum, and the replica's clustered components wait rather than scrape.
 
           `terminating` is a replica shutting down and handing its targets on. It is expected during a rollout and should clear within a minute.
-        id: 1074
+        id: 1097
         links: []
         title: Cluster Members
         vizConfig:
@@ -917,7 +917,7 @@ spec:
           **Unhealthy:** A replica seeing fewer. It has lost gossip contact with its peers, and both sides assign themselves the targets they think are unowned. The result is targets scraped twice, and duplicate samples the store rejects.
 
           Only the gateway runs clustered. The agent reads only its own node and publishes no cluster metrics.
-        id: 1070
+        id: 1093
         links: []
         title: Peers Seen
         vizConfig:
@@ -988,7 +988,7 @@ spec:
           **Nominal:** Roughly even. Clustering splits targets across replicas by hashing them, so the split is close but not exact.
 
           **Degraded:** One replica carrying all of them while others carry none. Those replicas are not in the cluster, or clustering is not enabled for the components that scrape.
-        id: 1072
+        id: 1095
         links: []
         title: Targets per Gateway
         vizConfig:
@@ -1084,7 +1084,7 @@ spec:
           **Nominal:** Zero.
 
           **Degraded:** A sustained rate. Replicas cannot reach each other on the clustering port, most often because a NetworkPolicy does not allow it.
-        id: 1073
+        id: 1096
         links: []
         title: Gossip Send Failures
         vizConfig:
@@ -1096,6 +1096,2212 @@ spec:
                 min: 0
                 noValue: Only the gateway runs clustered
                 unit: suffix:messages/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-cards:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                          (
+                            last_over_time(
+                              loki_process_custom_luhn_redacted_lines_total{
+                                component_id="loki.process.inputPrefilter"
+                              }
+                              [$__range]
+                            )
+                            unless
+                            loki_process_custom_luhn_redacted_lines_total offset $__range
+                          )
+                        or
+                          increase(
+                            loki_process_custom_luhn_redacted_lines_total{
+                              component_id="loki.process.inputPrefilter"
+                            }
+                            [$__range]
+                          )
+                      )
+                      or
+                      0 * sum(
+                        increase(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            component_id="loki.secretfilter.ingest"
+                          }
+                          [$__range]
+                        )
+                      )
+                    instant: true
+                    legendFormat: lines
+                    qryType: 1
+                    query: |
+                      sum(
+                          (
+                            last_over_time(
+                              loki_process_custom_luhn_redacted_lines_total{
+                                component_id="loki.process.inputPrefilter"
+                              }
+                              [$__range]
+                            )
+                            unless
+                            loki_process_custom_luhn_redacted_lines_total offset $__range
+                          )
+                        or
+                          increase(
+                            loki_process_custom_luhn_redacted_lines_total{
+                              component_id="loki.process.inputPrefilter"
+                            }
+                            [$__range]
+                          )
+                      )
+                      or
+                      0 * sum(
+                        increase(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            component_id="loki.secretfilter.ingest"
+                          }
+                          [$__range]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Log lines in which the gateway replaced a payment card number over the selected time range.**
+
+          **Nominal:** Zero, or a trickle.
+
+          **Unhealthy:** A burst from one container. An error message is most likely quoting a value it rejected, and the raw line is still in the container log file.
+
+          The check runs on every line, whatever the secret filter's mode. One random 13- to 19-digit number in ten passes it too, so an ID or byte count that isn't a card number can be replaced. _Card Numbers by Source_ says where each came from.
+
+          The Alloy pickers don't apply. The counter carries the labels of the log stream it counted, and the gateway's scrape keeps them over its own, so `namespace`, `pod` and `app` name the workload that logged the line rather than the gateway.
+        id: 1064
+        links: []
+        title: Card Numbers Replaced (Select Time Range)
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the gateway. Check that the role picker includes alloy-gateway, and that the gateway is running.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#A2F49B"
+                    value: null
+                  - color: "#FEDA8B"
+                    value: 1
+                  - color: "#FDB366"
+                    value: 25.75
+                  - color: "#F67E4B"
+                    value: 50.5
+                  - color: "#DD3D2D"
+                    value: 75.25
+                  - color: "#A50026"
+                    value: 100
+                unit: locale
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    compliance-cards-by-source:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (job, unit) (
+                        rate(
+                          loki_process_custom_luhn_redacted_lines_total{
+                            component_id="loki.process.inputPrefilter"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: "{{job}} {{unit}}"
+                    qryType: 1
+                    query: |
+                      sum by (job, unit) (
+                        rate(
+                          loki_process_custom_luhn_redacted_lines_total{
+                            component_id="loki.process.inputPrefilter"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Log lines per second in which the gateway replaced a card number, split by the source that logged them: `<namespace>/<container>` for a container, or the journal and its systemd unit for a node.**
+
+          **Nominal:** Nothing, or a trickle from a source that logs long numeric IDs.
+
+          **Unhealthy:** A source that wasn't there before, or a burst from one that was.
+
+          Each stream's first replacement isn't drawn, because its counter starts at 1. _Card Numbers by Source (Select Time Range)_ counts it. A stream's series ends five minutes after its last replacement. The Alloy pickers don't apply, for the reason _Card Numbers Replaced_ gives.
+        id: 1070
+        links: []
+        title: Card Numbers by Source
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                decimals: 3
+                noValue: No card numbers in this time range.
+                unit: suffix:lines/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-cards-table:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (job, unit) (
+                          (
+                            last_over_time(
+                              loki_process_custom_luhn_redacted_lines_total{
+                                component_id="loki.process.inputPrefilter"
+                              }
+                              [$__range]
+                            )
+                            unless
+                            loki_process_custom_luhn_redacted_lines_total offset $__range
+                          )
+                        or
+                          increase(
+                            loki_process_custom_luhn_redacted_lines_total{
+                              component_id="loki.process.inputPrefilter"
+                            }
+                            [$__range]
+                          )
+                      ) > 0
+                    format: table
+                    instant: true
+                    qryType: 2
+                    query: |
+                      sum by (job, unit) (
+                          (
+                            last_over_time(
+                              loki_process_custom_luhn_redacted_lines_total{
+                                component_id="loki.process.inputPrefilter"
+                              }
+                              [$__range]
+                            )
+                            unless
+                            loki_process_custom_luhn_redacted_lines_total offset $__range
+                          )
+                        or
+                          increase(
+                            loki_process_custom_luhn_redacted_lines_total{
+                              component_id="loki.process.inputPrefilter"
+                            }
+                            [$__range]
+                          )
+                      ) > 0
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations:
+            - group: organize
+              kind: Transformation
+              spec:
+                options:
+                  excludeByName:
+                    Time: true
+                  indexByName:
+                    Value: 2
+                    job: 0
+                    unit: 1
+                  renameByName:
+                    Value: Lines
+                    job: Source
+                    unit: Unit
+            - group: sortBy
+              kind: Transformation
+              spec:
+                options:
+                  fields: {}
+                  sort:
+                  - desc: true
+                    field: Lines
+        description: |-
+          **Log lines in which the gateway replaced a card number over the selected time range, one row per source: `<namespace>/<container>` for a container, or the journal and its systemd unit for a node.**
+
+          **Nominal:** Empty, or a few sources that log long numeric IDs.
+
+          **Unhealthy:** A source you can't explain. Search its stored lines for `<redacted:luhn>` to see whether the number was a card or an ID.
+
+          The Alloy pickers don't apply, for the reason _Card Numbers Replaced_ gives.
+        id: 1071
+        links: []
+        title: Card Numbers by Source (Select Time Range)
+        vizConfig:
+          group: table
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  align: auto
+                  filterable: true
+                  inspect: false
+                decimals: 0
+                noValue: No card numbers in this time range.
+                unit: locale
+              overrides:
+              - matcher:
+                  id: byName
+                  options: Unit
+                properties:
+                - id: noValue
+                  value: —
+            options:
+              cellHeight: sm
+              footer:
+                countRows: false
+                reducer: []
+                show: false
+              frameIndex: 0
+              showHeader: true
+              showTypeIcons: false
+          version: ""
+    compliance-coverage:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (component_id) (
+                        rate(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: "{{component_id}} scanned"
+                    qryType: 1
+                    query: |
+                      sum by (component_id) (
+                        rate(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (component_id) (
+                        rate(
+                          loki_secretfilter_entries_bypassed_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: "{{component_id}} bypassed"
+                    qryType: 1
+                    query: |
+                      sum by (component_id) (
+                        rate(
+                          loki_secretfilter_entries_bypassed_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Log lines per second each secret-filter instance scanned, beside those it forwarded unscanned.**
+
+          **Nominal:** With the filter `on`, `ingest` and `ingestBulk` scan everything and bypass nothing. With it `off`, they bypass everything. In shadow mode, `shadow` scans everything as well.
+
+          **Degraded:** `ingestBulk` bypassing part of its tier. Its rate is below `1.0`, which is a decision made for one install.
+
+          **Unhealthy:** `ingest` bypassing anything while the filter is on.
+
+          A line goes to one of `ingest` and `ingestBulk`, by level, so the two add up to the gateway's log rate.
+        id: 1072
+        links: []
+        title: Lines Scanned and Bypassed
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                decimals: 3
+                noValue: No data from the gateway. Check that the role picker includes alloy-gateway, and that the gateway is running.
+                unit: suffix:lines/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-partly-scanned-feed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {secretfilter="timed-out"}
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: "**Stored log lines the ingest filters stopped scanning at the timeout, newest first.**"
+        id: 1084
+        links: []
+        title: Partly Scanned Lines
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No partly scanned lines in this time range.
+              overrides: []
+            options:
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
+              enableLogDetails: true
+              fontSize: small
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
+              showLabels: false
+              showLevel: true
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
+              wrapLogMessage: true
+          version: ""
+    compliance-partly-scanned-rate:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (job, unit) (
+                        rate({secretfilter="timed-out"} [$__auto])
+                      ) * 60
+                    legendFormat: "{{job}} {{unit}}"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Stored log lines per minute that the ingest filters stopped scanning at the timeout, split by source: `<namespace>/<container>` for a container, or the journal and its systemd unit for a node.**
+
+          **Nominal:** Nothing.
+
+          **Unhealthy:** Any. A credential past the point the scan reached is stored as logged.
+        id: 1083
+        links: []
+        title: Partly Scanned Lines by Source
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No partly scanned lines in this time range.
+                unit: suffix:logs/min
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-redacted:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                          (
+                            last_over_time(
+                              loki_secretfilter_secrets_redacted_by_category_total{
+                                app=~"$alloyRole",
+                                namespace=~"$alloyNamespace",
+                                pod=~"$alloyPod",
+                                component_id=~"loki.secretfilter.ingest(Bulk)?",
+                                rule!="mzmon-canary"
+                              }
+                              [$__range]
+                            )
+                            unless
+                            loki_secretfilter_secrets_redacted_by_category_total offset $__range
+                          )
+                        or
+                          increase(
+                            loki_secretfilter_secrets_redacted_by_category_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id=~"loki.secretfilter.ingest(Bulk)?",
+                              rule!="mzmon-canary"
+                            }
+                            [$__range]
+                          )
+                      )
+                      or
+                      0 * sum(
+                        increase(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"loki.secretfilter.ingest(Bulk)?"
+                          }
+                          [$__range]
+                        )
+                      )
+                    instant: true
+                    legendFormat: redacted
+                    qryType: 1
+                    query: |
+                      sum(
+                          (
+                            last_over_time(
+                              loki_secretfilter_secrets_redacted_by_category_total{
+                                app=~"$alloyRole",
+                                namespace=~"$alloyNamespace",
+                                pod=~"$alloyPod",
+                                component_id=~"loki.secretfilter.ingest(Bulk)?",
+                                rule!="mzmon-canary"
+                              }
+                              [$__range]
+                            )
+                            unless
+                            loki_secretfilter_secrets_redacted_by_category_total offset $__range
+                          )
+                        or
+                          increase(
+                            loki_secretfilter_secrets_redacted_by_category_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id=~"loki.secretfilter.ingest(Bulk)?",
+                              rule!="mzmon-canary"
+                            }
+                            [$__range]
+                          )
+                      )
+                      or
+                      0 * sum(
+                        increase(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"loki.secretfilter.ingest(Bulk)?"
+                          }
+                          [$__range]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Credentials the ingest filters replaced over the selected time range.**
+
+          **Nominal:** Zero.
+
+          **Unhealthy:** Any. A component logged a credential. The stored line is clean, but the raw line is still in the container log file and in `kubectl logs`, so treat the credential as exposed and rotate it.
+
+          Excludes `mzmon-canary`, the rule that matches the filter's own test string. Reads zero while the filter is `off` or in shadow mode, because the ingest filters then scan nothing.
+
+          A flat zero means the gateway reported and nothing was replaced. No data means nothing was collected at all.
+        id: 1063
+        links: []
+        title: Credentials Redacted (Select Time Range)
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the gateway. Check that the role picker includes alloy-gateway, and that the gateway is running.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#A2F49B"
+                    value: null
+                  - color: "#FEDA8B"
+                    value: 1
+                  - color: "#FDB366"
+                    value: 3.25
+                  - color: "#F67E4B"
+                    value: 5.5
+                  - color: "#DD3D2D"
+                    value: 7.75
+                  - color: "#A50026"
+                    value: 10
+                unit: locale
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    compliance-redacted-by-origin:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      label_replace(
+                        sum by (origin) (
+                          rate(
+                            loki_secretfilter_secrets_redacted_by_category_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id=~"loki.secretfilter.ingest(Bulk)?",
+                              rule!="mzmon-canary"
+                            }
+                            [$__rate_interval]
+                          )
+                        ),
+                        "origin", "(no container)", "origin", ""
+                      )
+                    legendFormat: "{{origin}}"
+                    qryType: 1
+                    query: |
+                      label_replace(
+                        sum by (origin) (
+                          rate(
+                            loki_secretfilter_secrets_redacted_by_category_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id=~"loki.secretfilter.ingest(Bulk)?",
+                              rule!="mzmon-canary"
+                            }
+                            [$__rate_interval]
+                          )
+                        ),
+                        "origin", "(no container)", "origin", ""
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Credentials the ingest filters replaced per second, split by the container that logged them.**
+
+          **Nominal:** Nothing, or a steady rate from a container whose lines a rule matches without carrying a credential.
+
+          **Unhealthy:** A container that wasn't there before. It logged a credential.
+
+          A container's first replacement under each rule isn't drawn, because the counter starts at 1. _Redactions by Rule and Origin_ counts it. A line with no `container` label, such as a node's journal line, reads `(no container)`; the kubelet's journal is a common source of matches.
+        id: 1068
+        links: []
+        title: Redactions by Origin
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                decimals: 3
+                noValue: No redactions in this time range.
+                unit: suffix:redactions/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-redacted-by-rule:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (rule) (
+                        rate(
+                          loki_secretfilter_secrets_redacted_by_category_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"loki.secretfilter.ingest(Bulk)?",
+                            rule!="mzmon-canary"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: "{{rule}}"
+                    qryType: 1
+                    query: |
+                      sum by (rule) (
+                        rate(
+                          loki_secretfilter_secrets_redacted_by_category_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"loki.secretfilter.ingest(Bulk)?",
+                            rule!="mzmon-canary"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Credentials the ingest filters replaced per second, split by the rule that matched.**
+
+          **Nominal:** Nothing, or a steady rate from a rule that matches something that isn't a credential.
+
+          **Unhealthy:** A rule that wasn't there before, or a step up in one that was.
+
+          A rule's first replacement from each container isn't drawn, because the counter starts at 1. _Redactions by Rule and Origin_ counts it.
+        id: 1067
+        links: []
+        title: Redactions by Rule
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                decimals: 3
+                noValue: No redactions in this time range.
+                unit: suffix:redactions/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-redacted-table:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      label_replace(
+                        sum by (rule, origin) (
+                            (
+                              last_over_time(
+                                loki_secretfilter_secrets_redacted_by_category_total{
+                                  app=~"$alloyRole",
+                                  namespace=~"$alloyNamespace",
+                                  pod=~"$alloyPod",
+                                  component_id=~"loki.secretfilter.ingest(Bulk)?",
+                                  rule!="mzmon-canary"
+                                }
+                                [$__range]
+                              )
+                              unless
+                              loki_secretfilter_secrets_redacted_by_category_total offset $__range
+                            )
+                          or
+                            increase(
+                              loki_secretfilter_secrets_redacted_by_category_total{
+                                app=~"$alloyRole",
+                                namespace=~"$alloyNamespace",
+                                pod=~"$alloyPod",
+                                component_id=~"loki.secretfilter.ingest(Bulk)?",
+                                rule!="mzmon-canary"
+                              }
+                              [$__range]
+                            )
+                        ) > 0,
+                        "origin", "(no container)", "origin", ""
+                      )
+                    format: table
+                    instant: true
+                    qryType: 2
+                    query: |
+                      label_replace(
+                        sum by (rule, origin) (
+                            (
+                              last_over_time(
+                                loki_secretfilter_secrets_redacted_by_category_total{
+                                  app=~"$alloyRole",
+                                  namespace=~"$alloyNamespace",
+                                  pod=~"$alloyPod",
+                                  component_id=~"loki.secretfilter.ingest(Bulk)?",
+                                  rule!="mzmon-canary"
+                                }
+                                [$__range]
+                              )
+                              unless
+                              loki_secretfilter_secrets_redacted_by_category_total offset $__range
+                            )
+                          or
+                            increase(
+                              loki_secretfilter_secrets_redacted_by_category_total{
+                                app=~"$alloyRole",
+                                namespace=~"$alloyNamespace",
+                                pod=~"$alloyPod",
+                                component_id=~"loki.secretfilter.ingest(Bulk)?",
+                                rule!="mzmon-canary"
+                              }
+                              [$__range]
+                            )
+                        ) > 0,
+                        "origin", "(no container)", "origin", ""
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations:
+            - group: organize
+              kind: Transformation
+              spec:
+                options:
+                  excludeByName:
+                    Time: true
+                  indexByName:
+                    Value: 2
+                    origin: 1
+                    rule: 0
+                  renameByName:
+                    Value: Redactions
+                    origin: Origin
+                    rule: Rule
+            - group: sortBy
+              kind: Transformation
+              spec:
+                options:
+                  fields: {}
+                  sort:
+                  - desc: true
+                    field: Redactions
+        description: |-
+          **Credentials the ingest filters replaced over the selected time range, one row per rule and container.**
+
+          **Nominal:** Empty.
+
+          **Unhealthy:** Any row. The container logged a credential the rule names. Check the stored line, then fix the component and rotate the credential.
+
+          Both tiers together. A line with no `container` label, such as a node's journal line, reads `(no container)`.
+        id: 1069
+        links: []
+        title: Redactions by Rule and Origin (Select Time Range)
+        vizConfig:
+          group: table
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  align: auto
+                  filterable: true
+                  inspect: false
+                decimals: 0
+                noValue: No redactions in this time range.
+                unit: locale
+              overrides: []
+            options:
+              cellHeight: sm
+              footer:
+                countRows: false
+                reducer: []
+                show: false
+              frameIndex: 0
+              showHeader: true
+              showTypeIcons: false
+          version: ""
+    compliance-scan-time:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (component_id) (
+                        loki_secretfilter_processing_duration_seconds{
+                          app=~"$alloyRole",
+                          namespace=~"$alloyNamespace",
+                          pod=~"$alloyPod",
+                          quantile="0.99"
+                        } >= 0
+                      )
+                    legendFormat: "{{component_id}}"
+                    qryType: 1
+                    query: |
+                      max by (component_id) (
+                        loki_secretfilter_processing_duration_seconds{
+                          app=~"$alloyRole",
+                          namespace=~"$alloyNamespace",
+                          pod=~"$alloyPod",
+                          quantile="0.99"
+                        } >= 0
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The 99th percentile of time spent scanning one line, per secret-filter instance, from the slowest gateway.**
+
+          **Nominal:** Under a millisecond.
+
+          **Degraded:** Climbing toward `GATEWAY_SECRETFILTER_TIMEOUT`. Lines past it are stored partly scanned.
+
+          **Unhealthy:** Tens of milliseconds sustained. The gateway can fall behind the agents, and log delivery slows for everyone.
+
+          Alloy computes the percentile itself, over the last ten minutes of each gateway pod, so the slowest pod is shown rather than a combined figure. An instance that scanned nothing in that window has no line. Use it to set the timeout.
+        id: 1073
+        links: []
+        title: Scan Time per Line (p99)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the gateway. Check that the role picker includes alloy-gateway, and that the gateway is running.
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-scanned:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (component_id) (
+                        increase(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"loki.secretfilter.ingest(Bulk)?"
+                          }
+                          [$__range]
+                        )
+                      )
+                      /
+                      (
+                        sum by (component_id) (
+                          increase(
+                            loki_secretfilter_processing_duration_seconds_count{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id=~"loki.secretfilter.ingest(Bulk)?"
+                            }
+                            [$__range]
+                          )
+                        )
+                        +
+                        sum by (component_id) (
+                          increase(
+                            loki_secretfilter_entries_bypassed_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id=~"loki.secretfilter.ingest(Bulk)?"
+                            }
+                            [$__range]
+                          )
+                        )
+                      ) >= 0
+                    instant: true
+                    legendFormat: "{{component_id}}"
+                    qryType: 1
+                    query: |
+                      sum by (component_id) (
+                        increase(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"loki.secretfilter.ingest(Bulk)?"
+                          }
+                          [$__range]
+                        )
+                      )
+                      /
+                      (
+                        sum by (component_id) (
+                          increase(
+                            loki_secretfilter_processing_duration_seconds_count{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id=~"loki.secretfilter.ingest(Bulk)?"
+                            }
+                            [$__range]
+                          )
+                        )
+                        +
+                        sum by (component_id) (
+                          increase(
+                            loki_secretfilter_entries_bypassed_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id=~"loki.secretfilter.ingest(Bulk)?"
+                            }
+                            [$__range]
+                          )
+                        )
+                      ) >= 0
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The share of log lines each ingest filter scanned over the selected time range, for the full tier and for the `DEBUG` and `TRACE` bulk tier.**
+
+          **Nominal:** 100% on both when `pipeline.logging.secretFilter.mode` is `on`. 0% on both when it's `off` or `shadow`, because the ingest filters then forward every line unscanned.
+
+          **Degraded:** The bulk tier below 100%. `GATEWAY_SECRETFILTER_BULK_RATE` is below `1.0`, and the rest of that tier is stored unscanned.
+
+          **Unhealthy:** The full tier below 100% while the filter is on. Lines that can leave the install were stored unscanned.
+
+          Card numbers are replaced on every line whatever this reads; the check runs before the filters.
+        id: 1062
+        links: []
+        title: Lines Scanned (Select Time Range)
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: "#009988"
+                  mode: shades
+                decimals: 1
+                max: 1
+                min: 0
+                noValue: No data from the gateway. Check that the role picker includes alloy-gateway, and that the gateway is running.
+                unit: percentunit
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value_and_name
+              wideLayout: true
+          version: ""
+    compliance-shadow:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                          (
+                            last_over_time(
+                              loki_secretfilter_secrets_redacted_by_category_total{
+                                app=~"$alloyRole",
+                                namespace=~"$alloyNamespace",
+                                pod=~"$alloyPod",
+                                component_id="loki.secretfilter.shadow",
+                                rule!="mzmon-canary"
+                              }
+                              [$__range]
+                            )
+                            unless
+                            loki_secretfilter_secrets_redacted_by_category_total offset $__range
+                          )
+                        or
+                          increase(
+                            loki_secretfilter_secrets_redacted_by_category_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id="loki.secretfilter.shadow",
+                              rule!="mzmon-canary"
+                            }
+                            [$__range]
+                          )
+                      )
+                      or
+                      0 * sum(
+                        increase(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id="loki.secretfilter.shadow"
+                          }
+                          [$__range]
+                        )
+                      )
+                    instant: true
+                    legendFormat: matches
+                    qryType: 1
+                    query: |
+                      sum(
+                          (
+                            last_over_time(
+                              loki_secretfilter_secrets_redacted_by_category_total{
+                                app=~"$alloyRole",
+                                namespace=~"$alloyNamespace",
+                                pod=~"$alloyPod",
+                                component_id="loki.secretfilter.shadow",
+                                rule!="mzmon-canary"
+                              }
+                              [$__range]
+                            )
+                            unless
+                            loki_secretfilter_secrets_redacted_by_category_total offset $__range
+                          )
+                        or
+                          increase(
+                            loki_secretfilter_secrets_redacted_by_category_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id="loki.secretfilter.shadow",
+                              rule!="mzmon-canary"
+                            }
+                            [$__range]
+                          )
+                      )
+                      or
+                      0 * sum(
+                        increase(
+                          loki_secretfilter_processing_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id="loki.secretfilter.shadow"
+                          }
+                          [$__range]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Credentials the shadow filter would have replaced over the selected time range.**
+
+          **Nominal:** Zero when `pipeline.logging.secretFilter.mode` isn't `shadow`. In shadow mode, what the rules match on this install's own logs.
+
+          **Degraded:** A steady count from one rule and container. Check a stored copy before turning the filter on: it's either a credential that component logs, or a false positive the rules need an allowlist entry for.
+
+          Shadow mode changes nothing that's stored, apart from adding the copies.
+        id: 1066
+        links: []
+        title: Shadow Matches (Select Time Range)
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: "#009988"
+                  mode: shades
+                decimals: 0
+                min: 0
+                noValue: No data from the gateway. Check that the role picker includes alloy-gateway, and that the gateway is running.
+                unit: locale
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    compliance-shadow-by-origin:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      label_replace(
+                        sum by (origin) (
+                          rate(
+                            loki_secretfilter_secrets_redacted_by_category_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id="loki.secretfilter.shadow",
+                              rule!="mzmon-canary"
+                            }
+                            [$__rate_interval]
+                          )
+                        ),
+                        "origin", "(no container)", "origin", ""
+                      )
+                    legendFormat: "{{origin}}"
+                    qryType: 1
+                    query: |
+                      label_replace(
+                        sum by (origin) (
+                          rate(
+                            loki_secretfilter_secrets_redacted_by_category_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod",
+                              component_id="loki.secretfilter.shadow",
+                              rule!="mzmon-canary"
+                            }
+                            [$__rate_interval]
+                          )
+                        ),
+                        "origin", "(no container)", "origin", ""
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Credentials per second the shadow filter would have replaced, split by the container that logged them.**
+
+          **Nominal:** Nothing outside shadow mode.
+
+          **Degraded:** A steady rate from one container: one that logs a credential, or one whose lines a rule mistakes for one.
+
+          A container's first match under each rule isn't drawn, because the counter starts at 1. _Shadow Matches by Rule and Origin_ counts it.
+        id: 1076
+        links: []
+        title: Shadow Matches by Origin
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                decimals: 3
+                noValue: No shadow matches in this time range. Outside shadow mode the shadow filter scans nothing.
+                unit: suffix:redactions/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-shadow-by-rule:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (rule) (
+                        rate(
+                          loki_secretfilter_secrets_redacted_by_category_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id="loki.secretfilter.shadow",
+                            rule!="mzmon-canary"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: "{{rule}}"
+                    qryType: 1
+                    query: |
+                      sum by (rule) (
+                        rate(
+                          loki_secretfilter_secrets_redacted_by_category_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id="loki.secretfilter.shadow",
+                            rule!="mzmon-canary"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Credentials per second the shadow filter would have replaced, split by the rule that matched.**
+
+          **Nominal:** Nothing outside shadow mode.
+
+          **Degraded:** A steady rate from one rule. Read its copies in the store before turning the filter on.
+
+          A rule's first match from each container isn't drawn, because the counter starts at 1. _Shadow Matches by Rule and Origin_ counts it.
+        id: 1075
+        links: []
+        title: Shadow Matches by Rule
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                decimals: 3
+                noValue: No shadow matches in this time range. Outside shadow mode the shadow filter scans nothing.
+                unit: suffix:redactions/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-shadow-copies-feed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {secretfilter="shadow"}
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Shadow copies, newest first: lines as the filter would have stored them.**
+
+          Each copy carries `secretfilter="shadow"` beside the labels of the line it copies, and the placeholder names the rule that matched.
+        id: 1082
+        links: []
+        title: Shadow Copies
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No shadow matches in this time range. Outside shadow mode the shadow filter scans nothing.
+              overrides: []
+            options:
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
+              enableLogDetails: true
+              fontSize: small
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
+              showLabels: false
+              showLevel: true
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
+              wrapLogMessage: true
+          version: ""
+    compliance-shadow-copies-rate:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (job, unit) (
+                        rate({secretfilter="shadow"} [$__auto])
+                      ) * 60
+                    legendFormat: "{{job}} {{unit}}"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Shadow copies stored per minute, split by the source whose line was copied: `<namespace>/<container>` for a container, or the journal and its systemd unit for a node.**
+
+          **Nominal:** Nothing outside shadow mode.
+
+          **Degraded:** A steady rate from one source. Its copies say what the rules matched.
+
+          The gateway stores at most 100 copies a second per namespace, with a burst of 1,000, so a rule that matches every line of a namespace is flat at that limit.
+        id: 1081
+        links: []
+        title: Shadow Copies by Source
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                decimals: 3
+                noValue: No shadow matches in this time range. Outside shadow mode the shadow filter scans nothing.
+                unit: suffix:logs/min
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-shadow-table:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      label_replace(
+                        sum by (rule, origin) (
+                            (
+                              last_over_time(
+                                loki_secretfilter_secrets_redacted_by_category_total{
+                                  app=~"$alloyRole",
+                                  namespace=~"$alloyNamespace",
+                                  pod=~"$alloyPod",
+                                  component_id="loki.secretfilter.shadow",
+                                  rule!="mzmon-canary"
+                                }
+                                [$__range]
+                              )
+                              unless
+                              loki_secretfilter_secrets_redacted_by_category_total offset $__range
+                            )
+                          or
+                            increase(
+                              loki_secretfilter_secrets_redacted_by_category_total{
+                                app=~"$alloyRole",
+                                namespace=~"$alloyNamespace",
+                                pod=~"$alloyPod",
+                                component_id="loki.secretfilter.shadow",
+                                rule!="mzmon-canary"
+                              }
+                              [$__range]
+                            )
+                        ) > 0,
+                        "origin", "(no container)", "origin", ""
+                      )
+                    format: table
+                    instant: true
+                    qryType: 2
+                    query: |
+                      label_replace(
+                        sum by (rule, origin) (
+                            (
+                              last_over_time(
+                                loki_secretfilter_secrets_redacted_by_category_total{
+                                  app=~"$alloyRole",
+                                  namespace=~"$alloyNamespace",
+                                  pod=~"$alloyPod",
+                                  component_id="loki.secretfilter.shadow",
+                                  rule!="mzmon-canary"
+                                }
+                                [$__range]
+                              )
+                              unless
+                              loki_secretfilter_secrets_redacted_by_category_total offset $__range
+                            )
+                          or
+                            increase(
+                              loki_secretfilter_secrets_redacted_by_category_total{
+                                app=~"$alloyRole",
+                                namespace=~"$alloyNamespace",
+                                pod=~"$alloyPod",
+                                component_id="loki.secretfilter.shadow",
+                                rule!="mzmon-canary"
+                              }
+                              [$__range]
+                            )
+                        ) > 0,
+                        "origin", "(no container)", "origin", ""
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations:
+            - group: organize
+              kind: Transformation
+              spec:
+                options:
+                  excludeByName:
+                    Time: true
+                  indexByName:
+                    Value: 2
+                    origin: 1
+                    rule: 0
+                  renameByName:
+                    Value: Matches
+                    origin: Origin
+                    rule: Rule
+            - group: sortBy
+              kind: Transformation
+              spec:
+                options:
+                  fields: {}
+                  sort:
+                  - desc: true
+                    field: Matches
+        description: |-
+          **Credentials the shadow filter would have replaced over the selected time range, one row per rule and container.**
+
+          **Nominal:** Empty outside shadow mode.
+
+          **Degraded:** A row you can't explain. Read the container's shadow copies, then either fix the component or allowlist what the rule mistook for a credential.
+        id: 1077
+        links: []
+        title: Shadow Matches by Rule and Origin (Select Time Range)
+        vizConfig:
+          group: table
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  align: auto
+                  filterable: true
+                  inspect: false
+                decimals: 0
+                noValue: No shadow matches in this time range. Outside shadow mode the shadow filter scans nothing.
+                unit: locale
+              overrides: []
+            options:
+              cellHeight: sm
+              footer:
+                countRows: false
+                reducer: []
+                show: false
+              frameIndex: 0
+              showHeader: true
+              showTypeIcons: false
+          version: ""
+    compliance-stored-feed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {job=~".+", secretfilter!="shadow"}
+                        |~ "<redacted[:]"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Stored log lines that carry a `<redacted:…>` placeholder, newest first. Shadow copies are excluded.**
+
+          The name in the placeholder is the rule that matched, or `luhn` for a card number. Searches every stored line in range until it fills a page, so it's slow when there are few matches.
+        id: 1079
+        links: []
+        title: Stored Lines with a Placeholder
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No stored lines with a placeholder in this time range.
+              overrides: []
+            options:
+              dedupStrategy: exact
+              detailsMode: inline
+              displayedFields: []
+              enableInfiniteScrolling: true
+              enableLogDetails: true
+              fontSize: small
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
+              showLabels: false
+              showLevel: true
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: false
+              wrapLogMessage: true
+          version: ""
+    compliance-stored-hidden-note:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: Why the stored-line panels aren't drawn over long ranges.
+        id: 1080
+        links: []
+        title: Stored Lines (skipped)
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **These panels are hidden for ranges longer than 7 days.**
+
+                Finding the lines that carry a placeholder means reading every stored line in the range, because Loki indexes labels, not line content.
+
+                Shorten the time range to 7 days or less and they come back. To search a longer time range, run `{job=~".+", secretfilter!="shadow"} |~ "<redacted[:]"` in [Explore](/explore). The counts above cover any time range.
+              mode: markdown
+          version: ""
+    compliance-stored-rate:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (job, unit) (
+                        rate(
+                          {job=~".+", secretfilter!="shadow"}
+                            |~ "<redacted[:]"
+                          [$__auto]
+                        )
+                      ) * 60
+                    legendFormat: "{{job}} {{unit}}"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Stored log lines per minute that carry a `<redacted:…>` placeholder, split by source: `<namespace>/<container>` for a container, or the journal and its systemd unit for a node. Shadow copies are excluded.**
+
+          **Nominal:** Nothing, or a trickle of card-number replacements from a container that logs long numeric IDs.
+
+          **Unhealthy:** A source that wasn't there before.
+
+          Reads every stored line in range, so it's slow over long ranges.
+        id: 1078
+        links: []
+        title: Stored Lines with a Placeholder by Source
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                decimals: 3
+                noValue: No stored lines with a placeholder in this time range.
+                unit: suffix:logs/min
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    compliance-timed-out:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        increase(
+                          loki_secretfilter_lines_timed_out_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"loki.secretfilter.ingest(Bulk)?"
+                          }
+                          [$__range]
+                        )
+                      )
+                    instant: true
+                    legendFormat: lines
+                    qryType: 1
+                    query: |
+                      sum(
+                        increase(
+                          loki_secretfilter_lines_timed_out_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"loki.secretfilter.ingest(Bulk)?"
+                          }
+                          [$__range]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Log lines the ingest filters stopped scanning at the timeout, over the selected time range.**
+
+          **Nominal:** Zero.
+
+          **Unhealthy:** Any. Each line was stored partly scanned, with the label `secretfilter="timed-out"`. A credential past the point the scan reached is stored as logged.
+
+          `GATEWAY_SECRETFILTER_TIMEOUT` sets the timeout, and its default, `0s`, sets none.
+        id: 1065
+        links: []
+        title: Lines Timed Out (Select Time Range)
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the gateway. Check that the role picker includes alloy-gateway, and that the gateway is running.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#A2F49B"
+                    value: null
+                  - color: "#FEDA8B"
+                    value: 1
+                  - color: "#FDB366"
+                    value: 25.75
+                  - color: "#F67E4B"
+                    value: 50.5
+                  - color: "#DD3D2D"
+                    value: 75.25
+                  - color: "#A50026"
+                    value: 100
+                unit: locale
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ""
+    compliance-timeouts:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (component_id) (
+                        rate(
+                          loki_secretfilter_lines_timed_out_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: "{{component_id}} timed out"
+                    qryType: 1
+                    query: |
+                      sum by (component_id) (
+                        rate(
+                          loki_secretfilter_lines_timed_out_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (component_id) (
+                        rate(
+                          loki_secretfilter_lines_dropped_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: "{{component_id}} dropped"
+                    qryType: 1
+                    query: |
+                      sum by (component_id) (
+                        rate(
+                          loki_secretfilter_lines_dropped_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Log lines per second each secret-filter instance stopped scanning at the timeout, beside those it dropped for it.**
+
+          **Nominal:** Zero.
+
+          **Unhealthy:** Lines timed out at `ingest` or `ingestBulk`. Each is stored partly scanned, labelled `secretfilter="timed-out"`. `shadow` drops its timed-out copies rather than storing them, so its drops lose nothing.
+        id: 1074
+        links: []
+        title: Lines Timed Out and Dropped
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the gateway. Check that the role picker includes alloy-gateway, and that the gateway is running.
+                unit: suffix:lines/s
               overrides: []
             options:
               legend:
@@ -1227,7 +3433,7 @@ spec:
           **Unhealthy:** A failed load. The collector is still running the hash shown, which is the last configuration that loaded, rather than the one it was given.
 
           The chart restarts a collector to change its configuration, so a collector's uptime is also how long it has run the hash shown. Two hashes for one role is a rollout in progress. _Distinct Configurations_ beside this says whether it finished.
-        id: 1064
+        id: 1087
         links: []
         title: Configuration by Collector
         vizConfig:
@@ -1312,7 +3518,7 @@ spec:
           **Nominal:** One per role.
 
           **Degraded:** Two for longer than a rollout takes. Some collectors of that role did not restart onto the new configuration, and the fleet is split.
-        id: 1065
+        id: 1088
         links: []
         title: Distinct Configurations
         vizConfig:
@@ -1395,7 +3601,7 @@ spec:
           **Nominal:** Milliseconds.
 
           **Degraded:** Seconds. Evaluations queue behind the slow one, and changes such as a new scrape target take that much longer to take effect.
-        id: 1067
+        id: 1090
         links: []
         title: Evaluation Latency (p99)
         vizConfig:
@@ -1465,7 +3671,7 @@ spec:
           **Nominal:** Zero or one.
 
           **Degraded:** A queue that stays above a handful. The controller is not keeping up with changes to its inputs. _Evaluation Latency_ says whether one slow evaluation is the cause.
-        id: 1069
+        id: 1092
         links: []
         title: Evaluation Queue
         vizConfig:
@@ -1541,7 +3747,7 @@ spec:
           **Nominal:** A steady rate. Components re-evaluate when their inputs change, so a busier cluster evaluates more often.
 
           **Degraded:** A sustained step up with no change to the cluster. Some input is changing continuously, such as a discovery result that flaps, and every downstream component re-evaluates with it.
-        id: 1066
+        id: 1089
         links: []
         title: Evaluation Rate
         vizConfig:
@@ -1643,7 +3849,7 @@ spec:
           Alloy records this only for an evaluation over its slowness threshold, so a healthy collector publishes no series of its own. The zero line comes from its ordinary evaluations instead.
 
           A flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.
-        id: 1068
+        id: 1091
         links: []
         title: Slow Components
         vizConfig:
@@ -1735,7 +3941,7 @@ spec:
           Alloy publishes the count per state rather than per component. The collector's log under _Logs_ names the component.
 
           A flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.
-        id: 1062
+        id: 1085
         links: []
         title: Components Not Healthy
         vizConfig:
@@ -1805,7 +4011,7 @@ spec:
           **Nominal:** The same count for every collector of a role, since they share one configuration.
 
           **Degraded:** One collector running fewer than its peers. Part of its configuration failed to load, or it is running a different configuration.
-        id: 1063
+        id: 1086
         links: []
         title: Components Running
         vizConfig:
@@ -8268,7 +10474,7 @@ spec:
           **Degraded:** Sustained near 1. The collector is throttled, and scrapes and deliveries take longer. _CPU Throttling_ beside this shows how often.
 
           Empty for a collector with no CPU limit set.
-        id: 1078
+        id: 1101
         links: []
         title: CPU Used Against Limit
         vizConfig:
@@ -8349,7 +10555,7 @@ spec:
           **Nominal:** Well below 1.
 
           **Unhealthy:** Approaching 1. The agent holds a descriptor for every log file it tails, and once none are left it stops opening new ones, so new containers on that node go uncollected.
-        id: 1081
+        id: 1104
         links: []
         title: File Descriptors Against Limit
         vizConfig:
@@ -8446,7 +10652,7 @@ spec:
           **Degraded:** Sustained near 1. The garbage collector is running almost continuously to stay under the limit, which spends CPU the pipeline needed and slows everything down. The remedy is more memory for the collector, with `GOMEMLIMIT` raised in step, or less for it to hold.
 
           The chart sets `GOMEMLIMIT` to about 80% of each collector's memory limit, so the runtime slows down before the kernel kills it. Heap in use alone understates this figure, because the limit also covers the runtime's stacks and metadata. A collector with no `GOMEMLIMIT` reads close to zero.
-        id: 1076
+        id: 1099
         links: []
         title: Go Memory Against GOMEMLIMIT
         vizConfig:
@@ -8517,7 +10723,7 @@ spec:
           **Nominal:** Flat, at a level set by the collector's workload. The gateway runs several times the agent's count.
 
           **Degraded:** Steady growth over hours. Something inside the collector is starting work it never finishes, and memory grows with it.
-        id: 1080
+        id: 1103
         links: []
         title: Goroutines
         vizConfig:
@@ -8613,7 +10819,7 @@ spec:
           **Unhealthy:** Approaching 1. The kernel kills the container at the limit, and every scrape and delivery in flight is lost with it.
 
           Reads the container's working set, which is what the limit is enforced against. The process's resident set is larger, because it counts file pages the kernel can reclaim, and reads as closer to the limit than the collector really is.
-        id: 1075
+        id: 1098
         links: []
         title: Memory Used Against Limit
         vizConfig:
@@ -8718,7 +10924,7 @@ spec:
           A flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.
 
           **A gateway that is refusing usually disappears from this panel rather than rising on it.** Its own `/metrics` is one of the targets the gateways share out, and when the refusing pod holds that target it refuses its own counters with everything else. A gateway pod that is running but missing here is the case to suspect; the `alloy-gateway-refusing-scrapes` alert reads the pod's logs instead, which do not pass through the limiter.
-        id: 1077
+        id: 1100
         links: []
         title: Memory Limiter Refusals
         vizConfig:
@@ -8810,7 +11016,7 @@ spec:
           **Nominal:** Empty.
 
           **Unhealthy:** `OOMKilled`. The collector reached its memory limit. _Go Memory Against GOMEMLIMIT_ says whether the runtime saw it coming.
-        id: 1082
+        id: 1105
         links: []
         title: Last Termination Reason
         vizConfig:
@@ -8913,7 +11119,7 @@ spec:
           **Nominal:** Close to zero.
 
           **Degraded:** A sustained few percent or more. Collection is bursty, since every scrape interval starts a wave of work, so a collector can be throttled while its average use looks low. The bursts are what the limit clips.
-        id: 1079
+        id: 1102
         links: []
         title: CPU Throttling
         vizConfig:
@@ -9529,6 +11735,263 @@ spec:
                       rowHeightMode: standard
                   title: Connections
           title: Ingest
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: narrow
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-scanned
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-redacted
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-cards
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-timed-out
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-shadow
+                      maxColumnCount: 5
+                      rowHeightMode: short
+                  title: Summary
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-redacted-by-rule
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-redacted-by-origin
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-redacted-table
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: Redactions
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-cards-by-source
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-cards-table
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Card Numbers
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-coverage
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-scan-time
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-timeouts
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: Filter Coverage
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-shadow-by-rule
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-shadow-by-origin
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-shadow-table
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: Shadow Mode
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingTimeRangeSize
+                        spec:
+                          value: 7d
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-stored-rate
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-stored-feed
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: Stored Lines with a Placeholder
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingTimeRangeSize
+                        spec:
+                          value: 7d
+                      visibility: hide
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-stored-hidden-note
+                      maxColumnCount: 1
+                      rowHeightMode: short
+                  title: Stored Lines with a Placeholder (Hidden Past 7 Days)
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-shadow-copies-rate
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-shadow-copies-feed
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: Shadow Copies in the Store
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-partly-scanned-rate
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: compliance-partly-scanned-feed
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: Partly Scanned Lines in the Store
+          title: Compliance
       - kind: TabsLayoutTab
         spec:
           layout:

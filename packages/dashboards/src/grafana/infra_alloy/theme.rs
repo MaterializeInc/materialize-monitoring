@@ -14,9 +14,11 @@
 //! the magenta it carries on `env-logs`, and Overview the blue `infra-loki` gives
 //! its own, so the dashboards read alike.
 //!
-//! Eight tabs against a seven-colour palette means one pair shares. Components
-//! and Resources are that pair: both describe the collectors' internals, and
-//! neither shades a single panel, so the shared colour is never on screen.
+//! Nine tabs against a seven-colour palette means two pairs share. Components
+//! and Resources are one: both describe the collectors' internals, and neither
+//! shades a single panel, so the shared colour is never on screen. Log Pipeline
+//! and Compliance are the other: the checks Compliance reports on are stages of
+//! the log pipeline, so the shared colour says the two are about the same path.
 
 use mzmon_lib::grafana::palette;
 
@@ -45,6 +47,14 @@ pub const LOG_PIPELINE: Theme = Theme {
 pub const METRIC_PIPELINE: Theme = Theme {
     title: "Metric Pipeline",
     shade: palette::THEME[3], // orange
+};
+
+/// What the gateway removed from log lines before storing them.
+///
+/// Shares Log Pipeline's shade; see the module docs.
+pub const COMPLIANCE: Theme = Theme {
+    title: "Compliance",
+    shade: LOG_PIPELINE.shade,
 };
 
 /// What pushes into the gateway: log push, remote write, and OTLP.
@@ -80,11 +90,12 @@ pub const LOGS: Theme = Theme {
 };
 
 /// Every themed tab, in the order they appear.
-pub const THEMED: [Theme; 8] = [
+pub const THEMED: [Theme; 9] = [
     OVERVIEW,
     LOG_PIPELINE,
     METRIC_PIPELINE,
     INGEST,
+    COMPLIANCE,
     COMPONENTS,
     RESOURCES,
     EVENTS,
@@ -97,8 +108,8 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn only_the_declared_pair_shares_a_shade() {
-        // Every colour in the palette is used, and the one repeat is the pair
+    fn only_the_declared_pairs_share_a_shade() {
+        // Every colour in the palette is used, and the repeats are the pairs
         // the module docs name.
         let shades: HashSet<&str> = THEMED.iter().map(|t| t.shade).collect();
         assert_eq!(
@@ -109,7 +120,16 @@ mod tests {
         for (i, a) in THEMED.iter().enumerate() {
             for b in &THEMED[i + 1..] {
                 if a.shade == b.shade {
-                    assert_eq!((a.title, b.title), (COMPONENTS.title, RESOURCES.title));
+                    assert!(
+                        [
+                            (COMPONENTS.title, RESOURCES.title),
+                            (LOG_PIPELINE.title, COMPLIANCE.title),
+                        ]
+                        .contains(&(a.title, b.title)),
+                        "{} and {} share a shade",
+                        a.title,
+                        b.title
+                    );
                 }
             }
         }

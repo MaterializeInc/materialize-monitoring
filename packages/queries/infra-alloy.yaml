@@ -40,6 +40,14 @@ description: |
   nothing on them records which gateway replica produced them. The same holds
   for the remote-write senders' own queues, which are found by their `url`.
 
+  The `infra.alloy.compliance.*` queries that read stored lines carry no Alloy
+  scope either. They search every workload's logs for what the secret filter
+  and the card-number check replaced, and the collectors are only one source.
+  Nor do the card-number counts. That counter carries the labels of the log
+  stream it counted, which the gateway's scrape keeps over its own, so its
+  `namespace`, `pod` and `app` name the workload, and only `component_id` says
+  the gateway counted it.
+
   Kubernetes events carry the involved object's `name` rather than an `app`
   label. The event queries match `name` against the role pattern, as
   `${alloyRole:regex}` since it is embedded in a longer pattern, and against the
@@ -2336,6 +2344,861 @@ queries:
           %%{interval}
         )
       ) * 60
+
+  # --- compliance: what the secret filter and the card check removed ---------
+  #
+  # Alloy creates a redaction counter at its first redaction, so the series
+  # starts at 1, and `increase()` doesn't count that first one. A credential
+  # logged once is the common case, so the counts over the selected range use
+  # the form the alert rules use: a series newer than the range counts its whole
+  # value, and an older one counts its increase. `last_over_time` rather than the
+  # current value, because a card-number series disappears five minutes after
+  # its last update. The rate graphs don't draw a series' first redaction; the
+  # tables and the counts do.
+  - id: infra.alloy.compliance.scanned
+    stability: experimental
+    description:
+      summary: |
+        The share of log lines each ingest filter scanned over the selected time
+        range, for the full tier and for the `DEBUG` and `TRACE` bulk tier.
+      nominal: |
+        100% on both when `pipeline.logging.secretFilter.mode` is `on`. 0% on
+        both when it's `off` or `shadow`, because the ingest filters then
+        forward every line unscanned.
+      degraded: |
+        The bulk tier below 100%. `GATEWAY_SECRETFILTER_BULK_RATE` is below
+        `1.0`, and the rest of that tier is stored unscanned.
+      unhealthy: |
+        The full tier below 100% while the filter is on. Lines that can leave
+        the install were stored unscanned.
+      notes: |
+        Card numbers are replaced on every line whatever this reads; the check
+        runs before the filters.
+    instant: true
+    promQL: |
+      sum by (component_id) (
+        increase(
+          loki_secretfilter_processing_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            component_id=~"loki.secretfilter.ingest(Bulk)?"
+          }
+          %%{range}
+        )
+      )
+      /
+      (
+        sum by (component_id) (
+          increase(
+            loki_secretfilter_processing_duration_seconds_count{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod",
+              component_id=~"loki.secretfilter.ingest(Bulk)?"
+            }
+            %%{range}
+          )
+        )
+        +
+        sum by (component_id) (
+          increase(
+            loki_secretfilter_entries_bypassed_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod",
+              component_id=~"loki.secretfilter.ingest(Bulk)?"
+            }
+            %%{range}
+          )
+        )
+      ) >= 0
+    datadogQuery: |
+      sum:loki_secretfilter_processing_duration_seconds_count{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND component_id IN (loki.secretfilter.ingest,loki.secretfilter.ingestbulk)
+      } by {component_id}.as_count()
+      / (
+        sum:loki_secretfilter_processing_duration_seconds_count{
+          $alloyRole AND $alloyNamespace AND $alloyPod AND component_id IN (loki.secretfilter.ingest,loki.secretfilter.ingestbulk)
+        } by {component_id}.as_count()
+        + sum:loki_secretfilter_entries_bypassed_total{
+          $alloyRole AND $alloyNamespace AND $alloyPod AND component_id IN (loki.secretfilter.ingest,loki.secretfilter.ingestbulk)
+        } by {component_id}.as_count()
+      )
+
+  - id: infra.alloy.compliance.redacted
+    stability: experimental
+    description:
+      summary: |
+        Credentials the ingest filters replaced over the selected time range.
+      nominal: Zero.
+      unhealthy: |
+        Any. A component logged a credential. The stored line is clean, but the
+        raw line is still in the container log file and in `kubectl logs`, so
+        treat the credential as exposed and rotate it.
+      notes: |
+        Excludes `mzmon-canary`, the rule that matches the filter's own test
+        string. Reads zero while the filter is `off` or in shadow mode, because
+        the ingest filters then scan nothing.
+
+        A flat zero means the gateway reported and nothing was replaced. No
+        data means nothing was collected at all.
+    instant: true
+    promQL: |
+      sum(
+          (
+            last_over_time(
+              loki_secretfilter_secrets_redacted_by_category_total{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod",
+                component_id=~"loki.secretfilter.ingest(Bulk)?",
+                rule!="mzmon-canary"
+              }
+              %%{range}
+            )
+            unless
+            loki_secretfilter_secrets_redacted_by_category_total offset %%{rangeWindow}
+          )
+        or
+          increase(
+            loki_secretfilter_secrets_redacted_by_category_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod",
+              component_id=~"loki.secretfilter.ingest(Bulk)?",
+              rule!="mzmon-canary"
+            }
+            %%{range}
+          )
+      )
+      or
+      0 * sum(
+        increase(
+          loki_secretfilter_processing_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            component_id=~"loki.secretfilter.ingest(Bulk)?"
+          }
+          %%{range}
+        )
+      )
+    # The arm that counts a series created inside the range has no Datadog form,
+    # so the redaction that creates a series isn't counted.
+    datadogQuery: |
+      default_zero(sum:loki_secretfilter_secrets_redacted_by_category_total{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND component_id IN (loki.secretfilter.ingest,loki.secretfilter.ingestbulk) AND NOT rule:mzmon-canary
+      }.as_count())
+
+  - id: infra.alloy.compliance.cards
+    stability: experimental
+    description:
+      summary: |
+        Log lines in which the gateway replaced a payment card number over the
+        selected time range.
+      nominal: Zero, or a trickle.
+      unhealthy: |
+        A burst from one container. An error message is most likely quoting a
+        value it rejected, and the raw line is still in the container log file.
+      notes: |
+        The check runs on every line, whatever the secret filter's mode. One
+        random 13- to 19-digit number in ten passes it too, so an ID or byte
+        count that isn't a card number can be replaced. _Card Numbers by Source_
+        says where each came from.
+
+        The Alloy pickers don't apply. The counter carries the labels of the
+        log stream it counted, and the gateway's scrape keeps them over its own,
+        so `namespace`, `pod` and `app` name the workload that logged the line
+        rather than the gateway.
+    instant: true
+    promQL: |
+      sum(
+          (
+            last_over_time(
+              loki_process_custom_luhn_redacted_lines_total{
+                component_id="loki.process.inputPrefilter"
+              }
+              %%{range}
+            )
+            unless
+            loki_process_custom_luhn_redacted_lines_total offset %%{rangeWindow}
+          )
+        or
+          increase(
+            loki_process_custom_luhn_redacted_lines_total{
+              component_id="loki.process.inputPrefilter"
+            }
+            %%{range}
+          )
+      )
+      or
+      0 * sum(
+        increase(
+          loki_secretfilter_processing_duration_seconds_count{
+            component_id="loki.secretfilter.ingest"
+          }
+          %%{range}
+        )
+      )
+    # The arm that counts a series created inside the range has no Datadog form,
+    # so the line that creates a series isn't counted. Datadog lowercases the
+    # component, so `inputPrefilter` is `inputprefilter`.
+    datadogQuery: |
+      default_zero(sum:loki_process_custom_luhn_redacted_lines_total{
+        component_id:loki.process.inputprefilter
+      }.as_count())
+
+  - id: infra.alloy.compliance.timed_out
+    stability: experimental
+    description:
+      summary: |
+        Log lines the ingest filters stopped scanning at the timeout, over the
+        selected time range.
+      nominal: Zero.
+      unhealthy: |
+        Any. Each line was stored partly scanned, with the label
+        `secretfilter="timed-out"`. A credential past the point the scan reached
+        is stored as logged.
+      notes: |
+        `GATEWAY_SECRETFILTER_TIMEOUT` sets the timeout, and its default, `0s`,
+        sets none.
+    instant: true
+    promQL: |
+      sum(
+        increase(
+          loki_secretfilter_lines_timed_out_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            component_id=~"loki.secretfilter.ingest(Bulk)?"
+          }
+          %%{range}
+        )
+      )
+    datadogQuery: |
+      default_zero(sum:loki_secretfilter_lines_timed_out_total{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND component_id IN (loki.secretfilter.ingest,loki.secretfilter.ingestbulk)
+      }.as_count())
+
+  - id: infra.alloy.compliance.shadow
+    stability: experimental
+    description:
+      summary: |
+        Credentials the shadow filter would have replaced over the selected time
+        range.
+      nominal: |
+        Zero when `pipeline.logging.secretFilter.mode` isn't `shadow`. In shadow
+        mode, what the rules match on this install's own logs.
+      degraded: |
+        A steady count from one rule and container. Check a stored copy before
+        turning the filter on: it's either a credential that component logs, or
+        a false positive the rules need an allowlist entry for.
+      notes: |
+        Shadow mode changes nothing that's stored, apart from adding the copies.
+    instant: true
+    promQL: |
+      sum(
+          (
+            last_over_time(
+              loki_secretfilter_secrets_redacted_by_category_total{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod",
+                component_id="loki.secretfilter.shadow",
+                rule!="mzmon-canary"
+              }
+              %%{range}
+            )
+            unless
+            loki_secretfilter_secrets_redacted_by_category_total offset %%{rangeWindow}
+          )
+        or
+          increase(
+            loki_secretfilter_secrets_redacted_by_category_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod",
+              component_id="loki.secretfilter.shadow",
+              rule!="mzmon-canary"
+            }
+            %%{range}
+          )
+      )
+      or
+      0 * sum(
+        increase(
+          loki_secretfilter_processing_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            component_id="loki.secretfilter.shadow"
+          }
+          %%{range}
+        )
+      )
+    # The arm that counts a series created inside the range has no Datadog form,
+    # so the match that creates a series isn't counted.
+    datadogQuery: |
+      default_zero(sum:loki_secretfilter_secrets_redacted_by_category_total{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND component_id:loki.secretfilter.shadow AND NOT rule:mzmon-canary
+      }.as_count())
+
+  - id: infra.alloy.compliance.redacted.by_rule
+    stability: experimental
+    description:
+      summary: |
+        Credentials the ingest filters replaced per second, split by the rule
+        that matched.
+      nominal: |
+        Nothing, or a steady rate from a rule that matches something that isn't
+        a credential.
+      unhealthy: |
+        A rule that wasn't there before, or a step up in one that was.
+      notes: |
+        A rule's first replacement from each container isn't drawn, because the
+        counter starts at 1. _Redactions by Rule and Origin_ counts it.
+    promQL: |
+      sum by (rule) (
+        rate(
+          loki_secretfilter_secrets_redacted_by_category_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            component_id=~"loki.secretfilter.ingest(Bulk)?",
+            rule!="mzmon-canary"
+          }
+          %%{interval}
+        )
+      )
+    datadogQuery: |
+      sum:loki_secretfilter_secrets_redacted_by_category_total{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND component_id IN (loki.secretfilter.ingest,loki.secretfilter.ingestbulk) AND NOT rule:mzmon-canary
+      } by {rule}.as_rate().rollup(sum, 60)
+
+  - id: infra.alloy.compliance.redacted.by_origin
+    stability: experimental
+    description:
+      summary: |
+        Credentials the ingest filters replaced per second, split by the
+        container that logged them.
+      nominal: |
+        Nothing, or a steady rate from a container whose lines a rule matches
+        without carrying a credential.
+      unhealthy: |
+        A container that wasn't there before. It logged a credential.
+      notes: |
+        A container's first replacement under each rule isn't drawn, because
+        the counter starts at 1. _Redactions by Rule and Origin_ counts it. A
+        line with no `container` label, such as a node's journal line, reads
+        `(no container)`; the kubelet's journal is a common source of matches.
+    promQL: |
+      label_replace(
+        sum by (origin) (
+          rate(
+            loki_secretfilter_secrets_redacted_by_category_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod",
+              component_id=~"loki.secretfilter.ingest(Bulk)?",
+              rule!="mzmon-canary"
+            }
+            %%{interval}
+          )
+        ),
+        "origin", "(no container)", "origin", ""
+      )
+    datadogQuery: |
+      sum:loki_secretfilter_secrets_redacted_by_category_total{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND component_id IN (loki.secretfilter.ingest,loki.secretfilter.ingestbulk) AND NOT rule:mzmon-canary
+      } by {origin}.as_rate().rollup(sum, 60)
+
+  - id: infra.alloy.compliance.redacted.table
+    stability: experimental
+    description:
+      summary: |
+        Credentials the ingest filters replaced over the selected time range,
+        one row per rule and container.
+      nominal: Empty.
+      unhealthy: |
+        Any row. The container logged a credential the rule names. Check the
+        stored line, then fix the component and rotate the credential.
+      notes: |
+        Both tiers together. A line with no `container` label, such as a node's
+        journal line, reads `(no container)`.
+    instant: true
+    promQL: |
+      label_replace(
+        sum by (rule, origin) (
+            (
+              last_over_time(
+                loki_secretfilter_secrets_redacted_by_category_total{
+                  app=~"$alloyRole",
+                  namespace=~"$alloyNamespace",
+                  pod=~"$alloyPod",
+                  component_id=~"loki.secretfilter.ingest(Bulk)?",
+                  rule!="mzmon-canary"
+                }
+                %%{range}
+              )
+              unless
+              loki_secretfilter_secrets_redacted_by_category_total offset %%{rangeWindow}
+            )
+          or
+            increase(
+              loki_secretfilter_secrets_redacted_by_category_total{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod",
+                component_id=~"loki.secretfilter.ingest(Bulk)?",
+                rule!="mzmon-canary"
+              }
+              %%{range}
+            )
+        ) > 0,
+        "origin", "(no container)", "origin", ""
+      )
+    # The arm that counts a series created inside the range has no Datadog form,
+    # so a row whose only redaction created its series is missing.
+    datadogQuery: |
+      cutoff_min(
+        sum:loki_secretfilter_secrets_redacted_by_category_total{
+          $alloyRole AND $alloyNamespace AND $alloyPod AND component_id IN (loki.secretfilter.ingest,loki.secretfilter.ingestbulk) AND NOT rule:mzmon-canary
+        } by {rule,origin}.as_count(),
+        1e-9
+      )
+
+  - id: infra.alloy.compliance.cards.by_source
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second in which the gateway replaced a card number, split
+        by the source that logged them: `<namespace>/<container>` for a
+        container, or the journal and its systemd unit for a node.
+      nominal: |
+        Nothing, or a trickle from a source that logs long numeric IDs.
+      unhealthy: |
+        A source that wasn't there before, or a burst from one that was.
+      notes: |
+        Each stream's first replacement isn't drawn, because its counter starts
+        at 1. _Card Numbers by Source (Select Time Range)_ counts it. A stream's
+        series ends five minutes after its last replacement. The Alloy pickers
+        don't apply, for the reason _Card Numbers Replaced_ gives.
+    promQL: |
+      sum by (job, unit) (
+        rate(
+          loki_process_custom_luhn_redacted_lines_total{
+            component_id="loki.process.inputPrefilter"
+          }
+          %%{interval}
+        )
+      )
+    # The counter carries the log stream's labels, which the gateway's scrape
+    # keeps over its own (`honorLabels`), so only `component_id` and `service`
+    # still say the gateway counted it. A container stream's `job` is
+    # `<namespace>/<container>`, and a node journal line's is the journal source,
+    # with its systemd `unit` beside it. Datadog turns `job` into `service`, which
+    # the gateway's own `service` label shares, so the translation splits by
+    # namespace and container instead; a journal line reads as the gateway's.
+    datadogQuery: |
+      sum:loki_process_custom_luhn_redacted_lines_total{
+        component_id:loki.process.inputprefilter
+      } by {namespace,container,unit}.as_rate().rollup(sum, 60)
+
+  - id: infra.alloy.compliance.cards.table
+    stability: experimental
+    description:
+      summary: |
+        Log lines in which the gateway replaced a card number over the selected
+        time range, one row per source: `<namespace>/<container>` for a
+        container, or the journal and its systemd unit for a node.
+      nominal: |
+        Empty, or a few sources that log long numeric IDs.
+      unhealthy: |
+        A source you can't explain. Search its stored lines for
+        `<redacted:luhn>` to see whether the number was a card or an ID.
+      notes: |
+        The Alloy pickers don't apply, for the reason _Card Numbers Replaced_
+        gives.
+    instant: true
+    promQL: |
+      sum by (job, unit) (
+          (
+            last_over_time(
+              loki_process_custom_luhn_redacted_lines_total{
+                component_id="loki.process.inputPrefilter"
+              }
+              %%{range}
+            )
+            unless
+            loki_process_custom_luhn_redacted_lines_total offset %%{rangeWindow}
+          )
+        or
+          increase(
+            loki_process_custom_luhn_redacted_lines_total{
+              component_id="loki.process.inputPrefilter"
+            }
+            %%{range}
+          )
+      ) > 0
+    # The arm that counts a series created inside the range has no Datadog form,
+    # so a row whose only line created its series is missing. Split by namespace
+    # and container rather than `job`, as `cards.by_source` explains.
+    datadogQuery: |
+      cutoff_min(
+        sum:loki_process_custom_luhn_redacted_lines_total{
+          component_id:loki.process.inputprefilter
+        } by {namespace,container,unit}.as_count(),
+        1e-9
+      )
+
+  - id: infra.alloy.compliance.coverage
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second each secret-filter instance scanned, beside those
+        it forwarded unscanned.
+      nominal: |
+        With the filter `on`, `ingest` and `ingestBulk` scan everything and
+        bypass nothing. With it `off`, they bypass everything. In shadow mode,
+        `shadow` scans everything as well.
+      degraded: |
+        `ingestBulk` bypassing part of its tier. Its rate is below `1.0`, which
+        is a decision made for one install.
+      unhealthy: |
+        `ingest` bypassing anything while the filter is on.
+      notes: |
+        A line goes to one of `ingest` and `ingestBulk`, by level, so the two
+        add up to the gateway's log rate.
+    promQL:
+      - |
+        sum by (component_id) (
+          rate(
+            loki_secretfilter_processing_duration_seconds_count{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (component_id) (
+          rate(
+            loki_secretfilter_entries_bypassed_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+    datadogQuery:
+      - |
+        sum:loki_secretfilter_processing_duration_seconds_count{
+          $alloyRole AND $alloyNamespace AND $alloyPod
+        } by {component_id}.as_rate().rollup(sum, 60)
+      - |
+        sum:loki_secretfilter_entries_bypassed_total{
+          $alloyRole AND $alloyNamespace AND $alloyPod
+        } by {component_id}.as_rate().rollup(sum, 60)
+
+  - id: infra.alloy.compliance.scan_time
+    stability: experimental
+    description:
+      summary: |
+        The 99th percentile of time spent scanning one line, per secret-filter
+        instance, from the slowest gateway.
+      nominal: Under a millisecond.
+      degraded: |
+        Climbing toward `GATEWAY_SECRETFILTER_TIMEOUT`. Lines past it are stored
+        partly scanned.
+      unhealthy: |
+        Tens of milliseconds sustained. The gateway can fall behind the agents,
+        and log delivery slows for everyone.
+      notes: |
+        Alloy computes the percentile itself, over the last ten minutes of each
+        gateway pod, so the slowest pod is shown rather than a combined figure.
+        An instance that scanned nothing in that window has no line. Use it to
+        set the timeout.
+    # A summary reports NaN for a quantile with no observations in its window,
+    # such as an instance that bypasses every line, and `>= 0` drops it.
+    promQL: |
+      max by (component_id) (
+        loki_secretfilter_processing_duration_seconds{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod",
+          quantile="0.99"
+        } >= 0
+      )
+    datadogQuery: |
+      max:loki_secretfilter_processing_duration_seconds{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND quantile:0.99
+      } by {component_id}
+
+  - id: infra.alloy.compliance.timeouts
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second each secret-filter instance stopped scanning at
+        the timeout, beside those it dropped for it.
+      nominal: Zero.
+      unhealthy: |
+        Lines timed out at `ingest` or `ingestBulk`. Each is stored partly
+        scanned, labelled `secretfilter="timed-out"`. `shadow` drops its timed-out
+        copies rather than storing them, so its drops lose nothing.
+    promQL:
+      - |
+        sum by (component_id) (
+          rate(
+            loki_secretfilter_lines_timed_out_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (component_id) (
+          rate(
+            loki_secretfilter_lines_dropped_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+    datadogQuery:
+      - |
+        sum:loki_secretfilter_lines_timed_out_total{
+          $alloyRole AND $alloyNamespace AND $alloyPod
+        } by {component_id}.as_rate().rollup(sum, 60)
+      - |
+        sum:loki_secretfilter_lines_dropped_total{
+          $alloyRole AND $alloyNamespace AND $alloyPod
+        } by {component_id}.as_rate().rollup(sum, 60)
+
+  - id: infra.alloy.compliance.shadow.by_rule
+    stability: experimental
+    description:
+      summary: |
+        Credentials per second the shadow filter would have replaced, split by
+        the rule that matched.
+      nominal: Nothing outside shadow mode.
+      degraded: |
+        A steady rate from one rule. Read its copies in the store before turning
+        the filter on.
+      notes: |
+        A rule's first match from each container isn't drawn, because the
+        counter starts at 1. _Shadow Matches by Rule and Origin_ counts it.
+    promQL: |
+      sum by (rule) (
+        rate(
+          loki_secretfilter_secrets_redacted_by_category_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            component_id="loki.secretfilter.shadow",
+            rule!="mzmon-canary"
+          }
+          %%{interval}
+        )
+      )
+    datadogQuery: |
+      sum:loki_secretfilter_secrets_redacted_by_category_total{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND component_id:loki.secretfilter.shadow AND NOT rule:mzmon-canary
+      } by {rule}.as_rate().rollup(sum, 60)
+
+  - id: infra.alloy.compliance.shadow.by_origin
+    stability: experimental
+    description:
+      summary: |
+        Credentials per second the shadow filter would have replaced, split by
+        the container that logged them.
+      nominal: Nothing outside shadow mode.
+      degraded: |
+        A steady rate from one container: one that logs a credential, or one
+        whose lines a rule mistakes for one.
+      notes: |
+        A container's first match under each rule isn't drawn, because the
+        counter starts at 1. _Shadow Matches by Rule and Origin_ counts it.
+    promQL: |
+      label_replace(
+        sum by (origin) (
+          rate(
+            loki_secretfilter_secrets_redacted_by_category_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod",
+              component_id="loki.secretfilter.shadow",
+              rule!="mzmon-canary"
+            }
+            %%{interval}
+          )
+        ),
+        "origin", "(no container)", "origin", ""
+      )
+    datadogQuery: |
+      sum:loki_secretfilter_secrets_redacted_by_category_total{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND component_id:loki.secretfilter.shadow AND NOT rule:mzmon-canary
+      } by {origin}.as_rate().rollup(sum, 60)
+
+  - id: infra.alloy.compliance.shadow.table
+    stability: experimental
+    description:
+      summary: |
+        Credentials the shadow filter would have replaced over the selected time
+        range, one row per rule and container.
+      nominal: Empty outside shadow mode.
+      degraded: |
+        A row you can't explain. Read the container's shadow copies, then either
+        fix the component or allowlist what the rule mistook for a credential.
+    instant: true
+    promQL: |
+      label_replace(
+        sum by (rule, origin) (
+            (
+              last_over_time(
+                loki_secretfilter_secrets_redacted_by_category_total{
+                  app=~"$alloyRole",
+                  namespace=~"$alloyNamespace",
+                  pod=~"$alloyPod",
+                  component_id="loki.secretfilter.shadow",
+                  rule!="mzmon-canary"
+                }
+                %%{range}
+              )
+              unless
+              loki_secretfilter_secrets_redacted_by_category_total offset %%{rangeWindow}
+            )
+          or
+            increase(
+              loki_secretfilter_secrets_redacted_by_category_total{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod",
+                component_id="loki.secretfilter.shadow",
+                rule!="mzmon-canary"
+              }
+              %%{range}
+            )
+        ) > 0,
+        "origin", "(no container)", "origin", ""
+      )
+    # The arm that counts a series created inside the range has no Datadog form,
+    # so a row whose only match created its series is missing.
+    datadogQuery: |
+      cutoff_min(
+        sum:loki_secretfilter_secrets_redacted_by_category_total{
+          $alloyRole AND $alloyNamespace AND $alloyPod AND component_id:loki.secretfilter.shadow AND NOT rule:mzmon-canary
+        } by {rule,origin}.as_count(),
+        1e-9
+      )
+
+  # The stored lines. These read every workload's logs, not the collectors', so
+  # no Alloy picker applies. Counting lines that contain a placeholder reads
+  # every line in range, which is why the panels sit in collapsed rows. `job`
+  # is the anchor rather than `namespace`, because a node's journal lines carry
+  # no namespace, and on the reference installs they are a large share of the
+  # placeholders. A container's `job` is `<namespace>/<container>`, and a
+  # journal line's names the journal, beside its systemd `unit`.
+  #
+  # Loki logs every query it runs, query text included, so a search for the
+  # literal `<redacted:` finds its own log lines on the next run. The searches
+  # use `|~ "<redacted[:]"`, which matches the same lines and not its own text.
+  - id: infra.alloy.compliance.stored.rate
+    stability: experimental
+    description:
+      summary: |
+        Stored log lines per minute that carry a `<redacted:…>` placeholder,
+        split by source: `<namespace>/<container>` for a container, or the
+        journal and its systemd unit for a node. Shadow copies are excluded.
+      nominal: |
+        Nothing, or a trickle of card-number replacements from a container that
+        logs long numeric IDs.
+      unhealthy: |
+        A source that wasn't there before.
+      notes: |
+        Reads every stored line in range, so it's slow over long ranges.
+    logQL: |
+      sum by (job, unit) (
+        rate(
+          {job=~".+", secretfilter!="shadow"}
+            |~ "<redacted[:]"
+          %%{interval}
+        )
+      ) * 60
+
+  - id: infra.alloy.compliance.stored.stream
+    stability: experimental
+    description:
+      summary: |
+        Stored log lines that carry a `<redacted:…>` placeholder, newest first.
+        Shadow copies are excluded.
+      notes: |
+        The name in the placeholder is the rule that matched, or `luhn` for a
+        card number. Searches every stored line in range until it fills a page,
+        so it's slow when there are few matches.
+    logQL: |
+      {job=~".+", secretfilter!="shadow"}
+        |~ "<redacted[:]"
+
+  - id: infra.alloy.compliance.shadow_copies.rate
+    stability: experimental
+    description:
+      summary: |
+        Shadow copies stored per minute, split by the source whose line was
+        copied: `<namespace>/<container>` for a container, or the journal and
+        its systemd unit for a node.
+      nominal: Nothing outside shadow mode.
+      degraded: |
+        A steady rate from one source. Its copies say what the rules matched.
+      notes: |
+        The gateway stores at most 100 copies a second per namespace, with a
+        burst of 1,000, so a rule that matches every line of a namespace is
+        flat at that limit.
+    logQL: |
+      sum by (job, unit) (
+        rate({secretfilter="shadow"} %%{interval})
+      ) * 60
+
+  - id: infra.alloy.compliance.shadow_copies.stream
+    stability: experimental
+    description:
+      summary: |
+        Shadow copies, newest first: lines as the filter would have stored them.
+      notes: |
+        Each copy carries `secretfilter="shadow"` beside the labels of the line
+        it copies, and the placeholder names the rule that matched.
+    logQL: |
+      {secretfilter="shadow"}
+
+  - id: infra.alloy.compliance.partly_scanned.rate
+    stability: experimental
+    description:
+      summary: |
+        Stored log lines per minute that the ingest filters stopped scanning at
+        the timeout, split by source: `<namespace>/<container>` for a container,
+        or the journal and its systemd unit for a node.
+      nominal: Nothing.
+      unhealthy: |
+        Any. A credential past the point the scan reached is stored as logged.
+    logQL: |
+      sum by (job, unit) (
+        rate({secretfilter="timed-out"} %%{interval})
+      ) * 60
+
+  - id: infra.alloy.compliance.partly_scanned.stream
+    stability: experimental
+    description:
+      summary: |
+        Stored log lines the ingest filters stopped scanning at the timeout,
+        newest first.
+    logQL: |
+      {secretfilter="timed-out"}
 
   # --- components: the controller, its configuration, and clustering ----------
   - id: infra.alloy.components.not_healthy

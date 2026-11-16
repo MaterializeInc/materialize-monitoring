@@ -244,10 +244,13 @@ It needs both a metrics and a logs datasource.
 
 ### Alloy Meta Monitoring (`infra-alloy`)
 
-Whether telemetry collection is healthy, and which stage of it broke if not, across eight tabs: Overview, Log Pipeline, Metric Pipeline, Ingest, Components, Resources, Events, and Logs.
+Whether telemetry collection is healthy, and which stage of it broke if not, across Overview, Log Pipeline, Metric Pipeline, Ingest, Compliance, Components, Resources, Events, and Logs tabs.
 The Overview tab leads with any alert about collection firing or pending now, such as a lost scrape target or a gateway refusing what it scraped.
 The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
 Ingest covers what other senders push into the gateway over log push, Prometheus remote write, and OTLP, including remote-write senders' own view of their queues.
+Compliance covers what the gateway removed from log lines before storing them: credentials the secret filter redacted and card numbers it replaced, by rule and source, how much of each tier the filter scanned, and what shadow mode would have redacted.
+Its graphs of redactions are on a log axis, so a new source shows beside the steady matches that aren't credentials.
+Its rows that search the stored lines start collapsed, because they read Loki rather than counters.
 Components covers configuration loads, uptime, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits; Events is what Kubernetes reported about the collectors' pods and workloads, and about the configuration-validation Jobs that run before every install and upgrade.
 It needs both a metrics and a logs datasource.
 

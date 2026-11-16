@@ -507,13 +507,15 @@ The second meta-monitoring dashboard, and the second occupant of `Folder::MetaO1
 | 2 | Log Pipeline | `log_pipeline.rs` |
 | 3 | Metric Pipeline | `metric_pipeline.rs` |
 | 4 | Ingest | `ingest.rs` |
-| 5 | Components | `components.rs` |
-| 6 | Resources | `resources.rs` |
-| 7 | Events | `events.rs` |
-| 8 | Logs | `logs.rs` |
+| 5 | Compliance | `compliance.rs` |
+| 6 | Components | `components.rs` |
+| 7 | Resources | `resources.rs` |
+| 8 | Events | `events.rs` |
+| 9 | Logs | `logs.rs` |
 
-Eight tabs on a seven-colour palette: Components and Resources share a shade, since neither shades a panel, and a
-test holds that pair as the only one.
+Nine tabs on a seven-colour palette, so two pairs share a shade: Components and Resources, since neither shades a
+panel, and Log Pipeline and Compliance, since Compliance reports on stages of the log pipeline. A test holds those
+pairs as the only ones.
 
 Queries are `packages/queries/infra-alloy.yaml`, which absorbed the six panel-less `infra.loki.pipeline.*` queries.
 
@@ -525,7 +527,8 @@ These things about it are not re-derivable by reading the modules:
 - **`$alloyRole`'s "All" is the literal `alloy-agent|alloy-gateway`**, and it is the anchor. `thanos-ruler` publishes
   `prometheus_remote_storage_*` too, and an unanchored query would add its queue to the gateway's. A test asserts
   every query carries the anchor, except the `UNSCOPED` panels in `mod.rs`: the four that read the scraped targets'
-  own `up` and `scrape_*`, and the remote-write senders' panel, which reads the senders' queues by `url`.
+  own `up` and `scrape_*`, the remote-write senders' panel, which reads the senders' queues by `url`, and the
+  Compliance panels that read stored lines or the card-number counter, which come from every workload.
 - **Events match on the involved object's `name`**, which reaches every object named after a role, plus the
   pre-install validation Jobs by a second pattern, `.+-validate-(agent|gateway)`, since those are named after the
   release. That second pattern ignores the role picker.
@@ -541,6 +544,19 @@ These things about it are not re-derivable by reading the modules:
 - **Drop reasons are classified by a test.** `loki_process_dropped_lines_total` mixes the debug tap's deliberate
   sampling with guard losses. `log_pipeline.rs` reads every `drop_counter_reason` from the rendered pipelines and
   fails when one is neither excluded as deliberate nor a known guard.
+- **Compliance counts a counter's first increment.** `loki.secretfilter` and the card-number `stage.metrics` create
+  each series at 1, so `increase()` reads a credential logged once as zero. The range counts and tables use the alert
+  rules' form instead: `last_over_time(c[$__range]) unless c offset $__range`, or `increase` for an older series.
+  On AWS's shadow-mode data it matched the true total exactly, 105, where `increase` read 40.
+- **The card-number counter has the workload's labels, not the gateway's.** `stage.metrics` copies the stream's
+  labels, and the chart's scrape of Alloy uses `honorLabels`, so `namespace`, `pod`, `container`, `app` and `job`
+  are the logging workload's. Only `component_id` and `service` say the gateway counted it, so the card panels skip
+  the Alloy pickers and split by `job` and `unit`: a journal line's `job` names the journal, not a container.
+- **Compliance's graphs are on a log axis** where a small new rate has to show beside steady matches that aren't
+  credentials; on the reference installs those are most of what the rules and the checksum match. The linear
+  exceptions are listed in `compliance.rs`. The rows that read Loki start collapsed, and the one that searches every
+  stored line is also hidden past 7 days, by a collapsed stand-in titled after it. Grafana flags two rows with one
+  title, so the titles differ.
 
 ## `infra-thanos` tabs
 
