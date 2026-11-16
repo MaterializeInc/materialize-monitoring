@@ -44,13 +44,28 @@ pub fn free_port() -> u16 {
 
 /// One HTTP/1.0 exchange, so Go answers without chunked encoding.
 pub fn http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, String)> {
+    http_with_headers(port, method, path, &[], body)
+}
+
+/// [`http`], with extra request headers. A name may repeat.
+pub fn http_with_headers(
+    port: u16,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> Option<(u16, String)> {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .ok()?;
+    let extra: String = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
     write!(
         stream,
-        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\n\r\n{body}",
         body.len()
     )
     .ok()?;
@@ -145,6 +160,11 @@ impl Alloy {
     /// Runs at the `experimental` stability level, as the gateway does, so a
     /// config that loads here loads there.
     pub fn start(config: &str) -> (Self, u16) {
+        Self::start_with_env(config, &[])
+    }
+
+    /// [`Alloy::start`], with environment variables for `sys.env`.
+    pub fn start_with_env(config: &str, env: &[(&str, &str)]) -> (Self, u16) {
         let dir = tempfile::tempdir().expect("tempdir");
         let loki_port = free_port();
         let server_port = free_port();
@@ -165,6 +185,7 @@ impl Alloy {
             ))
             .arg(format!("--server.http.listen-addr=127.0.0.1:{server_port}"))
             .arg(&config_path)
+            .envs(env.iter().copied())
             .stdout(Stdio::null())
             .stderr(std::fs::File::create(&log).expect("create the log"))
             .spawn()

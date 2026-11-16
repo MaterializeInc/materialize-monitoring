@@ -50,6 +50,38 @@ The gateway is where normalization, cardinality reduction, and routing happen.
 Every component in these pipelines is typed and schema-validated, including the ingress components and the `loki.write` sink.
 The `raw:` escape (see [Authoring](../authoring/)) remains available and is currently unused.
 
+### Client-certificate tenancy
+
+With `pipeline.gateway.clientCertificateTenancy` on, a proxy in front of the gateway terminates mTLS,
+and passes the verified certificate on in a header.
+The OTLP receiver forwards to one of two attributes processors instead of the bridge and `inputMetricProcessor`:
+
+- `clientTenantSubject` reads an RFC 2253 subject,
+  as an AWS Application Load Balancer sends in `X-Amzn-Mtls-Clientcert-Subject` and nginx in `$ssl_client_s_dn`.
+- `clientTenantXfcc` reads Envoy's `X-Forwarded-Client-Cert`.
+
+Both read the header `GATEWAY_CLIENT_TENANT_HEADER` names, which the chart sets from the values.
+Every log record and metric data point then takes its tenant from the CN of the certificate's subject.
+The comments on those components in `gateway.yaml` explain the construction.
+When you change the gateway, keep these true:
+
+- Only `loki.relabel "clientTenant"` sets `__mzmon_tenant__`, the label `inputProcessor` takes the Loki tenant from.
+  `loki.source.api` drops every label that starts with `__`, and `loki.relabel "bridge"` drops this one.
+  A new way in that can carry arbitrary labels needs the same drop.
+- The tenant attribute is `mzmonTenant`, with no underscore.
+  Both OTLP bridges rename attributes into label names, and when two attributes land on one name, they keep whichever their map iteration reaches last.
+  Only a name without `_` is safe from a lookalike.
+- A new way into the metric pipeline passes `otelcol.processor.transform "localTenant"`, which removes `mzmonTenant`, as `inputBridge` does under this setting.
+- Each format's pattern refuses a header that names more than one certificate.
+  The collector joins the values of a repeated header with `;`, and Envoy separates appended certificates with `,`.
+  A new format needs a pattern that refuses both, and a test case for each.
+- Each pattern takes the CN only from a subject with exactly one CN and no `\` or `+`.
+  An escape can hide a separator: `O=dept\,CN=victim` puts a second CN inside the organization.
+  A `+` joins one to it: `O=dept+CN=victim`.
+
+`packages/mzmon-lib/tests/gateway_client_tenant.rs` sends each forgery it knows of through `alloy run`.
+Add a case when you add a way in.
+
 ### Processing conventions
 
 These are the conventions a contributor must preserve when editing the gateway `loki.process` pipeline:

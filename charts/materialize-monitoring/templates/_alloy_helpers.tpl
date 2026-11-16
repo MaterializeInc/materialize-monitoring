@@ -270,8 +270,19 @@ Usage:
   {{- end }}
   {{- $gateway }}
 
-  {{- /* Metric processors */}}
-  {{- $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}
+  {{- /* Metric processors. Under client-certificate tenancy, inputBridge
+         forwards through localTenant, which removes the tenant label from
+         everything the certificate didn't set. The same guard as the shadow
+         tap. */}}
+  {{- $metrics := $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}
+  {{- if ( include "mzmon.alloyGateway.clientCertificateTenancy" $ ) }}
+    {{- $bridge := "otelcol.receiver.prometheus \"inputBridge\" {\n\toutput {\n\t\tmetrics = [\n\t\t\totelcol.processor.transform.inputMetricProcessor.input,\n\t\t]\n\t}\n}" }}
+    {{- if not ( contains $bridge $metrics ) }}
+      {{- fail "gateway-metrics.alloy no longer defines otelcol.receiver.prometheus \"inputBridge\" as the chart expects; update mzmon.alloyGateway.pipeline.contents" }}
+    {{- end }}
+    {{- $metrics = replace $bridge ( replace "inputMetricProcessor" "localTenant" $bridge ) $metrics }}
+  {{- end }}
+  {{- $metrics }}
 
   {{- /* Cloud provider pulls, as custom components. Always included: a
          `declare` nothing instantiates costs nothing, and this way the file the
@@ -342,6 +353,50 @@ loki.rules.kubernetes {{ printf "tenant_%d" $i | quote }} {
 {{- end }}
 
 {{/*
+Whether the gateway takes each OTLP request's tenant from the client
+certificate a proxy verified, `pipeline.gateway.clientCertificateTenancy`.
+"true" or empty.
+
+Usage:
+  {{- if ( include "mzmon.alloyGateway.clientCertificateTenancy" $ ) }}
+*/}}
+{{- define "mzmon.alloyGateway.clientCertificateTenancy" }}
+  {{- if dig "gateway" "clientCertificateTenancy" "enabled" false ( $.Values.pipeline | default dict ) }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{/*
+The header `pipeline.gateway.clientCertificateTenancy` reads, lowercased as the
+gateway looks it up.
+
+Usage:
+  {{- $header := include "mzmon.alloyGateway.clientCertificateTenancy.header" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.clientCertificateTenancy.header" }}
+  {{- dig "gateway" "clientCertificateTenancy" "header" "X-Amzn-Mtls-Clientcert-Subject" ( $.Values.pipeline | default dict ) | toString | lower }}
+{{- end }}
+
+{{/*
+How `pipeline.gateway.clientCertificateTenancy` reads its header: `subject` or
+`xfcc`. Unset, Envoy's `X-Forwarded-Client-Cert` is `xfcc` and any other header
+is `subject`.
+
+Usage:
+  {{- $format := include "mzmon.alloyGateway.clientCertificateTenancy.format" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.clientCertificateTenancy.format" }}
+  {{- $format := dig "gateway" "clientCertificateTenancy" "format" "" ( $.Values.pipeline | default dict ) | toString }}
+  {{- if $format }}
+    {{- $format }}
+  {{- else if eq ( include "mzmon.alloyGateway.clientCertificateTenancy.header" $ ) "x-forwarded-client-cert" }}
+    {{- "xfcc" }}
+  {{- else }}
+    {{- "subject" }}
+  {{- end }}
+{{- end }}
+
+{{/*
 Generate the alloy-gateway pipeline sources.
 
 Usage:
@@ -354,6 +409,8 @@ Usage:
          tree covers prometheus.receive_http. */}}
   {{- $tls := dig "logging" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
   {{- $metricTls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
+  {{- $clientTenancy := include "mzmon.alloyGateway.clientCertificateTenancy" $ }}
+  {{- $clientTenantProcessor := printf "otelcol.processor.attributes.clientTenant%s.input" ( include "mzmon.alloyGateway.clientCertificateTenancy.format" $ | title ) }}
 loki.source.api "gateway" {
     forward_to = [
         loki.process.inputPrefilter.receiver,
@@ -367,20 +424,35 @@ loki.source.api "gateway" {
 
 otelcol.receiver.otlp "gateway" {
     grpc {
+      {{- if $clientTenancy }}
+        include_metadata = true
+      {{- end }}
       {{- include "mzmon.alloy.serverTls" ( dict "tls" $tls "flavor" "otelcol" "indent" 8 ) }}
     }
 
     http {
+      {{- if $clientTenancy }}
+        include_metadata = true
+      {{- end }}
       {{- include "mzmon.alloy.serverTls" ( dict "tls" $tls "flavor" "otelcol" "indent" 8 ) }}
     }
 
     output {
+      {{- if $clientTenancy }}
+        metrics = [
+            {{ $clientTenantProcessor }},
+        ]
+        logs = [
+            {{ $clientTenantProcessor }},
+        ]
+      {{- else }}
         metrics = [
             otelcol.processor.transform.inputMetricProcessor.input,
         ]
         logs = [
             otelcol.exporter.loki.bridge.input,
         ]
+      {{- end }}
     }
 }
 
@@ -1872,6 +1944,10 @@ Usage:
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
+  {{- $res := include "mzmon.alloy.validate.clientCertificateTenancy" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
   {{- range $release := ( list "alloy-agent" "alloy-gateway" ) }}
     {{- if hasKey $.Subcharts $release }}
       {{- $res := include "mzmon.alloy.validate.networkPolicy" ( dict "context" $ "release" $release ) | fromYaml }}
@@ -2287,6 +2363,122 @@ Usage:
     {{- end }}
   {{- else }}
     {{- $warnings = append $warnings ( printf "%s.networkPolicy.enabled is recommended in production." $release ) }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate `pipeline.gateway.clientCertificateTenancy`.
+
+The tenant comes from a header, and any pod that can reach 4317 or 4318 can
+send that header itself. So the gateway's NetworkPolicy has to admit the proxy
+that terminates TLS to those ports, and nothing else. A rule that lists no ports
+covers them, and so does a range, `port` to `endPort`, that includes either. A
+named port resolves through the gateway's container ports, and a name none of
+them has counts as covering them. A peer admits every pod when it is missing
+(no `from`) or when each
+selector it has is empty: `namespaceSelector: {}` is every namespace, and
+`podSelector: {}` every pod in the gateway's. An `ipBlock`, or a selector that
+names the proxy's pods, passes; whether it names only the proxy is the
+install's to get right.
+
+Errors, not warnings, because the failure is one install writing into another
+install's tenant. When something other than a NetworkPolicy isolates the ports,
+such as security groups for pods, `footgunOverrides` downgrades them.
+
+Usage:
+  {{- include "mzmon.alloy.validate.clientCertificateTenancy" $ }}
+*/}}
+{{- define "mzmon.alloy.validate.clientCertificateTenancy" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- if and ( include "mzmon.alloyGateway.clientCertificateTenancy" $ ) ( hasKey $.Subcharts "alloy-gateway" ) }}
+    {{- $header := include "mzmon.alloyGateway.clientCertificateTenancy.header" $ }}
+    {{- /* An HTTP field name, RFC 9110's token. */}}
+    {{- if not ( regexMatch "^[a-z0-9!#$%&'*+.^_`|~-]+$" $header ) }}
+      {{- $errors = append $errors ( printf "pipeline.gateway.clientCertificateTenancy.header is %q, which isn't an HTTP header name. Name the header your proxy sets, such as X-Amzn-Mtls-Clientcert-Subject, X-Forwarded-Client-Cert, or X-SSL-Client-S-DN." $header ) }}
+    {{- end }}
+    {{- $format := include "mzmon.alloyGateway.clientCertificateTenancy.format" $ }}
+    {{- if not ( has $format ( list "subject" "xfcc" ) ) }}
+      {{- $errors = append $errors ( printf "pipeline.gateway.clientCertificateTenancy.format is %q. It must be subject, for an RFC 2253 subject such as nginx's $ssl_client_s_dn, or xfcc, for Envoy's X-Forwarded-Client-Cert." $format ) }}
+    {{- end }}
+
+    {{- $setting := "pipeline.gateway.clientCertificateTenancy.enabled reads each OTLP request's tenant from a header any sender can set" }}
+    {{- $np := ( index $.Values "alloy-gateway" | default dict ).networkPolicy | default dict }}
+    {{- if not ( and $np.enabled ( has "Ingress" ( $np.policyTypes | default list ) ) ) }}
+      {{- $errors = append $errors ( printf "%s, but alloy-gateway.networkPolicy doesn't restrict ingress, so every pod in the cluster can reach 4317 and 4318. Admit only the proxy that terminates TLS to those ports: its subnets by ipBlock, or its pods by a selector that names them." $setting ) }}
+    {{- else }}
+      {{- /* A rule may name a container port. The gateway's come from
+             alloy.extraPorts, whose names and numbers an install can change,
+             plus the subchart's own `http-metrics`. */}}
+      {{- $alloy := ( index $.Values "alloy-gateway" | default dict ).alloy | default dict }}
+      {{- $named := dict "http-metrics" ( toString ( $alloy.listenPort | default 12345 ) ) }}
+      {{- range $ep := $alloy.extraPorts | default list }}
+        {{- if $ep.name }}
+          {{- $_ := set $named ( toString $ep.name ) ( toString ( $ep.targetPort | default $ep.port ) ) }}
+        {{- end }}
+      {{- end }}
+      {{- $open := list }}
+      {{- range $i, $rule := $np.ingress | default list }}
+        {{- $covers := not $rule.ports }}
+        {{- range $p := $rule.ports | default list }}
+          {{- $port := toString ( $p.port | default "" ) }}
+          {{- if hasKey $named $port }}
+            {{- $port = index $named $port }}
+          {{- end }}
+          {{- if not ( regexMatch "^[0-9]+$" $port ) }}
+            {{- /* No port, or a name no container port has: assume the
+                   worst. */}}
+            {{- $covers = true }}
+          {{- else }}
+            {{- /* A numeric port can open a range up to endPort. */}}
+            {{- $end := $p.endPort | default $port | int }}
+            {{- if and ( le ( int $port ) 4318 ) ( ge $end 4317 ) }}
+              {{- $covers = true }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- if $covers }}
+          {{- $admitsPods := not $rule.from }}
+          {{- range $peer := $rule.from | default list }}
+            {{- /* A selector matches everything unless it has a label or an
+                   expression to match. */}}
+            {{- $hasSelector := false }}
+            {{- $narrowed := false }}
+            {{- range $key := list "namespaceSelector" "podSelector" }}
+              {{- if hasKey $peer $key }}
+                {{- $hasSelector = true }}
+                {{- $selector := index $peer $key | default dict }}
+                {{- if or $selector.matchLabels $selector.matchExpressions }}
+                  {{- $narrowed = true }}
+                {{- end }}
+              {{- end }}
+            {{- end }}
+            {{- if and $hasSelector ( not $narrowed ) }}
+              {{- $admitsPods = true }}
+            {{- end }}
+          {{- end }}
+          {{- if $admitsPods }}
+            {{- $open = append $open ( printf "ingress[%d]" $i ) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if $open }}
+        {{- $errors = append $errors ( printf "%s, but alloy-gateway.networkPolicy.%s admits every pod to the OTLP ports, so a pod could choose its own tenant. Admit only the proxy that terminates TLS to 4317 and 4318: its subnets by ipBlock, or its pods by a selector that names them." $setting ( join ", " $open ) ) }}
+      {{- end }}
+    {{- end }}
+
+    {{- /* nginx and Envoy can present a certificate of their own to the
+           gateway, which a receiver that requires one then checks. An AWS
+           load balancer presents none. */}}
+    {{- $tls := dig "logging" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
+    {{- $auth := $tls.clientAuth | default "NoClientCert" | toString }}
+    {{- if and $tls.enabled ( ne $auth "NoClientCert" ) ( eq $header "x-amzn-mtls-clientcert-subject" ) }}
+      {{- $errors = append $errors ( printf "pipeline.gateway.clientCertificateTenancy reads X-Amzn-Mtls-Clientcert-Subject, so the OTLP receiver sits behind an AWS load balancer, which presents no client certificate to its targets. But pipeline.logging.gateway.server.tls.clientAuth is %s, so the receiver would refuse every request. Set it to NoClientCert." $auth ) }}
+    {{- end }}
   {{- end }}
 
   {{- /* final output */}}

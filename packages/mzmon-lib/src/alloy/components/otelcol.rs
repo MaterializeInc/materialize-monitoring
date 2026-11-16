@@ -230,8 +230,9 @@ pub struct AttributesActionBlock {
     pub pattern: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from_attribute: Option<String>,
+    /// Request-metadata / context key to copy from (a literal or an expression).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub from_context: Option<String>,
+    pub from_context: Option<Expressable<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub converted_type: Option<String>,
 }
@@ -253,7 +254,7 @@ impl ToBlock for AttributesActionBlock {
             attributes.insert("from_attribute".into(), AttributeValue::String(v.clone()));
         }
         if let Some(v) = &self.from_context {
-            attributes.insert("from_context".into(), AttributeValue::String(v.clone()));
+            attributes.insert("from_context".into(), v.to_attribute_value()?);
         }
         if let Some(v) = &self.converted_type {
             attributes.insert("converted_type".into(), AttributeValue::String(v.clone()));
@@ -357,8 +358,10 @@ impl_to_block_dispatch!(ProcessorSubBlock { Output, Raw });
 /// hatch (e.g. for `include`/`exclude` match blocks).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AttributesSubBlock {
+    // Boxed: two `Expressable` fields make an action far wider than `raw`
+    // (clippy::large_enum_variant). Transparent to serde and to the dispatch macro.
     #[serde(rename = "action")]
-    Action(AttributesActionBlock),
+    Action(Box<AttributesActionBlock>),
     #[serde(rename = "output")]
     Output(OtelcolOutputBlock),
     #[serde(rename = "raw")]

@@ -567,8 +567,9 @@ $defs:
         type: string
       from_context:
         description: |
-          Copy the value from this request-metadata / context key.
-        type: string
+          Copy the value from this request-metadata / context key. A literal
+          string or an expression, e.g. a header name from the environment.
+        $ref: "#/$defs/expressionOrString"
       converted_type:
         description: |
           Target type for a `convert` action.

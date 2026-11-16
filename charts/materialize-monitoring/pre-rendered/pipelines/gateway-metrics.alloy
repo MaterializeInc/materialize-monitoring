@@ -9,6 +9,30 @@ otelcol.receiver.prometheus "inputBridge" {
 	}
 }
 
+otelcol.processor.transform "localTenant" {
+	error_mode = "ignore"
+
+	metric_statements {
+		context = "resource"
+		statements = [
+			"delete_key(resource.attributes, \"mzmonTenant\")",
+		]
+	}
+
+	metric_statements {
+		context = "datapoint"
+		statements = [
+			"delete_key(datapoint.attributes, \"mzmonTenant\")",
+		]
+	}
+
+	output {
+		metrics = [
+			otelcol.processor.transform.inputMetricProcessor.input,
+		]
+	}
+}
+
 prometheus.operator.podmonitors "default" {
 	forward_to = [
 		otelcol.receiver.prometheus.inputBridge.receiver,

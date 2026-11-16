@@ -117,6 +117,16 @@ Both pass `alloy validate`. `agent.yaml` is a faithful port of the reference `st
 
 The conversion was verified by rendering before and after: `agent.alloy`, `gateway-metrics.alloy`, and `gateway-dest-stub.alloy` came out **byte-identical**, and `gateway.alloy` differs only in `logs`/`metrics` ordering inside one `output` block (the typed struct's canonical order vs. YAML order — semantically irrelevant to alloy, see the attribute-order note below). Both configs were also load-tested under a real `alloy run`, since `alloy validate` cannot see capsule/type mismatches.
 
+**Client-certificate tenancy** (`gateway.yaml`, `localTenant` in `gateway-metrics.yaml`):
+idle unless the chart's `pipeline.gateway.clientCertificateTenancy` points the OTLP receiver at `otelcol.processor.attributes "clientTenantSubject"`
+(an RFC 2253 subject) or `"clientTenantXfcc"` (Envoy), sets the header in `GATEWAY_CLIENT_TENANT_HEADER`,
+and splices `inputBridge` through `localTenant`.
+The tenant travels as `mzmonTenant`, with no `_` because the OTLP bridges rename lookalike attributes onto the same label at random,
+and for logs as `__mzmon_tenant__` past the bridge.
+`loki.relabel "bridge"` on the plain OTLP log path exists only to drop that carrier.
+The invariants and the forgery test (`tests/gateway_client_tenant.rs`) are in
+[Logging](../../../docs/content/reference/development/pipelines/logging.md#client-certificate-tenancy).
+
 **Agent log sidechannel** (`gateway.yaml`): the gateway tails the agent DaemonSet's own logs from the Kubernetes API — `discovery.kubernetes "agent_pods"` (typed, server-side `selectors.label = app.kubernetes.io/name=alloy-agent`) → `discovery.relabel "agent_pods"` (typed) → `loki.source.kubernetes "agent_logs"` → `loki.process.inputProcessor`. Points that are load-bearing rather than stylistic:
 - **The agent no longer tails its own logs** — `discovery.relabel.local_pods` in `agent.yaml` drops targets whose `app.kubernetes.io/name` is `alloy-agent`. The sidechannel is always on, so self-collection would deliver every line twice. The two changes are a pair.
 - **`clustering { enabled = true }` on the tail is required, not an optimization.** The gateway runs 2+ replicas and each would otherwise tail every agent pod.

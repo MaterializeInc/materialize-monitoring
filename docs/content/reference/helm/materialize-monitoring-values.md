@@ -1757,7 +1757,7 @@ Forward into the gateway's own entry points, so the data gets the same processin
 | Scraped metrics | `otelcol.receiver.prometheus.inputBridge.receiver` |
 | Pushed metrics that may lack `job` or `instance` | `prometheus.relabel.receiveIdentity.receiver` |
 | Loki log entries | `loki.process.inputPrefilter.receiver` |
-| OTLP metrics | `otelcol.processor.transform.inputMetricProcessor.input` |
+| OTLP metrics | `otelcol.processor.transform.localTenant.input` |
 | OTLP logs | `otelcol.exporter.loki.bridge.input` |
 
 These are internal component names, not a stable interface: if a release renames one, the pre-validate job fails rather than the gateway.
@@ -1782,6 +1782,72 @@ pipeline:
           }
         }
 ```
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false,
+  "format": "",
+  "header": "X-Amzn-Mtls-Clientcert-Subject"
+}</pre>
+</td>
+      <td class="helm-value-desc">Take each OTLP request's tenant from the client certificate a proxy verified, for Materialize's control plane.
+
+For the gateway that receives call-home telemetry from many installs, behind a proxy that terminates mTLS.
+The proxy checks each client certificate against its trust store and passes what it found on in a header.
+When this is on, the OTLP receiver on `4317` and `4318` reads that header,
+and every log record and metric data point takes its tenant from the CN of the certificate's subject:
+
+- Logs go to the Loki tenant the CN names, overriding `pipeline.logging.tenancy`.
+- Metrics carry the CN in the `mzmonTenant` label.
+  Run Thanos Receive with `--receive.split-tenant-label-name=mzmonTenant`, and it writes each series to that tenant and removes the label.
+
+| Proxy | `header` | `format` |
+| --- | --- | --- |
+| AWS Application Load Balancer, mTLS in verify mode | `X-Amzn-Mtls-Clientcert-Subject` | `subject` |
+| nginx, with `proxy_set_header X-SSL-Client-S-DN $ssl_client_s_dn;` | `X-SSL-Client-S-DN`, or the name you set | `subject` |
+| Envoy, with `forward_client_cert_details: SANITIZE_SET` and `subject` set | `X-Forwarded-Client-Cert` | `xfcc` |
+
+The gateway drops a request with no header, a header sent twice or naming more than one certificate,
+a subject with more than one CN, an escaped character, or a multi-valued attribute (`+`),
+or a CN that isn't 1 to 150 letters, digits, `.`, `_`, and `-`.
+It replaces whatever tenant the sender set, and no other way in can set one:
+the gateway removes `mzmonTenant` from scraped and remote-written metrics.
+
+**The proxy has to verify the certificate and set the header on every request,** replacing any copy the client sent.
+For nginx that means `ssl_verify_client on`; `optional_no_ca` passes on a subject it never checked.
+
+**Every OTLP sender then has to come through the proxy,** because any pod that can reach `4317` or `4318` could send the header itself.
+In `alloy-gateway.networkPolicy.ingress`, admit only the proxy to those ports:
+its subnets by `ipBlock`, or its pods by a selector that names them.
+The render fails while a rule admits every pod.
+Behind an AWS load balancer, it also fails while `pipeline.logging.gateway.server.tls.clientAuth` asks for a client certificate,
+which the load balancer doesn't present.
+nginx and Envoy can present one, and requiring a certificate only the proxy holds keeps out any pod that skips it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Read each OTLP request's tenant from the proxy's client-certificate header.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.header</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"X-Amzn-Mtls-Clientcert-Subject"</code></td>
+      <td class="helm-value-desc">The header the proxy sets, in any case.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.format</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">How to read `header`. `subject` is an RFC 2253 subject, such as `CN=stack-a,O=Materialize`. `xfcc` is Envoy's `X-Forwarded-Client-Cert`. Empty means `xfcc` when `header` is `X-Forwarded-Client-Cert`, and `subject` otherwise.
 </td>
     </tr>
   </tbody>
