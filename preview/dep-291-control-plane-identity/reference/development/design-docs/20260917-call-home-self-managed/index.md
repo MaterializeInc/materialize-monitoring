@@ -645,9 +645,11 @@ The kind tiers extend to cover this, and the assertions that matter are the ones
   Resolved: no. A destination at `minMetricImportance: alerts` takes `ALERTS` and the heartbeat, and nothing else.
 - [x] **What is the heartbeat interval**, and does its absence alert immediately or after a documented number of misses? The interval sets both the fleet-side noise floor and how quickly a dark install is noticed.
   Resolved for the interval: one minute, the Thanos ruler's default evaluation interval.
-  How many misses page someone is the control plane's to set, with its response model ([DEP-291](https://linear.app/materializeinc/issue/DEP-291)).
+  How many misses page someone is the control plane's to set, with its response model ([DEP-491](https://linear.app/materializeinc/issue/DEP-491)).
 - [ ] **Is the tenant the install or the customer?** This doc leans install-with-customer-as-a-label, which is the opposite lean to the one a support engineer's cross-environment question wants. It should agree with whatever [BYOC settles](../20260813-byoc-observability/#open-questions).
+  The control-plane gateway assigns one tenant per install today, and [DEP-490](https://linear.app/materializeinc/issue/DEP-490) measures whether that holds.
 - [ ] **What is the per-install control-plane cost**, and what fleet size does the first deployment size for? Tenant overhead rather than ingest volume, and nobody has computed it.
+  Tracked in [DEP-490](https://linear.app/materializeinc/issue/DEP-490).
 - [ ] **Can the `elevated` window be customer-initiated rather than customer-approved?** Initiated is stronger and puts the work on the customer during an incident; approved is faster and requires a request mechanism Materialize can send.
 - [ ] **Does the customer get to read their own copy?** The [tenant-scoped proxy answers this](../20260916-tenant-query-api/#deployment-shapes) for BYOC with the same mechanism, and it is a stronger trust argument here than there, because the disclosure was voluntary.
 - [ ] **Is the offline bundle worth building**, and how large is the air-gapped segment? The processing chain is shared with preview mode, so the marginal cost is the transfer format and a verification story.

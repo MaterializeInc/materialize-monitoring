@@ -32326,7 +32326,13 @@ BYOC environments are ones Materialize operates; self-managed installs are invis
 | [DEP-288] The `elevated` window: time-boxed, self-expiring, never set remotely | ⬜ |
 | [DEP-289] An Alertmanager webhook receiver path | ⬜ |
 | [DEP-290] Terraform variables for the level, the credential reference and the proxy | ⬜ |
-| [DEP-291] Control-plane per-tenant limits sized for install count, and a stated response model | ⬜ |
+| [DEP-488] A control-plane values overlay: client-certificate tenancy, proxy-only ingress, and the Thanos tenant split | ⬜ |
+| [DEP-489] Per-tenant fairness in the control-plane gateway's log rate limits | ⬜ |
+| [DEP-490] Control-plane sizing for install count, and whether the tenant is the install or the customer | ⬜ |
+| [DEP-491] A response model: a routing destination, a stated response, and a stated non-response | ⬜ |
+| [DEP-492] An identity directory that refuses churned installs and maps installs to customers | ⬜ |
+| [DEP-493] Per-tenant limits in Loki and Thanos Receive, with values from [DEP-490] | ⬜ |
+| [DEP-494] Fleet-shaped alerting: heartbeat absence, clone detection, and grouping | ⬜ |
 | A customer-facing page: the levels and the schedule for each, previewing, the local meter, and retention, access and deletion | ⬜ |
 
 **The channel is the BYOC channel; the feature is consent.**
@@ -32523,7 +32529,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-288]: https://linear.app/materializeinc/issue/DEP-288
 [DEP-289]: https://linear.app/materializeinc/issue/DEP-289
 [DEP-290]: https://linear.app/materializeinc/issue/DEP-290
-[DEP-291]: https://linear.app/materializeinc/issue/DEP-291
 [DEP-295]: https://linear.app/materializeinc/issue/DEP-295
 [DEP-297]: https://linear.app/materializeinc/issue/DEP-297
 [DEP-298]: https://linear.app/materializeinc/issue/DEP-298
@@ -32581,6 +32586,13 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385
+[DEP-488]: https://linear.app/materializeinc/issue/DEP-488
+[DEP-489]: https://linear.app/materializeinc/issue/DEP-489
+[DEP-490]: https://linear.app/materializeinc/issue/DEP-490
+[DEP-491]: https://linear.app/materializeinc/issue/DEP-491
+[DEP-492]: https://linear.app/materializeinc/issue/DEP-492
+[DEP-493]: https://linear.app/materializeinc/issue/DEP-493
+[DEP-494]: https://linear.app/materializeinc/issue/DEP-494
 
 
 --------------------------------------------------------------------------------
@@ -38026,9 +38038,11 @@ The kind tiers extend to cover this, and the assertions that matter are the ones
   Resolved: no. A destination at `minMetricImportance: alerts` takes `ALERTS` and the heartbeat, and nothing else.
 - [x] **What is the heartbeat interval**, and does its absence alert immediately or after a documented number of misses? The interval sets both the fleet-side noise floor and how quickly a dark install is noticed.
   Resolved for the interval: one minute, the Thanos ruler's default evaluation interval.
-  How many misses page someone is the control plane's to set, with its response model ([DEP-291](https://linear.app/materializeinc/issue/DEP-291)).
+  How many misses page someone is the control plane's to set, with its response model ([DEP-491](https://linear.app/materializeinc/issue/DEP-491)).
 - [ ] **Is the tenant the install or the customer?** This doc leans install-with-customer-as-a-label, which is the opposite lean to the one a support engineer's cross-environment question wants. It should agree with whatever [BYOC settles](../20260813-byoc-observability/#open-questions).
+  The control-plane gateway assigns one tenant per install today, and [DEP-490](https://linear.app/materializeinc/issue/DEP-490) measures whether that holds.
 - [ ] **What is the per-install control-plane cost**, and what fleet size does the first deployment size for? Tenant overhead rather than ingest volume, and nobody has computed it.
+  Tracked in [DEP-490](https://linear.app/materializeinc/issue/DEP-490).
 - [ ] **Can the `elevated` window be customer-initiated rather than customer-approved?** Initiated is stronger and puts the work on the customer during an incident; approved is faster and requires a request mechanism Materialize can send.
 - [ ] **Does the customer get to read their own copy?** The [tenant-scoped proxy answers this](../20260916-tenant-query-api/#deployment-shapes) for BYOC with the same mechanism, and it is a stronger trust argument here than there, because the disclosure was voluntary.
 - [ ] **Is the offline bundle worth building**, and how large is the air-gapped segment? The processing chain is shared with preview mode, so the marginal cost is the transfer format and a verification story.
