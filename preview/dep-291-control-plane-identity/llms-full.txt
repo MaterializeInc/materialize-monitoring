@@ -17624,38 +17624,64 @@ pipeline:
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "enabled": false
+  "enabled": false,
+  "format": "",
+  "header": "X-Amzn-Mtls-Clientcert-Subject"
 }</pre>
 </td>
-      <td class="helm-value-desc">Take each OTLP request's tenant from the client certificate a load balancer verified, for Materialize's control plane.
+      <td class="helm-value-desc">Take each OTLP request's tenant from the client certificate a proxy verified, for Materialize's control plane.
 
-For the gateway that receives call-home telemetry from many installs,
-behind an AWS Application Load Balancer that terminates mTLS in verify mode.
-The load balancer checks each client certificate against its trust store,
-and passes the certificate's subject on in the `X-Amzn-Mtls-Clientcert-Subject` header.
+For the gateway that receives call-home telemetry from many installs, behind a proxy that terminates mTLS.
+The proxy checks each client certificate against its trust store and passes what it found on in a header.
 When this is on, the OTLP receiver on `4317` and `4318` reads that header,
-and every log record and metric data point takes its tenant from the subject's CN:
+and every log record and metric data point takes its tenant from the CN of the certificate's subject:
 
 - Logs go to the Loki tenant the CN names, overriding `pipeline.logging.tenancy`.
 - Metrics carry the CN in the `mzmonTenant` label.
   Run Thanos Receive with `--receive.split-tenant-label-name=mzmonTenant`, and it writes each series to that tenant and removes the label.
 
-The gateway drops a request with no header, a header sent twice, or a CN that isn't 1 to 150 letters, digits, `.`, `_`, and `-`.
+| Proxy | `header` | `format` |
+| --- | --- | --- |
+| AWS Application Load Balancer, mTLS in verify mode | `X-Amzn-Mtls-Clientcert-Subject` | `subject` |
+| nginx, with `proxy_set_header X-SSL-Client-S-DN $ssl_client_s_dn;` | `X-SSL-Client-S-DN`, or the name you set | `subject` |
+| Envoy, with `forward_client_cert_details: SANITIZE_SET` and `subject` set | `X-Forwarded-Client-Cert` | `xfcc` |
+
+The gateway drops a request with no header, a header sent twice or naming more than one certificate,
+or a CN that isn't 1 to 150 letters, digits, `.`, `_`, and `-`.
 It replaces whatever tenant the sender set, and no other way in can set one:
 the gateway removes `mzmonTenant` from scraped and remote-written metrics.
 
-Every OTLP sender then has to come through the load balancer,
-because any pod that can reach `4317` or `4318` could send the header itself.
-Admit only the load balancer's subnets to those ports in `alloy-gateway.networkPolicy.ingress`, by `ipBlock`.
-The render fails while a rule admits pods to them.
-It also fails while `pipeline.logging.gateway.server.tls.clientAuth` asks for a client certificate, which the load balancer doesn't present.
+**The proxy has to verify the certificate and set the header on every request,** replacing any copy the client sent.
+For nginx that means `ssl_verify_client on`; `optional_no_ca` passes on a subject it never checked.
+
+**Every OTLP sender then has to come through the proxy,** because any pod that can reach `4317` or `4318` could send the header itself.
+In `alloy-gateway.networkPolicy.ingress`, admit only the proxy to those ports:
+its subnets by `ipBlock`, or its pods by a selector that names them.
+The render fails while a rule admits every pod.
+Behind an AWS load balancer, it also fails while `pipeline.logging.gateway.server.tls.clientAuth` asks for a client certificate,
+which the load balancer doesn't present.
+nginx and Envoy can present one, and requiring a certificate only the proxy holds keeps out any pod that skips it.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Read each OTLP request's tenant from the load balancer's client-certificate subject header.
+      <td class="helm-value-desc">Read each OTLP request's tenant from the proxy's client-certificate header.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.header</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"X-Amzn-Mtls-Clientcert-Subject"</code></td>
+      <td class="helm-value-desc">The header the proxy sets, in any case.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.format</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">How to read `header`. `subject` is an RFC 2253 subject, such as `CN=stack-a,O=Materialize`. `xfcc` is Envoy's `X-Forwarded-Client-Cert`. Empty means `xfcc` when `header` is `X-Forwarded-Client-Cert`, and `subject` otherwise.
 </td>
     </tr>
   </tbody>
@@ -29110,8 +29136,16 @@ The `raw:` escape (see [Authoring](../authoring/)) remains available and is curr
 
 ### Client-certificate tenancy
 
-With `pipeline.gateway.clientCertificateTenancy` on, the OTLP receiver forwards to `otelcol.processor.attributes "clientTenant"` instead of the bridge and `inputMetricProcessor`.
-Every log record and metric data point then takes its tenant from the CN of the subject an AWS Application Load Balancer passes in `X-Amzn-Mtls-Clientcert-Subject`, after it verifies the client certificate.
+With `pipeline.gateway.clientCertificateTenancy` on, a proxy in front of the gateway terminates mTLS,
+and passes the verified certificate on in a header.
+The OTLP receiver forwards to one of two attributes processors instead of the bridge and `inputMetricProcessor`:
+
+- `clientTenantSubject` reads an RFC 2253 subject,
+  as an AWS Application Load Balancer sends in `X-Amzn-Mtls-Clientcert-Subject` and nginx in `$ssl_client_s_dn`.
+- `clientTenantXfcc` reads Envoy's `X-Forwarded-Client-Cert`.
+
+Both read the header `GATEWAY_CLIENT_TENANT_HEADER` names, which the chart sets from the values.
+Every log record and metric data point then takes its tenant from the CN of the certificate's subject.
 The comments on those components in `gateway.yaml` explain the construction.
 When you change the gateway, keep these true:
 
@@ -29122,6 +29156,9 @@ When you change the gateway, keep these true:
   Both OTLP bridges rename attributes into label names, and when two attributes land on one name, they keep whichever their map iteration reaches last.
   Only a name without `_` is safe from a lookalike.
 - A new way into the metric pipeline passes `otelcol.processor.transform "localTenant"`, which removes `mzmonTenant`, as `inputBridge` does under this setting.
+- Each format's pattern refuses a header that names more than one certificate.
+  The collector joins the values of a repeated header with `;`, and Envoy separates appended certificates with `,`.
+  A new format needs a pattern that refuses both, and a test case for each.
 
 `packages/mzmon-lib/tests/gateway_client_tenant.rs` sends each forgery it knows of through `alloy run`.
 Add a case when you add a way in.
@@ -34588,7 +34625,7 @@ Work in **this** repo. Ordered roughly by dependency.
 | **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | ✅ Class, level, sampling, and rate limit, as `logs.selector`, `minLevel`, `sampleRate`, and `rateLimit` in a `loki.process "dest_<name>"` per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). Class is a LogQL selector rather than a new taxonomy. Redaction attaches to the same component ([DEP-317](https://linear.app/materializeinc/issue/DEP-317)) |
 | **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | ✅ Bounded and droppable: `queue.capacity` and `queue.blockOnOverflow: false` on each destination, measured to keep the local copy whole while another destination is unreachable. The per-destination `wal` is not wired |
 | **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | Not needed: [the receiver can't see the client certificate](#one-verification-at-the-load-balancer) behind the load balancer. The chart renders the receiver's server TLS from `pipeline.logging.gateway.server.tls` |
-| **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | ✅ `pipeline.gateway.clientCertificateTenancy`, which takes the tenant from the CN of the subject an AWS Application Load Balancer passes in `X-Amzn-Mtls-Clientcert-Subject` ([DEP-291](https://linear.app/materializeinc/issue/DEP-291)) |
+| **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | ✅ `pipeline.gateway.clientCertificateTenancy`, which takes the tenant from the certificate subject's CN, in the header an AWS Application Load Balancer, nginx, or Envoy sets ([DEP-291](https://linear.app/materializeinc/issue/DEP-291)) |
 | **`otelcol.processor.transform` before the log bridge** ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) | Label ↔ resource-attribute fidelity across the OTLP round trip. Already an open TODO in `gateway.yaml`; shared with the agent OTLP work | **Blocking** — silent label loss is worse than delivery failure |
 | **Redaction stage set** composed from existing primitives, allowlist-shaped, fail-closed | [DEP-220](https://linear.app/materializeinc/issue/DEP-220). Primitives exist; the composition and the values surface do not | **Blocking** for log egress |
 | **Generated log-class / field allowlist artifact**, alongside `metric-tiers.yaml` | The customer-readable egress schedule, and the thing that stops the allowlist drifting on a rename | Should land with redaction |
