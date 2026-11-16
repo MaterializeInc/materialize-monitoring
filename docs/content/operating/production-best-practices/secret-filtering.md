@@ -194,16 +194,21 @@ The gateway exports the following metrics:
 `loki_secretfilter_processing_duration_seconds`
 : Time spent per line. Its high quantiles are where to start when you set the timeout.
 
-The bundled Thanos keeps these metrics.
-A remote-write destination that filters by `minMetricImportance` drops them, because the query registry doesn't grade them.
 `loki_process_custom_luhn_redacted_lines_total`
 : Lines in which the gateway replaced a [card number](#card-numbers), by stream.
+  It carries the labels of the stream it counted, so its `namespace`, `pod`, and `job` name the workload that logged the line, not the gateway.
   A stream's series appears at its first replacement and disappears five minutes after its last.
 
+The query registry grades these metrics `recommended`, so every destination keeps them unless its `minMetricImportance` is `essential` or narrower.
+For the tiers, see [the importance tiers](../../../metrics/storing/#the-importance-tiers).
+
+The **Compliance** tab of the [Alloy Meta Monitoring dashboard](../../../dashboards/all/#alloy-meta-monitoring-infra-alloy) reads them.
+It counts redactions and card numbers over the selected time range by rule and source, shows how much of each tier the filter scanned, and has collapsed rows that search the stored lines.
+
 No alert ships for redactions, so to be told about one, alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`.
-<!-- FIXME(DEP-316): increase() misses a (rule, origin) series' first redaction, because the series starts at 1. -->
+<!-- FIXME(DEP-316): increase() misses a (rule, origin) series' first redaction, because the series starts at 1. The dashboard's range counts in infra-alloy.yaml show the fix. -->
 For card numbers, alert while the series exists, such as `max_over_time(loki_process_custom_luhn_redacted_lines_total[1h]) > 0`, because an increase misses a stream's first replacement.
-<!-- TODO(DEP-316): link the shipped alerts and the dashboard row here. -->
+<!-- TODO(DEP-316): link the shipped alerts here. -->
 
 To find the redacted lines in Loki, query for the placeholder:
 

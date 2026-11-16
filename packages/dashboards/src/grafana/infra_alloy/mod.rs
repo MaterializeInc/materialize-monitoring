@@ -67,6 +67,7 @@
 //! query to this chart's collectors; see
 //! [`variable::alloy_roles`](mzmon_lib::grafana::variable::alloy_roles).
 
+pub mod compliance;
 pub mod components;
 pub mod events;
 pub mod ingest;
@@ -111,7 +112,9 @@ pub const REC_MZ_VERSION: &str = "v26.24.0";
 /// metrics because the log path has more hops and so more places to break. Then
 /// Ingest, for data other senders push into the gateway, which is read once the
 /// verdict's refusals count or a pipeline's delivery row points at it.
-/// Components after those, since an unhealthy component surfaces first as a
+/// Compliance after the paths, since it reports on what the log path removed
+/// from the data rather than on whether the data moved. Components after that,
+/// since an unhealthy component surfaces first as a
 /// pipeline stage that stopped moving. Resources after that, because resource
 /// pressure is usually the explanation for what the earlier tabs showed rather
 /// than the first thing seen. Events and Logs last, where an investigation ends
@@ -122,6 +125,7 @@ fn tabs(q: &Queries) -> Vec<Tab> {
         Tab::new(theme::LOG_PIPELINE.title).rows(log_pipeline::rows(q)),
         Tab::new(theme::METRIC_PIPELINE.title).rows(metric_pipeline::rows(q)),
         Tab::new(theme::INGEST.title).rows(ingest::rows(q)),
+        Tab::new(theme::COMPLIANCE.title).rows(compliance::rows(q)),
         Tab::new(theme::COMPONENTS.title).rows(components::rows(q)),
         Tab::new(theme::RESOURCES.title).rows(resources::rows(q)),
         Tab::new(theme::EVENTS.title).rows(events::rows(q)),
@@ -263,9 +267,10 @@ mod tests {
     }
 
     /// Panels whose series belong to something other than a collector: the
-    /// targets the gateway scrapes, the senders that remote-write into it, and
-    /// the alerts, whose rules' selectors span every namespace. No collector
-    /// picker can narrow them.
+    /// targets the gateway scrapes, the senders that remote-write into it, the
+    /// alerts, whose rules' selectors span every namespace, and Compliance's
+    /// stored lines and card-number counts, which carry the labels of the
+    /// workload that logged each line. No collector picker can narrow them.
     const UNSCOPED: &[&str] = &[
         "overview-alerts-firing",
         "overview-alerts",
@@ -275,6 +280,15 @@ mod tests {
         "metrics-heavy-slowest",
         "metrics-heavy-largest",
         "ingest-rw-senders",
+        "compliance-cards",
+        "compliance-cards-by-source",
+        "compliance-cards-table",
+        "compliance-stored-rate",
+        "compliance-stored-feed",
+        "compliance-shadow-copies-rate",
+        "compliance-shadow-copies-feed",
+        "compliance-partly-scanned-rate",
+        "compliance-partly-scanned-feed",
     ];
 
     #[test]
@@ -321,7 +335,7 @@ mod tests {
         // as the involved object, so the event queries match `name` instead.
         let resource = built();
         for (name, group, expr) in expressions(&resource) {
-            if group != "loki" {
+            if group != "loki" || UNSCOPED.contains(&name.as_str()) {
                 continue;
             }
             let field = if expr.contains("loki.source.kubernetes_events") {
@@ -356,6 +370,9 @@ mod tests {
             "resources-memory-limiter",
             "logs-delivery-dropped",
             "logs-processing-guards",
+            "compliance-redacted",
+            "compliance-cards",
+            "compliance-shadow",
         ] {
             let found: Vec<_> = exprs.iter().filter(|(n, _, _)| n == panel).collect();
             assert!(!found.is_empty(), "{panel} is not on the dashboard");
@@ -401,6 +418,12 @@ mod tests {
         let resource = built();
         let json = serde_json::to_string(&resource.metadata).expect("serialize");
         assert!(json.contains("meta-o11y"), "{json}");
+    }
+
+    #[test]
+    fn log_axes_label_their_ticks_below_one() {
+        let checked = crate::grafana::test_support::assert_log_axes_label_ticks_below_one(&built());
+        assert!(checked > 0, "no log axis was checked");
     }
 
     #[test]

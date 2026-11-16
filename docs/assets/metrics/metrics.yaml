@@ -1821,6 +1821,14 @@
   - infra.alloy.log_pipeline.truncated
 - importance: recommended
   labels:
+  - component_id
+  name: loki_process_custom_luhn_redacted_lines_total
+  usage:
+  - infra.alloy.compliance.cards
+  - infra.alloy.compliance.cards.by_source
+  - infra.alloy.compliance.cards.table
+- importance: recommended
+  labels:
   - app
   - component_id
   - namespace
@@ -1872,6 +1880,73 @@
   - infra.alloy.health.alerts_firing
   - infra.loki.health.alerts_firing
   - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - component_id
+  - namespace
+  - pod
+  name: loki_secretfilter_entries_bypassed_total
+  usage:
+  - infra.alloy.compliance.coverage
+  - infra.alloy.compliance.scanned
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: loki_secretfilter_lines_dropped_total
+  usage:
+  - infra.alloy.compliance.timeouts
+- importance: recommended
+  labels:
+  - app
+  - component_id
+  - namespace
+  - pod
+  name: loki_secretfilter_lines_timed_out_total
+  usage:
+  - infra.alloy.compliance.timed_out
+  - infra.alloy.compliance.timeouts
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  - quantile
+  name: loki_secretfilter_processing_duration_seconds
+  usage:
+  - infra.alloy.compliance.scan_time
+- importance: recommended
+  labels:
+  - app
+  - component_id
+  - namespace
+  - pod
+  name: loki_secretfilter_processing_duration_seconds_count
+  usage:
+  - infra.alloy.compliance.cards
+  - infra.alloy.compliance.coverage
+  - infra.alloy.compliance.redacted
+  - infra.alloy.compliance.scanned
+  - infra.alloy.compliance.shadow
+- importance: recommended
+  labels:
+  - app
+  - component_id
+  - namespace
+  - pod
+  - rule
+  name: loki_secretfilter_secrets_redacted_by_category_total
+  usage:
+  - infra.alloy.compliance.redacted
+  - infra.alloy.compliance.redacted.by_origin
+  - infra.alloy.compliance.redacted.by_rule
+  - infra.alloy.compliance.redacted.table
+  - infra.alloy.compliance.shadow
+  - infra.alloy.compliance.shadow.by_origin
+  - infra.alloy.compliance.shadow.by_rule
+  - infra.alloy.compliance.shadow.table
 - importance: recommended
   labels:
   - app

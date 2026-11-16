@@ -40,7 +40,7 @@ use crate::grafana::volume_guard;
 const SHADE: &str = theme::LOGS.shade;
 
 const LINES_PER_SECOND: &str = "suffix:logs/s";
-const LINES_PER_MINUTE: &str = "suffix:logs/min";
+pub(super) const LINES_PER_MINUTE: &str = "suffix:logs/min";
 
 /// What a feed shows when the selection matches nothing.
 ///
