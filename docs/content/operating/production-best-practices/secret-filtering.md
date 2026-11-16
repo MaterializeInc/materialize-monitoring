@@ -93,12 +93,12 @@ The checksum has the following limits:
   A number of exactly 13, 16, or 19 digits that starts with `1` is left alone, which covers timestamps in milliseconds, microseconds, and nanoseconds.
   Airline cards also start with `1`, but they're 15 digits, so they're still replaced.
 - **JSON numbers are exempt.**
-  A number directly after a quoted key and a colon is left alone, because a placeholder in its place would make the line invalid JSON.
+  A number directly after a quoted key and a colon, fraction included, is left alone, because a placeholder in its place would make the line invalid JSON.
   That includes a card number written as a JSON number rather than a string.
   A number in a JSON array has no key before it, so one that passes the checksum is replaced, and the line is no longer valid JSON.
 - **Digits inside identifiers and decimals are exempt.**
-  A number that touches a letter or an underscore on either side, such as a collection ID like `si144115188075856159` or a stretch of digits inside a hex digest, is left alone.
-  So are the digits after a decimal point, and a 14-digit timestamp that starts with `20`.
+  A number in a word that contains a letter or an underscore, such as a collection ID like `si144115188075856159` or a hex digest, is left alone.
+  So is a decimal number, with digits on both sides of the point, and a 14-digit timestamp that starts with `20`.
   A card number written directly against a letter or an underscore passes too.
 - **A grouped number passes.**
   The gateway reads unbroken runs of digits, so a card number written in groups separated by spaces or dashes passes, because each group is too short.

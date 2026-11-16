@@ -775,44 +775,48 @@ blocks:
         # runs on every line before the tier split, so the bulk tier's scan
         # rate never applies to it.
         #
-        # One random digit run in ten passes the checksum too, including the
-        # epoch timestamps Materialize logs as frontiers. skip_regex exempts a
-        # run of exactly 13, 16, or 19 digits that starts with 1: milliseconds,
-        # microseconds, and nanoseconds. Alloy skips a run only when one match
-        # covers all of it, so the longest width goes first and the
-        # expression needs no word boundaries. UATP cards also start with 1,
-        # but they're 15 digits. Separators stay off, because a space or dash
-        # would join a date and a count into one candidate.
+        # One random digit run in ten passes the checksum too, so skip_regex
+        # exempts digits that are part of something else. Alloy finds the
+        # expression's matches without overlap, and skips a run only when one
+        # match covers all of it. An alternative that matches part of a token
+        # can therefore use up a character another one needed, so each
+        # alternative matches a whole token. Order matters only where two can
+        # start at the same character. tests/gateway_luhn.rs places a number
+        # beside each kind of neighbour, so a new alternative that breaks this
+        # fails there.
         #
-        # The leading 1 holds until 2033-05-18, when millisecond time reaches
-        # 2000000000000. tests/gateway_luhn.rs starts failing a year before.
-        #
-        # The second alternative exempts a number directly after a quoted key
-        # and a colon, which is how a JSON number appears. A placeholder there
-        # would make the line invalid JSON, and inputProcessor would lose its
-        # level and fields. The key is matched whole, escapes included, so a
-        # key made of digits still counts, and an escaped quote in a JSON
-        # string can't end one. A card number written as a JSON number passes,
-        # as a numeric password after a JSON key does in the ingest rules. A
-        # number in a JSON array isn't exempt.
-        #
-        # The rest exempt digits that are part of something else, from the
-        # reference installs' logs:
-        #
-        # * A run that touches a letter or an underscore on either side: an
-        #   identifier such as Materialize's 18-digit `si` collection IDs or the
-        #   Azure VM agent's `etag_` IDs, or a stretch of digits inside a hex
-        #   digest such as a container ID.
-        # * The digits after a decimal point, such as a ratio Cilium logs, or
-        #   the timestamp in a Go pseudo-version, `v1.2.2-0.<timestamp>-<hash>`.
+        # * A JSON number after its key, fraction and exponent included. A
+        #   placeholder there would make the line invalid JSON, and
+        #   inputProcessor would lose its level and fields. The key is matched
+        #   whole, escapes included, so a key made of digits still counts and
+        #   an escaped quote in a JSON string can't end one. A card number
+        #   written as a JSON number passes, as a numeric password after a JSON
+        #   key does in the ingest rules. A number in a JSON array isn't exempt.
+        # * A word that contains a letter or an underscore: an identifier such
+        #   as Materialize's 18-digit `si` collection IDs or the Azure VM
+        #   agent's `etag_` IDs, or a hex digest such as a container ID. A card
+        #   number written directly against a letter or an underscore passes.
+        # * A decimal number, digits on both sides of the point: a ratio Cilium
+        #   logs, or the timestamp in a Go pseudo-version,
+        #   `v1.2.2-0.<timestamp>-<hash>`. A digit has to come before the
+        #   point, so a card number after `no.` is still replaced.
+        # * An epoch timestamp: exactly 13, 16, or 19 digits that start with 1,
+        #   for milliseconds, microseconds, and nanoseconds. Its longest width
+        #   comes first, or a 16-digit timestamp would lose to the 13-digit
+        #   width. It comes after the word alternative, which would otherwise
+        #   lose a run such as 18 digits and a letter to its 16-digit width.
+        #   UATP cards also start
+        #   with 1, but they're 15 digits. The leading 1 holds until
+        #   2033-05-18, when millisecond time reaches 2000000000000, and
+        #   tests/gateway_luhn.rs starts failing a year before.
         # * 14 digits that start with 20: a compact `yyyymmddhhmmss` timestamp.
         #   No card number is 14 digits and starts with 20.
         #
-        # A card number written directly against a letter or an underscore
-        # passes.
+        # Separators stay off, because a space or dash would join a date and a
+        # count into one candidate.
         - stage.luhn:
             min_length: 13
-            skip_regex: '1(?:\d{18}|\d{15}|\d{12})|"(?:[^"\\]|\\.)*":\s*-?\d+|[A-Za-z_]\d+|\d+[A-Za-z_]|\d\.\d+|20\d{12}'
+            skip_regex: '"(?:[^"\\]|\\.)*":\s*-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\w*[A-Za-z_]\w*|\d+\.\d+|1(?:\d{18}|\d{15}|\d{12})|20\d{12}'
             replacement: "<redacted:luhn>"
         # Counts the lines it changed, by stream. A stream's series appears at
         # its first redaction, so an alert has to look for the series rather

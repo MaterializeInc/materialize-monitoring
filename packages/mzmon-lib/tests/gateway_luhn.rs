@@ -4,12 +4,17 @@
 //! in ten passes, and so would one in ten of the epoch timestamps Materialize
 //! logs as frontiers, so the stage carries a `skip_regex` for them. The same
 //! expression exempts JSON numbers, because a placeholder in place of one makes
-//! the line invalid JSON, and digits that are part of an identifier, a decimal
-//! fraction, or a compact timestamp. This test
-//! renders the real `loki.process "inputPrefilter"` and the shadow branch from
-//! `gateway.yaml`, runs them on `alloy run`, and pushes lines carrying card
-//! numbers, timestamps, and both. It checks each line as it leaves the
-//! prefilter, the stage's counter, and which lines the shadow branch keeps.
+//! the line invalid JSON, and digits that are part of a word, a decimal number,
+//! or a compact timestamp. This test renders the real
+//! `loki.process "inputPrefilter"` and the shadow branch from `gateway.yaml`,
+//! runs them on `alloy run`, and pushes lines carrying card numbers,
+//! timestamps, and both. It checks each line as it leaves the prefilter, the
+//! stage's counter, and which lines the shadow branch keeps.
+//!
+//! Alloy skips a run only when one match of the expression covers all of it,
+//! and finds the matches without overlap, so one alternative can use up a
+//! character another needed. A second test places a number beside every pair
+//! of neighbours and checks the outcome against [`part_of_something_else`].
 //!
 //! The card numbers and the Luhn-valid timestamps are made here, so the
 //! repository commits no card-shaped number.
@@ -110,6 +115,8 @@ impl Numbers {
             // Materialize's introspection collection IDs are 2^57 plus a
             // small offset, so 18 digits.
             ("SI_ID", luhn(&format!("1441151880758561{}", digits(7, 1)))),
+            // Starts with 1 like a timestamp, at a width that isn't one.
+            ("ONE_18", luhn(&format!("1{}", digits(8, 16)))),
             // A compact `yyyymmddhhmmss` timestamp.
             ("COMPACT_TS", luhn("2026111613511")),
             ("AMEX", luhn(&format!("37{}", digits(2, 12)))),
@@ -128,6 +135,7 @@ impl Numbers {
             ("ONE_14", 14),
             ("COUNT", 16),
             ("SI_ID", 18),
+            ("ONE_18", 18),
             ("COMPACT_TS", 14),
             ("MS", 13),
             ("US", 16),
@@ -279,6 +287,41 @@ const FIXTURES: &[Fixture] = &[
         id: "go-pseudo-versions",
         line: r#"{"Path":"github.com/gorilla/sessions","Version":"v1.2.2-0.<<COMPACT_TS>>-b09c17334dc2"},{"Path":"golang.org/x/exp","Version":"v0.0.0-<<COMPACT_TS>>-b09c17334dc2"}"#,
         out: r#"{"Path":"github.com/gorilla/sessions","Version":"v1.2.2-0.<<COMPACT_TS>>-b09c17334dc2"},{"Path":"golang.org/x/exp","Version":"v0.0.0-<<COMPACT_TS>>-b09c17334dc2"}"#,
+    },
+    // A word the number shares with a digit and an underscore, and one where a
+    // letter follows a number that starts like a timestamp. Each failed while
+    // an alternative matched part of the word.
+    Fixture {
+        id: "underscore-after-a-digit",
+        line: "id=3_<<COUNT>> ok",
+        out: "id=3_<<COUNT>> ok",
+    },
+    Fixture {
+        id: "eighteen-digits-from-one-before-a-letter",
+        line: "digest=<<ONE_18>>abc",
+        out: "digest=<<ONE_18>>abc",
+    },
+    // A JSON number's fraction belongs to the JSON number.
+    Fixture {
+        id: "json-fraction",
+        line: r#"{"ratio":0.<<COUNT>>,"level":"INFO"}"#,
+        out: r#"{"ratio":0.<<COUNT>>,"level":"INFO"}"#,
+    },
+    Fixture {
+        id: "decimal-with-a-long-integer-part",
+        line: "elapsed=<<COUNT>>.25",
+        out: "elapsed=<<COUNT>>.25",
+    },
+    // A decimal needs a digit before its point.
+    Fixture {
+        id: "card-after-a-dotted-word",
+        line: "ref no.<<VISA>> declined",
+        out: "ref no.<redacted:luhn> declined",
+    },
+    Fixture {
+        id: "card-before-a-full-stop",
+        line: "declined card <<VISA>>.",
+        out: "declined card <redacted:luhn>.",
     },
     // The trade for exempting identifiers: a card number written directly
     // against a letter passes.
@@ -478,4 +521,131 @@ loki.echo "shadow" {{}}
         .map(|m| m.keys().map(String::as_str).collect())
         .unwrap_or_default();
     assert_eq!(kept, SHADOW_KEEPS.iter().copied().collect());
+}
+
+// --- every neighbour --------------------------------------------------------------
+
+/// What comes before a number in [`numbers_beside_every_neighbour`].
+const BEFORE: &[&str] = &[
+    "",
+    " ",
+    "=",
+    "\"",
+    "(",
+    "a",
+    "9a",
+    "_",
+    "9_",
+    "0.",
+    "no.",
+    "x1.",
+    r#"{"k":"#,
+    r#"{"k": "#,
+    r#"{"k":-"#,
+    r#"{"k":0."#,
+];
+
+/// What comes after it.
+const AFTER: &[&str] = &["", " ", "\"", ")", ".", ".5", "a", "_", "e5", "}"];
+
+/// Whether a number between `before` and `after` is part of something else,
+/// and so passes the card-number check: the skip expression's intent, written
+/// without it.
+fn part_of_something_else(before: &str, after: &str) -> bool {
+    let word_char = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphabetic() || c == '_');
+    // A word that contains a letter or an underscore.
+    let in_word = word_char(before.chars().last()) || word_char(after.chars().next());
+    // A JSON number after its key.
+    let json_number = [r#"":"#, r#"": "#, r#"":-"#, r#"":0."#]
+        .iter()
+        .any(|key| before.ends_with(key));
+    // A decimal number: a digit on each side of the point. A number after a
+    // word and a point, such as `x1.`, isn't one.
+    let decimal = after.starts_with(".5")
+        || before.strip_suffix('.').is_some_and(|b| {
+            let token: Vec<char> = b
+                .chars()
+                .rev()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            !token.is_empty() && token.iter().all(char::is_ascii_digit)
+        });
+    in_word || json_number || decimal
+}
+
+#[test]
+fn numbers_beside_every_neighbour() {
+    if !alloy_available() {
+        return;
+    }
+    let config = format!(
+        r#"loki.source.api "in" {{
+    http {{
+        listen_address = "127.0.0.1"
+        listen_port = LOKI_PORT
+    }}
+    forward_to = [loki.process.inputPrefilter.receiver]
+}}
+
+loki.echo "main" {{}}
+
+{}"#,
+        gateway_block(
+            "loki.process",
+            "inputPrefilter",
+            vec![("forward_to", refs(&["loki.echo.main.receiver"]))],
+        ),
+    );
+    let (alloy, loki_port) = Alloy::start(&config);
+
+    let number = &Numbers::new().0["COUNT"];
+    let pairs: Vec<(&str, &str)> = BEFORE
+        .iter()
+        .flat_map(|b| AFTER.iter().map(move |a| (*b, *a)))
+        .collect();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let streams: Vec<_> = pairs
+        .iter()
+        .enumerate()
+        .map(|(i, (b, a))| {
+            serde_json::json!({
+                "stream": {"fixture": format!("n{i}")},
+                "values": [[(now + i as u128).to_string(), format!("{b}{number}{a}")]],
+            })
+        })
+        .collect();
+    let body = serde_json::json!({ "streams": streams }).to_string();
+    let (status, response) =
+        http(loki_port, "POST", "/loki/api/v1/push", &body).expect("push the lines");
+    assert_eq!(status, 204, "push refused: {response}");
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let out = loop {
+        let out = echoed(&alloy);
+        let main = out.get("main").map_or(0, BTreeMap::len);
+        if main == pairs.len() {
+            break out;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{main} of {} lines left the prefilter:\n{}",
+            pairs.len(),
+            alloy.log_text()
+        );
+        std::thread::sleep(Duration::from_millis(250));
+    };
+
+    let mut wrong = Vec::new();
+    for (i, (b, a)) in pairs.iter().enumerate() {
+        let got = &out["main"][&format!("n{i}")];
+        let passed = !got.contains(PLACEHOLDER);
+        if passed != part_of_something_else(b, a) {
+            let verdict = if passed { "passed" } else { "was replaced" };
+            wrong.push(format!("{b}<number>{a} {verdict}: {got}"));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
