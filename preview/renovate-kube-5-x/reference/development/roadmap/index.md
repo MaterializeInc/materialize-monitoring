@@ -224,7 +224,13 @@ BYOC environments are ones Materialize operates; self-managed installs are invis
 | [DEP-288] The `elevated` window: time-boxed, self-expiring, never set remotely | ⬜ |
 | [DEP-289] An Alertmanager webhook receiver path | ⬜ |
 | [DEP-290] Terraform variables for the level, the credential reference and the proxy | ⬜ |
-| [DEP-291] Control-plane per-tenant limits sized for install count, and a stated response model | ⬜ |
+| [DEP-488] A control-plane values overlay: client-certificate tenancy, proxy-only ingress, and the Thanos tenant split | ⬜ |
+| [DEP-489] Per-tenant fairness in the control-plane gateway's log rate limits | ⬜ |
+| [DEP-490] Control-plane sizing for install count: per-tenant overhead in Loki and Thanos | ⬜ |
+| [DEP-491] A response model: a routing destination, a stated response, and a stated non-response | ⬜ |
+| [DEP-492] An identity directory that refuses churned installs and maps installs to customers | ⬜ |
+| [DEP-493] Per-tenant limits in Loki and Thanos Receive, with values from [DEP-490] | ⬜ |
+| [DEP-494] Fleet-shaped alerting: heartbeat absence, clone detection, and grouping | ⬜ |
 | A customer-facing page: the levels and the schedule for each, previewing, the local meter, and retention, access and deletion | ⬜ |
 
 **The channel is the BYOC channel; the feature is consent.**
@@ -421,7 +427,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-288]: https://linear.app/materializeinc/issue/DEP-288
 [DEP-289]: https://linear.app/materializeinc/issue/DEP-289
 [DEP-290]: https://linear.app/materializeinc/issue/DEP-290
-[DEP-291]: https://linear.app/materializeinc/issue/DEP-291
 [DEP-295]: https://linear.app/materializeinc/issue/DEP-295
 [DEP-297]: https://linear.app/materializeinc/issue/DEP-297
 [DEP-298]: https://linear.app/materializeinc/issue/DEP-298
@@ -479,4 +484,11 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385
+[DEP-488]: https://linear.app/materializeinc/issue/DEP-488
+[DEP-489]: https://linear.app/materializeinc/issue/DEP-489
+[DEP-490]: https://linear.app/materializeinc/issue/DEP-490
+[DEP-491]: https://linear.app/materializeinc/issue/DEP-491
+[DEP-492]: https://linear.app/materializeinc/issue/DEP-492
+[DEP-493]: https://linear.app/materializeinc/issue/DEP-493
+[DEP-494]: https://linear.app/materializeinc/issue/DEP-494
 

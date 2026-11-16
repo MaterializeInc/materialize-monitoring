@@ -707,7 +707,10 @@ Either query IDs join the committed surface with the cooldown that implies, or t
 
 ## Token exchange for BYOC ingest
 
-The [BYOC design](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint) authenticates a customer's gateway with a client certificate carried in the license, verified twice: at the load balancer, which can check revocation, and at the receiver, which cannot.
+The [BYOC design](../20260813-byoc-observability/#one-verification-at-the-load-balancer)
+authenticates a customer's gateway with a client certificate carried in the license,
+verified once, at the load balancer, which also checks revocation.
+The load balancer terminates TLS, so the receiver never sees the certificate.
 This design introduces a token issuer and a token verifier, which raises a fair question — should the write path use tokens too?
 
 **The answer is yes for the credential and no for the component.**
