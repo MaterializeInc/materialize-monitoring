@@ -398,6 +398,97 @@ Labels:
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>kube_node_spec_taint{key<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">node.kubernetes.io/unreachable</span>&#34;}
 </span></span></code></pre></div>
+<h4 id="materialize-node-draining">materialize-node-draining
+  <a class="anchor" href="#materialize-node-draining">#</a>
+</h4>
+A node running environmentd or a cluster replica has been cordoned or marked for removal for 10m, so those pods restart when it drains.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> kubernetes</li>
+        <li><strong>severity:</strong> notice</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
+<p><strong>Runbook:</strong> <a href="https://materializeinc.github.io/materialize-monitoring/operating/runbooks/node-drains/#materialize-node-draining">how to respond to <code>materialize-node-draining</code></a>.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  kube_pod_info{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, pod<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.*-(environmentd|gen)-[0-9]+-[0-9]+</span>&#34;, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_spec_unschedulable<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_spec_taint{key<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h4 id="materialize-node-drain-slow">materialize-node-drain-slow
+  <a class="anchor" href="#materialize-node-drain-slow">#</a>
+</h4>
+A node running environmentd or a cluster replica has been cordoned or marked for removal for 2h, and no rollout has moved those pods.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> kubernetes</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
+<p><strong>Runbook:</strong> <a href="https://materializeinc.github.io/materialize-monitoring/operating/runbooks/node-drains/#materialize-node-drain-slow">how to respond to <code>materialize-node-drain-slow</code></a>.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  kube_pod_info{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, pod<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.*-(environmentd|gen)-[0-9]+-[0-9]+</span>&#34;, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_spec_unschedulable<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_spec_taint{key<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h4 id="materialize-node-drain-stuck">materialize-node-drain-stuck
+  <a class="anchor" href="#materialize-node-drain-stuck">#</a>
+</h4>
+A node running environmentd or a cluster replica has been cordoned or marked for removal for 24h, so its drain is stuck or forgotten.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> kubernetes</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
+<p><strong>Runbook:</strong> <a href="https://materializeinc.github.io/materialize-monitoring/operating/runbooks/node-drains/#materialize-node-drain-stuck">how to respond to <code>materialize-node-drain-stuck</code></a>.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  kube_pod_info{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, pod<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.*-(environmentd|gen)-[0-9]+-[0-9]+</span>&#34;, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_spec_unschedulable<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_spec_taint{key<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h4 id="node-drain-stuck">node-drain-stuck
+  <a class="anchor" href="#node-drain-stuck">#</a>
+</h4>
+A node has been cordoned or marked for removal for 24h, so its drain is stuck or forgotten.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> kubernetes</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
+<p><strong>Runbook:</strong> <a href="https://materializeinc.github.io/materialize-monitoring/operating/runbooks/node-drains/#node-drain-stuck">how to respond to <code>node-drain-stuck</code></a>.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_spec_unschedulable<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_spec_taint{key<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">ToBeDeletedByClusterAutoscaler|karpenter.sh/disrupted|karpenter.sh/disruption</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  kube_pod_info{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, pod<span style="color:#960050;background-color:#1e0010">=~</span>&#34;<span style="color:#e6db74">.*-(environmentd|gen)-[0-9]+-[0-9]+</span>&#34;, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span></code></pre></div>
 <h4 id="k8s-horizontalpodautoscaler-replicas-critical">k8s-horizontalpodautoscaler-replicas-critical
   <a class="anchor" href="#k8s-horizontalpodautoscaler-replicas-critical">#</a>
 </h4>
@@ -513,6 +604,44 @@ Labels:
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_write_dropped_entries_total[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+<h4 id="log-archive-drops">log-archive-drops
+  <a class="anchor" href="#log-archive-drops">#</a>
+</h4>
+An S3 log archive destination is dropping log records, so the archive has a gap.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> alloy</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>alloy</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        otelcol_exporter_enqueue_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>        otelcol_exporter_enqueue_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">5m</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>otelcol_exporter_enqueue_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        otelcol_exporter_send_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>        otelcol_exporter_send_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">5m</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>otelcol_exporter_send_failed_log_records_total{component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">otelcol\\.exporter\\.awss3\\..+</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
 <h4 id="loki-push-err-high">loki-push-err-high
   <a class="anchor" href="#loki-push-err-high">#</a>

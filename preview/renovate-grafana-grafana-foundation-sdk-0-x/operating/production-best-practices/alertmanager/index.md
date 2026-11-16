@@ -40,7 +40,7 @@ The zone rule sets no `minDomains`, so single-zone clusters schedule.
 It sets no `matchLabelKeys` either, because that would let the upgrade from one replica to two place both in one zone.
 On a cluster whose nodes carry no zone label at all, see [Fewer than two zones](../stack-wide/#fewer-than-two-zones).
 
-Readiness uses `/-/ready` and liveness uses `/-/healthy`, rather than the subchart's `/`, which serves the UI.
+Readiness uses `/-/ready` and liveness uses `/-/healthy`.
 A replica joins the mesh and pulls its peer's state before it serves, so a rollout that replaces one replica at a time loses no silences.
 
 ## State {#state}

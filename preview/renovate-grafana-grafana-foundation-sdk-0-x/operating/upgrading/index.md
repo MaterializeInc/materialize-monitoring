@@ -24,7 +24,7 @@ Nothing in the chart can smooth this over — it is a Kubernetes API constraint,
 | Component | Change | What the upgrade needs |
 |---|---|---|
 | Compactor | gains a PVC (its scratch outgrew node ephemeral storage) | delete the StatefulSet; the upgrade recreates it with the claim |
-| Receive | drops its PVC for `emptyDir` (durability is RF 3, and a volume cannot cross zones) | delete the StatefulSet, then delete the orphaned PVCs |
+| Receive | drops its PVC for `emptyDir` (durability is the replication factor, and a volume cannot cross zones) | delete the StatefulSet, then delete the orphaned PVCs |
 
 ```bash
 # Compactor: local state is scratch, so recreating the pod costs nothing but a
@@ -104,6 +104,30 @@ The failed attempt has already applied everything except the workloads, includin
 The Terraform module installs with `atomic = false`, so nothing was rolled back.
 
 Resource names, pod labels and the `thanos-thanos` ServiceAccount that workload identity bindings name are all unchanged.
+
+## Thanos Receive: replication factor 2
+
+The release that resolves [DEP-475](https://linear.app/materializeinc/issue/DEP-475) lowers Receive's replication factor from 3 to 2.
+The base values and every shipped profile carry the new factor.
+Thanos gives a factor of 2 a write quorum of 1, so Receive still survives the loss of one pod.
+Each pod holds two thirds of the series instead of all of them, and the memory requests are unchanged.
+For what the change trades away, see [Choose a replication factor](../production-best-practices/thanos/#choose-a-replication-factor).
+
+`helm upgrade` applies it without error.
+Receive's arguments change, so its StatefulSet rolls one pod at a time.
+During the roll, pods on the old factor and the new one serve together, and each replicates the writes it routes at its own factor.
+
+To keep a factor of 3, restate `receive.extraArgs` with it:
+
+```yaml
+thanos:
+  receive:
+    extraArgs:
+      - --receive.replication-factor=3
+```
+
+On Terraform, pass the same document in `additional_values`.
+With `internal_tls` on, the list replaces the one the mTLS profile renders, so restate its `--remote-write.server-tls-*` flags too.
 
 ## Ingester rollouts: duration and deploy timeouts
 

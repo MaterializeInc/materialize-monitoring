@@ -10,19 +10,19 @@ date: 2026-08-13
 <table class="param-table">
   <tbody>
         <tr>
-          <th>author</th>
+          <th>Author</th>
           <td>Heather Lapointe</td>
         </tr>
         <tr>
-          <th>lastmod</th>
-          <td>2026-08-13 00:00:00 &#43;0000 UTC</td>
+          <th>Lastmod</th>
+          <td>2026-08-13 00:00:00 +0000 UTC</td>
         </tr>
         <tr>
-          <th>publishdate</th>
-          <td>2026-08-13 00:00:00 &#43;0000 UTC</td>
+          <th>Publishdate</th>
+          <td>2026-08-13 00:00:00 +0000 UTC</td>
         </tr>
         <tr>
-          <th>status</th>
+          <th>Status</th>
           <td>Ready</td>
         </tr>
   </tbody>
@@ -80,7 +80,9 @@ Four stakeholder classes consume this:
 - **Logs are the actual gap.** There is exactly one `loki.write "destination"` and one `egress` seam. Logs need what metrics already have: a destination *list* with per-destination processing. This is the bulk of the pipeline work.
 - **Redaction attaches to the destination, not to the pipeline.** A global redaction stage would destroy the customer's own copy to protect ours — the exact inversion of the goal. Per-destination chains are what make "the customer keeps more" true.
 - **Redaction is fail-closed and allowlist-shaped for log bodies.** A denylist of patterns is a promise we cannot keep against arbitrary log content; structured fields we recognize cross, and unrecognized bodies do not, unless explicitly opted in.
-- **Client certificates come from the license**, verified **twice**: at an L7 load balancer that holds the verifier CA public key and does revocation, and again at `otelcol.receiver.otlp`. The receiver has **no CRL support**, which makes the load balancer the **only** revocation checkpoint — a load-bearing fact, not a detail.
+- **Client certificates come from the license**, verified at an L7 load balancer that holds the verifier CA public key and does revocation.
+  The load balancer terminates TLS, so the certificate never reaches `otelcol.receiver.otlp`,
+  which makes the load balancer the **only** verification and revocation checkpoint — a load-bearing fact, not a detail.
 - **Certificate identity is assigned, never asserted.** The LB injects a verified tenant header derived from the client certificate, and the gateway **overwrites** any client-supplied tenant metadata unconditionally. Without that, any valid cert holder can write as any other tenant.
 - **Per-destination failure isolation is a hard requirement.** The control-plane branch gets its own queue and its own drop policy, so our unavailability produces a gap in *our* copy and nothing else.
 - **Delivery is the stack deployer**, using the same self-managed Terraform modules plus a BYOC profile. The BYOC-specific part is credential material and destination wiring, not a different stack.
@@ -113,8 +115,8 @@ The pieces below are shipped and in use, and the design deliberately builds on t
 | Auth types on destinations | ✅ Shipped | `none` / `basicAuth` / `bearer` / `oauth2` / `sigv4` |
 | Multi-tenancy for logs | ✅ Shipped | `pipeline.logging.tenancy.tenantMap` — `static` / `byEnvironment` / `byNamespace` / `byLabel` / `none` |
 | Redaction primitives | ✅ In schema, unused | `stage.replace`, `stage.drop`, `stage.limit`, `stage.sampling`, `stage.label_drop`, `stage.structured_metadata_drop`, `stage.match` |
-| **Logs to more than one destination** | ❌ **Missing** | One `loki.write "destination"`, one `egress` seam |
-| **Per-destination log processing** | ❌ **Missing** | `inputProcessor` is global; everything downstream of it is identical |
+| Logs to more than one destination | ✅ Shipped | `pipeline.destinations`: one `loki.write` and one queue per destination, each free to drop when full ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)) |
+| Per-destination log processing | ✅ Shipped | `logs.selector`, `minLevel`, `sampleRate`, and `rateLimit` on each destination, in a `loki.process` of its own |
 | **Receiver-side (server) TLS / mTLS** | ⚠️ `raw` only | `grpc` / `http` nested blocks accept only the `raw` escape hatch in the schema |
 | **Certificate issuance** | ⬜ Planned | cert-manager integration, [DEP-195](https://linear.app/materializeinc/issue/DEP-195), OO-M1 |
 
@@ -164,7 +166,7 @@ flowchart TB
 
   subgraph mz["Materialize control plane"]
     lb["L7 load balancer<br/>verify chain · check revocation<br/>inject tenant header"]
-    cpgw["alloy-gateway — control plane role<br/>otelcol.receiver.otlp · verify client cert again<br/>OVERWRITE tenant metadata · per-tenant limits"]
+    cpgw["alloy-gateway — control plane role<br/>otelcol.receiver.otlp · read the LB's identity header<br/>OVERWRITE tenant metadata · per-tenant limits"]
     mzstore[("Loki / Thanos — ours<br/>multi-tenant, reduced, shorter retention")]
     mzgraf["Grafana + Alertmanager<br/>internal only"]
 
@@ -189,31 +191,26 @@ Keeping it the same artifact is a deliberate constraint. A control-plane fork wo
 
 ## Ingress: OTLP into the control plane
 
-### Two-stage verification, with one revocation checkpoint
+### One verification, at the load balancer
 
-The client certificate is verified at both hops, and the split is not redundant — the two hops can check different things.
+The load balancer verifies the client certificate's chain and checks revocation, and it is the only place either happens.
+It needs **only the verifier CA public key** — no private material, no per-customer configuration, no state that grows with the fleet.
+Adding a customer is issuing a certificate, not touching the ingress.
 
-| | **L7 load balancer** | **`otelcol.receiver.otlp`** |
-|---|---|---|
-| Needs | Verifier CA public key only | Client CA bundle |
-| Chain verification | ✅ | ✅ |
-| **Revocation (CRL / OCSP)** | ✅ | ❌ **not supported** |
-| Identity extraction → header | ✅ | — (consumes the header) |
-| Terminates TLS | ✅ | Re-terminates (LB → gateway is a separate session) |
-| Protects against | Unauthenticated and revoked clients, at the edge | An attacker who reaches the pod directly |
+**The receiver can't verify the certificate a second time.**
+The load balancer terminates TLS and opens its own session to the gateway, presenting no client certificate,
+so the customer's certificate never reaches `otelcol.receiver.otlp`.
+What reaches it is the certificate's subject, in a header the load balancer sets.
 
-The load balancer needs **only the verifier CA public key** — no private material, no per-customer configuration, no state that grows with the fleet. Adding a customer is issuing a certificate, not touching the ingress.
-
-**The receiver cannot check revocation, so the load balancer is the only place revocation is enforced.**
-That has a consequence worth writing in the operational runbook rather than discovering later: *any* network path that reaches the gateway pod while bypassing the LB also bypasses revocation.
+That has a consequence worth writing in the operational runbook rather than discovering later:
+*any* network path that reaches the gateway pod while bypassing the LB bypasses verification and revocation, and can send that header itself.
 The mitigations are ordinary and must all be present — the gateway's Service is internal, a NetworkPolicy admits only the LB's source, and no second ingress object targets it.
-That work has since landed for the gateway, but not in the shape this needs: the shipped policy accepts the ingest ports from any pod in the cluster, which is right for a customer-side install and is not "only the LB". The control-plane overlay has to replace that rule.
-
-Certificate verification at the receiver is expressible today only through the schema's `raw` escape hatch, since the `grpc` and `http` blocks accept nested blocks as raw text. Typing the `tls` block is listed in the [prerequisites](#chart-side-prerequisites).
+The shipped policy accepts the ingest ports from any pod in the cluster, which is right for a customer-side install and is not "only the LB".
+The control-plane overlay has to replace that rule, and `pipeline.gateway.clientCertificateTenancy` refuses to render until it does.
 
 ### Identity is assigned by the load balancer, never asserted by the client
 
-The load balancer extracts the environment identity from the verified certificate subject or SAN and injects it as a request header.
+The load balancer passes the verified certificate's subject on as a request header, and the gateway takes the identity from its CN.
 `otelcol.receiver.otlp` can propagate request metadata downstream with `include_metadata`, which is how the value reaches the pipeline and becomes the Loki tenant.
 
 **The gateway must overwrite that metadata unconditionally, not merely read it.**
@@ -441,16 +438,16 @@ Work in **this** repo. Ordered roughly by dependency.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **Map-shaped log destinations** — `pipeline.logging.gateway.destination.loki` becomes a named map, rendered as N `loki.process` → `loki.write` pairs off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | **Blocking** — nothing dual-destination ships without it |
-| **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | **Blocking** |
-| **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | **Blocking** |
-| **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | **Blocking** for the control-plane gateway |
-| **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | **Blocking** |
+| **Map-shaped log destinations** — a named map of destinations, rendered as one writer per destination off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | ✅ Shipped as `pipeline.destinations` ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). The map is signal-agnostic: one entry is one wire, and each signal it carries has its own block, so the control plane is one `otlp` entry with one credential, carrying logs and tier-filtered metrics over mTLS |
+| **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | ✅ Class, level, sampling, and rate limit, as `logs.selector`, `minLevel`, `sampleRate`, and `rateLimit` in a `loki.process "dest_<name>"` per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). Class is a LogQL selector rather than a new taxonomy. Redaction attaches to the same component ([DEP-317](https://linear.app/materializeinc/issue/DEP-317)) |
+| **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | ✅ Bounded and droppable: `queue.capacity` and `queue.blockOnOverflow: false` on each destination, measured to keep the local copy whole while another destination is unreachable. The per-destination `wal` is not wired |
+| **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | Not needed: [the receiver can't see the client certificate](#one-verification-at-the-load-balancer) behind the load balancer. The chart renders the receiver's server TLS from `pipeline.logging.gateway.server.tls` |
+| **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | ✅ `pipeline.gateway.clientCertificateTenancy`, which takes the tenant from the certificate subject's CN, in the header an AWS Application Load Balancer, nginx, or Envoy sets ([DEP-291](https://linear.app/materializeinc/issue/DEP-291)) |
 | **`otelcol.processor.transform` before the log bridge** ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) | Label ↔ resource-attribute fidelity across the OTLP round trip. Already an open TODO in `gateway.yaml`; shared with the agent OTLP work | **Blocking** — silent label loss is worse than delivery failure |
 | **Redaction stage set** composed from existing primitives, allowlist-shaped, fail-closed | [DEP-220](https://linear.app/materializeinc/issue/DEP-220). Primitives exist; the composition and the values surface do not | **Blocking** for log egress |
 | **Generated log-class / field allowlist artifact**, alongside `metric-tiers.yaml` | The customer-readable egress schedule, and the thing that stops the allowlist drifting on a rename | Should land with redaction |
-| **File-mounted certificate material** for gateway destinations, inline PEM retained as escape hatch | Env-var PEMs break renewal fleet-wide at one certificate lifetime. Shared with [cert-manager work](https://linear.app/materializeinc/issue/DEP-195) | **Blocking** for any renewing credential |
-| **`byoc` profile** composing control-plane destination, reduction tiers, redaction defaults, Grafana ingress and persistence | The assembled shape the stack deployer applies | Blocking for delivery |
+| **File-mounted certificate material** for gateway destinations, inline PEM retained as escape hatch | Env-var PEMs break renewal fleet-wide at one certificate lifetime. Shared with [cert-manager work](https://linear.app/materializeinc/issue/DEP-195) | ✅ `tls.caFile` / `certFile` / `keyFile` on every destination. An `otlp` destination takes only the file carriers, and `tls.reloadInterval` re-reads them. The inline carriers never reached the env ([DEP-465](https://linear.app/materializeinc/issue/DEP-465)) |
+| **`byoc` profile** composing control-plane destination, reduction tiers, redaction defaults, Grafana ingress and persistence | The assembled shape the stack deployer applies | ✅ `profiles/call-home.values.yaml`, shared with self-managed call-home: an `otlp` destination to `telemetry.c.<appHost>` over mTLS, with the client certificate from the Secret `mzmon-alloy-gateway-destination-tls`, logs at `WARN` and above rate limited, and `essential` metrics. Redaction is [DEP-317](https://linear.app/materializeinc/issue/DEP-317)'s. Grafana ingress and persistence stay with the cloud profiles the deployer already composes |
 | **Control-plane values overlay** — OTLP mTLS ingress on, kubelet and events collection off, egress to our backends | Lets the control-plane gateway be this repo's artifact rather than a fork | Blocking for the control plane |
 | **NetworkPolicy for the gateway** ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)) | The receiver cannot check revocation, so "the LB is the only path" must be enforced rather than assumed | **Partly landed.** `alloy-gateway.networkPolicy` ships on by default, but its ingest ports (`3100`, `4317`, `4318`, `9090`) accept any pod in the cluster — correct for a customer-side install, where those endpoints exist for the customer's own workloads, and not the guarantee this needs. The control-plane overlay has to replace that first ingress rule with one naming the load balancer, which is a values change rather than new chart machinery |
 | **Per-tenant Loki limits** in the control-plane overlay | One environment's crash loop must not degrade ingestion for the fleet | Blocking for the control plane |
@@ -482,10 +479,13 @@ The kind tiers extend to cover this, and two of the assertions are genuinely new
 
 - [ ] **Certificate lifetime and renewal path.** Short-lived with a bootstrap exchange (option 1), medium-lived reissued with the license (option 2), or license-lifetime (option 3)? This depends on control-plane issuance capability outside this repo, and it is the single largest security decision in the doc.
 - [ ] What exactly is the tenant identity in the certificate — subject CN, a SAN URI, or a custom OID — and does it carry both customer and environment, or only environment with the mapping held control-plane side?
+  Proposed: a URI SAN, `spiffe://c.materialize.cloud/stack/<clientStack>`, where `<clientStack>` is usually `byoc-<uuid>`. The identity is per stack, with the mapping to customer held control-plane side.
 - [ ] Which L7 load balancer, and does the chosen one support CRL *and* OCSP, with a documented refresh interval? "Supports revocation" is not sufficient; a CRL refreshed daily is a one-day revocation window.
+  Proposed: an AWS Application Load Balancer per control plane, named `telemetry.c.<appHost>` (`telemetry.c.cloud.materialize.com`, `telemetry.c.staging.cloud.materialize.com`, `telemetry.c.<personalStack>.dev.cloud.materialize.com`). Its revocation behavior is still to confirm.
 - [ ] Does the LB terminate and re-originate TLS to the gateway, and if so what authenticates that second hop? An internal issuer certificate is the obvious answer and should be stated rather than assumed.
 - [ ] Should the control-plane gateway accept `loki.source.api` at all, or OTLP exclusively? Exclusively is a smaller attack surface; accepting both eases migration for anything already pushing Loki-native.
-- [ ] Log class taxonomy: extend the existing `tenantMap` classes (`default` / `infra` / `audit` / `environment`), or introduce an explicit egress-class label? Extending is cheaper and reuses a shipped concept; a separate axis is more honest if the two classifications diverge.
+- [x] Log class taxonomy: extend the existing `tenantMap` classes (`default` / `infra` / `audit` / `environment`), or introduce an explicit egress-class label? Extending is cheaper and reuses a shipped concept; a separate axis is more honest if the two classifications diverge.
+  Resolved as neither: each destination takes a LogQL stream selector (`logs.selector`), which selects on the labels the gateway already promotes and adds no classification to keep in step.
 - [ ] Is `WARN` and above the right default level for control-plane log egress? It is a defensible starting point, but the tuning signal after launch is how often support asks for a bundle — measure before hardening it.
 - [ ] Does redaction belong at the customer gateway (before the wire) or the control-plane gateway (after)? **Strong lean: the customer gateway**, so unredacted data never crosses the boundary at all — but the control-plane side is the one *we* can fix without a customer upgrade, and version skew makes that argument non-trivial. Possibly both, with the control-plane side as a backstop.
 - [ ] How does the control plane handle a pipeline version older than its own expectations, given self-managed customers upgrade on their own schedule? Plain OTLP plus the existing label contract should make this a non-event, but it needs an explicit compatibility statement.

@@ -96,6 +96,8 @@ A version-update PR populates the placeholder, promotes it to a released section
 and rewrites that component's `version_paths` to the released version.
 For more information, see [Releasing](../releasing/).
 Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
+Bumping the workspace `Cargo.toml` does the same in `Cargo.lock` for every crate that inherits the workspace version.
+That includes `mz-dashboards`, so its locked version follows `mzmon-lib` releases rather than the `dashboards` component.
 Bumping a `Chart.yaml` also rewrites the helm-docs version badge in the `README.md` beside it,
 so the PR does not wait on [auto-format](../releasing/#auto-format) for that line.
 The next version defaults to a minor bump.

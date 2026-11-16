@@ -48,10 +48,47 @@ It degrades rather than breaking on an older release, and not uniformly — the 
 | Events | The Kubernetes Activity row works — those events come from the kubelet and the scheduler. The Rollout and Operator Health rows are empty. |
 | Reconciliation | Empty, apart from Reconciling Replicas and Environments Needing Update, whose gauges predate the rest. |
 
+The **`env-ingress`** dashboard, Materialize Ingress (Balancer, Console), reads the console's request metrics, which
+Materialize publishes from `v26.49.0`, and balancerd's connection timings and server-side error count, which it
+publishes from `v26.50.0`.
+On versions without them, it degrades by tab:
+
+<!-- TODO: confirm both versions once they're tagged. v26.49.0-rc.1 carries MaterializeInc/materialize#40193, and #40192 merged after that rc was cut. -->
+
+| Tab | On a Materialize version without them |
+|---|---|
+| Overview | Open Connections works, and so do the balancerd rate and error panels. Their error count includes clients that hung up, and leaves out connections balancerd refused. The latency, Taking New Connections, and console panels are empty. |
+| Load Balancer | Unaffected. Its provider rows depend on the gateway pulling the load balancer's metrics, not on Materialize. |
+| Balancer | Connections, the connection limit, resources, autoscaling, and logs work. The watermarks, Taking New Connections by Pod, and Connection Timing are empty on versions that also predate balancerd's watermarks. |
+| Console | Only the logs row works. |
+| SQL and HTTP API | **Fully working.** Every panel reads environmentd. |
+
+The Balancer tab's Autoscaling row draws any HorizontalPodAutoscaler that targets balancerd's Deployment.
+For the autoscaler to keep the count it sets, the Materialize resource needs `balancerdExternallyScaled: true`, which
+Materialize supports from `v26.48.0`.
+Earlier versions reset balancerd's replica count to `balancerdReplicas`.
+
 Each dashboard also carries its floor as a `monitoring.materialize.cloud/min-mz-version` annotation, which the docsite's
 dashboard table shows.
 
-Scrapers (v0.1.1+) require `app.kubernetes.io/name` labels for environmentd introduced in `v26.24.0`.
+Scrapers (v0.1.1+) require the `app.kubernetes.io/name` label that Materialize sets on environmentd pods from `v26.24.0`.
+The balancerd and console monitors (v0.6.0+) select on the same label, which Materialize sets on those pods from the
+same version.
+
+The console monitor scrapes the console pod's `internal-http` port, which the Materialize operator declares from
+`v26.49.0`, the same version that publishes the console's metrics.
+What you see depends on which of the two you have upgraded:
+
+| Operator | Console image | What the console monitor does |
+|---|---|---|
+| Without the port | Any | Finds no target. Nothing fails, and the Console tab stays empty. |
+| With the port | Without the metrics | Scrapes a port that refuses connections, so `up` reads 0 for each console pod. |
+| With the port | With the metrics | Collects `mz_console_*`. |
+
+The operator picks the console image from the environment's Materialize version.
+Upgrading the operator before an environment therefore leaves that environment's console pods in the second row until
+you upgrade the environment too.
+To skip the failed scrapes for that window, set `materialize.console.serviceMonitor.enabled` to `false`.
 
 ## [Grafana](https://grafana.com/)
 

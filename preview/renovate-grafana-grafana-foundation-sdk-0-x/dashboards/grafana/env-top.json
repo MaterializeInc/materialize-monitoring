@@ -1814,6 +1814,7 @@
                       "type": "log"
                     }
                   },
+                  "decimals": 4,
                   "unit": "none"
                 },
                 "overrides": []

@@ -59,7 +59,9 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
   Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
   For every rule, see the [logging pipeline reference](../../reference/development/pipelines/logging/#size-limits).
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
-- **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
+- **Gateway destinations.** The gateway writes processed logs to each entry in `pipeline.destinations`, which by default holds the bundled Loki.
+  For the [remote-only topology](../architecture/#alternative-topologies), point `pipeline.destinations.loki.url` at an external Loki.
+  For more information, see [Where the gateway writes logs](../storing/#destinations).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.
 
 > [!WARNING]

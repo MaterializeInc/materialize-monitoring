@@ -1,4 +1,4 @@
-# o11y Glossary
+# Observability glossary
 
 
 
@@ -9,7 +9,7 @@ Use h5 for term headings and provide stable anchors.
 Interlink terms as used.
 -->
 
-# Glossary of Observability Terms
+# Glossary of observability terms
 
 A reference for the vocabulary you'll see across these docs.
 The audience is a Materialize customer or operator: comfortable with SQL, conversant in DBA terminology, working knowledge of Kubernetes.

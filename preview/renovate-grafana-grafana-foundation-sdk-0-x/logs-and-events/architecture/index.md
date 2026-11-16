@@ -101,7 +101,8 @@ Because it is a DaemonSet, collection scales with the number of nodes, and no ap
 The **`alloy-gateway`** is a Grafana Alloy Deployment that does the central log processing and forwarding.
 It receives logs from the agents (and optionally other sources — see [Ingestion interfaces](#ingestion)), collects Kubernetes events, normalizes log levels, moves high-cardinality fields into [structured metadata](#storage), enforces drop and rate-limit policies, and then writes the result to Loki.
 It is the single place where the [cardinality](../../o11y-glossary/#observability-foundations) and label-family decisions are made, which is what keeps the log store stable and cheap.
-Its ingress port (`ALLOY_LOKI_PORT`, default `3100`) and its write destination (`GATEWAY_LOKI_DEST`) are configurable — see [Collecting > Tuning collection](../collecting/#tuning-collection).
+Its ingress port is `ALLOY_LOKI_PORT`, default `3100`, and you can change it; see [Collecting > Tuning collection](../collecting/#tuning-collection).
+It writes to every destination in `pipeline.destinations`; see [Where the gateway writes logs](../storing/#destinations).
 
 The gateway is also the egress point for the [remote-only topology](#alternative-topologies) and the conduit the [Loki Ruler](#ruler) uses to remote-write recording-rule samples to the long-term metric store.
 
@@ -342,5 +343,5 @@ Cross-cutting operational guidance (upgrades, securing, tuning) lives under [Ope
 - [Loki hash rings](https://grafana.com/docs/loki/latest/get-started/hash-rings/) — ring membership and replication in detail.
 - [Loki storage](https://grafana.com/docs/loki/latest/operations/storage/) — object storage, the index, and retention.
 - [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative gateway/agent pipeline definition.
-- [o11y Glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
+- [Observability glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
 

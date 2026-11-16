@@ -10,23 +10,23 @@ date: 2026-10-20
 <table class="param-table">
   <tbody>
         <tr>
-          <th>agent</th>
+          <th>Agent</th>
           <td>Claude Opus 5.5</td>
         </tr>
         <tr>
-          <th>author</th>
+          <th>Author</th>
           <td>Heather Lapointe</td>
         </tr>
         <tr>
-          <th>lastmod</th>
-          <td>2026-10-29 00:00:00 &#43;0000 UTC</td>
+          <th>Lastmod</th>
+          <td>2026-10-29 00:00:00 +0000 UTC</td>
         </tr>
         <tr>
-          <th>publishdate</th>
-          <td>2026-10-20 00:00:00 &#43;0000 UTC</td>
+          <th>Publishdate</th>
+          <td>2026-10-20 00:00:00 +0000 UTC</td>
         </tr>
         <tr>
-          <th>status</th>
+          <th>Status</th>
           <td>Ready</td>
         </tr>
   </tbody>
@@ -355,7 +355,6 @@ Reference tables become worth their cost if too many panels fall back to ids for
 The Thanos Ruler remote-writes its results to the gateway, and every install has Thanos, so a recording rule that joins names onto series would reach Datadog with no new component.
 This design doesn't use it for the dashboards, for the following reasons:
 
-- A destination below the `all` tier drops recorded series until [DEP-368](https://linear.app/materializeinc/issue/DEP-368) gives them a tier.
 - Both ruler replicas send every result. Datadog doesn't deduplicate on `ruler_replica`, so each copy is a custom metric of its own.
 - A name on a series is part of the series' identity. A rename ends one series and starts another, which is why the label-vocabulary design keeps names on `_info` metrics only.
 

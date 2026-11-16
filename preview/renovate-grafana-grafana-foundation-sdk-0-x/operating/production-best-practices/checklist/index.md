@@ -149,6 +149,12 @@ Skip one of these and someone outside the trust boundary can read your data or c
   not keys: an IRSA role or EKS Pod Identity association for the `alertmanager` ServiceAccount, allowing `sns:Publish`
   on the topic (plus `kms:GenerateDataKey*` and `kms:Decrypt` for an encrypted topic).
   SNS is the only integration that can use one; SES and Azure Communication Services email authenticate over SMTP with a credential in the Secret.
+- [ ] `[operator]` [Secret filtering](../secret-filtering/#at-the-source): **Keep credentials out of logs at the source.**
+  A credential a component logs is in Loki for the tenant's full retention, readable by anyone who can query it.
+  The gateway's secret filter is an extra layer of protection, and a healthy install gives it no credential to find.
+  When it redacts one, the raw line is still in the container's log file on the node and in `kubectl logs`, so fix
+  the component and rotate the credential.
+  Check the value first: the rules also replace some values that only look like credentials.
 
 <details>
 <summary>What the chart already does</summary>
@@ -215,7 +221,8 @@ Skip one of these and part of the stack stops working without an error, so nothi
   Edits there are untracked and lost on the next render.
 - [ ] `[operator]` [Alloy](../alloy/#cardinality): Alert on the pipeline's own shedding (`drop_counter_reason`), so a
   rate limit that's dropping lines is visible rather than silent data loss.
-  The shipped `alloy-log-drops` alert covers only entries `loki.write` fails to deliver.
+  The shipped `alloy-log-drops` alert covers only entries `loki.write` fails to deliver,
+  and `log-archive-drops` covers only records an `s3` destination drops.
 - [ ] `[operator]` [Alloy](../alloy/#agent-placement) and [node-exporter](../node-exporter/#coverage): **Verify coverage after any node-pool change.**
   The agent's pod count and `count(up{job="node-exporter"})` should both equal `count(kube_node_info)`.
   A persistent gap is a pool the DaemonSets aren't reaching.
@@ -253,7 +260,7 @@ Skip one of these and part of the stack stops working without an error, so nothi
   not running, discarded samples (`loki_discarded_samples_total`), object-store errors, and disk usage.
   Loki down is its own incident.
 - [ ] `[operator]` [Thanos](../thanos/#receive-replication): **Alert on Receive write failures and quorum errors.**
-  With a replication factor of 1 or 2, these are the first sign of a lost pod, and the dashboards don't show it.
+  At a replication factor of 1, they're the first sign of a lost pod, and the dashboards don't show it.
 - [ ] `[operator]` [Thanos](../thanos/): Keep the Store Gateway enabled.
   It's how queries reach historical blocks; without it, reads are limited to what Receive holds locally.
 - [ ] `[operator]` [Grafana](../grafana/): **Set `grafana.ini.server.root_url`** to the URL users actually reach.
@@ -310,7 +317,8 @@ Skip one of these and part of the stack stops working without an error, so nothi
 - [x] `[chart]` [Alloy](../alloy/): ServiceMonitor or PodMonitor (or GCP `PodMonitoring`) for both roles, scraping
   Alloy's own component metrics: received and sent bytes, dropped lines, and write failures.
 - [x] `[chart]` [Alerting](../../../alerting/architecture/): The rule set ships `alloy-log-drops` (entries `loki.write`
-  drops), `loki-push-err-high` (Loki push errors, including 429 rate limits), and `logging-collection-down`, all on by default.
+  drops), `log-archive-drops` (records an `s3` archive destination drops), `loki-push-err-high` (Loki push errors,
+  including 429 rate limits), and `logging-collection-down`, all on by default.
 - [x] `[chart]` [node-exporter](../node-exporter/#scraping): ServiceMonitor enabled, and `prometheus.io/scrape: "false"`
   on the Service so annotation-based discovery can't scrape it a second time under another `job` label.
 - [x] `[chart]` [Loki](../loki/): ServiceMonitor for the Loki components, with the plaintext exporters scraped
@@ -354,11 +362,11 @@ Skip one of these and part of the stack stops working without an error, so nothi
 
 Skip one of these and an ordinary restart, node loss, or upgrade loses telemetry or state for good.
 
-- [ ] `[operator]` [Thanos](../thanos/#receive-replication): **Keep the Receive replication factor odd, and restate
-  `receive.extraArgs` in full whenever you set it.**
-  The chart sets the factor to 3 through that list, and Helm overwrites lists, so an override that adds any flag drops it to Thanos's default of 1.
+- [ ] `[operator]` [Thanos](../thanos/#choose-a-replication-factor): **Keep the Receive replication factor at 2 or 3, and
+  restate `receive.extraArgs` in full whenever you set it.**
+  The chart sets the factor to 2 through that list, and Helm overwrites lists, so an override that adds any flag drops it to Thanos's default of 1.
   At 1, the un-uploaded window exists in one copy on one node.
-  A render-time check warns at factor 1, warns harder at 2, and errors when the factor exceeds `replicaCount`.
+  A render-time check warns at factor 1 and at even factors above 2, and errors when the factor exceeds `replicaCount`.
 - [ ] `[operator]` [Thanos](../thanos/#thanos-retention-compaction): Restate `compactor.extraArgs` in full too.
   It carries the vertical compaction and deduplication flags, and dropping the first halts the Compactor at the first overlapping block.
 - [ ] `[operator]` [Thanos](../thanos/#thanos-retention-compaction): **Know that deduplication is irreversible** on an existing bucket.
@@ -404,7 +412,7 @@ Skip one of these and an ordinary restart, node loss, or upgrade loses telemetry
   Requests are set for scheduling.
 - [x] `[chart]` [Loki](../loki/#schema-periods): `schema_config` uses TSDB, schema **v13**, and a 24h index period.
 - [x] `[chart]` [Thanos](../thanos/#receive-replication): `receive.mode: standalone` with `replicaCount: 3`, an
-  auto-generated ketama hashring, and `--receive.replication-factor=3` in `receive.extraArgs`.
+  auto-generated ketama hashring, and `--receive.replication-factor=2` in `receive.extraArgs`.
 - [x] `[chart]` [Thanos](../thanos/#receive-replication): **Every profile restates `receive.extraArgs` in full**, so the replication factor survives.
   A unit test pins this at all three sizes.
 - [x] `[chart]` [Thanos](../thanos/): **VerticalPodAutoscaler disabled on Receive and the Compactor.**
@@ -665,12 +673,23 @@ Skip one of these and the stack runs short of resources, or costs more than it n
 Skip one of these and nothing breaks.
 Each adds defense in depth, or extra signal where your environment calls for it.
 
+- [ ] `[operator]` [Log compliance](../log-compliance/): **If a requirement says logs must be kept unaltered,
+  archive them to a bucket with S3 Object Lock in compliance mode**, with `profiles/s3-worm.values.yaml`.
+  Loki deletes on retention and on request, so it isn't that record.
+  Turn on the secret filter first, narrow the archive with `logs.selector`, and route `log-archive-drops` to the team that owns the requirement.
+
 - [ ] `[operator]` [Network policies](../stack-wide/#network-policies): **Narrow the `0.0.0.0/0` egress rules where your infrastructure lets you.**
   `kube-state-metrics` and `grafana-operator` reach the API server on `443` and `6443` to everywhere, because a chart
   can't derive the control plane's address, and Loki reaches object storage the same way.
   A VPC endpoint's CIDR, or Cilium's `toFQDNs`, is the tighter form; for Loki, see [Object-storage egress](../loki/#object-storage-egress).
 - [ ] `[operator]` [TLS](../../securing/#gaps): Turn on in-cluster TLS where your environment requires it.
   Certificates and the mTLS profiles ship off by default.
+- [ ] `[operator]` [Secret filtering](../secret-filtering/#turn-it-on): **Turn on the secret filter** for an extra
+  layer of protection behind keeping credentials out of logs: set `pipeline.logging.secretFilter.mode` to `"on"`, or
+  `secret_filter = "on"` with the Terraform module.
+  It ships off.
+  Run it in [shadow mode](../secret-filtering/#shadow) first, to see what it would replace in your logs.
+  Then alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`, and check each one: a redaction is usually a credential a component logged.
 - [ ] `[operator]` [Alertmanager](../../../alerting/architecture/#tls): **TLS on the API port** comes with the mTLS
   profiles: `alerting.server.tls` moves 9093 to TLS, and the profiles move the probes, the reloader, the scrape, both
   rulers, and the Grafana data source with it.

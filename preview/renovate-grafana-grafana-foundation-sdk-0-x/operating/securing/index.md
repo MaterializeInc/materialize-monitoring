@@ -98,6 +98,7 @@ Every workload now ships a NetworkPolicy, on by default.
 
 - [ ] `[consumer]` **(Terraform: automatic)** Use **workload identity** for object storage — IRSA, GKE Workload Identity, or Azure Workload Identity — rather than static keys. See [Logs & Events > Storing](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) and [Metrics > Storing](../../metrics/storing/#thanos-object-storage).
 - [ ] `[consumer]` Give Alertmanager a **workload identity** for Amazon SNS rather than static keys, scoped to `sns:Publish` on its topics. It is the only notification integration a cloud identity can authorize; the rest read a credential from the `alertmanager-receivers` Secret. See [Alert Channels > Cloud provider services](../../alerting/channels/#cloud).
+- [ ] `[operator]` If your object store or a destination presents a certificate from a private CA, add the CA to the [trust bundle](#trust-a-private-ca) rather than turning verification off.
 - [ ] `[operator]` Narrow the `0.0.0.0/0` egress rules where your infrastructure gives you something tighter — a VPC endpoint's CIDR, or Cilium's `toFQDNs`. The chart cannot derive the API server's or the object store's address, so it ships the broad form and says so.
 - [ ] `[operator]` Remember the credential endpoint, not just the bucket. Workload identity fetches a token from STS (or the GCP/Azure equivalent) on `443`, and a policy that covers the bucket but not the token endpoint hangs the component at startup rather than failing it. This is the single most common NetworkPolicy mistake in this stack; [Loki's checklist](../production-best-practices/loki/#object-storage-egress) covers the symptom in detail.
 
@@ -193,7 +194,7 @@ See [Images and registries](../production-best-practices/stack-wide/#images-and-
 
 Data that reaches the stack is stored as it arrives.
 
-- [ ] `[operator]` **Keep secrets out of logs at the source.** The pipeline ships no redaction stage today ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)), so a token an application logs is a token in Loki, searchable for the tenant's full retention.
+- [ ] `[operator]` **Keep secrets out of logs at the source.** A token an application logs is a token in Loki, searchable for the tenant's full retention. The gateway's [secret filter](../production-best-practices/secret-filtering/) can replace credentials before they're stored, but it ships off, and it's a backstop rather than the control: the raw line stays in the container's log on the node.
 - [ ] `[operator]` **Set retention deliberately.** It is the only bound on how long anything that did leak stays queryable. Retention and compaction are covered in [Logs & Events > Storing](../../logs-and-events/storing/) and [Metrics > Storing](../../metrics/storing/).
 - [ ] `[consumer]` Enable server-side encryption and access logging on the buckets. The Terraform modules enable versioning; encryption policy is yours, and bucket versioning means a deleted object is not necessarily gone.
 - [ ] `[operator]` Remember that **isolation within a Loki tenant is label-based**, not enforced. Per-environment separation via `environment_id` is a query convention; the hard boundary is a separate install. See [Tenancy & auth](../production-best-practices/loki/#tenancy).
@@ -219,6 +220,7 @@ A public ACME issuer cannot sign `loki-distributor.monitoring.svc`, and a self-s
 Collapsing these into one key would make one of the two unusable.
 
 **The external certificate is only needed behind an L4 load balancer**, which passes TCP through and leaves TLS to terminate at the pod — so the material has to exist in the cluster.
+Grafana serves it once the `grafana-https` profile turns HTTPS on, or the Terraform module's `grafana_external_dns_names` does; see [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls).
 An L7 load balancer terminating with a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault) attaches it by ARN or resource ID and the private key never enters the cluster; for that shape leave `external` unset and pass the annotation through `grafana.service.annotations`.
 The render warns if you set `external.dnsNames` without an issuer, since that combination looks configured and issues nothing.
 
@@ -279,7 +281,8 @@ helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
 ```
 
 **It is a profile rather than a switch because the change is not one setting.**
-Turning on Loki's listener is one key; keeping the deployment working is six, spread across three subcharts and two of this chart's own trees — the writer, the reader, the kubelet probes, the metrics scrape, and the canary all dial the port that just moved.
+Turning on Loki's listener is one key, and keeping the deployment working takes settings across three subcharts and two of this chart's own trees.
+The writer, the reader, the kubelet probes, the metrics scrape, the canary, and Loki's own query frontend all dial the port that just moved.
 Every one of them fails quietly, and none of the symptoms names TLS:
 
 | Left behind | What you see |
@@ -290,6 +293,7 @@ Every one of them fails quietly, and none of the symptoms names TLS:
 | The Grafana datasource URL | Every log panel renders empty, with no error on the dashboard |
 | The Loki gateway's `nginxConfig.schema`, `ssl` and probe scheme | The same empty panels, from the hop between Grafana and Loki; or both gateway replicas unready |
 | The canary's flags | The end-to-end check reports the log store as broken when it is not |
+| The query frontend's `tail_proxy_url` and `tail_tls_config` | Every live tail fails with `websocket: bad handshake`, the canary's included, and the querier logs `client sent an HTTP request to an HTTPS server` |
 
 The render refuses each of those rather than letting you find out, which is most of what the chart contributes here.
 
@@ -383,6 +387,98 @@ The mount is unconditional and marked `optional: true`, so the same values work 
 - [ ] `[operator]` **Do not set `renewBefore` near `duration`.** It looks like a way to exercise renewal and it is a way to break cert-manager: at 92% of duration (a 1h certificate with 55m of headroom) renewal fires every few minutes, and on a small cluster with six certificates the controller livelocked in an optimistic-locking re-queue loop, stopped renewing, and then reported `Ready=True: "Certificate is up to date and has not expired"` on certificates that had expired 45 minutes earlier — every TLS hop failing with `certificate has expired` while the Certificate resource looked healthy. Keep `renewBefore` to a third of `duration` or less, and force renewal explicitly (delete the Secret, or `cmctl renew`) if you want to test it.
 - [ ] `[operator]` **A mounted file is not a reloaded file.** The kubelet refreshes Secret contents atomically, but the process still has to notice, and reload support differs per component. That is why no hop turns on by default, and why enabling one is a decision to make per component rather than per stack.
 
+## Trust a private CA {#trust-a-private-ca}
+
+Some endpoints the stack connects to present a certificate from a CA that its images don't trust.
+Examples are an S3-compatible store serving your own certificates, a webhook behind a TLS-intercepting proxy, and a destination on your own PKI.
+The trust bundle adds your CAs to the roots the stack trusts for those connections, so you don't have to turn verification off.
+
+Every Loki and Thanos component, both Alloy roles, and Alertmanager mount a ConfigMap and a Secret named `mzmon-trust-bundle`.
+Each sets `SSL_CERT_DIR` to Go's default certificate directories plus the two mounts.
+Go loads its roots from those directories and from the image's own CA file, so the image's public roots stay trusted.
+Both mounts are optional, so a pod starts whether or not either exists.
+
+### Supply the CAs
+
+Create the ConfigMap, the Secret, or both, in each namespace the stack runs in.
+That's one namespace unless you use `profiles/split-namespace.values.yaml`.
+
+- **A ConfigMap suits CAs you distribute across the cluster.**
+  Every key is mounted, so any key name works.
+  With [trust-manager](https://cert-manager.io/docs/trust/trust-manager/), name a `Bundle` `mzmon-trust-bundle`.
+  trust-manager writes a ConfigMap with the Bundle's name into each namespace its selector matches:
+
+  ```yaml
+  apiVersion: trust.cert-manager.io/v1alpha1
+  kind: Bundle
+  metadata:
+    name: mzmon-trust-bundle
+  spec:
+    sources:
+      - useDefaultCAs: true
+      # Read from trust-manager's trust namespace, `cert-manager` by default.
+      - secret:
+          name: corporate-root-ca
+          key: ca.crt
+    target:
+      configMap:
+        key: ca-certificates.crt
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+  ```
+
+- **A Secret suits a CA you have as a file.**
+  Only its `ca.crt` key is mounted:
+
+  ```bash
+  kubectl create secret generic mzmon-trust-bundle -n monitoring --from-file=ca.crt=corporate-root-ca.pem
+  ```
+
+  If cert-manager already issues from your private CA, a `Certificate` with `secretName: mzmon-trust-bundle` gives you this Secret.
+  A CA issuer writes its own certificate to `ca.crt`.
+  The chart mounts only that key, so the certificate's private key never reaches a pod.
+
+- **With the Terraform module, pass the CAs as `trust_bundle_ca_pem`.**
+  The module writes them to the ConfigMap before it installs the release, and annotates every pod that mounts it with a hash of the PEM, so a change rolls them.
+
+  ```hcl
+  trust_bundle_ca_pem = file("corporate-root-ca.pem")
+  ```
+
+  The module creates the ConfigMap in `namespace` and in `alertmanager_namespace`.
+  If you use `profiles/split-namespace.values.yaml`, list every namespace a consumer runs in as `trust_bundle_namespaces`.
+  If the PEM comes from a resource that the same apply creates, also set `trust_bundle_enabled = true`.
+  Otherwise, the plan fails, because Terraform can't tell whether to create the ConfigMap.
+
+If you created the ConfigMap or Secret yourself, restart the pods:
+
+```bash
+kubectl rollout restart deployment,statefulset,daemonset -n monitoring
+```
+
+Restart them again after any change to the bundle.
+The kubelet refreshes the mounted files, but a Go process reads its roots once, at its first TLS connection, and keeps them.
+
+### What it covers
+
+The trust bundle applies to every outbound connection that verifies against the system roots, which is any connection with no CA of its own:
+
+- Loki's and Thanos's object storage, when the storage configuration names no CA file.
+- `pipeline.destinations` entries with no `tls.caFile`.
+- Alertmanager receivers whose HTTP configuration names no `ca_file`.
+
+The in-cluster hops under [Certificates](#certificates) name the internal CA explicitly, so the trust bundle doesn't widen what they accept.
+
+A connection that names its own CA file trusts that file instead of the system roots.
+To trust the bundle there, point the setting at `/etc/mzmon/trust-bundle/configmap/KEY` or `/etc/mzmon/trust-bundle/secret/ca.crt`.
+Replace `KEY` with the ConfigMap's key.
+
+It doesn't reach Grafana, the postgres-exporter, kube-state-metrics, node-exporter, Loki's gateway, or memcached.
+
+- [ ] `[operator]` **If your images ship no CA bundle, put the public roots in the trust bundle too.** Such an image trusts only what the bundle holds. trust-manager adds the public roots with `useDefaultCAs: true`, as in the example.
+- [ ] `[operator]` **Restate the trust-bundle entries when you replace a list that carries them.** They're in `global.extraEnv`, `global.extraVolumes`, and `global.extraVolumeMounts`, which reach Loki and Thanos. They're also in `alloy-agent` and `alloy-gateway` under `controller.volumes.extra` and `alloy.mounts.extra`, and in `alertmanager` under `extraVolumes`, `extraVolumeMounts`, and `extraEnv`. Helm replaces lists rather than merging them. A mount whose volume is gone makes the pod invalid, and the other omissions remove the CAs without an error.
+
 ## What is not there yet {#gaps}
 
 Stated plainly, because the values surface implies more than the deployment has — `minVersion: TLS13` sitting next to `enabled: false` reads like a switch rather than a project.
@@ -399,7 +495,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **In-cluster TLS, agent → gateway** | ✅ Shipped and **authenticated** at phase 3. The listener renders from Helm and the agent's destination presents a certificate; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker |
 | **Mutual TLS between components** | ✅ At phase 3, five listeners require and verify a client certificate: Thanos Receive's remote-write port and the gateway's 3100, 4317, 4318 and 9090. Loki's HTTP port and Alertmanager's API port are the exceptions and stay at verify-if-given. Authentication, not authorization — none of these can express "this identity may write and that one may not", so the size of the trust domain is the security property |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |
-| **A trust bundle for a private CA** | ❌ Not shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)). Needed for an S3-compatible store behind a private CA, and for images that ship no CA bundle at all |
+| **A trust bundle for a private CA** | ✅ Shipped. A ConfigMap or Secret named `mzmon-trust-bundle` adds your CAs to the roots Loki, Thanos, both Alloy roles, and Alertmanager trust for outbound TLS; see [Trust a private CA](#trust-a-private-ca) |
 | **Intra-Loki, intra-Thanos and intra-Alertmanager TLS** | ❌ Not shipped. Distributor→ingester gRPC, the memberlist ring, query→store, Alertmanager's gossip on 9094 — all real hops inside a single subchart's trust boundary |
 | **Redaction in the pipeline** | ❌ Not shipped ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)) |
 

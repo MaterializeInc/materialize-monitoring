@@ -75,7 +75,7 @@ A new doc starts at Draft.
     <li>
       <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/development/design-docs/20260917-call-home-self-managed/">Call-Home: Opt-In Telemetry from Self-Managed to the Control Plane</a>
       <ul>
-            <li><strong>lastmod:</strong> 2026-09-17 00:00:00 &#43;0000 UTC</li>
+            <li><strong>lastmod:</strong> 2026-11-14 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Ready</li>
       </ul>
     </li>
@@ -96,7 +96,7 @@ A new doc starts at Draft.
     <li>
       <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/development/design-docs/20261002-metric-label-vocabulary/">A Label Vocabulary for Materialize Metrics</a>
       <ul>
-            <li><strong>lastmod:</strong> 2026-10-21 00:00:00 &#43;0000 UTC</li>
+            <li><strong>lastmod:</strong> 2026-11-02 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Ready</li>
       </ul>
     </li>

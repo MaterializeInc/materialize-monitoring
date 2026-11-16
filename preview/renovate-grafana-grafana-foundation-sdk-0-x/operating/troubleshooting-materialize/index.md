@@ -100,7 +100,7 @@ Logs are the most detailed and least structured evidence you have, and without a
 | What did the platform underneath say | Infrastructure Logs and Events |
 | Is the machine the problem | Infrastructure Node Detail |
 | Is a replica waiting for a node, and can the cluster grow | Infrastructure Autoscaling |
-| Is Karpenter launching nodes, and what keeps it from removing them | Karpenter |
+| Is Karpenter launching nodes, and what keeps it from removing them | Infrastructure Autoscaling, Karpenter tab |
 | Is the metadata database failing or slow for Materialize | Materialize Consensus (Metadata) |
 | Is object storage failing or slow for Materialize, and what is the stored data for | Materialize Persist (Storage) |
 | Why is the database or the bucket struggling: CPU, storage, connections, burst credits, reclaimable waste | Infrastructure Cloud Provider |

@@ -57,7 +57,7 @@ From 1.0, a breaking change to the committed surface owes a deprecation cycle un
 | Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls provider metrics from CloudWatch, Cloud Monitoring and Azure Monitor, and scrapes an optional `postgres_exporter` watching the metadata and Grafana databases. Rust panics are merged into one entry at ingest |
 | Destinations | The bundled Loki and Thanos, any number of Prometheus remote-write destinations, OTLP, Datadog and Google Cloud's Telemetry API, each filtered by importance tier |
 | Dashboards | `env-top`, `env-logs`, `env-upgrade`, `env-persist` and `env-consensus` for Materialize. `infra-logs`, `infra-nodes`, `infra-net`, `infra-autoscaling`, `infra-karpenter`, `infra-cloud`, `infra-loki` and `infra-alloy` for the platform. All are rendered from Rust against the query registry |
-| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-five alerts are in the default set, four of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
+| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. A default set of metric and log-derived alerts installs wherever it applies, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
 | Security | A NetworkPolicy on every component, opt-in mTLS through cert-manager in three phases, and Trivy scanning of the rendered chart and the published images |
 | Qualification | Tier-0 Terraform render checks, kind tiers 1 and 2, and a Rust E2E suite run on kind and on real cloud installs |
 | Release | Per-component SemVer streams, automated release PRs, a changelog carrying each PR's release notes, a deprecation policy, and a committed-surface check |
@@ -96,7 +96,6 @@ The `v2_` prefix comes from one relabel rule in Cloud's scrape config, which pre
 Dropping that rule sends canonical `mz_*` to AMP and Thanos alike, so the fan-out needs no per-destination name split.
 Before the rule goes, Cloud's dashboards and AMP rules move to queries that match either name, tracked in [DEP-383].
 Cloud's install then runs the chart's rules with `materialize.deploymentMode: self-managed`.
-A destination below the `all` tier drops every recorded series and `ALERTS` until [DEP-368] gives them a tier.
 
 ## Metrics for Cloud
 
@@ -140,8 +139,8 @@ The monitors already fill the initial aliases, rendered from `packages/prometheu
 
 | Where | Items, all ⬜ |
 |---|---|
-| This repository | [DEP-349] target aliases, and reserved moves and drops, rendered from `labels.yaml` · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-361] `mz_environment_info` through kube-state-metrics · [DEP-360] retire the aliases after 30 days |
-| Upstream | [DEP-348] the orchestratord pod label and `mz_environment_info` · [DEP-347] clusterd's `cluster="compute"` · [DEP-352] the label lint · [DEP-353] `/metrics/public` replica labels · [DEP-357] `cluster_id` · [DEP-358] entity-qualified `_info` labels · [DEP-359] the `cluster` and `honeycomb` const labels · [DEP-362] shard, persist-name and version renames · [DEP-363] an optional `spec.environmentName` · [DEP-364] wallclock lag as a histogram · [DEP-365] `environment_id` on reconciliation metrics |
+| This repository | [DEP-349] target aliases, and reserved moves and drops, rendered from `labels.yaml` · [DEP-351] `environment_id` on every Materialize monitor · [DEP-350] the GMP flavor drops target relabelings · [DEP-354] dashboards, rules and pickers onto `environment_id` · [DEP-355] the registry onto canonical names · [DEP-356] a customer-facing label contract page · [DEP-360] retire the aliases after 30 days |
+| Upstream | [DEP-348] the orchestratord pod label, `mz_environment_info` and `mz_environment_active_generation` · [DEP-347] clusterd's `cluster="compute"` · [DEP-352] the label lint · [DEP-353] `/metrics/public` replica labels · [DEP-357] `cluster_id` · [DEP-358] entity-qualified `_info` labels · [DEP-359] the `cluster` and `honeycomb` const labels · [DEP-362] shard, persist-name and version renames · [DEP-363] an optional `spec.environmentName` · [DEP-364] wallclock lag as a histogram · [DEP-365] `environment_id` on reconciliation metrics |
 
 ### Metrics contract (upstream dependency)
 
@@ -160,11 +159,6 @@ environmentd has to emit those families natively before that path can retire.
 | Native hydration and frontier / freshness signals | The Hydration and Freshness drilldowns | ⛓️ |
 | Label-family harmonization | Joins across families. Now carried by [Metric label standardization](#metric-label-standardization) | ⬜ |
 | Latency histograms for `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle, which publish only a mean | Tail latency on `env-persist` and `env-consensus` | ⬜ |
-| A latency histogram for `balancerd`, and any metrics at all from `console` | Duration panels for the two components users connect through | ⬜ |
-
-The chart scrapes `balancerd`'s connection metrics, but their `status` label can't carry an error rate until [CLO-282] lands.
-The console serves no metrics, and its nginx access log records no request time.
-Its rate and errors come from that log and from environmentd's `application_name="web_console"` series.
 
 ### Materialize-side emission
 
@@ -172,7 +166,6 @@ Its rate and errors come from that log and from environmentd's `application_name
 |---|---|
 | [CLO-55] Reconciliation timing, stalls, errors and successes for the k8s controllers, and an optional reconcile timeout | ⬜ |
 | [CLO-299] The controller crate logs every failed reconcile at error level, transient Kubernetes errors included | ⬜ |
-| [CLO-282] `mz_balancer_connection_status` counts a refused connection as `success` and a client's dropped connection as `error` | ⬜ |
 | [CLO-256] Reduce less-essential environmentd metrics on very large environments | ⬜ |
 | [CLO-255] Compress the metrics endpoint's responses | ⬜ |
 | [DEP-221] Move the scrapers into the `materialize-operator` chart, which should own them | ⬜ |
@@ -188,9 +181,7 @@ Designed in [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byo
 
 | Item | Status |
 |---|---|
-| [DEP-124] The dual-destination pipeline pattern: customer-local plus control plane | ⬜ |
 | [DEP-220] Sanitize telemetry before control-plane egress | ⬜ |
-| [DEP-236] A trust bundle for a private CA: the roots a corporate proxy or an on-premise object store needs, merged with the internal issuer's | ⬜ |
 | [DEP-287] `oauth2.tls` on the destination schema: certificate-authenticated token exchange, shared with call-home | ⬜ |
 | [DEP-224] A Day 1 dependencies dashboard: are the Materialize and observability prerequisites satisfied | ⬜ |
 | **BYOC · Observability implementation** | Not yet scoped |
@@ -210,17 +201,12 @@ Each control-plane branch runs a second, stricter filter immediately before its 
 
 | Item | Status |
 |---|---|
-| [DEP-307] Typed `loki.secretfilter` and `stage.luhn` in the pipeline schema | ⬜ |
-| [DEP-308] The ingest filter ahead of parsing, with the bulk tier ahead of the scan | ⬜ |
-| [DEP-309] Close the two raw-line paths: the `sampleDebug` tap and live debugging | ⬜ |
-| [DEP-310] Card-number redaction with `stage.luhn` | ⬜ |
-| [DEP-311] Rule files: the Materialize rules, the name allowlist, and the egress file | ⬜ |
-| [DEP-312] A corpus harness on the pinned Alloy binary, run on every Alloy bump | ⬜ |
-| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces | ⬜ |
-| [DEP-314] The values surface and fail-open validators | ⬜ |
+| [DEP-309] Close the remaining raw-line path: live debugging on the filter | ⬜ |
+| [DEP-313] Shadow mode, counting matches on real logs before any rule enforces, then the ingest filter on by default | 🔨 |
+| [DEP-314] The values surface and fail-open validators, with the customer's rules rendered into a flat file | ⬜ |
 | [DEP-315] `mz-monitoring-canary`, a canary producer per layer | ⬜ |
 | [DEP-316] Alerts, runbooks and a dashboard row | ⬜ |
-| [DEP-317] A strict, fail-closed egress filter on each control-plane branch | ⬜ |
+| [DEP-317] A strict, fail-closed egress filter on each control-plane branch, with its rule file and the `secretfilter="bulk"` stamp it drops on | ⬜ |
 | [DEP-318] A backstop overlay for the control-plane gateway | ⬜ |
 | [DEP-320] A customer-facing secret-filtering page, and the design's revisions | ⬜ |
 
@@ -231,9 +217,6 @@ BYOC environments are ones Materialize operates; self-managed installs are invis
 
 | Item | Status |
 |---|---|
-| [DEP-280] The `callHome.level` consent ladder and profiles, defaulting to off, with a render assertion that the default sends nothing | ⬜ |
-| [DEP-281] A heartbeat producer and three-part install identity | ⬜ |
-| [DEP-282] The alerts level: alert state (`ALERTS`) over the gateway fan-out | ⬜ |
 | [DEP-283] A `previewOnly` destination mode: the full chain, counted locally, never sent | ⬜ |
 | [DEP-284] An egress meter, a per-level byte-rate ceiling, and a local export-failure alert | ⬜ |
 | [DEP-285] A generated egress schedule per level | ⬜ |
@@ -241,7 +224,13 @@ BYOC environments are ones Materialize operates; self-managed installs are invis
 | [DEP-288] The `elevated` window: time-boxed, self-expiring, never set remotely | ⬜ |
 | [DEP-289] An Alertmanager webhook receiver path | ⬜ |
 | [DEP-290] Terraform variables for the level, the credential reference and the proxy | ⬜ |
-| [DEP-291] Control-plane per-tenant limits sized for install count, and a stated response model | ⬜ |
+| [DEP-488] A control-plane values overlay: client-certificate tenancy, proxy-only ingress, and the Thanos tenant split | ⬜ |
+| [DEP-489] Per-tenant fairness in the control-plane gateway's log rate limits | ⬜ |
+| [DEP-490] Control-plane sizing for install count: per-tenant overhead in Loki and Thanos | ⬜ |
+| [DEP-491] A response model: a routing destination, a stated response, and a stated non-response | ⬜ |
+| [DEP-492] An identity directory that refuses churned installs and maps installs to customers | ⬜ |
+| [DEP-493] Per-tenant limits in Loki and Thanos Receive, with values from [DEP-490] | ⬜ |
+| [DEP-494] Fleet-shaped alerting: heartbeat absence, clone detection, and grouping | ⬜ |
 | A customer-facing page: the levels and the schedule for each, previewing, the local meter, and retention, access and deletion | ⬜ |
 
 **The channel is the BYOC channel; the feature is consent.**
@@ -279,7 +268,6 @@ That contract keeps seven database flavors and five object stores from multiplyi
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
 | [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus`. The module's `metadata_databases` input is the way in; the wrappers remain | 🔨 |
 | [DEP-406] The Terraform module runs the postgres-exporter, for Grafana's database and any other target, and creates its credentials Secret. The wrappers remain | 🔨 |
-| [DEP-368] A metric tier for recorded series, so a filtered destination keeps `ext:*` and `ALERTS` | ⬜ |
 | [DEP-304] An `AbortIncompleteMultipartUpload` lifecycle rule on the persist bucket, in `materialize-terraform-self-managed` | ⬜ |
 
 No adapter flavor is the one that waits.
@@ -358,9 +346,7 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 | [DEP-382] `security-gate` as a required check on `main` | ⬜ |
 | [DEP-249] Trivy suppressions are per check, so they also mask our own templates | ⬜ |
 | [DEP-251] SARIF findings point at temporary render paths | ⬜ |
-| [DEP-381] `tflint` in Terraform CI | ⬜ |
 | [DEP-370] Renovate bumps the `mzmon-alloy` tag and leaves its digest | ⬜ |
-| [DEP-371] Release PRs leave `Cargo.lock` stale | ⬜ |
 | [DEP-111] and [DEP-118] An ArgoCD and FluxCD CI matrix | ⬜ |
 
 ## Designs in flight
@@ -393,13 +379,11 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [CLO-255]: https://linear.app/materializeinc/issue/CLO-255
 [CLO-256]: https://linear.app/materializeinc/issue/CLO-256
 [CLO-266]: https://linear.app/materializeinc/issue/CLO-266
-[CLO-282]: https://linear.app/materializeinc/issue/CLO-282
 [CLO-296]: https://linear.app/materializeinc/issue/CLO-296
 [CLO-299]: https://linear.app/materializeinc/issue/CLO-299
 [DEP-111]: https://linear.app/materializeinc/issue/DEP-111
 [DEP-115]: https://linear.app/materializeinc/issue/DEP-115
 [DEP-118]: https://linear.app/materializeinc/issue/DEP-118
-[DEP-124]: https://linear.app/materializeinc/issue/DEP-124
 [DEP-125]: https://linear.app/materializeinc/issue/DEP-125
 [DEP-126]: https://linear.app/materializeinc/issue/DEP-126
 [DEP-157]: https://linear.app/materializeinc/issue/DEP-157
@@ -422,7 +406,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-224]: https://linear.app/materializeinc/issue/DEP-224
 [DEP-225]: https://linear.app/materializeinc/issue/DEP-225
 [DEP-233]: https://linear.app/materializeinc/issue/DEP-233
-[DEP-236]: https://linear.app/materializeinc/issue/DEP-236
 [DEP-249]: https://linear.app/materializeinc/issue/DEP-249
 [DEP-251]: https://linear.app/materializeinc/issue/DEP-251
 [DEP-252]: https://linear.app/materializeinc/issue/DEP-252
@@ -436,9 +419,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-277]: https://linear.app/materializeinc/issue/DEP-277
 [DEP-278]: https://linear.app/materializeinc/issue/DEP-278
 [DEP-279]: https://linear.app/materializeinc/issue/DEP-279
-[DEP-280]: https://linear.app/materializeinc/issue/DEP-280
-[DEP-281]: https://linear.app/materializeinc/issue/DEP-281
-[DEP-282]: https://linear.app/materializeinc/issue/DEP-282
 [DEP-283]: https://linear.app/materializeinc/issue/DEP-283
 [DEP-284]: https://linear.app/materializeinc/issue/DEP-284
 [DEP-285]: https://linear.app/materializeinc/issue/DEP-285
@@ -447,7 +427,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-288]: https://linear.app/materializeinc/issue/DEP-288
 [DEP-289]: https://linear.app/materializeinc/issue/DEP-289
 [DEP-290]: https://linear.app/materializeinc/issue/DEP-290
-[DEP-291]: https://linear.app/materializeinc/issue/DEP-291
 [DEP-295]: https://linear.app/materializeinc/issue/DEP-295
 [DEP-297]: https://linear.app/materializeinc/issue/DEP-297
 [DEP-298]: https://linear.app/materializeinc/issue/DEP-298
@@ -456,12 +435,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-303]: https://linear.app/materializeinc/issue/DEP-303
 [DEP-304]: https://linear.app/materializeinc/issue/DEP-304
 [DEP-306]: https://linear.app/materializeinc/issue/DEP-306
-[DEP-307]: https://linear.app/materializeinc/issue/DEP-307
-[DEP-308]: https://linear.app/materializeinc/issue/DEP-308
 [DEP-309]: https://linear.app/materializeinc/issue/DEP-309
-[DEP-310]: https://linear.app/materializeinc/issue/DEP-310
-[DEP-311]: https://linear.app/materializeinc/issue/DEP-311
-[DEP-312]: https://linear.app/materializeinc/issue/DEP-312
 [DEP-313]: https://linear.app/materializeinc/issue/DEP-313
 [DEP-314]: https://linear.app/materializeinc/issue/DEP-314
 [DEP-315]: https://linear.app/materializeinc/issue/DEP-315
@@ -491,16 +465,13 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-358]: https://linear.app/materializeinc/issue/DEP-358
 [DEP-359]: https://linear.app/materializeinc/issue/DEP-359
 [DEP-360]: https://linear.app/materializeinc/issue/DEP-360
-[DEP-361]: https://linear.app/materializeinc/issue/DEP-361
 [DEP-362]: https://linear.app/materializeinc/issue/DEP-362
 [DEP-363]: https://linear.app/materializeinc/issue/DEP-363
 [DEP-364]: https://linear.app/materializeinc/issue/DEP-364
 [DEP-365]: https://linear.app/materializeinc/issue/DEP-365
 [DEP-366]: https://linear.app/materializeinc/issue/DEP-366
 [DEP-406]: https://linear.app/materializeinc/issue/DEP-406
-[DEP-368]: https://linear.app/materializeinc/issue/DEP-368
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
-[DEP-371]: https://linear.app/materializeinc/issue/DEP-371
 [DEP-372]: https://linear.app/materializeinc/issue/DEP-372
 [DEP-373]: https://linear.app/materializeinc/issue/DEP-373
 [DEP-374]: https://linear.app/materializeinc/issue/DEP-374
@@ -510,8 +481,14 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-378]: https://linear.app/materializeinc/issue/DEP-378
 [DEP-379]: https://linear.app/materializeinc/issue/DEP-379
 [DEP-380]: https://linear.app/materializeinc/issue/DEP-380
-[DEP-381]: https://linear.app/materializeinc/issue/DEP-381
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385
+[DEP-488]: https://linear.app/materializeinc/issue/DEP-488
+[DEP-489]: https://linear.app/materializeinc/issue/DEP-489
+[DEP-490]: https://linear.app/materializeinc/issue/DEP-490
+[DEP-491]: https://linear.app/materializeinc/issue/DEP-491
+[DEP-492]: https://linear.app/materializeinc/issue/DEP-492
+[DEP-493]: https://linear.app/materializeinc/issue/DEP-493
+[DEP-494]: https://linear.app/materializeinc/issue/DEP-494
 
