@@ -17647,6 +17647,7 @@ and every log record and metric data point takes its tenant from the CN of the c
 | Envoy, with `forward_client_cert_details: SANITIZE_SET` and `subject` set | `X-Forwarded-Client-Cert` | `xfcc` |
 
 The gateway drops a request with no header, a header sent twice or naming more than one certificate,
+a subject with more than one CN, an escaped character, or a multi-valued attribute (`+`),
 or a CN that isn't 1 to 150 letters, digits, `.`, `_`, and `-`.
 It replaces whatever tenant the sender set, and no other way in can set one:
 the gateway removes `mzmonTenant` from scraped and remote-written metrics.
@@ -29159,6 +29160,9 @@ When you change the gateway, keep these true:
 - Each format's pattern refuses a header that names more than one certificate.
   The collector joins the values of a repeated header with `;`, and Envoy separates appended certificates with `,`.
   A new format needs a pattern that refuses both, and a test case for each.
+- Each pattern takes the CN only from a subject with exactly one CN and no `\` or `+`.
+  An escape can hide a separator: `O=dept\,CN=victim` puts a second CN inside the organization.
+  A `+` joins one to it: `O=dept+CN=victim`.
 
 `packages/mzmon-lib/tests/gateway_client_tenant.rs` sends each forgery it knows of through `alloy run`.
 Add a case when you add a way in.
