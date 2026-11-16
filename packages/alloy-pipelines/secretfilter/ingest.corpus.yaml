@@ -165,14 +165,6 @@
   line: 'level=warn msg="rejected" password: must be at least 8 characters'
   rules: [mzmon-password-field]
 
-# generic-api-key allows up to 20 characters of words and spaces between its
-# keyword and the separator, so the match starts at `password` and the name
-# allowlist for `token_id`, anchored at the start of the match, no longer
-# applies.
-- id: token-id-after-credential-word
-  line: 'created app password token_id=<<UUID>>'
-  rules: [generic-api-key]
-
 # --- misses the ingest rules keep --------------------------------------------
 # Each line carries a credential and passes untouched. Move it up when a rule
 # change catches it.
@@ -212,6 +204,35 @@
 
 - id: token-id
   line: 'issued token_id=<<UUID>> for user alice'
+
+# generic-api-key allows up to 20 characters of words and spaces between its
+# keyword and the separator, so the match starts at `password`. The name just
+# before the separator still says it's an identifier.
+- id: token-id-after-credential-word
+  line: 'created app password token_id=<<UUID>>'
+
+# The kubelet names a pod by its UID in `podName`, after a volume named for a
+# token. The UID is in the line three times.
+- id: kubelet-pod-uid-after-token-volume
+  line: 'E1116 14:54:25.862114    3542 nestedpendingoperations.go:348] Operation for "{volumeName:kubernetes.io/secret/<<UUID>>-token-hook-ca podName:<<UUID>> nodeName:}" failed. No retries permitted until 2026-11-16 14:56:27.862096626 +0000 UTC m=+336107.217336282 (durationBeforeRetry 2m2s). Error: MountVolume.SetUp failed for volume "token-hook-ca" (UniqueName: "kubernetes.io/secret/<<UUID>>-token-hook-ca") pod "hydra-debug3" (UID: "<<UUID>>") : references non-existent secret key: ca.crt'
+
+# The kubelet's projected service-account volume, `kube-api-access-*`.
+- id: kubelet-pod-uid-after-api-volume
+  line: 'E1116 13:47:10.638492    3490 nestedpendingoperations.go:348] Operation for "{volumeName:kubernetes.io/projected/<<UUID>>-kube-api-access-spvl2 podName:<<UUID>> nodeName:}" failed. No retries permitted until 2026-11-16 13:49:12.638470120 +0000 UTC m=+336107.217336282 (durationBeforeRetry 2m2s). Error: MountVolume.SetUp failed for volume "kube-api-access-spvl2" (UniqueName: "kubernetes.io/projected/<<UUID>>-kube-api-access-spvl2") pod "collector-0" (UID: "<<UUID>>") : object "monitoring"/"kube-root-ca.crt" not registered'
+
+- id: cilium-container-id-after-api-module
+  line: 'time="2026-11-16T14:21:07.112233Z" level=info msg="Delete endpoint by containerID request" module=agent.controlplane.endpoint-api containerID=<<HEX64>> endpointID=2495 k8sPodName=ory/kratos-cleanup-29386080-x7k2p subsys=daemon'
+
+# Values another program masked before logging them.
+- id: urlencoded-redacted-password-in-debug-dump
+  line: '{"timestamp":"2026-11-12T21:16:28.582720Z","level":"WARN","fields":{"message":"connecting to metadata store: Url { scheme: \"postgres\", cannot_be_a_base: false, username: \"materialize\", password: Some(\"%3Credacted%3E\"), host: Some(Domain(\"mzmon-metadata-db\")), port: Some(5432), path: \"/materialize\", query: None, fragment: None }"},"target":"mz_catalog"}'
+
+- id: postgres-exporter-password-removed
+  line: 'time=2026-11-16T14:21:07.112Z level=ERROR source=collector.go:192 msg="error scraping dsn" err="Error opening connection to database (postgresql://materialize:PASSWORD_REMOVED@10.225.0.3:5432/materialize?sslmode=require): pq: connection refused" dsn="postgresql://materialize:PASSWORD_REMOVED@10.225.0.3:5432/materialize?sslmode=require"'
+
+# The kubelet logs every flag at startup, cAdvisor's unused ones included.
+- id: kubelet-storage-driver-password-flag
+  line: 'I1116 13:51:10.203112    3566 flags.go:64] FLAG: --storage-driver-password="root"'
 
 - id: resource-name-prefix
   line: 'pod=mz2kq7x9vbn3-cluster-u1-replica-u1-gen-0-0 scheduled'

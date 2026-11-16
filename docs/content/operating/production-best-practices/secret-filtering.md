@@ -72,6 +72,7 @@ The filter scans the line and nothing else, so it has the following limits:
 - **Some credentials don't look like credentials.**
   A short or low-randomness value after a key such as `api_key` or `token` can pass, and so can a password of fewer than four characters.
   A numeric password after a JSON key passes too, because a placeholder in its place, or in place of the same digits elsewhere in the line, would break the line's JSON.
+  A value after a field whose name ends in an identifier word, such as `podName`, `containerID`, or `token_id`, passes, whatever the words before the name.
   The filter decodes nothing, so an encoded credential passes unless a rule matches its encoded form, as one does for base64 `postgres://` URLs.
 - **Some identifiers look like credentials.**
   A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
@@ -92,9 +93,13 @@ The checksum has the following limits:
   A number of exactly 13, 16, or 19 digits that starts with `1` is left alone, which covers timestamps in milliseconds, microseconds, and nanoseconds.
   Airline cards also start with `1`, but they're 15 digits, so they're still replaced.
 - **JSON numbers are exempt.**
-  A number directly after a quoted key and a colon is left alone, because a placeholder in its place would make the line invalid JSON.
+  A number directly after a quoted key and a colon, fraction included, is left alone, because a placeholder in its place would make the line invalid JSON.
   That includes a card number written as a JSON number rather than a string.
   A number in a JSON array has no key before it, so one that passes the checksum is replaced, and the line is no longer valid JSON.
+- **Digits inside identifiers and decimals are exempt.**
+  A number in a word that contains a letter or an underscore, such as a collection ID like `si144115188075856159` or a hex digest, is left alone.
+  So is a decimal number, with digits on both sides of the point, and a 14-digit timestamp that starts with `20`.
+  A card number written directly against a letter or an underscore passes too.
 - **A grouped number passes.**
   The gateway reads unbroken runs of digits, so a card number written in groups separated by spaces or dashes passes, because each group is too short.
 
