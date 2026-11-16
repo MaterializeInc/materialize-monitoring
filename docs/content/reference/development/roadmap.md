@@ -233,7 +233,7 @@ BYOC environments are ones Materialize operates; self-managed installs are invis
 | [DEP-290] Terraform variables for the level, the credential reference and the proxy | ⬜ |
 | [DEP-488] A control-plane values overlay: client-certificate tenancy, proxy-only ingress, and the Thanos tenant split | ⬜ |
 | [DEP-489] Per-tenant fairness in the control-plane gateway's log rate limits | ⬜ |
-| [DEP-490] Control-plane sizing for install count, and whether the tenant is the install or the customer | ⬜ |
+| [DEP-490] Control-plane sizing for install count: per-tenant overhead in Loki and Thanos | ⬜ |
 | [DEP-491] A response model: a routing destination, a stated response, and a stated non-response | ⬜ |
 | [DEP-492] An identity directory that refuses churned installs and maps installs to customers | ⬜ |
 | [DEP-493] Per-tenant limits in Loki and Thanos Receive, with values from [DEP-490] | ⬜ |
