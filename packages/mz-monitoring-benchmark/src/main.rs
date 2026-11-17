@@ -20,7 +20,9 @@ use mz_monitoring_benchmark::fixture::Fixture;
 use mz_monitoring_benchmark::logs::{self, Ids, LogGen};
 use mz_monitoring_benchmark::model::{Model, Sizing};
 use mz_monitoring_benchmark::role::{self, LogFormat, Role};
-use mz_monitoring_benchmark::scenario::{LogScenario, MetricScenario, parse_duration};
+use mz_monitoring_benchmark::scenario::{
+    LogScenario, MetricScenario, parse_duration, parse_period,
+};
 use mz_monitoring_benchmark::seed::Seed;
 use mz_monitoring_benchmark::serve;
 
@@ -58,8 +60,12 @@ struct Common {
     /// Replicas in each user cluster.
     #[arg(long)]
     replicas_per_cluster: Option<u64>,
-    /// How metrics move, per period (5m unless `period=` says otherwise):
-    /// `dist=average|bell|sine|saw|pulse<dur>|plateau<dur>,amp=0.5,period=5m,
+    /// The period both scenarios share: their shapes repeat once per period,
+    /// and every count in them is per period. At least 1s.
+    #[arg(long, default_value = "5m")]
+    period: String,
+    /// How metrics move, per period:
+    /// `dist=average|bell|sine|saw|pulse<dur>|plateau<dur>,amp=0.5,
     /// collection-grow=<n>,collection-churn=<n>,shard-grow=<n>,shard-churn=<n>`.
     #[arg(long, default_value = "")]
     metric_scenario: String,
@@ -81,6 +87,10 @@ impl Common {
         Seed::new(&s)
     }
 
+    fn period(&self) -> Result<f64> {
+        parse_period(&self.period).context("--period")
+    }
+
     fn model(&self, start: f64) -> Result<Model> {
         if !(0.0..1.0).contains(&self.jitter) {
             bail!("--jitter is a fraction in [0, 1)");
@@ -95,7 +105,8 @@ impl Common {
                 clusters: self.cluster_count,
                 replicas_per_cluster: self.replicas_per_cluster,
             },
-            MetricScenario::parse(&self.metric_scenario).context("--metric-scenario")?,
+            MetricScenario::parse(&self.metric_scenario, self.period()?)
+                .context("--metric-scenario")?,
             self.seed(),
             self.jitter,
             start,
@@ -109,11 +120,11 @@ struct GenLoad {
     common: Common,
     #[arg(long, default_value = "0.0.0.0:6878")]
     listen: SocketAddr,
-    /// Log lines per period (5m unless `period=` says otherwise):
-    /// `info=1500,warn=150,error=15`, `<level>-dist=average|bell|sine|saw|
-    /// pulse<dur>|plateau<dur>`, `dist=…`, `period=5m`, `phase=sync|seeded`,
-    /// `non-json=<n>`, `eicar=<n>`, `panic=<n>`, `panic-exit=true|false`.
-    /// A count below 1 fires once every few periods: `panic=0.25` is every 20m.
+    /// Log lines per period: `info=1500,warn=150,error=15`,
+    /// `<level>-dist=average|bell|sine|saw|pulse<dur>|plateau<dur>`, `dist=…`,
+    /// `phase=sync|seeded`, `non-json=<n>`, `eicar=<n>`, `panic=<n>`,
+    /// `panic-exit=true|false`. A count below 1 fires once every few periods:
+    /// at the default period, `panic=0.25` is every 20m.
     #[arg(long, default_value = "")]
     log_scenario: String,
     /// Serve metrics only.
@@ -180,7 +191,8 @@ fn main() -> Result<()> {
 fn gen_load(args: GenLoad) -> Result<()> {
     let start = logs::unix_now();
     let model = Arc::new(args.common.model(start)?);
-    let scenario = LogScenario::parse(&args.log_scenario).context("--log-scenario")?;
+    let scenario =
+        LogScenario::parse(&args.log_scenario, args.common.period()?).context("--log-scenario")?;
     let role = args.common.role;
     if scenario.non_json > 0.0 && role.log_format() != LogFormat::TracingJson {
         bail!(

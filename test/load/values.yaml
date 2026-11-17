@@ -1,7 +1,7 @@
 # Values for the mz-monitoring-benchmark load-testing chart.
 #
-# Every count in a scenario is per period, five minutes unless the scenario
-# sets `period=`. A count below 1 fires once every few periods: `panic=0.25` is
+# Every count in a scenario is per `period`, which both scenarios share. A count
+# below 1 fires once every few periods: at the default period, `panic=0.25` is
 # one panic every 20 minutes. See the load testing page in the docs for the
 # scenario keys.
 
@@ -39,6 +39,10 @@ serviceMonitor:
 # of its own.
 # @notationType -- (sectionstart) Load
 __loadSection:
+
+# -- The period both scenarios share: their shapes repeat once per period, and
+# every count in them is per period. At least `1s`.
+period: 5m
 
 # -- Relative spread applied to every count, rate and value.
 jitter: 0.1

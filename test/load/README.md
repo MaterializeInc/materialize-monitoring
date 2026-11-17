@@ -120,6 +120,13 @@ One environment's worth of pods: an environmentd with 25,000 collections on 10 c
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">period</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">The period both scenarios share: their shapes repeat once per period, and every count in them is per period. At least `1s`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">jitter</td>
       <td class="helm-value-type">float</td>
       <td class="helm-value-default"><code>0.1</code></td>

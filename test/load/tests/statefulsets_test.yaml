@@ -81,8 +81,34 @@ tests:
           value:
             - "gen-load"
             - "--role=balancerd"
+            - "--period=5m"
             - "--jitter=0.1"
             - "--log-scenario=info=1500,warn=50,error=5"
+
+  # One period for both scenarios, so it is one argument rather than a key in
+  # each scenario string.
+  - it: should pass the shared period to every role
+    set:
+      period: 60s
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--period=60s"
+
+  # A long release name is truncated, never the role: five roles must still
+  # render five names. 53 characters is the longest name Helm accepts.
+  - it: should keep the role in every name under the longest release name
+    release:
+      name: a-release-name-at-helms-fifty-three-character-limit-x
+    asserts:
+      - hasDocuments:
+          count: 5
+      - matchRegex:
+          path: metadata.name
+          pattern: -(environmentd|clusterd|balancerd|orchestratord|console)$
+      - matchRegex:
+          path: metadata.name
+          pattern: ^.{1,52}$
 
   - it: should render a large count as an integer
     set:

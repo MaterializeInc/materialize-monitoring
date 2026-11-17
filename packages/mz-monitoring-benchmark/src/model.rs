@@ -709,6 +709,7 @@ fn roles_naming(kind: EntityKind) -> &'static str {
 mod tests {
     use super::*;
     use crate::expo;
+    use crate::scenario::DEFAULT_PERIOD;
 
     const FIX: &str = r#"# role: environmentd
 # path: /metrics
@@ -817,7 +818,7 @@ mz_frontier{collection_id="${introspection:0}",replica_id="${replica:0}",instanc
 
     #[test]
     fn counters_never_decrease_and_buckets_stay_cumulative() {
-        let scenario = MetricScenario::parse("dist=pulse60,amp=1").unwrap();
+        let scenario = MetricScenario::parse("dist=pulse60,amp=1", DEFAULT_PERIOD).unwrap();
         let f = Fixture::parse(FIX).unwrap();
         let m = Model::new(
             Role::Environmentd,
@@ -859,12 +860,15 @@ mz_frontier{collection_id="${introspection:0}",replica_id="${replica:0}",instanc
     /// short for its step to advance the clock.
     #[test]
     fn integral_is_monotonic_and_constant_time() {
-        for dist in [
-            "dist=pulse30,period=60s,amp=1",
-            "dist=plateau500ms,period=1s,amp=1",
-            "dist=bell,amp=0.7",
+        for (dist, period) in [
+            ("dist=pulse30,amp=1", 60.0),
+            ("dist=plateau500ms,amp=1", 1.0),
+            ("dist=bell,amp=0.7", DEFAULT_PERIOD),
         ] {
-            let m = model(Sizing::default(), MetricScenario::parse(dist).unwrap());
+            let m = model(
+                Sizing::default(),
+                MetricScenario::parse(dist, period).unwrap(),
+            );
             let mut last = 0.0;
             for i in 0..20_000 {
                 let elapsed = i as f64 * 0.037;
@@ -916,7 +920,8 @@ mz_frontier{collection_id="${introspection:0}",replica_id="${replica:0}",instanc
                 collections: Some(10),
                 ..Sizing::default()
             },
-            MetricScenario::parse("collection-grow=60,collection-churn=30").unwrap(),
+            MetricScenario::parse("collection-grow=60,collection-churn=30", DEFAULT_PERIOD)
+                .unwrap(),
         );
         let ids = |t: f64| -> Vec<String> {
             series(&m.render("/metrics", t).unwrap())

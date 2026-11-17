@@ -9,11 +9,12 @@
 
 //! `--metric-scenario` and `--log-scenario`: comma-separated `key=value` lists.
 //!
-//! Both scenarios run on one period, five minutes unless `period=` says
-//! otherwise, and every count in them is per period. Shapes repeat once per
-//! period, aligned to the wall clock, so a metric pulse and a log pulse with
-//! the same numbers line up. A count below 1 means "not every period":
-//! `panic=0.25` panics once every four periods.
+//! Both scenarios run on one period, `--period`, five minutes by default, and
+//! every count in them is per period. The period is an argument of its own
+//! rather than a scenario key, so the two scenarios can't disagree about it.
+//! Shapes repeat once per period, aligned to the wall clock, so a metric pulse
+//! and a log pulse with the same numbers line up. A count below 1 means "not
+//! every period": `panic=0.25` panics once every four periods.
 //!
 //! The shapes borrow from Grafana's TestData datasource. They exist to shape
 //! load over time, not to draw convincing graphs.
@@ -23,7 +24,7 @@ use std::sync::LazyLock;
 
 use anyhow::{Context, Result, bail};
 
-/// Seconds per period unless a scenario sets `period=`.
+/// Seconds per period unless `--period` says otherwise.
 pub const DEFAULT_PERIOD: f64 = 300.0;
 
 /// How a rate or value moves across each period. Every shape averages to 1
@@ -144,8 +145,11 @@ impl Default for MetricScenario {
 }
 
 impl MetricScenario {
-    pub fn parse(s: &str) -> Result<MetricScenario> {
-        let mut out = MetricScenario::default();
+    pub fn parse(s: &str, period: f64) -> Result<MetricScenario> {
+        let mut out = MetricScenario {
+            period,
+            ..MetricScenario::default()
+        };
         for (k, v) in pairs(s)? {
             match k {
                 "dist" => out.shape = Shape::parse(v)?,
@@ -155,13 +159,13 @@ impl MetricScenario {
                         bail!("amp must be at most 1, so counters never run backwards");
                     }
                 }
-                "period" => out.period = period(v)?,
+                "period" => bail!(PERIOD_IS_AN_ARGUMENT),
                 "collection-grow" => out.collection_grow = non_negative(k, v)?,
                 "shard-grow" => out.shard_grow = non_negative(k, v)?,
                 "collection-churn" => out.collection_churn = non_negative(k, v)?,
                 "shard-churn" => out.shard_churn = non_negative(k, v)?,
                 _ => bail!(
-                    "unknown metric-scenario key {k:?}: want dist, amp, period, collection-grow, \
+                    "unknown metric-scenario key {k:?}: want dist, amp, collection-grow, \
                      collection-churn, shard-grow or shard-churn"
                 ),
             }
@@ -250,8 +254,11 @@ impl Default for LogScenario {
 }
 
 impl LogScenario {
-    pub fn parse(s: &str) -> Result<LogScenario> {
-        let mut out = LogScenario::default();
+    pub fn parse(s: &str, period: f64) -> Result<LogScenario> {
+        let mut out = LogScenario {
+            period,
+            ..LogScenario::default()
+        };
         let mut explicit_rate = false;
         let mut default_shape = None;
         let mut level_shapes: [Option<Shape>; 5] = [None; 5];
@@ -275,7 +282,7 @@ impl LogScenario {
             }
             match k {
                 "dist" => default_shape = Some(Shape::parse(v)?),
-                "period" => out.period = period(v)?,
+                "period" => bail!(PERIOD_IS_AN_ARGUMENT),
                 "phase" => {
                     out.synced = match v {
                         "sync" => true,
@@ -293,7 +300,7 @@ impl LogScenario {
                 }
                 _ => bail!(
                     "unknown log-scenario key {k:?}: want trace, debug, info, warn, error, \
-                     <level>-dist, dist, period, phase, non-json, eicar, panic or panic-exit"
+                     <level>-dist, dist, phase, non-json, eicar, panic or panic-exit"
                 ),
             }
         }
@@ -330,9 +337,12 @@ fn non_negative(k: &str, v: &str) -> Result<f64> {
     Ok(n)
 }
 
-/// At least a second: a shorter period is below the resolution of a scrape,
-/// and of the tick the log writer runs on.
-fn period(v: &str) -> Result<f64> {
+const PERIOD_IS_AN_ARGUMENT: &str =
+    "the period is shared by both scenarios, so it is set once with --period rather than in either";
+
+/// `--period`, in seconds. At least a second: a shorter period is below the
+/// resolution of a scrape, and of the tick the log writer runs on.
+pub fn parse_period(v: &str) -> Result<f64> {
     let p = parse_duration(v)?;
     if p < 1.0 {
         bail!("period must be at least 1s, not {v:?}");
@@ -391,13 +401,14 @@ mod tests {
 
     #[test]
     fn parses_the_example_scenarios() {
-        let m = MetricScenario::parse("dist=pulse180,collection-grow=200").unwrap();
+        let m = MetricScenario::parse("dist=pulse180,collection-grow=200", DEFAULT_PERIOD).unwrap();
         assert_eq!(m.shape, Shape::Pulse(180.0));
         assert_eq!(m.period, 300.0);
         assert_eq!(m.collection_grow, 200.0);
 
         let l = LogScenario::parse(
             "info=25000,warn=5000,error=2500,error-dist=bell,non-json=10,eicar=0.25,panic=0.25",
+            DEFAULT_PERIOD,
         )
         .unwrap();
         assert_eq!(l.rates, [0.0, 0.0, 25000.0, 5000.0, 2500.0]);
@@ -408,27 +419,49 @@ mod tests {
 
     #[test]
     fn pulse_and_plateau_must_fit_the_period() {
-        assert!(MetricScenario::parse("dist=pulse300").is_err());
-        assert!(MetricScenario::parse("dist=pulse90,period=60s").is_err());
-        assert!(MetricScenario::parse("period=60s,dist=pulse30").is_ok());
-        assert!(LogScenario::parse("info-dist=plateau6m").is_err());
+        assert!(MetricScenario::parse("dist=pulse300", DEFAULT_PERIOD).is_err());
+        assert!(MetricScenario::parse("dist=pulse90", 60.0).is_err());
+        assert!(MetricScenario::parse("dist=pulse30", 60.0).is_ok());
+        assert!(LogScenario::parse("info-dist=plateau6m", DEFAULT_PERIOD).is_err());
+    }
+
+    /// One period for both scenarios: neither takes its own, so a pulse set
+    /// on one side can't run on a different clock from the other.
+    #[test]
+    fn period_is_not_a_scenario_key() {
+        let m = MetricScenario::parse("period=60s", DEFAULT_PERIOD).unwrap_err();
+        assert!(m.to_string().contains("--period"), "{m}");
+        let l = LogScenario::parse("info=10,period=60s", DEFAULT_PERIOD).unwrap_err();
+        assert!(l.to_string().contains("--period"), "{l}");
+        let shared = parse_period("60s").unwrap();
+        assert_eq!(
+            MetricScenario::parse("dist=pulse30", shared)
+                .unwrap()
+                .period,
+            60.0
+        );
+        assert_eq!(
+            LogScenario::parse("dist=pulse30", shared).unwrap().period,
+            60.0
+        );
     }
 
     /// A period shorter than a second would ask the integrator, and the log
     /// writer's tick, for a resolution neither has.
     #[test]
     fn rejects_sub_second_periods() {
-        assert!(MetricScenario::parse("period=0.000001").is_err());
-        assert!(LogScenario::parse("period=500ms").is_err());
+        assert!(parse_period("0.000001").is_err());
+        assert!(parse_period("500ms").is_err());
+        assert_eq!(parse_period("5m").unwrap(), 300.0);
     }
 
     #[test]
     fn rejects_unknown_keys_and_shapes() {
-        assert!(MetricScenario::parse("dist=zigzag").is_err());
-        assert!(MetricScenario::parse("dist=bell30").is_err());
-        assert!(MetricScenario::parse("bogus=1").is_err());
-        assert!(LogScenario::parse("fatal=3").is_err());
-        assert!(LogScenario::parse("panic-period=1200s").is_err());
+        assert!(MetricScenario::parse("dist=zigzag", DEFAULT_PERIOD).is_err());
+        assert!(MetricScenario::parse("dist=bell30", DEFAULT_PERIOD).is_err());
+        assert!(MetricScenario::parse("bogus=1", DEFAULT_PERIOD).is_err());
+        assert!(LogScenario::parse("fatal=3", DEFAULT_PERIOD).is_err());
+        assert!(LogScenario::parse("panic-period=1200s", DEFAULT_PERIOD).is_err());
     }
 
     #[test]
@@ -441,7 +474,7 @@ mod tests {
 
     #[test]
     fn metric_pulse_is_high_then_low() {
-        let m = MetricScenario::parse("dist=pulse180").unwrap();
+        let m = MetricScenario::parse("dist=pulse180", DEFAULT_PERIOD).unwrap();
         assert!(m.multiplier(0.1) > 1.0);
         assert!(m.multiplier(0.9) < 1.0);
         assert!(m.multiplier(0.9) >= 0.0);

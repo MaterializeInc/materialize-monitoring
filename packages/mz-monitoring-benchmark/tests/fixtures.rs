@@ -16,7 +16,7 @@ use mz_monitoring_benchmark::expo;
 use mz_monitoring_benchmark::fixture::EntityKind;
 use mz_monitoring_benchmark::model::{Model, Sizing};
 use mz_monitoring_benchmark::role::{Role, load_fixtures};
-use mz_monitoring_benchmark::scenario::MetricScenario;
+use mz_monitoring_benchmark::scenario::{DEFAULT_PERIOD, MetricScenario};
 use mz_monitoring_benchmark::seed::Seed;
 
 /// What the anonymizer must have removed, checked against the literal text of
@@ -56,9 +56,9 @@ fn every_role_renders_valid_unique_series_at_scale() {
             &fixtures,
             &sizing,
             if names(EntityKind::Collection) {
-                MetricScenario::parse("dist=pulse180,collection-grow=200").unwrap()
+                MetricScenario::parse("dist=pulse180,collection-grow=200", DEFAULT_PERIOD).unwrap()
             } else {
-                MetricScenario::parse("dist=pulse180").unwrap()
+                MetricScenario::parse("dist=pulse180", DEFAULT_PERIOD).unwrap()
             },
             Seed::new(&format!("bench-{role}-0")),
             0.1,

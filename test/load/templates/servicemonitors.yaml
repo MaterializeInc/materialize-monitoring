@@ -1,43 +1,46 @@
-{{- /*
+{{/*
 One ServiceMonitor per role, with one endpoint per path the real process serves.
-A role with several paths labels each with `metrics_path`, as the chart's own
-SQL exporter monitor does; without it, every path's `up` series is the same one.
+
+A role with several paths labels each with `metrics_path`, as the umbrella
+chart's SQL exporter monitor does. Without it, every path's `up` and `scrape_*`
+series would be one series written several times.
 */}}
-{{- if .Values.serviceMonitor.enabled }}
-{{- range $role := include "bench.roles" $ | fromJsonArray }}
-{{- $ctx := dict "root" $ "role" $role }}
-{{- if include "bench.enabled" $ctx }}
-{{- $paths := include "bench.paths" $ctx | fromJsonArray }}
+{{- if $.Values.serviceMonitor.enabled }}
+  {{- range $role := include "mzmon.bench.roles" $ | fromJsonArray }}
+    {{- $ctx := dict "root" $ "role" $role }}
+    {{- if ( include "mzmon.bench.enabled" $ctx ) }}
+      {{- $paths := include "mzmon.bench.paths" $ctx | fromJsonArray }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "bench.name" $ctx }}
+  name: {{ include "mzmon.bench.name" $ctx }}
+  namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "bench.labels" $ctx | nindent 4 }}
-    {{- with $.Values.serviceMonitor.labels }}
+    {{- include "mzmon.bench.labels" $ctx | nindent 4 }}
+      {{- with $.Values.serviceMonitor.labels }}
     {{- toYaml . | nindent 4 }}
-    {{- end }}
+      {{- end }}
 spec:
   selector:
     matchLabels:
-      {{- include "bench.selectorLabels" $ctx | nindent 6 }}
+      {{- include "mzmon.bench.selectorLabels" $ctx | nindent 6 }}
   endpoints:
-    {{- range $paths }}
+      {{- range $path := $paths }}
     - port: metrics
-      path: {{ . }}
-      {{- with $.Values.serviceMonitor.interval }}
+      path: {{ $path }}
+        {{- with $.Values.serviceMonitor.interval }}
       interval: {{ . }}
-      {{- end }}
-      {{- with $.Values.serviceMonitor.scrapeTimeout }}
+        {{- end }}
+        {{- with $.Values.serviceMonitor.scrapeTimeout }}
       scrapeTimeout: {{ . }}
-      {{- end }}
-      {{- if gt (len $paths) 1 }}
+        {{- end }}
+        {{- if gt ( len $paths ) 1 }}
       relabelings:
         - sourceLabels: [__metrics_path__]
           targetLabel: metrics_path
+        {{- end }}
       {{- end }}
     {{- end }}
-{{- end }}
-{{- end }}
+  {{- end }}
 {{- end }}
