@@ -32752,9 +32752,11 @@ Add `--body PATH` to print an endpoint's body, and `--at SECONDS` to render a la
 
 ## Shape the load over time
 
-The metric and log scenarios share one period, five minutes unless you set `period=` in a scenario.
+The metric and log scenarios share one period, which you set with `--period`, or `period` in the chart's values.
+The default is `5m`, and the period has to be at least `1s`.
+The period is an argument of its own rather than a key in either scenario, so the two can't run on different clocks.
 Every count in either scenario is per period.
-A count below 1 fires once every few periods, so `panic=0.25` is one panic every 20 minutes.
+A count below 1 fires once every few periods, so at the default period `panic=0.25` is one panic every 20 minutes.
 
 Each shape repeats once per period, aligned to the wall clock, so a metric pulse and a log pulse with the same numbers line up.
 Every shape averages to 1 over the period, so a shaped rate keeps its configured mean.
@@ -32792,9 +32794,6 @@ The following shapes are available:
 : How far the shape moves values, from 0 for none to 1 for the full shape.
   The default is `0.5`.
 
-`period`
-: The period, such as `5m`; at least `1s`.
-
 `collection-grow`, `shard-grow`
 : Entities added per period, which grows the series count without bound.
 
@@ -32813,9 +32812,6 @@ The following shapes are available:
 `LEVEL-dist`, `dist`
 : The shape of one level's lines, or of every level's when you use `dist`.
   The default is `average`.
-
-`period`
-: The period, such as `5m`; at least `1s`.
 
 `phase`
 : `sync`, the default, starts every pod's period on the same wall-clock boundary, so bursts across a fleet land together.
