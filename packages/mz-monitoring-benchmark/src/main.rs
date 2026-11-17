@@ -58,8 +58,9 @@ struct Common {
     /// Replicas in each user cluster.
     #[arg(long)]
     replicas_per_cluster: Option<u64>,
-    /// How metrics move: `dist=flat|pulse<s>|sine<s>|saw<s>|walk<s>,amp=0.5,
-    /// collection-grow=<n/min>,collection-churn=<n/min>,shard-grow=…,shard-churn=…`.
+    /// How metrics move, per period (5m unless `period=` says otherwise):
+    /// `dist=average|bell|sine|saw|pulse<dur>|plateau<dur>,amp=0.5,period=5m,
+    /// collection-grow=<n>,collection-churn=<n>,shard-grow=<n>,shard-churn=<n>`.
     #[arg(long, default_value = "")]
     metric_scenario: String,
     /// Relative spread applied to every count, rate and value.
@@ -108,10 +109,11 @@ struct GenLoad {
     common: Common,
     #[arg(long, default_value = "0.0.0.0:6878")]
     listen: SocketAddr,
-    /// Log rates and shapes: `info=300,warn=30,error=3` lines per minute,
-    /// `<level>-dist=average|bell|sine|pulse<N>|plateau<N>`, `dist=…`,
-    /// `cycle=60s`, `phase=sync|seeded`, `non-json=<n/min>`, `eicar=<n/min>`,
-    /// `panic-period=<duration>`, `panic-exit=true|false`.
+    /// Log lines per period (5m unless `period=` says otherwise):
+    /// `info=1500,warn=150,error=15`, `<level>-dist=average|bell|sine|saw|
+    /// pulse<dur>|plateau<dur>`, `dist=…`, `period=5m`, `phase=sync|seeded`,
+    /// `non-json=<n>`, `eicar=<n>`, `panic=<n>`, `panic-exit=true|false`.
+    /// A count below 1 fires once every few periods: `panic=0.25` is every 20m.
     #[arg(long, default_value = "")]
     log_scenario: String,
     /// Serve metrics only.
@@ -185,8 +187,8 @@ fn gen_load(args: GenLoad) -> Result<()> {
             "non-json applies to roles that log JSON (environmentd, clusterd); every {role} line is already plain text"
         );
     }
-    if scenario.panic_period.is_some() && !role.is_rust() {
-        bail!("panic-period applies to Rust processes; {role} is nginx");
+    if scenario.panic > 0.0 && !role.is_rust() {
+        bail!("panic applies to Rust processes; {role} is nginx");
     }
 
     let counts = model.counts();
@@ -300,6 +302,13 @@ fn fixture_gen(args: FixtureGen) -> Result<()> {
     {
         let (fixtures, report) = anonymize::anonymize(role, &captures, materialize, &opts)?;
         print_report(role, &source, &fixtures, &report);
+        let leaks: Vec<String> = fixtures.iter().flat_map(anonymize::leaks).collect();
+        if !leaks.is_empty() {
+            bail!(
+                "{role}: anonymized fixtures still look identifying; nothing was written:\n  {}",
+                leaks.join("\n  ")
+            );
+        }
         unreviewed |= !report.unreviewed.is_empty();
         for f in &fixtures {
             let file = args

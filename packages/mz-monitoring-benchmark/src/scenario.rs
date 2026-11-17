@@ -9,6 +9,12 @@
 
 //! `--metric-scenario` and `--log-scenario`: comma-separated `key=value` lists.
 //!
+//! Both scenarios run on one period, five minutes unless `period=` says
+//! otherwise, and every count in them is per period. Shapes repeat once per
+//! period, aligned to the wall clock, so a metric pulse and a log pulse with
+//! the same numbers line up. A count below 1 means "not every period":
+//! `panic=0.25` panics once every four periods.
+//!
 //! The shapes borrow from Grafana's TestData datasource. They exist to shape
 //! load over time, not to draw convincing graphs.
 
@@ -17,80 +23,108 @@ use std::sync::LazyLock;
 
 use anyhow::{Context, Result, bail};
 
-use crate::seed::Seed;
+/// Seconds per period unless a scenario sets `period=`.
+pub const DEFAULT_PERIOD: f64 = 300.0;
 
-/// How gauges and counter rates move over time.
+/// How a rate or value moves across each period. Every shape averages to 1
+/// over the period, so a shaped rate keeps its configured mean.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum MetricShape {
-    /// The captured values, with jitter only.
+pub enum Shape {
     Flat,
-    /// A square wave with this period in seconds: high for the first half.
+    /// A Gaussian bump centred in the period.
+    Bell,
+    Sine,
+    /// A ramp from 0 at the start of the period to 2 at its end.
+    Saw,
+    /// On for this many seconds at the start of each period, off for the rest.
     Pulse(f64),
-    Sine(f64),
-    Saw(f64),
-    /// A smooth random walk through a new seeded point every period.
-    Walk(f64),
+    /// A trapezoid: ramp up, hold for this many seconds, ramp down.
+    Plateau(f64),
 }
 
-impl MetricShape {
-    /// Where the wave is at unix time `t`, in `[-1, 1]`.
-    ///
-    /// Keyed to the wall clock rather than to the pod's start, so every pod in
-    /// a fleet moves in step and the shape survives aggregation.
-    pub fn wave(self, seed: Seed, t: f64) -> f64 {
+static BELL_MEAN: LazyLock<f64> = LazyLock::new(|| {
+    let n = 100_000;
+    (0..n)
+        .map(|i| bell_raw((i as f64 + 0.5) / n as f64))
+        .sum::<f64>()
+        / n as f64
+});
+
+fn bell_raw(x: f64) -> f64 {
+    let sigma = 1.0 / 6.0;
+    (-((x - 0.5) / sigma).powi(2) / 2.0).exp()
+}
+
+impl Shape {
+    /// The multiplier at phase `x` in `[0, 1)` of a period `period` seconds long.
+    pub fn factor(self, x: f64, period: f64) -> f64 {
         match self {
-            MetricShape::Flat => 0.0,
-            MetricShape::Pulse(p) => {
-                if (t / p).rem_euclid(1.0) < 0.5 {
-                    1.0
-                } else {
-                    -1.0
-                }
+            Shape::Flat => 1.0,
+            Shape::Bell => bell_raw(x) / *BELL_MEAN,
+            Shape::Sine => 1.0 + (TAU * x).sin(),
+            Shape::Saw => 2.0 * x,
+            Shape::Pulse(on) => {
+                let on = on / period;
+                if x < on { 1.0 / on } else { 0.0 }
             }
-            MetricShape::Sine(p) => (TAU * t / p).sin(),
-            MetricShape::Saw(p) => 2.0 * (t / p).rem_euclid(1.0) - 1.0,
-            MetricShape::Walk(p) => {
-                let k = (t / p).floor();
-                let f = (t / p) - k;
-                let a = 2.0 * seed.unit(k as u64) - 1.0;
-                let b = 2.0 * seed.unit(k as u64 + 1) - 1.0;
-                let smooth = f * f * (3.0 - 2.0 * f);
-                a + (b - a) * smooth
+            Shape::Plateau(hold) => {
+                let hold = hold / period;
+                let ramp = (1.0 - hold) / 2.0;
+                let peak = 2.0 / (1.0 + hold);
+                if x < ramp {
+                    peak * x / ramp
+                } else if x < ramp + hold {
+                    peak
+                } else {
+                    peak * ((1.0 - x) / ramp).max(0.0)
+                }
             }
         }
     }
 
-    fn parse(s: &str) -> Result<MetricShape> {
-        let (kind, period) = split_shape(s);
-        let period = match period {
-            "" => 60.0,
-            p => parse_duration(p)?,
+    fn parse(s: &str) -> Result<Shape> {
+        let at = s
+            .find(|c: char| !c.is_ascii_alphabetic())
+            .unwrap_or(s.len());
+        let (kind, n) = (&s[..at], &s[at..]);
+        let seconds = || -> Result<f64> {
+            parse_duration(n).with_context(|| format!("{s:?} wants a duration, such as {kind}30s"))
         };
-        if period <= 0.0 {
-            bail!("shape period must be positive: {s:?}");
-        }
         Ok(match kind {
-            "flat" | "average" | "const" => MetricShape::Flat,
-            "pulse" => MetricShape::Pulse(period),
-            "sine" => MetricShape::Sine(period),
-            "saw" => MetricShape::Saw(period),
-            "walk" => MetricShape::Walk(period),
+            "flat" | "average" if n.is_empty() => Shape::Flat,
+            "bell" if n.is_empty() => Shape::Bell,
+            "sine" if n.is_empty() => Shape::Sine,
+            "saw" if n.is_empty() => Shape::Saw,
+            "pulse" => Shape::Pulse(seconds()?),
+            "plateau" => Shape::Plateau(seconds()?),
             _ => bail!(
-                "unknown metric shape {s:?}: want flat, pulse<period>, sine<period>, saw<period> or walk<period>"
+                "unknown shape {s:?}: want average, bell, sine, saw, pulse<duration> or plateau<duration>"
             ),
         })
+    }
+
+    /// A pulse or plateau has to fit in the period it repeats in.
+    fn check(self, period: f64) -> Result<()> {
+        if let Shape::Pulse(n) | Shape::Plateau(n) = self
+            && !(n > 0.0 && n < period)
+        {
+            bail!("{self:?} needs a duration inside the {period}s period");
+        }
+        Ok(())
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetricScenario {
-    pub shape: MetricShape,
-    /// How far the shape swings gauges and counter rates, as a fraction.
+    pub shape: Shape,
+    /// How far the shape moves gauges and counter rates, from 0 (flat) to 1
+    /// (the full shape).
     pub amp: f64,
-    /// Collections and shards added per minute.
+    pub period: f64,
+    /// Collections and shards added per period.
     pub collection_grow: f64,
     pub shard_grow: f64,
-    /// Collections and shards replaced per minute: the oldest go, new IDs come.
+    /// Collections and shards replaced per period: the oldest go, new IDs come.
     pub collection_churn: f64,
     pub shard_churn: f64,
 }
@@ -98,8 +132,9 @@ pub struct MetricScenario {
 impl Default for MetricScenario {
     fn default() -> Self {
         MetricScenario {
-            shape: MetricShape::Flat,
+            shape: Shape::Flat,
             amp: 0.5,
+            period: DEFAULT_PERIOD,
             collection_grow: 0.0,
             shard_grow: 0.0,
             collection_churn: 0.0,
@@ -112,26 +147,32 @@ impl MetricScenario {
     pub fn parse(s: &str) -> Result<MetricScenario> {
         let mut out = MetricScenario::default();
         for (k, v) in pairs(s)? {
-            let rate = || -> Result<f64> { non_negative(k, v) };
             match k {
-                "dist" => out.shape = MetricShape::parse(v)?,
+                "dist" => out.shape = Shape::parse(v)?,
                 "amp" => {
                     out.amp = non_negative(k, v)?;
                     if out.amp > 1.0 {
                         bail!("amp must be at most 1, so counters never run backwards");
                     }
                 }
-                "collection-grow" => out.collection_grow = rate()?,
-                "shard-grow" => out.shard_grow = rate()?,
-                "collection-churn" => out.collection_churn = rate()?,
-                "shard-churn" => out.shard_churn = rate()?,
+                "period" => out.period = period(v)?,
+                "collection-grow" => out.collection_grow = non_negative(k, v)?,
+                "shard-grow" => out.shard_grow = non_negative(k, v)?,
+                "collection-churn" => out.collection_churn = non_negative(k, v)?,
+                "shard-churn" => out.shard_churn = non_negative(k, v)?,
                 _ => bail!(
-                    "unknown metric-scenario key {k:?}: want dist, amp, collection-grow, \
+                    "unknown metric-scenario key {k:?}: want dist, amp, period, collection-grow, \
                      collection-churn, shard-grow or shard-churn"
                 ),
             }
         }
+        out.shape.check(out.period)?;
         Ok(out)
+    }
+
+    /// The multiplier on gauges and counter rates at phase `x` of the period.
+    pub fn multiplier(&self, x: f64) -> f64 {
+        1.0 + self.amp * (self.shape.factor(x, self.period) - 1.0)
     }
 }
 
@@ -174,102 +215,21 @@ impl Level {
     }
 }
 
-/// How a log rate is spread across each cycle. Every shape averages to 1, so
-/// the configured rate is the mean whatever the shape.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum LogShape {
-    Flat,
-    /// A Gaussian bump centred in the cycle.
-    Bell,
-    Sine,
-    /// On for this fraction of the cycle, at the start, and off for the rest.
-    Pulse(f64),
-    /// A trapezoid: ramp up, hold for this fraction of the cycle, ramp down.
-    Plateau(f64),
-}
-
-static BELL_MEAN: LazyLock<f64> = LazyLock::new(|| {
-    let n = 100_000;
-    (0..n)
-        .map(|i| bell_raw((i as f64 + 0.5) / n as f64))
-        .sum::<f64>()
-        / n as f64
-});
-
-fn bell_raw(x: f64) -> f64 {
-    let sigma = 1.0 / 6.0;
-    (-((x - 0.5) / sigma).powi(2) / 2.0).exp()
-}
-
-impl LogShape {
-    /// The rate multiplier at phase `x` in `[0, 1)` of the cycle.
-    pub fn factor(self, x: f64) -> f64 {
-        match self {
-            LogShape::Flat => 1.0,
-            LogShape::Bell => bell_raw(x) / *BELL_MEAN,
-            LogShape::Sine => 1.0 + (TAU * x).sin(),
-            LogShape::Pulse(on) => {
-                if x < on {
-                    1.0 / on
-                } else {
-                    0.0
-                }
-            }
-            LogShape::Plateau(hold) => {
-                let ramp = (1.0 - hold) / 2.0;
-                let peak = 2.0 / (1.0 + hold);
-                if x < ramp {
-                    peak * x / ramp
-                } else if x < ramp + hold {
-                    peak
-                } else {
-                    peak * ((1.0 - x) / ramp).max(0.0)
-                }
-            }
-        }
-    }
-
-    /// `pulse15` and `plateau15` count seconds of a minute, so they mean a
-    /// quarter of the cycle whatever its length: 15 seconds of the default
-    /// one-minute cycle, or 15 minutes of an hour.
-    fn parse(s: &str) -> Result<LogShape> {
-        let (kind, n) = split_shape(s);
-        let fraction = || -> Result<f64> {
-            let n: f64 = n
-                .parse()
-                .with_context(|| format!("{s:?} needs seconds of a minute, such as {kind}15"))?;
-            if !(n > 0.0 && n < 60.0) {
-                bail!("{s:?}: the number is seconds of a minute, between 0 and 60");
-            }
-            Ok(n / 60.0)
-        };
-        Ok(match kind {
-            "flat" | "average" => LogShape::Flat,
-            "bell" => LogShape::Bell,
-            "sine" => LogShape::Sine,
-            "pulse" => LogShape::Pulse(fraction()?),
-            "plateau" => LogShape::Plateau(fraction()?),
-            _ => bail!("unknown log shape {s:?}: want average, bell, sine, pulse<N> or plateau<N>"),
-        })
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct LogScenario {
-    /// Mean lines per minute at each level, indexed by `Level as usize`.
+    /// Mean lines per period at each level, indexed by `Level as usize`.
     pub rates: [f64; 5],
-    pub shapes: [LogShape; 5],
-    /// Seconds per cycle.
-    pub cycle: f64,
-    /// Whether every pod's cycle starts on the same wall-clock boundary, so
+    pub shapes: [Shape; 5],
+    pub period: f64,
+    /// Whether every pod's period starts on the same wall-clock boundary, so
     /// bursts land together, rather than at a seeded offset.
     pub synced: bool,
-    /// Lines per minute that are not in the role's log format.
+    /// Lines per period that are not in the role's log format.
     pub non_json: f64,
-    /// Secret-filter canary lines per minute.
+    /// Secret-filter canary lines per period.
     pub eicar: f64,
-    /// Seconds between panics.
-    pub panic_period: Option<f64>,
+    /// Panics per period.
+    pub panic: f64,
     /// Exit after a panic, the way a real one ends the process.
     pub panic_exit: bool,
 }
@@ -277,13 +237,13 @@ pub struct LogScenario {
 impl Default for LogScenario {
     fn default() -> Self {
         LogScenario {
-            rates: [0.0, 0.0, 300.0, 30.0, 3.0],
-            shapes: [LogShape::Flat; 5],
-            cycle: 60.0,
+            rates: [0.0, 0.0, 1500.0, 150.0, 15.0],
+            shapes: [Shape::Flat; 5],
+            period: DEFAULT_PERIOD,
             synced: true,
             non_json: 0.0,
             eicar: 0.0,
-            panic_period: None,
+            panic: 0.0,
             panic_exit: false,
         }
     }
@@ -294,7 +254,7 @@ impl LogScenario {
         let mut out = LogScenario::default();
         let mut explicit_rate = false;
         let mut default_shape = None;
-        let mut level_shapes: [Option<LogShape>; 5] = [None; 5];
+        let mut level_shapes: [Option<Shape>; 5] = [None; 5];
         for (k, v) in pairs(s)? {
             if let Some(level) = Level::ALL.iter().find(|l| l.key() == k) {
                 if !explicit_rate {
@@ -310,17 +270,12 @@ impl LogScenario {
                 .strip_suffix("-dist")
                 .and_then(|l| Level::ALL.iter().find(|x| x.key() == l))
             {
-                level_shapes[*level as usize] = Some(LogShape::parse(v)?);
+                level_shapes[*level as usize] = Some(Shape::parse(v)?);
                 continue;
             }
             match k {
-                "dist" => default_shape = Some(LogShape::parse(v)?),
-                "cycle" => {
-                    out.cycle = parse_duration(v)?;
-                    if out.cycle <= 0.0 {
-                        bail!("cycle must be positive");
-                    }
-                }
+                "dist" => default_shape = Some(Shape::parse(v)?),
+                "period" => out.period = period(v)?,
                 "phase" => {
                     out.synced = match v {
                         "sync" => true,
@@ -330,13 +285,7 @@ impl LogScenario {
                 }
                 "non-json" => out.non_json = non_negative(k, v)?,
                 "eicar" => out.eicar = non_negative(k, v)?,
-                "panic-period" => {
-                    let p = parse_duration(v)?;
-                    if p <= 0.0 {
-                        bail!("panic-period must be positive");
-                    }
-                    out.panic_period = Some(p);
-                }
+                "panic" => out.panic = non_negative(k, v)?,
                 "panic-exit" => {
                     out.panic_exit = v
                         .parse()
@@ -344,14 +293,16 @@ impl LogScenario {
                 }
                 _ => bail!(
                     "unknown log-scenario key {k:?}: want trace, debug, info, warn, error, \
-                     <level>-dist, dist, cycle, phase, non-json, eicar, panic-period or panic-exit"
+                     <level>-dist, dist, period, phase, non-json, eicar, panic or panic-exit"
                 ),
             }
         }
         for level in Level::ALL {
-            out.shapes[level as usize] = level_shapes[level as usize]
+            let shape = level_shapes[level as usize]
                 .or(default_shape)
-                .unwrap_or(LogShape::Flat);
+                .unwrap_or(Shape::Flat);
+            shape.check(out.period)?;
+            out.shapes[level as usize] = shape;
         }
         Ok(out)
     }
@@ -369,14 +320,6 @@ fn pairs(s: &str) -> Result<Vec<(&str, &str)>> {
         .collect()
 }
 
-/// `pulse180` is `("pulse", "180")`.
-fn split_shape(s: &str) -> (&str, &str) {
-    let at = s
-        .find(|c: char| !c.is_ascii_alphabetic())
-        .unwrap_or(s.len());
-    (&s[..at], &s[at..])
-}
-
 fn non_negative(k: &str, v: &str) -> Result<f64> {
     let n: f64 = v
         .parse()
@@ -385,6 +328,16 @@ fn non_negative(k: &str, v: &str) -> Result<f64> {
         bail!("{k} must be a non-negative number, not {v:?}");
     }
     Ok(n)
+}
+
+/// At least a second: a shorter period is below the resolution of a scrape,
+/// and of the tick the log writer runs on.
+fn period(v: &str) -> Result<f64> {
+    let p = parse_duration(v)?;
+    if p < 1.0 {
+        bail!("period must be at least 1s, not {v:?}");
+    }
+    Ok(p)
 }
 
 /// `90`, `90s`, `1500ms`, `20m` or `1h`, in seconds.
@@ -409,28 +362,29 @@ pub fn parse_duration(s: &str) -> Result<f64> {
 mod tests {
     use super::*;
 
-    fn mean(shape: LogShape) -> f64 {
-        let n = 60_000;
+    fn mean(shape: Shape, period: f64) -> f64 {
+        let n = 300_000;
         (0..n)
-            .map(|i| shape.factor((i as f64 + 0.5) / n as f64))
+            .map(|i| shape.factor((i as f64 + 0.5) / n as f64, period))
             .sum::<f64>()
             / n as f64
     }
 
     #[test]
-    fn every_log_shape_averages_to_one() {
+    fn every_shape_averages_to_one() {
         for s in [
             "average",
             "bell",
             "sine",
+            "saw",
             "pulse15",
-            "pulse30",
-            "pulse45",
+            "pulse180",
+            "pulse4m",
             "plateau15",
-            "plateau30",
-            "plateau45",
+            "plateau150",
+            "plateau2m",
         ] {
-            let m = mean(LogShape::parse(s).unwrap());
+            let m = mean(Shape::parse(s).unwrap(), DEFAULT_PERIOD);
             assert!((m - 1.0).abs() < 1e-3, "{s}: {m}");
         }
     }
@@ -438,26 +392,43 @@ mod tests {
     #[test]
     fn parses_the_example_scenarios() {
         let m = MetricScenario::parse("dist=pulse180,collection-grow=200").unwrap();
-        assert_eq!(m.shape, MetricShape::Pulse(180.0));
+        assert_eq!(m.shape, Shape::Pulse(180.0));
+        assert_eq!(m.period, 300.0);
         assert_eq!(m.collection_grow, 200.0);
 
         let l = LogScenario::parse(
-            "info=5000,warn=1000,error=500,error-dist=bell,non-json=2,eicar=3,panic-period=1200s",
+            "info=25000,warn=5000,error=2500,error-dist=bell,non-json=10,eicar=0.25,panic=0.25",
         )
         .unwrap();
-        assert_eq!(l.rates, [0.0, 0.0, 5000.0, 1000.0, 500.0]);
-        assert_eq!(l.shapes[Level::Error as usize], LogShape::Bell);
-        assert_eq!(l.shapes[Level::Info as usize], LogShape::Flat);
-        assert_eq!(l.panic_period, Some(1200.0));
-        assert_eq!((l.non_json, l.eicar), (2.0, 3.0));
+        assert_eq!(l.rates, [0.0, 0.0, 25000.0, 5000.0, 2500.0]);
+        assert_eq!(l.shapes[Level::Error as usize], Shape::Bell);
+        assert_eq!(l.shapes[Level::Info as usize], Shape::Flat);
+        assert_eq!((l.non_json, l.eicar, l.panic), (10.0, 0.25, 0.25));
+    }
+
+    #[test]
+    fn pulse_and_plateau_must_fit_the_period() {
+        assert!(MetricScenario::parse("dist=pulse300").is_err());
+        assert!(MetricScenario::parse("dist=pulse90,period=60s").is_err());
+        assert!(MetricScenario::parse("period=60s,dist=pulse30").is_ok());
+        assert!(LogScenario::parse("info-dist=plateau6m").is_err());
+    }
+
+    /// A period shorter than a second would ask the integrator, and the log
+    /// writer's tick, for a resolution neither has.
+    #[test]
+    fn rejects_sub_second_periods() {
+        assert!(MetricScenario::parse("period=0.000001").is_err());
+        assert!(LogScenario::parse("period=500ms").is_err());
     }
 
     #[test]
     fn rejects_unknown_keys_and_shapes() {
         assert!(MetricScenario::parse("dist=zigzag").is_err());
+        assert!(MetricScenario::parse("dist=bell30").is_err());
         assert!(MetricScenario::parse("bogus=1").is_err());
-        assert!(LogScenario::parse("info-dist=pulse90").is_err());
         assert!(LogScenario::parse("fatal=3").is_err());
+        assert!(LogScenario::parse("panic-period=1200s").is_err());
     }
 
     #[test]
@@ -469,12 +440,10 @@ mod tests {
     }
 
     #[test]
-    fn pulse_wave_is_square() {
-        let p = MetricShape::Pulse(180.0);
-        let s = Seed::new("x");
-        assert_eq!(p.wave(s, 0.0), 1.0);
-        assert_eq!(p.wave(s, 89.0), 1.0);
-        assert_eq!(p.wave(s, 91.0), -1.0);
-        assert_eq!(p.wave(s, 181.0), 1.0);
+    fn metric_pulse_is_high_then_low() {
+        let m = MetricScenario::parse("dist=pulse180").unwrap();
+        assert!(m.multiplier(0.1) > 1.0);
+        assert!(m.multiplier(0.9) < 1.0);
+        assert!(m.multiplier(0.9) >= 0.0);
     }
 }

@@ -79,6 +79,16 @@ impl Role {
         }
     }
 
+    /// The container name the real process runs under. The gateway chooses
+    /// its log parsing (multiline panics, the JSON and text formats) by
+    /// container name, so a benchmark pod's container takes the same one.
+    pub fn container_name(self) -> &'static str {
+        match self {
+            Role::Orchestratord => "materialize-operator",
+            r => r.as_str(),
+        }
+    }
+
     /// Whether the process is Rust, and so can panic.
     pub fn is_rust(self) -> bool {
         !matches!(self, Role::Console)

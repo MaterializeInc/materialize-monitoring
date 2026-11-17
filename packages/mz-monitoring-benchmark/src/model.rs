@@ -39,15 +39,14 @@
 //! All series of one histogram or summary share `s` and the noise, so buckets
 //! stay cumulative and quantiles stay ordered.
 
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use anyhow::{Result, bail};
 
 use crate::expo::{self, counter_like};
 use crate::fixture::{Attr, EntityKind, Fixture, Part, Placeholder, Template, Value};
 use crate::role::Role;
-use crate::scenario::{MetricScenario, MetricShape};
+use crate::scenario::MetricScenario;
 use crate::seed::{Seed, fnv1a, jitter_count};
 
 const KINDS: usize = EntityKind::ALL.len();
@@ -137,8 +136,11 @@ pub struct Model {
     replica_ords: u32,
     counts: Counts,
     start: f64,
-    /// `(t, F(t))` as of the last render, so the integral advances incrementally.
-    clock: Mutex<(f64, f64)>,
+    /// `∫(multiplier − 1)` from the start of a period to each of
+    /// `DEVIATION_STEPS` evenly spaced points in it, in periods.
+    deviation: Vec<f64>,
+    /// The largest `F` returned so far, as `f64` bits.
+    high_water: AtomicU64,
     last_size: AtomicUsize,
 }
 
@@ -278,6 +280,7 @@ impl Model {
             })
             .collect();
 
+        let deviation = deviation_table(&scenario);
         Ok(Model {
             seed,
             jitter,
@@ -287,7 +290,8 @@ impl Model {
             replica_ords,
             counts,
             start,
-            clock: Mutex::new((start, 0.0)),
+            deviation,
+            high_water: AtomicU64::new(0),
             last_size: AtomicUsize::new(64 * 1024),
         })
     }
@@ -304,49 +308,51 @@ impl Model {
         self.exemplars[kind as usize]
     }
 
-    /// The multiplier the shape applies at unix time `t`.
-    fn multiplier(&self, t: f64) -> f64 {
-        1.0 + self.scenario.amp * self.scenario.shape.wave(self.seed.derive("walk"), t)
+    /// Where unix time `t` falls in the scenario's period, in `[0, 1)`. Keyed
+    /// to the wall clock, so every pod in a fleet moves in step.
+    fn phase(&self, t: f64) -> f64 {
+        (t / self.scenario.period).rem_euclid(1.0)
     }
 
-    /// `F(now)`: the integral of the multiplier since start.
+    /// `F(now)`: the integral of the multiplier since start, in constant time.
+    ///
+    /// Every shape averages to 1 over a period, so the multiplier's integral is
+    /// the elapsed time plus a deviation that repeats every period. The table
+    /// holds that deviation across one period; whole periods add nothing to it.
+    ///
+    /// The multiplier is never negative, so `F` never decreases in exact
+    /// arithmetic. Where it is flat, as in a pulse's off phase at `amp=1`,
+    /// rounding can still move it down by a few ulps, and Prometheus reads any
+    /// decrease in a counter as a reset. So `F` is also clamped to the largest
+    /// value any render has returned.
     fn integral(&self, now: f64) -> f64 {
-        if self.scenario.shape == MetricShape::Flat {
-            return (now - self.start).max(0.0);
-        }
-        let mut clock = self.clock.lock().expect("clock lock");
-        let (mut t, mut f) = *clock;
-        if now <= t {
-            return f;
-        }
-        let step = match self.scenario.shape {
-            MetricShape::Pulse(p)
-            | MetricShape::Sine(p)
-            | MetricShape::Saw(p)
-            | MetricShape::Walk(p) => (p / 100.0).min(1.0),
-            MetricShape::Flat => 1.0,
+        let elapsed = (now - self.start).max(0.0);
+        let deviation = |t: f64| {
+            let x = self.phase(t) * (self.deviation.len() - 1) as f64;
+            let i = x.floor() as usize;
+            let next = self.deviation[(i + 1).min(self.deviation.len() - 1)];
+            self.deviation[i] + (next - self.deviation[i]) * (x - i as f64)
         };
-        while t < now {
-            let dt = step.min(now - t);
-            f += dt * self.multiplier(t + dt / 2.0);
-            t += dt;
-        }
-        *clock = (t, f);
-        f
+        let f = (elapsed
+            + self.scenario.period * (deviation(self.start + elapsed) - deviation(self.start)))
+        .max(0.0);
+        // Non-negative floats order the same as their bit patterns.
+        let prev = self.high_water.fetch_max(f.to_bits(), Ordering::Relaxed);
+        f.max(f64::from_bits(prev))
     }
 
     fn env(&self, now: f64) -> Env {
-        let minutes = ((now - self.start) / 60.0).max(0.0);
+        let periods = ((now - self.start) / self.scenario.period).max(0.0);
         let s = &self.scenario;
         Env {
             now,
             tick: now.floor() as u64,
             integral: self.integral(now),
-            multiplier: self.multiplier(now),
-            shard_off: (s.shard_churn * minutes).floor() as u64,
-            shards: self.counts.shards + (s.shard_grow * minutes).floor() as u64,
-            coll_off: (s.collection_churn * minutes).floor() as u64,
-            colls: self.counts.collections + (s.collection_grow * minutes).floor() as u64,
+            multiplier: s.multiplier(self.phase(now)),
+            shard_off: (s.shard_churn * periods).floor() as u64,
+            shards: self.counts.shards + (s.shard_grow * periods).floor() as u64,
+            coll_off: (s.collection_churn * periods).floor() as u64,
+            colls: self.counts.collections + (s.collection_grow * periods).floor() as u64,
             clusters: self.counts.clusters.max(1),
             rpc: self.counts.replicas_per_cluster,
         }
@@ -528,6 +534,35 @@ impl Model {
             }
         }
     }
+}
+
+const DEVIATION_STEPS: usize = 3000;
+
+/// The table [`Model::integral`] interpolates. Each cell integrates the
+/// multiplier at a finer grain, so a pulse's edge lands within one cell.
+fn deviation_table(scenario: &MetricScenario) -> Vec<f64> {
+    const FINE: usize = 16;
+    let n = DEVIATION_STEPS * FINE;
+    let cell = |i: usize| {
+        (0..FINE)
+            .map(|k| scenario.multiplier(((i * FINE + k) as f64 + 0.5) / n as f64) - 1.0)
+            .sum::<f64>()
+            / n as f64
+    };
+    let mut table = Vec::with_capacity(DEVIATION_STEPS + 1);
+    let mut acc = 0.0;
+    table.push(0.0);
+    for i in 0..DEVIATION_STEPS {
+        acc += cell(i);
+        table.push(acc);
+    }
+    // Rounding leaves a sliver at the end of the period; spread it back so a
+    // whole period integrates to exactly its length.
+    let residual = acc;
+    for (i, v) in table.iter_mut().enumerate() {
+        *v -= residual * i as f64 / DEVIATION_STEPS as f64;
+    }
+    table
 }
 
 fn derive(kind: EntityKind, j: u64, env: &Env) -> Ctx {
@@ -818,6 +853,35 @@ mz_frontier{collection_id="${introspection:0}",replica_id="${replica:0}",instanc
         }
     }
 
+    /// The integral is a table lookup, so a render far from start costs what
+    /// one near it does, and it never decreases, across period boundaries
+    /// included. A stepwise integrator once looped forever on a period too
+    /// short for its step to advance the clock.
+    #[test]
+    fn integral_is_monotonic_and_constant_time() {
+        for dist in [
+            "dist=pulse30,period=60s,amp=1",
+            "dist=plateau500ms,period=1s,amp=1",
+            "dist=bell,amp=0.7",
+        ] {
+            let m = model(Sizing::default(), MetricScenario::parse(dist).unwrap());
+            let mut last = 0.0;
+            for i in 0..20_000 {
+                let elapsed = i as f64 * 0.037;
+                let f = m.integral(1_000_000.0 + elapsed);
+                assert!(f >= last, "{dist}: F fell from {last} to {f} at step {i}");
+                // Within one period's swing of the elapsed time.
+                assert!(
+                    (f - elapsed).abs() <= m.scenario.period + 1e-6,
+                    "{dist}: {f} vs {elapsed}"
+                );
+                last = f;
+            }
+            let far = m.integral(1_000_000.0 + 1e9);
+            assert!((far - 1e9).abs() < 1e-3 * 1e9, "{dist}: {far}");
+        }
+    }
+
     #[test]
     fn shard_ids_are_seeded_and_stable() {
         let a = model(
@@ -862,7 +926,8 @@ mz_frontier{collection_id="${introspection:0}",replica_id="${replica:0}",instanc
                 .collect()
         };
         let before = ids(1_000_000.0);
-        let after = ids(1_000_120.0);
+        // Two periods: 120 added, 60 replaced.
+        let after = ids(1_000_600.0);
         assert_eq!(before.len(), 10);
         assert_eq!(after.len(), 130);
         assert!(!after.contains(&"u1000".to_string()));

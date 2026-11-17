@@ -1755,7 +1755,9 @@ name = "mz-monitoring-benchmark"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "bytes",
+ "chrono",
  "clap",
  "http",
  "http-body-util",
@@ -1765,7 +1767,9 @@ dependencies = [
  "kube",
  "regex",
  "rustls",
+ "serde_json",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

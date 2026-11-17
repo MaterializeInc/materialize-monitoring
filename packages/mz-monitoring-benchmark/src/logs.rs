@@ -20,7 +20,9 @@
 
 use std::fmt::Write as _;
 use std::io::Write as _;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
 
 use crate::role::{LogFormat, Role};
 use crate::scenario::{Level, LogScenario};
@@ -335,18 +337,16 @@ impl LogGen {
     pub fn run(mut self) -> ! {
         let mut stdout = std::io::BufWriter::with_capacity(256 * 1024, std::io::stdout());
         let mut stderr = std::io::BufWriter::with_capacity(256 * 1024, std::io::stderr());
-        let mut carry = [0.0f64; 7];
-        let start = unix_now();
-        let mut last = start;
+        let period = self.scenario.period;
+        // Seeded, so the rare streams across a fleet (a panic every few periods)
+        // don't all fire on the same tick.
+        let mut carry: [f64; 8] = std::array::from_fn(|i| self.seed.unit(1000 + i as u64));
+        let mut last = unix_now();
         let mut tick = 0u64;
-        let mut next_panic = self
-            .scenario
-            .panic_period
-            .map(|p| start + p * self.seed.jitter(u64::MAX, self.jitter));
         let offset = if self.scenario.synced {
             0.0
         } else {
-            self.seed.unit(0) * self.scenario.cycle
+            self.seed.unit(0) * period
         };
 
         loop {
@@ -355,28 +355,26 @@ impl LogGen {
             let dt = (now - last).max(0.0);
             last = now;
             tick += 1;
-            let x = ((now + offset) / self.scenario.cycle).rem_euclid(1.0);
+            let x = ((now + offset) / period).rem_euclid(1.0);
 
-            let mut streams: Vec<(usize, f64)> = Level::ALL
-                .iter()
-                .map(|l| {
-                    let i = *l as usize;
-                    (
-                        i,
-                        self.scenario.rates[i] * self.scenario.shapes[i].factor(x),
-                    )
-                })
-                .collect();
-            streams.push((5, self.scenario.non_json));
-            streams.push((6, self.scenario.eicar));
-            for (i, per_minute) in streams {
-                if per_minute <= 0.0 {
+            // Per period: each level at its shape, then the unshaped streams.
+            let mut streams = [0.0f64; 8];
+            for level in Level::ALL {
+                let i = level as usize;
+                streams[i] = self.scenario.rates[i] * self.scenario.shapes[i].factor(x, period);
+            }
+            streams[5] = self.scenario.non_json;
+            streams[6] = self.scenario.eicar;
+            streams[7] = self.scenario.panic;
+
+            for (i, per_period) in streams.into_iter().enumerate() {
+                if per_period <= 0.0 {
                     continue;
                 }
                 let jitter = self
                     .seed
                     .jitter(self.seed.mix(&[i as u64, tick]), self.jitter);
-                carry[i] += per_minute / 60.0 * dt * jitter;
+                carry[i] += per_period / period * dt * jitter;
                 let n = carry[i].floor();
                 carry[i] -= n;
                 let n = n as u64;
@@ -392,6 +390,17 @@ impl LogGen {
                             self.canary(&mut line, ts);
                             let _ = stderr.write_all(line.as_bytes());
                         }
+                        7 => {
+                            let _ = stdout.flush();
+                            let _ = stderr.flush();
+                            self.panic(&mut line, ts);
+                            // One write, as the real handler does, so the lines
+                            // reach the container log together.
+                            let _ = std::io::stderr().write_all(line.as_bytes());
+                            if self.scenario.panic_exit {
+                                std::process::exit(101);
+                            }
+                        }
                         _ => {
                             let level = Level::ALL[i];
                             self.line(&mut line, level, ts);
@@ -403,26 +412,6 @@ impl LogGen {
                         }
                     }
                 }
-            }
-
-            if let Some(at) = next_panic
-                && now >= at
-            {
-                let _ = stdout.flush();
-                let _ = stderr.flush();
-                let mut text = String::with_capacity(2048);
-                self.panic(&mut text, now);
-                // One write, as the real handler does, so the lines reach the
-                // container log together.
-                let _ = std::io::stderr().write_all(text.as_bytes());
-                if self.scenario.panic_exit {
-                    std::process::exit(101);
-                }
-                next_panic = self.scenario.panic_period.map(|p| {
-                    now + p * self
-                        .seed
-                        .jitter(self.seed.mix(&[u64::MAX, tick]), self.jitter)
-                });
             }
             let _ = stdout.flush();
             let _ = stderr.flush();
@@ -732,65 +721,27 @@ fn text_line(
 }
 
 fn json_string(out: &mut String, s: &str) {
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
+    out.push_str(&serde_json::Value::from(s).to_string());
 }
 
 pub fn unix_now() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0.0, |d| d.as_secs_f64())
+    Utc::now().timestamp_micros() as f64 / 1e6
 }
 
-/// `(year, month, day, hour, minute, second, microsecond)` in UTC.
-fn civil(ts: f64) -> (i64, u32, u32, u32, u32, u32, u32) {
-    let secs = ts.floor() as i64;
-    let micros = ((ts - ts.floor()) * 1e6) as u32;
-    let days = secs.div_euclid(86_400);
-    let rem = secs.rem_euclid(86_400) as u32;
-    // Howard Hinnant's days-to-civil.
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    (y, m, d, rem / 3600, rem / 60 % 60, rem % 60, micros)
+fn utc(ts: f64) -> DateTime<Utc> {
+    DateTime::from_timestamp_micros((ts * 1e6).round() as i64).unwrap_or_default()
 }
 
 pub fn rfc3339_micros(ts: f64) -> String {
-    let (y, mo, d, h, mi, s, us) = civil(ts);
-    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{us:06}Z")
+    utc(ts).format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
 }
 
 fn nginx_access_time(ts: f64) -> String {
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    let (y, mo, d, h, mi, s, _) = civil(ts);
-    format!(
-        "{d:02}/{}/{y}:{h:02}:{mi:02}:{s:02} +0000",
-        MONTHS[mo as usize - 1]
-    )
+    utc(ts).format("%d/%b/%Y:%H:%M:%S +0000").to_string()
 }
 
 fn nginx_error_time(ts: f64) -> String {
-    let (y, mo, d, h, mi, s, _) = civil(ts);
-    format!("{y:04}/{mo:02}/{d:02} {h:02}:{mi:02}:{s:02}")
+    utc(ts).format("%Y/%m/%d %H:%M:%S").to_string()
 }
 
 #[cfg(test)]

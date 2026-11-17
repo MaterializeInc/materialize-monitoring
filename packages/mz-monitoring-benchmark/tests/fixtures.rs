@@ -13,7 +13,7 @@
 use std::collections::HashSet;
 
 use mz_monitoring_benchmark::expo;
-use mz_monitoring_benchmark::fixture::{EntityKind, Part};
+use mz_monitoring_benchmark::fixture::EntityKind;
 use mz_monitoring_benchmark::model::{Model, Sizing};
 use mz_monitoring_benchmark::role::{Role, load_fixtures};
 use mz_monitoring_benchmark::scenario::MetricScenario;
@@ -23,51 +23,16 @@ use mz_monitoring_benchmark::seed::Seed;
 /// every label value. Placeholders are skipped; they are the point.
 #[test]
 fn committed_fixtures_carry_no_identifiers() {
-    let patterns = [
-        (r"\b\d{1,3}(?:\.\d{1,3}){3}\b", "an IPv4 address"),
-        (
-            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
-            "a UUID",
-        ),
-        (r"^u\d+$", "a raw user ID"),
-        (r"@", "an email address"),
-        (
-            r"\.svc\b|\.cluster\.local|\.internal\b|\.com\b|\.dev\b",
-            "a host name",
-        ),
-        (r"\bmz[0-9a-z]{10}\b", "an environment resource ID"),
-        (
-            r"\b(?:aws|gcp|azure)\b|us-east|us-west|eu-west|europe-|asia-",
-            "a cloud region",
-        ),
-    ]
-    .map(|(re, what)| (regex::Regex::new(re).unwrap(), what));
-
     for role in Role::ALL {
         for f in load_fixtures(role, None).unwrap() {
-            for fam in &f.families {
-                for s in &fam.series {
-                    for (k, t) in &s.labels {
-                        for part in &t.parts {
-                            let Part::Lit(lit) = part else { continue };
-                            for (re, what) in &patterns {
-                                assert!(
-                                    !re.is_match(lit),
-                                    "{role} {} {} {k}={lit:?} looks like {what}",
-                                    f.path,
-                                    s.name
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+            let leaks = mz_monitoring_benchmark::anonymize::leaks(&f);
+            assert!(leaks.is_empty(), "{role}:\n{}", leaks.join("\n"));
         }
     }
 }
 
-/// The example from the design conversation, at full size: every body parses,
-/// and no series is emitted twice.
+/// Every role at a large size: every body parses, and no series is emitted
+/// twice.
 #[test]
 fn every_role_renders_valid_unique_series_at_scale() {
     for role in Role::ALL {

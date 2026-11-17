@@ -218,6 +218,71 @@ static RESOURCE_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bmz[0-9a-z]
 
 const YEAR_MS: f64 = 365.25 * 24.0 * 3600.0 * 1000.0;
 
+/// The stand-ins [`Registry::scrub`] writes. They are the one form of address,
+/// host and email a fixture may hold, so the leak check removes them, and only
+/// them, before it looks.
+static STANDINS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b192\.0\.2\.\d{1,3}\b|\bhost-\d+\.example\.internal\b|\buser\d+@example\.com\b|\bmzbench\d{5}\b")
+        .unwrap()
+});
+
+/// What must not survive anonymization, as found in a fixture's literal text.
+static LEAKS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
+    [
+        (r"\b\d{1,3}(?:\.\d{1,3}){3}\b", "an IPv4 address"),
+        (
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+            "a UUID",
+        ),
+        (r"^u\d+$", "a raw user ID"),
+        (r"@", "an email address"),
+        (
+            r"\.svc\b|\.cluster\.local|\.internal\b|\.com\b|\.dev\b",
+            "a host name",
+        ),
+        (r"\bmz[0-9a-z]{10}\b", "an environment resource ID"),
+        (
+            r"\b(?:aws|gcp|azure)\b|us-east|us-west|eu-west|europe-|asia-",
+            "a cloud region",
+        ),
+    ]
+    .into_iter()
+    .map(|(re, what)| (Regex::new(re).unwrap(), what))
+    .collect()
+});
+
+/// What `literal` looks like it leaks, if anything, once the anonymizer's own
+/// stand-ins are removed from it.
+pub fn leak(literal: &str) -> Option<&'static str> {
+    let rest = STANDINS.replace_all(literal, "");
+    LEAKS
+        .iter()
+        .find(|(re, _)| re.is_match(&rest))
+        .map(|(_, what)| *what)
+}
+
+/// Every label value in `fixture` whose literal text [`leak`] objects to.
+pub fn leaks(fixture: &Fixture) -> Vec<String> {
+    let mut out = Vec::new();
+    for fam in &fixture.families {
+        for s in &fam.series {
+            for (k, t) in &s.labels {
+                for part in &t.parts {
+                    if let crate::fixture::Part::Lit(lit) = part
+                        && let Some(what) = leak(lit)
+                    {
+                        out.push(format!(
+                            "{} {} {k}={lit:?} looks like {what}",
+                            fixture.path, s.name
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 /// One endpoint's scrapes.
 pub struct Capture {
     pub path: String,
@@ -899,6 +964,47 @@ process_start_time_seconds 1794940000
         .unwrap();
         assert_eq!(f[0].families[0].series.len(), 4);
         assert_eq!(r.over_cap, 6);
+    }
+
+    #[test]
+    fn stand_ins_pass_the_leak_check_and_nothing_else_does() {
+        for ok in [
+            "192.0.2.4",
+            "host-12.example.internal",
+            "user3@example.com",
+            "mzbench00001",
+            "mz_catalog",
+        ] {
+            assert_eq!(leak(ok), None, "{ok}");
+        }
+        for (bad, what) in [
+            ("192.0.2.4 10.1.2.3", "an IPv4 address"),
+            ("host-1.example.internal,db.acme.com", "a host name"),
+            ("user1@example.com ops@acme.dev", "an email address"),
+            ("u1537", "a raw user ID"),
+            ("gcp-us-east1", "a cloud region"),
+        ] {
+            assert_eq!(leak(bad), Some(what), "{bad}");
+        }
+    }
+
+    /// A capture full of addresses and hosts anonymizes into a fixture the
+    /// leak check accepts: the stand-ins it writes are the ones it allows.
+    #[test]
+    fn anonymized_captures_pass_the_leak_check() {
+        let body = "# TYPE mz_conn gauge\n\
+            mz_conn{peer=\"10.4.5.6\",host=\"db.acme.svc.cluster.local\",url=\"postgres://10.9.9.9:5432/x\",who=\"ops@acme.com\"} 1\n\
+            mz_conn{peer=\"10.4.5.7\",host=\"api.example.org\",url=\"https://mzyz3lplvppc-balancerd.ns.svc:6876\",who=\"\"} 1\n";
+        let (f, _) = anonymize(
+            Role::Balancerd,
+            &[capture("/metrics", body, None)],
+            None,
+            &Options::default(),
+        )
+        .unwrap();
+        assert_eq!(leaks(&f[0]), Vec::<String>::new(), "{}", f[0].to_text());
+        assert!(f[0].to_text().contains("192.0.2.1"));
+        assert!(f[0].to_text().contains("host-0.example.internal"));
     }
 
     #[test]

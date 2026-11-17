@@ -73,20 +73,11 @@ impl Seed {
     pub fn uuid(self, i: u64) -> String {
         let hi = self.hash(i);
         let lo = self.hash(i ^ 0x5555_5555_5555_5555).rotate_left(29) ^ hi.rotate_right(7);
-        let mut b = [0u8; 16];
-        b[..8].copy_from_slice(&hi.to_be_bytes());
-        b[8..].copy_from_slice(&lo.to_be_bytes());
-        b[6] = (b[6] & 0x0f) | 0x40;
-        b[8] = (b[8] & 0x3f) | 0x80;
-        let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
-        format!(
-            "{}-{}-{}-{}-{}",
-            &hex[0..8],
-            &hex[8..12],
-            &hex[12..16],
-            &hex[16..20],
-            &hex[20..32]
-        )
+        let bytes = (u128::from(hi) << 64 | u128::from(lo)).to_be_bytes();
+        uuid::Builder::from_random_bytes(bytes)
+            .into_uuid()
+            .hyphenated()
+            .to_string()
     }
 }
 
