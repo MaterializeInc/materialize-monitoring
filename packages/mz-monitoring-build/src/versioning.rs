@@ -942,10 +942,13 @@ fn workspace_version_inheritors(workspace_manifest: &Path) -> anyhow::Result<Vec
     Ok(names)
 }
 
-/// The workspace lockfile and package name of the crate whose manifest is
-/// `manifest`, from `cargo metadata`, for a crate that versions itself rather
-/// than inheriting the workspace version.
-fn member_lock_entry(manifest: &Path) -> anyhow::Result<(PathBuf, String)> {
+/// The workspace lockfile and package name of a member crate that versions
+/// itself rather than inheriting the workspace version, from `cargo metadata`.
+///
+/// `manifest` is relative to `root`, and so is the returned lockfile path. The
+/// path goes to the GitHub tree API as it is, so it must not be the absolute
+/// path `cargo metadata` reports.
+fn member_lock_entry(root: &Path, manifest: &Path) -> anyhow::Result<(PathBuf, String)> {
     #[derive(Deserialize)]
     struct Metadata {
         packages: Vec<MetadataPackage>,
@@ -957,6 +960,7 @@ fn member_lock_entry(manifest: &Path) -> anyhow::Result<(PathBuf, String)> {
         manifest_path: PathBuf,
     }
 
+    let full = root.join(manifest);
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let out = Command::new(cargo)
         .args([
@@ -966,42 +970,55 @@ fn member_lock_entry(manifest: &Path) -> anyhow::Result<(PathBuf, String)> {
             "1",
             "--manifest-path",
         ])
-        .arg(manifest)
+        .arg(&full)
         .output()
         .context("running cargo metadata")?;
     if !out.status.success() {
         anyhow::bail!(
             "cargo metadata failed for {}: {}",
-            manifest.display(),
+            full.display(),
             String::from_utf8_lossy(&out.stderr).trim()
         );
     }
     let meta: Metadata =
         serde_json::from_slice(&out.stdout).context("parsing cargo metadata output")?;
-    let wanted = std::fs::canonicalize(manifest)
-        .with_context(|| format!("resolving {}", manifest.display()))?;
+    let wanted =
+        std::fs::canonicalize(&full).with_context(|| format!("resolving {}", full.display()))?;
     let pkg = meta
         .packages
         .into_iter()
         .find(|p| std::fs::canonicalize(&p.manifest_path).is_ok_and(|m| m == wanted))
         .ok_or_else(|| anyhow!("{} is not a workspace member", manifest.display()))?;
-    Ok((meta.workspace_root.join("Cargo.lock"), pkg.name))
+    let base =
+        std::fs::canonicalize(root).with_context(|| format!("resolving {}", root.display()))?;
+    let workspace = std::fs::canonicalize(&meta.workspace_root)
+        .with_context(|| format!("resolving {}", meta.workspace_root.display()))?;
+    let relative = workspace.strip_prefix(&base).with_context(|| {
+        format!(
+            "the workspace root {} is outside {}",
+            workspace.display(),
+            base.display()
+        )
+    })?;
+    Ok((relative.join("Cargo.lock"), pkg.name))
 }
 
-/// Bump each of `packages` to `new` in the lockfile at `path`, recording each
-/// edit in `summary`. Returns the rewritten lockfile, or `None` when there is
+/// Bump each of `packages` to `new` in the lockfile at `path` under `root`,
+/// recording each edit in `summary`. Returns the rewritten lockfile, or `None` when there is
 /// nothing to bump or no lockfile.
 fn bump_lockfile(
+    root: &Path,
     path: &Path,
     packages: &[String],
     new: &str,
     summary: &mut Vec<String>,
 ) -> anyhow::Result<Option<(PathBuf, String)>> {
-    if packages.is_empty() || !path.exists() {
+    let full = root.join(path);
+    if packages.is_empty() || !full.exists() {
         return Ok(None);
     }
     let mut lock =
-        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        std::fs::read_to_string(&full).with_context(|| format!("reading {}", full.display()))?;
     for name in packages {
         let (old, updated) = rewrite_lock_version(&lock, name, new)
             .with_context(|| format!("in {}", path.display()))?;
@@ -1172,19 +1189,51 @@ pub(crate) fn plan_release(
         &format!("## {} {}", comps[target].title, released.changelog()),
     );
 
-    // Version-file edits bump only the released component. Each version file
-    // that a lockfile records is matched by a lockfile edit, so the PR passes a
-    // `--locked` build as committed: a pyproject bumps its package in uv.lock,
-    // and a workspace Cargo.toml bumps every member inheriting the workspace
-    // version in the Cargo.lock beside it. Bumping a Chart.yaml also bumps the
-    // version badge in the README helm-docs renders beside it.
-    let mut version_files: Vec<(PathBuf, String)> = Vec::new();
+    let (version_files, summary) = plan_version_files(
+        Path::new("."),
+        &comps[target].version_paths,
+        uv_lock_path,
+        &released_plain,
+    )?;
+
+    Ok(Some(ReleasePlan {
+        released,
+        changelog_path: changelog_path.to_path_buf(),
+        changelog_content,
+        section,
+        version_files,
+        summary,
+    }))
+}
+
+/// Files a release rewrites, as `(repository-relative path, new contents)`.
+type VersionFiles = Vec<(PathBuf, String)>;
+
+/// The version-file edits for a release at `new`, and a line per edit for the
+/// summary. Files are read under `root`, but every returned path is the
+/// repository-relative path the GitHub tree API takes, as `version_paths`
+/// spells it.
+///
+/// Version-file edits bump only the released component. Each version file that
+/// a lockfile records is matched by a lockfile edit, so the PR passes a
+/// `--locked` build as committed: a pyproject bumps its package in uv.lock, a
+/// workspace Cargo.toml bumps every member inheriting the workspace version in
+/// the Cargo.lock beside it, and a member crate with a version of its own bumps
+/// its entry in the workspace Cargo.lock. Bumping a Chart.yaml also bumps the
+/// version badge in the README helm-docs renders beside it.
+fn plan_version_files(
+    root: &Path,
+    version_paths: &[String],
+    uv_lock_path: &Path,
+    new: &str,
+) -> anyhow::Result<(VersionFiles, Vec<String>)> {
+    let mut version_files: VersionFiles = Vec::new();
     let mut summary: Vec<String> = Vec::new();
     let mut lock_packages: Vec<String> = Vec::new();
     let mut cargo_locks: Vec<(PathBuf, Vec<String>)> = Vec::new();
-    for vp in &comps[target].version_paths {
+    for vp in version_paths {
         let path = PathBuf::from(vp);
-        let (old, content) = rewrite_version(&path, &released_plain)?;
+        let (old, content) = rewrite_version(&root.join(&path), new)?;
         let file_name = path.file_name().and_then(|n| n.to_str());
         if file_name == Some("pyproject.toml")
             && let Some(name) = pyproject_name(&content)
@@ -1195,50 +1244,39 @@ pub(crate) fn plan_release(
             if content.lines().any(|l| l.trim() == "[workspace.package]") {
                 cargo_locks.push((
                     path.with_file_name("Cargo.lock"),
-                    workspace_version_inheritors(&path)?,
+                    workspace_version_inheritors(&root.join(&path))?,
                 ));
             } else {
-                // A member crate with a version of its own, such as
-                // `mz-monitoring-benchmark`: its entry lives in the workspace's
-                // lockfile, not beside its manifest.
-                let (lock, name) = member_lock_entry(&path)?;
+                let (lock, name) = member_lock_entry(root, &path)?;
                 cargo_locks.push((lock, vec![name]));
             }
         }
         let readme = if file_name == Some("Chart.yaml") {
-            rewrite_chart_readme(&path, &old, &released_plain)?
+            rewrite_chart_readme(&root.join(&path), &old, new)?
+                .map(|(_, content)| (path.with_file_name("README.md"), content))
         } else {
             None
         };
-        summary.push(format!("{}: {old} -> {released_plain}", path.display()));
+        summary.push(format!("{}: {old} -> {new}", path.display()));
         version_files.push((path, content));
         if let Some((readme, content)) = readme {
             summary.push(format!(
-                "{} [version badge: {old} -> {released_plain}]",
+                "{} [version badge: {old} -> {new}]",
                 readme.display()
             ));
             version_files.push((readme, content));
         }
     }
 
-    if let Some(lock) = bump_lockfile(uv_lock_path, &lock_packages, &released_plain, &mut summary)?
-    {
+    if let Some(lock) = bump_lockfile(root, uv_lock_path, &lock_packages, new, &mut summary)? {
         version_files.push(lock);
     }
     for (path, packages) in &cargo_locks {
-        if let Some(lock) = bump_lockfile(path, packages, &released_plain, &mut summary)? {
+        if let Some(lock) = bump_lockfile(root, path, packages, new, &mut summary)? {
             version_files.push(lock);
         }
     }
-
-    Ok(Some(ReleasePlan {
-        released,
-        changelog_path: changelog_path.to_path_buf(),
-        changelog_content,
-        section,
-        version_files,
-        summary,
-    }))
+    Ok((version_files, summary))
 }
 
 /// Extract a single `## ...` section (heading + body, trailing blanks trimmed)
@@ -2149,22 +2187,34 @@ mod tests {
 
     /// A crate that versions itself, as `benchmark-images` versions
     /// `mz-monitoring-benchmark`, bumps its entry in the workspace lockfile at
-    /// the repository root, which is not the directory beside its manifest.
+    /// the repository root. The plan names that lockfile `Cargo.lock`, as the
+    /// GitHub tree API takes it, and never by the absolute path `cargo
+    /// metadata` reports.
     #[test]
-    fn member_lock_entry_finds_the_workspace_lockfile() {
+    fn a_self_versioned_crate_plans_its_entry_in_the_root_cargo_lock() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let manifest = root.join("packages/mz-monitoring-benchmark/Cargo.toml");
-        let (lock, name) = member_lock_entry(&manifest).unwrap();
-        assert_eq!(name, "mz-monitoring-benchmark");
+        let comps = load_components(&root.join("packages/components.yaml")).unwrap();
+        let (files, _) = plan_version_files(
+            &root,
+            &comps["benchmark-images"].version_paths,
+            Path::new("uv.lock"),
+            "9.9.9",
+        )
+        .unwrap();
+        let paths: Vec<&Path> = files.iter().map(|(p, _)| p.as_path()).collect();
         assert_eq!(
-            std::fs::canonicalize(&lock).unwrap(),
-            std::fs::canonicalize(root.join("Cargo.lock")).unwrap()
+            paths,
+            [
+                Path::new("packages/mz-monitoring-benchmark/Cargo.toml"),
+                Path::new("Cargo.lock")
+            ]
         );
-        let text = std::fs::read_to_string(&lock).unwrap();
-        let (old, _) = rewrite_lock_version(&text, &name, "9.9.9").unwrap();
-        let manifest_text = std::fs::read_to_string(&manifest).unwrap();
-        let (declared, _) = rewrite_version_str(&manifest_text, true, "9.9.9").unwrap();
-        assert_eq!(old, declared, "Cargo.lock and the manifest disagree");
+        assert!(
+            files[1]
+                .1
+                .contains("name = \"mz-monitoring-benchmark\"\nversion = \"9.9.9\"\n"),
+            "the lockfile entry was not bumped"
+        );
     }
 
     #[test]
