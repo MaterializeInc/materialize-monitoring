@@ -31,7 +31,7 @@ and for what has shipped, see the [Changelog](/materialize-monitoring/preview/re
 ## How it works
 
 * [Architecture](/materialize-monitoring/preview/renovate-loki-21-x/architecture/) — the umbrella chart, the components it bundles, and how telemetry moves between them.
-* [o11y Glossary](/materialize-monitoring/preview/renovate-loki-21-x/o11y-glossary/) — the vocabulary the rest of these pages assume.
+* [Observability glossary](/materialize-monitoring/preview/renovate-loki-21-x/o11y-glossary/) — the vocabulary the rest of these pages assume.
 
 ## By signal
 
@@ -44,6 +44,10 @@ and for what has shipped, see the [Changelog](/materialize-monitoring/preview/re
 
 Metrics → Rules is a stub, so this page doesn't link to it.
 It appears in the sidebar because the section exists, and the [Roadmap](/materialize-monitoring/preview/renovate-loki-21-x/reference/development/roadmap/) tracks the work behind it.
+
+## Working with the data
+
+* [Observability tools](/materialize-monitoring/preview/renovate-loki-21-x/o11y-tools/overview/) — Grafana in a browser, the Grafana MCP server for AI agents, `gcx`, and the backend APIs, compared by audience, access, ease of use, and stability.
 
 ## Operating the stack
 

@@ -213,9 +213,12 @@ The notes below cover the ad-hoc / verification path when iterating from a Claud
 
 ### Use the v2 API directly
 
-`mcp-grafana` 's built-in `get_dashboard_by_uid` and `update_dashboard` tools convert dashboards to the v1
-representation on the way out, which strips queries from v2-only panel/layout features.
-For anything that must round-trip a v2 dashboard, hit the v2 resource API via `grafana_api_request`:
+`mcp-grafana` reads and writes v2 dashboards natively from version 0.16.0, and its 2.x releases fix several v2 bugs.
+An older version converts dashboards to the v1 representation on the way out, which strips queries from v2-only panel and layout features.
+For which version to use, see [Grafana MCP server](../../../../o11y-tools/grafana-mcp/).
+
+To control every field of the request yourself, such as the folder and version-message annotations described later on this page,
+use the v2 resource API through `grafana_api_request`:
 
 ```text
 GET /apis/dashboard.grafana.app/v2/namespaces/default/dashboards/<uid>

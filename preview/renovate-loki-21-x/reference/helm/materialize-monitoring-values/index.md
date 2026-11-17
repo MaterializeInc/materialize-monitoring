@@ -40,14 +40,14 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.15.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.15.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.4.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.2.3 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.4.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.3.1 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.4.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 5.0.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.5 |
-| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.48.0 |
+| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.49.0 |
 
 ## Values {#values}
 
@@ -112,6 +112,97 @@ is a certificate whose SANs name a domain the cluster does not use.
 Load-bearing for `certificates`: the SAN ladder ends in
 `$svc.$ns.svc.$clusterDomain`, so a wrong value here produces certificates
 that fail verification against the endpoints this chart itself dials.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "SSL_CERT_DIR",
+    "value": "/etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Environment for every Loki and Thanos container: the trust bundle's `SSL_CERT_DIR`.
+The trust bundle adds your own CAs to the roots each component trusts for
+outbound TLS, such as an S3-compatible store behind a private CA. Create a
+ConfigMap or a Secret named `mzmon-trust-bundle`, then restart the pods. See
+[Securing](https://materializeinc.github.io/materialize-monitoring/operating/securing/#trust-a-private-ca).
+
+`SSL_CERT_DIR` names the directories a Go process loads its roots from. The
+value keeps Go's own defaults, `/etc/ssl/certs` and `/etc/pki/tls/certs`,
+and adds the two trust-bundle mounts. Go reads the image's CA file as well,
+so the image's public roots stay trusted. The Alloy roles and Alertmanager
+carry the same value; see `alloy-gateway.controller.volumes.extra` and
+`alertmanager.extraVolumes`.
+
+Loki and Thanos are the only subcharts that read `global.extraEnv`,
+`global.extraVolumes`, and `global.extraVolumeMounts`. Each adds them to
+every component, ahead of its `defaults` and per-component lists, so the
+trust bundle stays out of the way of profiles that replace those lists,
+such as `mtls`. Loki's memcached takes the environment without the volumes,
+which does no harm, because it makes no outbound TLS connection.
+
+**These are lists, and Helm replaces lists.** Setting one of them here
+replaces the trust-bundle entries. Put your own environment and volumes in
+`loki.defaults` and in the Thanos component lists, which are added to these.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.extraVolumes</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "configMap": {
+      "name": "mzmon-trust-bundle",
+      "optional": true
+    },
+    "name": "mzmon-trust-bundle-configmap"
+  },
+  {
+    "name": "mzmon-trust-bundle-secret",
+    "secret": {
+      "items": [
+        {
+          "key": "ca.crt",
+          "path": "ca.crt"
+        }
+      ],
+      "optional": true,
+      "secretName": "mzmon-trust-bundle"
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Volumes for every Loki and Thanos pod: the trust bundle's ConfigMap and Secret.
+Both are `optional`, so a pod starts whether or not they exist, and mounts
+an empty directory for a missing one. The ConfigMap mounts every key, which
+suits a trust-manager `Bundle` whatever key it targets. The Secret mounts
+only `ca.crt`, so a Secret that also holds a private key, such as one
+cert-manager issued, never puts the key in the pod.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">global<wbr>.extraVolumeMounts</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "mountPath": "/etc/mzmon/trust-bundle/configmap",
+    "name": "mzmon-trust-bundle-configmap",
+    "readOnly": true
+  },
+  {
+    "mountPath": "/etc/mzmon/trust-bundle/secret",
+    "name": "mzmon-trust-bundle-secret",
+    "readOnly": true
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Mounts for the trust-bundle volumes, at the directories `SSL_CERT_DIR` names.
 </td>
     </tr>
   </tbody>
@@ -951,10 +1042,17 @@ opposite rule and takes its own namespace; the chart handles both.
 </td>
       <td class="helm-value-desc">The browser-facing name, for a Grafana behind an L4 load balancer.
 
-Only Grafana takes an external certificate today, because it is the only
+Only Grafana takes an external certificate, because it is the only
 component in the stack meant for a human and the only one this chart helps
 expose. Set `dnsNames` to the hostname the load balancer answers on; it must
 match what users actually type, and what `grafana.ini.server.root_url` says.
+
+The certificate lands in the Secret `<fullname>-grafana-external-tls`, which
+is `mzmon-grafana-external-tls` at the default `fullnameOverride`. Issuing it
+serves nothing by itself. Grafana serves it once `grafana.ini.server.protocol`
+is `https` and the Secret is mounted where `cert_file` and `cert_key` point.
+The `grafana-https` profile sets all of that, and the render refuses an
+`https` Grafana with no certificate to serve.
 
 Leave `issuerRef.name` empty and nothing external is rendered, which is the
 right answer for an L7 load balancer holding a cloud-managed certificate.
@@ -1500,6 +1598,38 @@ collecting from a CNI that *is* present.
       <td class="helm-value-desc">Override for default metric endpoints
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">callHome<wbr>.level</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"off"</code></td>
+      <td class="helm-value-desc">How much telemetry the gateway sends to Materialize's control plane: `off`, `heartbeat`, `alerts`, `metrics`, or `diagnostics`.
+
+Each level sends everything the level below it sends, and more.
+`off` sends nothing, and it's the default.
+
+| Level | What crosses |
+| --- | --- |
+| `off` | Nothing. |
+| `heartbeat` | The heartbeat: a fixed record of the install's versions and monitoring-stack health, at the `heartbeat` metric tier. |
+| `alerts` | The heartbeat and alert state (`ALERTS`), at the `alerts` metric tier. |
+| `metrics` | Metrics at the `essential` tier, which holds the heartbeat and `ALERTS`. |
+| `diagnostics` | Metrics at the `essential` tier, and logs at `WARN` and above, at most 500 lines per second per gateway replica with bursts of 5000. Lines whose level the gateway couldn't determine aren't sent. The gateway's secret filter is on, whatever `pipeline.logging.secretFilter.mode` says. |
+
+The level builds the destination `pipeline.destinations.controlPlane`, an `otlp` destination
+to `https://telemetry.c.cloud.materialize.com` that authenticates with the client certificate
+in the Secret `mzmon-alloy-gateway-destination-tls`.
+An entry you write under `pipeline.destinations.controlPlane` is applied over it.
+It can change the wire, such as `url`, `tls`, and `queue`, and it can send less than the level,
+but the render fails if it sends more: a wider metric tier, a lower log level, `logs.keepUnknown`, or a higher rate limit.
+At `off`, the render fails if the entry is there at all, unless it's `enabled: false`.
+
+The heartbeat is recorded by the bundled Thanos ruler, so above `off` it needs `rules.enabled`
+and `thanos.global.serviceMonitor.enabled`; the render warns without them.
+
+Only this key raises the level. Nothing in the chart reads a level from Materialize.
+`profiles/call-home.values.yaml` sets `diagnostics`.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -1625,7 +1755,7 @@ Forward into the gateway's own entry points, so the data gets the same processin
 | Scraped metrics | `otelcol.receiver.prometheus.inputBridge.receiver` |
 | Pushed metrics that may lack `job` or `instance` | `prometheus.relabel.receiveIdentity.receiver` |
 | Loki log entries | `loki.process.inputPrefilter.receiver` |
-| OTLP metrics | `otelcol.processor.transform.inputMetricProcessor.input` |
+| OTLP metrics | `otelcol.processor.transform.localTenant.input` |
 | OTLP logs | `otelcol.exporter.loki.bridge.input` |
 
 These are internal component names, not a stable interface: if a release renames one, the pre-validate job fails rather than the gateway.
@@ -1650,6 +1780,72 @@ pipeline:
           }
         }
 ```
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false,
+  "format": "",
+  "header": "X-Amzn-Mtls-Clientcert-Subject"
+}</pre>
+</td>
+      <td class="helm-value-desc">Take each OTLP request's tenant from the client certificate a proxy verified, for Materialize's control plane.
+
+For the gateway that receives call-home telemetry from many installs, behind a proxy that terminates mTLS.
+The proxy checks each client certificate against its trust store and passes what it found on in a header.
+When this is on, the OTLP receiver on `4317` and `4318` reads that header,
+and every log record and metric data point takes its tenant from the CN of the certificate's subject:
+
+- Logs go to the Loki tenant the CN names, overriding `pipeline.logging.tenancy`.
+- Metrics carry the CN in the `mzmonTenant` label.
+  Run Thanos Receive with `--receive.split-tenant-label-name=mzmonTenant`, and it writes each series to that tenant and removes the label.
+
+| Proxy | `header` | `format` |
+| --- | --- | --- |
+| AWS Application Load Balancer, mTLS in verify mode | `X-Amzn-Mtls-Clientcert-Subject` | `subject` |
+| nginx, with `proxy_set_header X-SSL-Client-S-DN $ssl_client_s_dn;` | `X-SSL-Client-S-DN`, or the name you set | `subject` |
+| Envoy, with `forward_client_cert_details: SANITIZE_SET` and `subject` set | `X-Forwarded-Client-Cert` | `xfcc` |
+
+The gateway drops a request with no header, a header sent twice or naming more than one certificate,
+a subject with more than one CN, an escaped character, or a multi-valued attribute (`+`),
+or a CN that isn't 1 to 150 letters, digits, `.`, `_`, and `-`.
+It replaces whatever tenant the sender set, and no other way in can set one:
+the gateway removes `mzmonTenant` from scraped and remote-written metrics.
+
+**The proxy has to verify the certificate and set the header on every request,** replacing any copy the client sent.
+For nginx that means `ssl_verify_client on`; `optional_no_ca` passes on a subject it never checked.
+
+**Every OTLP sender then has to come through the proxy,** because any pod that can reach `4317` or `4318` could send the header itself.
+In `alloy-gateway.networkPolicy.ingress`, admit only the proxy to those ports:
+its subnets by `ipBlock`, or its pods by a selector that names them.
+The render fails while a rule admits every pod.
+Behind an AWS load balancer, it also fails while `pipeline.logging.gateway.server.tls.clientAuth` asks for a client certificate,
+which the load balancer doesn't present.
+nginx and Envoy can present one, and requiring a certificate only the proxy holds keeps out any pod that skips it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Read each OTLP request's tenant from the proxy's client-certificate header.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.header</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"X-Amzn-Mtls-Clientcert-Subject"</code></td>
+      <td class="helm-value-desc">The header the proxy sets, in any case.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.format</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">How to read `header`. `subject` is an RFC 2253 subject, such as `CN=stack-a,O=Materialize`. `xfcc` is Envoy's `X-Forwarded-Client-Cert`. Empty means `xfcc` when `header` is `X-Forwarded-Client-Cert`, and `subject` otherwise.
 </td>
     </tr>
   </tbody>
@@ -1694,6 +1890,7 @@ The render warns when more than one log destination blocks.
 **Names become Alloy component labels**, so they must match `[a-zA-Z_][a-zA-Z0-9_]*`.
 `egress` and `destination` are reserved.
 A name that breaks either rule fails at render.
+`controlPlane` is the destination `callHome.level` builds.
 `loki` and `prometheus` components take the bare name; every other type's components are labeled `dest_<name>`.
 
 **Fields are optional.** Anything an entry omits falls back to the defaults below.
@@ -1718,7 +1915,7 @@ The following table lists each field, the types it applies to, and its default:
 | `logs.sampleRate` | `loki`, `otlp`, `datadog`, `s3` | `1` | Fraction of entries kept, above 0 and at most 1. |
 | `logs.rateLimit` | `loki`, `otlp`, `datadog`, `s3` | off | `rate` (lines per second) and `burst` (whole lines; defaults to `rate`, rounded up). Entries over the limit are dropped. |
 | `metrics.enabled` | `otlp`, `googleCloud`, `datadog`, `prometheus` | on for `googleCloud`, `prometheus`; on when `metrics` is present otherwise | Send metrics here. |
-| `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `essential` to `all`. |
+| `metrics.minMetricImportance` | `otlp`, `googleCloud`, `datadog`, `prometheus` | `recommended` for `googleCloud`, `datadog`; else `all` | Tier floor, `heartbeat` to `all`. `heartbeat` and `alerts` send only the call-home heartbeat, and with `alerts`, `ALERTS`. |
 | `protocol` | `otlp` | `http` | `http` or `grpc`. |
 | `compression` | `otlp`, `googleCloud`, `s3` | `gzip` | Request or object compression; `s3` also takes `none`. |
 | `project` / `location` | `googleCloud` | detected on GKE | The project and location every series is filed under. Required off GKE. |
@@ -3318,6 +3515,32 @@ Reference: https://grafana.github.io/grafana-operator/docs/api/#grafanaspec
       <td class="helm-value-desc">Secret for Grafana API key
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.grafana<wbr>.tls</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">How grafana-operator verifies Grafana's certificate, as the `Grafana` resource's `spec.client.tls`.
+Applies in `bundled` and `external` modes. Takes either
+`insecureSkipVerify: true`, or `certSecretRef` naming a Secret whose
+`ca.crt` is the CA to trust; grafana-operator rejects both at once.
+
+Empty, a bundled Grafana that serves HTTPS (`grafana.grafana.ini.server.protocol`
+is `https`) gets `insecureSkipVerify: true`. Grafana then presents its
+browser-facing certificate, which names the public hostname rather than
+the Service the operator dials, so no CA makes the name match. A Grafana on
+plain HTTP gives this hop no TLS at all, so skipping verification is no
+weaker than the default.
+
+`certSecretRef` works when Grafana serves a certificate that also names
+its Service, such as one from a private CA that signs both its public and
+in-cluster names. grafana-operator also presents the Secret's `tls.crt` and
+`tls.key` as a client certificate.
+
+Reference: https://grafana.github.io/grafana-operator/docs/api/#grafanaspecclienttls
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -3900,8 +4123,9 @@ read, and recording one costs a few series. `selected`, `disabled` and
 | `egress-gateway` | A dedicated egress-gateway node pool, identified by a `workload` label |
 
 The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
-`kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
-present when this chart runs the component and collects its metrics, and
+`kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` and
+`thanos`, each present when this chart runs the component and collects its
+metrics, and
 `cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the
 gateway runs that provider pull (`pipeline.metrics.provider.*`). List one
 here as well when something outside the chart provides it — your own
@@ -4859,6 +5083,16 @@ memory limit above.
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/configmap",
+      "name": "mzmon-trust-bundle-configmap",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/secret",
+      "name": "mzmon-trust-bundle-secret",
+      "readOnly": true
     }
   ],
   "varlog": true
@@ -5229,6 +5463,16 @@ arguments against it.
     {
       "mountPath": "/etc/mzmon/destination-tls",
       "name": "mzmon-destination-tls",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/configmap",
+      "name": "mzmon-trust-bundle-configmap",
+      "readOnly": true
+    },
+    {
+      "mountPath": "/etc/mzmon/trust-bundle/secret",
+      "name": "mzmon-trust-bundle-secret",
       "readOnly": true
     }
   ],
@@ -6036,7 +6280,7 @@ that holds Loki's own HTTP port at phase 2.
   "pullPolicy": "IfNotPresent",
   "registry": "ghcr.io",
   "repository": "jkroepke/access-log-exporter",
-  "tag": "1.0.1"
+  "tag": "1.0.2"
 }</pre>
 </td>
       <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
@@ -8348,7 +8592,7 @@ for the full checklist.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/grafana",
-  "tag": "13.3.0"
+  "tag": "13.3.1"
 }</pre>
 </td>
       <td class="helm-value-desc">Grafana server image.
@@ -8537,6 +8781,10 @@ is the only option that lifts both constraints.
 default and the reason a fresh install needs `kubectl port-forward`. Prefer
 `ingress` over a `LoadBalancer` Service: Grafana is ordinary HTTP that wants
 host-based routing and a certificate, which is what Ingress is for.
+
+A `LoadBalancer` Service is an L4 load balancer, which passes TCP through, so
+TLS has to terminate in Grafana. The `grafana-https` profile does that from
+the certificate `certificates.external` issues, and moves `port` to 443.
 
 A `LoadBalancer` Service with no `loadBalancerSourceRanges` is an error at
 render time unless `connections.grafana.allowPublicAccess` is set.
@@ -8827,7 +9075,7 @@ the StatefulSet, whose volumes do not follow; see
       <td class="helm-value-default"><pre>
 {
   "repository": "quay.io/prometheus/alertmanager",
-  "tag": "v0.34.2"
+  "tag": "v0.35.0-distroless"
 }</pre>
 </td>
       <td class="helm-value-desc">Alertmanager image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -8835,8 +9083,20 @@ the StatefulSet, whose volumes do not follow; see
 So Renovate bumps Alertmanager on its own cadence, with Alertmanager's own
 release notes, instead of only when a chart release happens to carry a new
 `appVersion`. Grafana is pinned the same way. This chart's `repository`
-carries the registry host; there is no separate `registry` key. The
-profiles under `profiles/registry/` repoint `repository` and keep this tag.
+carries the registry host; there is no separate `registry` key.
+
+The `-distroless` tag is upstream's image with no shell and no package
+manager. Nothing in this configuration needs a shell, and `amtool` is in
+the image, so `kubectl exec ... -- amtool` works. The image's default user
+is 65532; `securityContext` pins 65534, which owns the data volumes. The
+subchart has no `distroless` switch like `node-exporter.image.distroless`,
+so the suffix lives in `tag`; Renovate keeps a tag's suffix when it bumps
+the version.
+
+The profiles under `profiles/registry/` repoint `repository`. The mirror
+profile keeps this tag. The Chainguard and Docker Hardened Images profiles
+restate it without the suffix, which neither vendor publishes; DHI's also
+drops the leading `v`.
 </td>
     </tr>
     <tr>
@@ -8934,6 +9194,26 @@ ConfigMap over `/etc/alertmanager`, the directory that holds the chart's.
       ],
       "secretName": "alertmanager-config"
     }
+  },
+  {
+    "configMap": {
+      "name": "mzmon-trust-bundle",
+      "optional": true
+    },
+    "name": "mzmon-trust-bundle-configmap"
+  },
+  {
+    "name": "mzmon-trust-bundle-secret",
+    "secret": {
+      "items": [
+        {
+          "key": "ca.crt",
+          "path": "ca.crt"
+        }
+      ],
+      "optional": true,
+      "secretName": "mzmon-trust-bundle"
+    }
   }
 ]</pre>
 </td>
@@ -8947,6 +9227,24 @@ unchanged in every TLS phase. It presents a client certificate only when
 `clientAuth` requires one.
 Mounted as a directory rather than with `subPath`, so it follows changes to
 the Secret.
+
+The last two volumes are the trust bundle, the same entries as
+`global.extraVolumes`, which this subchart doesn't read. With `extraEnv`,
+they add your CAs to what receivers such as a webhook are verified against.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "SSL_CERT_DIR",
+    "value": "/etc/ssl/certs:/etc/pki/tls/certs:/etc/mzmon/trust-bundle/configmap:/etc/mzmon/trust-bundle/secret"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Environment for the Alertmanager container: the trust bundle's `SSL_CERT_DIR`, as in `global.extraEnv`.
 </td>
     </tr>
     <tr>

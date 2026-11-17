@@ -15,9 +15,125 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.10.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.12.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.11.0
+
+* Take the gateway's OTLP tenant from a proxy's client-certificate header
+    * [materialize-monitoring#755](https://github.com/MaterializeInc/materialize-monitoring/pull/755)
+    * Added `pipeline.gateway.clientCertificateTenancy`, which takes each OTLP request's tenant from the client certificate a TLS-terminating proxy verified. It reads an AWS Application Load Balancer's, nginx's, or Envoy's header. It's off by default and meant for Materialize's control plane.
+    * The custom-sources entry point for OTLP metrics is now `otelcol.processor.transform.localTenant.input`. The previous entry point, `inputMetricProcessor`, still works.
+* Add the callHome.level consent ladder (DEP-280)
+    * [materialize-monitoring#745](https://github.com/MaterializeInc/materialize-monitoring/pull/745)
+    * Added `callHome.level`, which chooses how much telemetry crosses to Materialize's control plane: `off` (the default), `heartbeat`, `alerts`, `metrics`, or `diagnostics`. `heartbeat` sends the call-home heartbeat, `alerts` adds `ALERTS`, `metrics` sends the `essential` tier, and `diagnostics` adds logs at `WARN` and above. `profiles/call-home.values.yaml` sets `diagnostics`; set `callHome.level` after it for another level.
+    * `pipeline.destinations.controlPlane` is now built by `callHome.level`. An entry there can only send less than the level, and at `off` the render fails unless the entry is `enabled: false`. If you wrote this destination by hand, set `callHome.level` instead. Overrides that sent more than the profile, such as `metrics.minMetricImportance: recommended` or `logs.keepUnknown: true`, now fail the render. Narrower tiers, such as `metrics.minMetricImportance: alerts`, are accepted.
+    * At `diagnostics`, the gateway's secret filter is on whatever `pipeline.logging.secretFilter.mode` says. The call-home profile no longer sets the mode.
+* Add the call-home heartbeat and the alerts metric tier (DEP-281, DEP-282)
+    * [materialize-monitoring#746](https://github.com/MaterializeInc/materialize-monitoring/pull/746)
+    * `minMetricImportance` takes two narrower tiers above `essential`: `heartbeat`, the call-home heartbeat, and `alerts`, which adds `ALERTS`. A destination at `alerts` forwards alert state without any other metric.
+    * `ALERTS` moves from the `essential` tier to `alerts`. `essential` and every wider tier still include it, so no destination stops receiving it.
+    * The chart installs a `PrometheusRule`, `<fullname>-mzmon-heartbeat`, recording the call-home heartbeat: `mzmon:heartbeat`, `mzmon:build_info:count`, `mzmon:node_uname_info:count`, `mzmon:environment_info`, `mzmon:cluster_created_timestamp_seconds`, `mzmon:rules:count`, and `mzmon:rule_evaluation_failures:rate5m`. Destinations at `essential` or wider receive these series too. It installs where the bundled Thanos and its ServiceMonitors are on.
+    * `thanos` is a new derived rule capability, present when the chart runs Thanos and collects its metrics.
+    * The `alloy` rule capability is also derived from a monitored Alloy gateway, so rules reading Alloy's own metrics install where only the gateway runs.
+* Trust a private CA for outbound TLS (DEP-236)
+    * [materialize-monitoring#744](https://github.com/MaterializeInc/materialize-monitoring/pull/744)
+    * Trust a private CA for outbound TLS
+        * Create a ConfigMap or a Secret named `mzmon-trust-bundle` to add your CAs to the roots Loki, Thanos, both Alloy roles, and Alertmanager trust for outbound connections, such as an S3-compatible store behind a private CA or a webhook behind a TLS-intercepting proxy. The ConfigMap mounts every key, which suits a trust-manager `Bundle`. The Secret mounts only its `ca.crt` key. Restart the pods after you create or change it. In-cluster mTLS hops are unaffected. See "Trust a private CA" on the Securing page.
+        * With the Terraform module, pass the CAs as `trust_bundle_ca_pem`. The module creates the ConfigMap before it installs the release, and rolls the pods that read it when the PEM changes. Under the split-namespace profile, list the consumers' namespaces as `trust_bundle_namespaces`. Set `trust_bundle_enabled = true` when the PEM comes from a resource in the same apply.
+        * Those pods gain `SSL_CERT_DIR` and two optional volumes, so they restart once on upgrade. The new defaults are in `global.extraEnv`, `global.extraVolumes`, `global.extraVolumeMounts`, Alloy's `controller.volumes.extra` and `alloy.mounts.extra`, and Alertmanager's `extraVolumes`, `extraVolumeMounts`, and `extraEnv`. If you replace one of those lists, restate the trust-bundle entries.
+
+### Dependencies
+
+* <details><summary>Included Pipelines @ v0.12.0..v0.13.0</summary>
+
+    * Tune the ingest rules and the card-number skip on install data (DEP-313)
+        * [materialize-monitoring#757](https://github.com/MaterializeInc/materialize-monitoring/pull/757)
+    * Add a Compliance tab to Alloy Meta Monitoring (DEP-316)
+        * [materialize-monitoring#756](https://github.com/MaterializeInc/materialize-monitoring/pull/756)
+    * Replace payment card numbers at the gateway with stage.luhn (DEP-310)
+        * [materialize-monitoring#749](https://github.com/MaterializeInc/materialize-monitoring/pull/749)
+        * The gateway replaces payment card numbers in log lines with `<redacted:luhn>`, in every secret-filter mode. Epoch timestamps in milliseconds, microseconds, and nanoseconds are exempt, and so are JSON numbers, so a JSON line stays JSON. `loki_process_custom_luhn_redacted_lines_total` counts the changed lines by stream.
+
+  </details>
+
+* Included Prometheus Scrapers @ v0.6.0..v0.7.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.15.0..v0.16.0</summary>
+
+    * Update Rust crate jsonschema to v0.61.2
+        * [materialize-monitoring#748](https://github.com/MaterializeInc/materialize-monitoring/pull/748)
+        * [`v0.61.2`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0612---2026-11-12)
+    * Update Rust crate zip to v9.5.1
+        * [materialize-monitoring#735](https://github.com/MaterializeInc/materialize-monitoring/pull/735)
+        * [`v9.5.1`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#951---2026-11-10)
+
+  </details>
+
+## Container Images v0.11.0 (Unreleased)
+
+_Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.10.0
+
+* Update ghcr.io/materializeinc/mzmon-alloy Docker tag to v1.22.0
+    * [materialize-monitoring#743](https://github.com/MaterializeInc/materialize-monitoring/pull/743)
+* Update grafana monorepo
+    * [materialize-monitoring#714](https://github.com/MaterializeInc/materialize-monitoring/pull/714)
+    * [`v13.3.1`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1331-2026-11-10)
+    * [`v14.4.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/grafana-14.4.1)
+* Update ghcr.io/jkroepke/access-log-exporter Docker tag to v1.0.2
+    * [materialize-monitoring#731](https://github.com/MaterializeInc/materialize-monitoring/pull/731)
+    * [`v1.0.2`](https://redirect.github.com/jkroepke/access-log-exporter/compare/v1.0.1...v1.0.2)
+* Update thanos Helm Chart to v0.49.0
+    * [materialize-monitoring#732](https://github.com/MaterializeInc/materialize-monitoring/pull/732)
+    * [`v0.49.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.49.0)
+* Serve Grafana over HTTPS from its external certificate
+    * [materialize-monitoring#739](https://github.com/MaterializeInc/materialize-monitoring/pull/739)
+    * New `grafana-https` profile, for a Grafana behind an L4 load balancer: Grafana serves the certificate `certificates.external` issues, on Service port 443, and reloads it on renewal. The probes and Grafana's ServiceMonitor switch to HTTPS, and grafana-operator connects over HTTPS. New `connections.grafana.tls` sets how grafana-operator verifies Grafana's certificate. The render refuses an HTTPS Grafana that is missing its certificate files, an HTTPS probe, an HTTPS scrape, or an `https://` `root_url`.
+    * The Terraform module serves Grafana over HTTPS whenever `grafana_external_dns_names` issues it a certificate, with `root_url` set to the first name. `grafana_url` becomes `https://`.
+* Update quay.io/prometheus/alertmanager Docker tag to v0.35.0 (and use distroless)
+    * [materialize-monitoring#705](https://github.com/MaterializeInc/materialize-monitoring/pull/705)
+    * Alertmanager runs upstream's distroless image, `v0.35.0-distroless`, which has no shell or package manager. `amtool` is still in the image.
+        * The Chainguard and Docker Hardened Images registry profiles now set `alertmanager.image.tag` without the suffix, which neither vendor publishes. The DHI profile's tag also drops the leading `v`, as DHI spells its versions.
+    * [`v0.35.0`](https://redirect.github.com/prometheus/alertmanager/releases/tag/v0.35.0): 0.35.0 / 2026-11-09
+* Update kube-state-metrics Helm Chart to v9.0.1
+    * [materialize-monitoring#724](https://github.com/MaterializeInc/materialize-monitoring/pull/724)
+    * [`v9.0.1`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/kube-state-metrics-9.0.1)
+* Default Thanos Receive to replication factor 2
+    * [materialize-monitoring#727](https://github.com/MaterializeInc/materialize-monitoring/pull/727)
+    * Thanos Receive's default replication factor is 2, down from 3, in the base values and every shipped profile. Thanos gives a factor of 2 a write quorum of 1, so Receive still survives the loss of one pod, and each pod holds two thirds of the series instead of all of them. The upgrade rolls the Receive StatefulSet one pod at a time. To keep a factor of 3, set `thanos.receive.extraArgs` to `["--receive.replication-factor=3"]`, restating any TLS flags your install carries. See "Thanos Receive: replication factor 2" on the upgrading page.
+    * The render-time check no longer warns at replication factor 2, and its PodDisruptionBudget check uses Thanos's quorum of 1 at that factor.
+* Update prometheus-postgres-exporter Helm Chart to v8.2.5
+    * [materialize-monitoring#636](https://github.com/MaterializeInc/materialize-monitoring/pull/636)
+    * [`v8.2.5`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.5)
+    * [`v8.2.4`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.4)
+    * [`v8.2.3`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.3)
+    * [`v8.2.2`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.2)
+    * [`v8.2.1`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-postgres-exporter-8.2.1)
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.6.0..v0.7.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.15.0..v0.16.0</summary>
+
+    * Update Rust crate rustls-pki-types to v1.16.0
+        * [materialize-monitoring#736](https://github.com/MaterializeInc/materialize-monitoring/pull/736)
+    * Update Rust crate zip to v9.5.0
+        * [materialize-monitoring#704](https://github.com/MaterializeInc/materialize-monitoring/pull/704)
+        * [`v9.5.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#950---2026-11-08)
+        * [`v9.4.2`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#942---2026-11-07)
+        * [`v9.4.1`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#941---2026-11-06)
+        * [`v9.4.0`](https://redirect.github.com/zip-rs/zip2/blob/HEAD/CHANGELOG.md#940---2026-11-05)
+    * Update Rust crate uuid to v1.29.2
+        * [materialize-monitoring#726](https://github.com/MaterializeInc/materialize-monitoring/pull/726)
+        * [`v1.29.2`](https://redirect.github.com/uuid-rs/uuid/releases/tag/v1.29.2)
+    * Update Rust crate jsonschema to 0.61.0
+        * [materialize-monitoring#721](https://github.com/MaterializeInc/materialize-monitoring/pull/721)
+        * [`v0.61.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0610---2026-11-08)
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.9.0
 
@@ -63,9 +179,17 @@ _Changes Pending_
 
 _Changes Pending_
 
-## Container Images v0.10.0 (Unreleased)
+## Container Images v0.10.0
 
-_Changes Pending_
+* Update dependency grafana/alloy to v1.22.0
+    * [materialize-monitoring#741](https://github.com/MaterializeInc/materialize-monitoring/pull/741)
+    * [`v1.22.0`](https://redirect.github.com/grafana/alloy/releases/tag/v1.22.0)
+* Update gcr.io/distroless/base-debian13 Docker digest to 0e48b9b
+    * [materialize-monitoring#729](https://github.com/MaterializeInc/materialize-monitoring/pull/729)
+* Update gcr.io/distroless/base-debian13 Docker digest to ca90dc2
+    * [materialize-monitoring#698](https://github.com/MaterializeInc/materialize-monitoring/pull/698)
+* Update debian:13 Docker digest to 9c6e381
+    * [materialize-monitoring#696](https://github.com/MaterializeInc/materialize-monitoring/pull/696)
 
 ## mzmon-lib (shared library) v0.15.0
 
