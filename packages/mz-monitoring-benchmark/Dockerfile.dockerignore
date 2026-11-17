@@ -1,0 +1,13 @@
+# BuildKit reads this for packages/mz-monitoring-benchmark/Dockerfile, whose
+# context is the repository root. Cargo needs every workspace member's manifest
+# and sources to resolve the workspace, and nothing else.
+*
+!Cargo.toml
+!Cargo.lock
+!packages/dashboards/
+!packages/mz-monitoring-benchmark/
+!packages/mz-monitoring-build/
+!packages/mz-monitoring-check/
+!packages/mz-monitoring-e2e/
+!packages/mzmon-lib/
+**/target/

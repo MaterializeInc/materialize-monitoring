@@ -39,6 +39,10 @@ repos:
       - id: check-added-large-files
         # scrapeconfig schema is largest file
         args: [--maxkb=640]
+        # Generated text, sized by the install it is captured from: environmentd's
+        # holds every built-in object's series. Capped by fixture-gen's
+        # --max-exemplars rather than by this hook.
+        exclude: ^packages/mz-monitoring-benchmark/fixtures/
       - id: check-yaml
         # Helm templates contain Go template syntax and are not valid YAML.
         # Vendored subcharts (charts/<chart>/charts/<sub>/templates/) count too.

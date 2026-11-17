@@ -33,3 +33,11 @@ charts/materialize-monitoring/pre-rendered/rules/**/*.yaml linguist-generated=tr
 charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml linguist-generated=true
 charts/materialize-monitoring/README.md linguist-generated=true
 docs/content/reference/helm/materialize-monitoring-values.md linguist-generated=true
+
+# Load-test fixtures: collapsed too.
+#
+# `mz-monitoring-benchmark fixture-gen` captures and anonymizes them from a live
+# install, so the anonymizer in src/anonymize.rs is the diff to read. The crate's
+# `committed_fixtures_carry_no_identifiers` test scans every committed fixture,
+# so collapsing the view cannot hide an identifier from CI.
+packages/mz-monitoring-benchmark/fixtures/**/*.tmpl linguist-generated=true

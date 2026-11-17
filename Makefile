@@ -309,6 +309,17 @@ alloy-image.iid: $(wildcard packages/alloy/*) Makefile alloy-image.tag
 alloy-image: alloy-image.iid
 .PHONY: alloy-image
 
+# The load-testing image (`test/load/`). Not part of `docker-images`: it is never
+# released, so it is built on demand and pushed wherever the test cluster pulls
+# from, such as `make CONTAINER_REGISTRY=<registry> benchmark-image`.
+BENCHMARK_VERSION ?= $(shell grep -E '^version = ' packages/mz-monitoring-benchmark/Cargo.toml | head -n1 | cut -d'"' -f2)
+BENCHMARK_IMAGE = $(CONTAINER_REGISTRY)/mz-monitoring-benchmark:$(BENCHMARK_VERSION)
+
+benchmark-image:
+	docker buildx build --load --platform linux/amd64,linux/arm64 --tag $(BENCHMARK_IMAGE) \
+		-f packages/mz-monitoring-benchmark/Dockerfile .
+.PHONY: benchmark-image
+
 ### HELM CHARTS ###
 
 # Helm chart name

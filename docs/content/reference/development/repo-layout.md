@@ -62,6 +62,10 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       `terraform-render` is the tier-0 Terraform render check behind `make terraform-render`.
       It plans each module example, renders the chart against the composed values, and runs the assertions under `src/terraform_render/checks/`.
       Each assertion runs as one libtest-style trial per example
+    * `mz-monitoring-benchmark/`: the load-testing tool (see [Load testing](../load-testing/)).
+      `fixture-gen` captures and anonymizes real scrapes into `fixtures/<role>/`, which are embedded in the binary;
+      `gen-load` serves them expanded to a requested size and writes logs in each role's format.
+      Its `Dockerfile` builds from the repository root with `make benchmark-image`
     * `mz-monitoring-e2e/`: Rust assertion suite for a *running* stack — one binary for every kind and cloud tier, reading the release's coalesced Helm values to decide what applies (`make e2e-verify`). Asserts only; installs nothing
   * `charts/`
     * `materialize-monitoring/`: umbrella chart
@@ -104,12 +108,13 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         Several clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
     * `test/generic-cloud/`: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
   * `test/e2e/`: kind cluster config and the failure-diagnostics collector (`make e2e-*`). The assertions themselves live in `packages/mz-monitoring-e2e`
+  * `test/load/`: the kustomization that runs one synthetic environment of `mz-monitoring-benchmark` pods behind `ServiceMonitor`s
   * `docs/`: Hugo docsite (the source of this page)
     * `hugo.toml`: site config; `go.mod` / `go.sum` pin the theme
     * `content/`: authored Markdown
       * `_index.md` files carry **frontmatter only** — no prose. A section's landing content lives in a regular page inside it at `weight: 1` (e.g. `logs-and-events/architecture.md`, `reference/development/contributing.md`), so every directory in the sidebar is a container and every clickable title is a real page. The site home `content/_index.md` is the one exception
       * top-level sections: `getting-started/`, `metrics/` (incl. `collecting/`), `logs-and-events/`, `dashboards/` (incl. `grafana/`), `alerting/`, `o11y-tools/`, `operating/`, plus `architecture.md` and `o11y-glossary.md`
-      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `development/` (this section — `dashboard/`, `queries/`, `pipelines/`, `design-docs/`, plus `contributing.md`, `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
+      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `development/` (this section — `dashboard/`, `queries/`, `pipelines/`, `design-docs/`, plus `contributing.md`, `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`, `load-testing.md`)
     * `layouts/`, `static/`, `assets/`, `data/`, `i18n/`, `archetypes/`, `themes/`: Hugo machinery
     * `public/`, `resources/`: generated output (not checked in)
   * `legacy/`: preserved field-engineering assets — `sql_exporter/`, `prometheus/`, `grafana/`, `datadog/`, `tests/`, `docker-compose.yml`, `scrape_config.yaml`

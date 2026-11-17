@@ -1,0 +1,20 @@
+# One synthetic Materialize environment's worth of load: `kubectl apply -k test/load`.
+# See docs/content/reference/development/load-testing.md for sizing and scaling.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mzmon-bench
+
+resources:
+  - namespace.yaml
+  - environmentd.yaml
+  - clusterd.yaml
+  - balancerd.yaml
+  - orchestratord.yaml
+  - console.yaml
+
+# Point this at wherever `make benchmark-image` pushed the image.
+images:
+  - name: mz-monitoring-benchmark
+    newName: ghcr.io/materializeinc/mz-monitoring-benchmark
+    newTag: "0.1.0"

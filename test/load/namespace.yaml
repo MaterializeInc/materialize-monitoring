@@ -1,0 +1,8 @@
+# A namespace of its own, so the gateway's per-namespace log limits meter the
+# load separately from real workloads, and teardown is one delete.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mzmon-bench
+  labels:
+    app.kubernetes.io/part-of: mz-monitoring-benchmark
