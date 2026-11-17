@@ -6052,7 +6052,7 @@ grafana-operator:
   image:
     registry: ghcr.io
     repository: grafana/grafana-operator
-    tag: v5.25.0
+    tag: v5.26.0
   # -- CRD behavior.
   # The Grafana Operator CRDs are owned by the `materialize-monitoring-crds`
   # chart, which vendors a deflated copy of them. The operator chart offers no
