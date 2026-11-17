@@ -68,7 +68,9 @@ You need a test install of the stack, whose gateway scrapes every `ServiceMonito
    helm install bench test/load --namespace mzmon-bench --create-namespace
    ```
 
-   The image tag defaults to the chart's version, which a release of the `benchmark-images` component publishes.
+   The chart isn't published, so install it from a checkout.
+   Its image tag defaults to the crate's version, the tag a release of the `benchmark-images` component publishes.
+   The chart reads that version from `files/Cargo.toml`, a symlink to the crate's manifest.
    To run a dev build, set `--set image.repository=REPOSITORY,image.tag=TAG`.
    Replace `REPOSITORY` and `TAG` with the image you built, such as one that `make CONTAINER_REGISTRY=REGISTRY benchmark-image` built and you pushed.
    A pull request that changes the crate also publishes a dev image tagged `VERSION-dev.0--pr.gSHA`.

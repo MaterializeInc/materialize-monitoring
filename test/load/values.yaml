@@ -10,8 +10,8 @@
 image:
   # -- Image repository.
   repository: ghcr.io/materializeinc/mz-monitoring-benchmark
-  # -- Image tag. Empty means the chart version, which a release keeps equal to
-  # the image's.
+  # -- Image tag. Empty means the crate's version in
+  # `packages/mz-monitoring-benchmark/Cargo.toml`, the tag a release publishes.
   tag: ""
   # -- Image pull policy.
   pullPolicy: IfNotPresent

@@ -31,14 +31,30 @@ tests:
           path: spec.template.spec.containers[0].args
           content: "--role=orchestratord"
 
-  - it: should default the image tag to the chart version
+  # The suite pins the chart version to 1.2.3, so a tag that is a version but
+  # not that one came from the crate's manifest through files/Cargo.toml.
+  - it: should default the image tag to the crate's version, not the chart's
+    documentSelector:
+      path: metadata.name
+      value: bench-clusterd
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: ^ghcr\.io/materializeinc/mz-monitoring-benchmark:\d+\.\d+\.\d+$
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: :1\.2\.3$
+
+  - it: should take an explicit image tag over the crate's version
+    set:
+      image.tag: dev.0--pr.gabc1234
     documentSelector:
       path: metadata.name
       value: bench-clusterd
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/materializeinc/mz-monitoring-benchmark:1.2.3
+          value: ghcr.io/materializeinc/mz-monitoring-benchmark:dev.0--pr.gabc1234
 
   - it: should pass only the sizing flags that are set
     documentSelector:

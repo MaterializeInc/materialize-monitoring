@@ -42,6 +42,24 @@ helm.sh/chart: {{ printf "%s-%s" .root.Chart.Name .root.Chart.Version | replace 
 {{- end }}
 
 {{/*
+The image tag: `image.tag`, or else the crate's version. `files/Cargo.toml` is a
+symlink to the crate's manifest, so a benchmark-images release, which bumps the
+crate and publishes the image at that version, moves this default too. Helm
+follows the symlink when it loads the chart from a checkout.
+*/}}
+{{- define "bench.imageTag" -}}
+{{- if .Values.image.tag }}
+{{- .Values.image.tag }}
+{{- else }}
+{{- $line := regexFind "(?m)^version = \"[^\"]+\"" (.Files.Get "files/Cargo.toml") }}
+{{- if not $line }}
+{{- fail "files/Cargo.toml has no version: it is a symlink to packages/mz-monitoring-benchmark/Cargo.toml, so install the chart from a checkout, or set image.tag" }}
+{{- end }}
+{{- $line | trimPrefix "version = \"" | trimSuffix "\"" }}
+{{- end }}
+{{- end }}
+
+{{/*
 The container name the real process runs under. The gateway chooses its log
 parsing (multiline panics, the JSON and text formats) by container name, and
 the operator's container is `materialize-operator`, not its binary's name.

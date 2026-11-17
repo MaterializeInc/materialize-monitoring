@@ -184,31 +184,26 @@ components:
     dependencies:
       - repo-common
 
-  # The load-testing image and the chart that runs it, for contributors sizing
-  # the stack. A stream of its own rather than part of container-images, whose
-  # image is tagged with the Alloy version it wraps; this one is tagged with its
-  # own. `publish-release` builds the image on a version-update/benchmark-images
-  # merge, and `publish-images-pr` builds a dev image for pull requests.
+  # The load-testing image, for contributors sizing the stack. A stream of its
+  # own rather than part of container-images, whose image is tagged with the
+  # Alloy version it wraps; this one is tagged with its own. `publish-release`
+  # builds the image on a version-update/benchmark-images merge, and
+  # `publish-images-pr` builds a dev image for pull requests.
+  #
+  # The chart in test/load that runs it is not published, so it is not part of
+  # this component. It reads the crate's version through a symlink for its
+  # default image tag, so a release moves that default without a bump of its own.
   benchmark-images:
     changelog: true
     title: "Benchmark Images"
     version_paths:
-      # The crate's version is the image tag, and the chart's image tag
-      # defaults to the chart's version, so the two move together.
+      # The crate's version is the image tag.
       - packages/mz-monitoring-benchmark/Cargo.toml
-      - test/load/Chart.yaml
-    # Published beside the image, because a chart that versions with it has to
-    # be (see `every_versioned_chart_is_published`).
-    charts:
-      - test/load
     content_paths:
       - packages/mz-monitoring-benchmark/
-      - test/load/
       - .github/actions/build-benchmark-image/
     dependencies:
       - repo-common
-    artifacts:
-      - charts/mz-monitoring-benchmark-[0-9]*.tgz
 
   mzmon-lib:
     changelog: true

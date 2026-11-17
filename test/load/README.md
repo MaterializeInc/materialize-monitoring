@@ -48,7 +48,7 @@ The image every pod runs.
       <td class="helm-value-key">image<wbr>.tag</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">Image tag. Empty means the chart version, which a release keeps equal to the image's.
+      <td class="helm-value-desc">Image tag. Empty means the crate's version in `packages/mz-monitoring-benchmark/Cargo.toml`, the tag a release publishes.
 </td>
     </tr>
     <tr>

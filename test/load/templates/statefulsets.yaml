@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: {{ include "bench.containerName" $ctx }}
-          image: {{ printf "%s:%s" $.Values.image.repository ($.Values.image.tag | default $.Chart.Version) | quote }}
+          image: {{ printf "%s:%s" $.Values.image.repository (include "bench.imageTag" $) | quote }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           args:
             - "gen-load"

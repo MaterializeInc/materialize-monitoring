@@ -1,7 +1,6 @@
 # Synthetic Materialize pods for load-testing the monitoring stack. Not
-# published: install it from a checkout. A release of the `benchmark-images`
-# component bumps `version` here together with the crate's, and the image tag
-# defaults to it.
+# published: install it from a checkout. Its version doesn't follow the image's;
+# the image tag defaults to the crate's version, read from files/Cargo.toml.
 apiVersion: v2
 name: mz-monitoring-benchmark
 description: >-

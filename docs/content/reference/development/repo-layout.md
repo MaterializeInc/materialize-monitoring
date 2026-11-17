@@ -108,7 +108,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         Several clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
     * `test/generic-cloud/`: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
   * `test/e2e/`: kind cluster config and the failure-diagnostics collector (`make e2e-*`). The assertions themselves live in `packages/mz-monitoring-e2e`
-  * `test/load/`: the Helm chart that runs one synthetic environment of `mz-monitoring-benchmark` pods behind `ServiceMonitor`s, released with the image by the `benchmark-images` component
+  * `test/load/`: the Helm chart that runs one synthetic environment of `mz-monitoring-benchmark` pods behind `ServiceMonitor`s, not published. `files/Cargo.toml` is a symlink to the crate's manifest, from which the chart takes its default image tag
   * `docs/`: Hugo docsite (the source of this page)
     * `hugo.toml`: site config; `go.mod` / `go.sum` pin the theme
     * `content/`: authored Markdown
