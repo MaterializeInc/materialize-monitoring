@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: ServiceMonitors
+templates:
+  - templates/servicemonitors.yaml
+release:
+  name: bench
+  namespace: mzmon-bench
+tests:
+  - it: should scrape every environmentd endpoint, each labeled by path
+    documentSelector:
+      path: metadata.name
+      value: bench-environmentd
+    asserts:
+      - lengthEqual:
+          path: spec.endpoints
+          count: 5
+      - equal:
+          path: spec.endpoints[1].path
+          value: /metrics/mz_compute
+      - equal:
+          path: spec.endpoints[1].relabelings[0].targetLabel
+          value: metrics_path
+
+  - it: should scrape a single-endpoint role without relabeling
+    documentSelector:
+      path: metadata.name
+      value: bench-balancerd
+    asserts:
+      - lengthEqual:
+          path: spec.endpoints
+          count: 1
+      - notExists:
+          path: spec.endpoints[0].relabelings
+
+  - it: should carry the interval and extra labels when set
+    set:
+      serviceMonitor.interval: 15s
+      serviceMonitor.labels.release: prometheus
+    documentSelector:
+      path: metadata.name
+      value: bench-console
+    asserts:
+      - equal:
+          path: spec.endpoints[0].interval
+          value: 15s
+      - equal:
+          path: metadata.labels.release
+          value: prometheus
+
+  - it: should render nothing when turned off
+    set:
+      serviceMonitor.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

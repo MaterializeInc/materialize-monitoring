@@ -1,0 +1,43 @@
+{{- /*
+One ServiceMonitor per role, with one endpoint per path the real process serves.
+A role with several paths labels each with `metrics_path`, as the chart's own
+SQL exporter monitor does; without it, every path's `up` series is the same one.
+*/}}
+{{- if .Values.serviceMonitor.enabled }}
+{{- range $role := include "bench.roles" $ | fromJsonArray }}
+{{- $ctx := dict "root" $ "role" $role }}
+{{- if include "bench.enabled" $ctx }}
+{{- $paths := include "bench.paths" $ctx | fromJsonArray }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "bench.name" $ctx }}
+  labels:
+    {{- include "bench.labels" $ctx | nindent 4 }}
+    {{- with $.Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "bench.selectorLabels" $ctx | nindent 6 }}
+  endpoints:
+    {{- range $paths }}
+    - port: metrics
+      path: {{ . }}
+      {{- with $.Values.serviceMonitor.interval }}
+      interval: {{ . }}
+      {{- end }}
+      {{- with $.Values.serviceMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+      {{- if gt (len $paths) 1 }}
+      relabelings:
+        - sourceLabels: [__metrics_path__]
+          targetLabel: metrics_path
+      {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

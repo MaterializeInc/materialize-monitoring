@@ -59,41 +59,38 @@ Every count, rate, and value carries a seeded spread of ±10% by default, which 
 
 ## Run a load test
 
-You need a test install of the stack whose gateway reads `ServiceMonitor` resources, and a registry that cluster pulls from.
+The chart in `test/load/` runs the pods, each behind a `ServiceMonitor`.
+You need a test install of the stack, whose gateway scrapes every `ServiceMonitor` in the cluster.
 
-1. Build the image and push it to your registry:
-
-   ```bash
-   make CONTAINER_REGISTRY=REGISTRY benchmark-image
-   ```
-
-   Replace `REGISTRY` with the registry, such as `ghcr.io/materializeinc`.
-   The target builds `linux/amd64` and `linux/arm64`; push the result with `docker push`.
-
-1. Set `images[0].newName` and `newTag` in `test/load/kustomization.yaml` to the image you pushed.
-
-1. Apply the manifests:
+1. Install the chart:
 
    ```bash
-   kubectl apply -k test/load
+   helm install bench test/load --namespace mzmon-bench --create-namespace
    ```
+
+   The image tag defaults to the chart's version, which a release of the `benchmark-images` component publishes.
+   To run a dev build, set `--set image.repository=REPOSITORY,image.tag=TAG`.
+   Replace `REPOSITORY` and `TAG` with the image you built, such as one that `make CONTAINER_REGISTRY=REGISTRY benchmark-image` built and you pushed.
+   A pull request that changes the crate also publishes a dev image tagged `VERSION-dev.0--pr.gSHA`.
 
 1. Watch the targets come up in the `mzmon-bench` namespace, and the load arrive on the **infra-alloy** and **infra-loki** dashboards.
 
 1. Remove the load when you're done:
 
    ```bash
-   kubectl delete -k test/load
+   helm uninstall bench --namespace mzmon-bench
    ```
 
-The manifests in `test/load/` describe one environment.
+The chart's defaults describe one environment.
 It has an `environmentd` with 25,000 collections on 10 clusters, one `clusterd` per cluster, and the operator, balancer, and console pods.
-To simulate more environments, scale every StatefulSet by the same factor.
+To simulate more environments, scale every role's `replicas` by the same factor.
 Each pod's seed differs, so every pod adds series of its own.
+For every value the chart takes, see its [README](https://github.com/MaterializeInc/materialize-monitoring/blob/main/test/load/README.md).
 
 The pods run in their own namespace, so the gateway's per-namespace log limits meter them apart from real workloads.
-Their containers are named for their roles, because the gateway chooses Materialize's log parsing by container name.
-Their pod labels aren't Materialize's, so the chart's own Materialize monitors and alerts ignore them.
+Each container takes the name its real process runs under, because the gateway chooses Materialize's log parsing by container name.
+That name is the role, except for `orchestratord`, whose container is `materialize-operator`.
+The pod labels aren't Materialize's, so the chart's own Materialize monitors and alerts ignore the pods.
 
 ## Size the load
 
@@ -118,63 +115,93 @@ cargo run --release -p mz-monitoring-benchmark -- preview \
 The output gives the series count and size of each endpoint per scrape.
 Add `--body PATH` to print an endpoint's body, and `--at SECONDS` to render a later moment of a growing scenario.
 
-## Shape the metrics
+## Shape the load over time
+
+The metric and log scenarios share one period, five minutes unless you set `period=` in a scenario.
+Every count in either scenario is per period.
+A count below 1 fires once every few periods, so `panic=0.25` is one panic every 20 minutes.
+
+Each shape repeats once per period, aligned to the wall clock, so a metric pulse and a log pulse with the same numbers line up.
+Every shape averages to 1 over the period, so a shaped rate keeps its configured mean.
+The following shapes are available:
+
+`average`
+: Constant.
+  `flat` is a synonym.
+
+`bell`
+: A Gaussian bump in the middle of the period.
+
+`sine`
+: One sine wave per period.
+
+`saw`
+: A ramp from nothing at the start of the period to twice the mean at its end.
+
+`pulseD`
+: On for the first `D` of each period and off for the rest, such as `pulse180` for three minutes on and two off.
+  `D` takes a unit, such as `pulse30s` or `pulse3m`, and is in seconds without one.
+
+`plateauD`
+: A ramp up, a hold for `D`, and a ramp down.
+
+### Shape the metrics
 
 `--metric-scenario` takes a comma-separated list of the following keys:
 
 `dist`
 : The shape gauges and counter rates follow.
-  `flat`, the default, keeps the captured values.
-  `pulseP`, `sineP`, `sawP`, and `walkP` swing them with a period of `P` seconds; a unit suffix such as `3m` also works.
-  Shapes follow the wall clock, so every pod moves in step.
+  The default is `average`, which keeps the captured values.
 
 `amp`
-: How far the shape swings values, as a fraction from 0 to 1.
+: How far the shape moves values, from 0 for none to 1 for the full shape.
   The default is `0.5`.
 
+`period`
+: The period, such as `5m`; at least `1s`.
+
 `collection-grow`, `shard-grow`
-: Entities added per minute, which grows the series count without bound.
+: Entities added per period, which grows the series count without bound.
 
 `collection-churn`, `shard-churn`
-: Entities replaced per minute: the oldest stop being served and new IDs appear.
+: Entities replaced per period: the oldest stop being served and new IDs appear.
   Churn is the expensive case for a TSDB head.
 
-## Shape the logs
+### Shape the logs
 
 `--log-scenario` takes a comma-separated list of the following keys:
 
 `trace`, `debug`, `info`, `warn`, `error`
-: Mean lines per minute at that level.
-  Naming any level replaces the default of `info=300,warn=30,error=3`.
+: Mean lines per period at that level.
+  Naming any level replaces the default of `info=1500,warn=150,error=15`.
 
 `LEVEL-dist`, `dist`
-: How a level's lines spread across each cycle, or every level's when you use `dist`.
-  `average`, the default, is constant.
-  `bell` is a Gaussian bump mid-cycle, and `sine` is a sine wave.
-  `pulseN` emits every line in the first `N` seconds of each minute, and `plateauN` ramps up, holds for `N` seconds of each minute, and ramps down.
-  `N` scales with the cycle, so `pulse15` is a quarter of any cycle.
-  Every shape keeps the level's mean rate.
+: The shape of one level's lines, or of every level's when you use `dist`.
+  The default is `average`.
 
-`cycle`
-: The cycle length; the default is `60s`.
+`period`
+: The period, such as `5m`; at least `1s`.
 
 `phase`
-: `sync`, the default, starts every pod's cycle on the same wall-clock boundary, so bursts across a fleet land together.
-  `seeded` offsets each pod's cycle.
+: `sync`, the default, starts every pod's period on the same wall-clock boundary, so bursts across a fleet land together.
+  `seeded` offsets each pod's period.
 
 `non-json`
-: Lines per minute in no structured format, written to stdout as `environmentd`'s startup banner is.
+: Lines per period in no structured format, written to stdout as `environmentd`'s startup banner is.
   Only `environmentd` and `clusterd` accept it, because the other roles' lines are already plain text.
 
 `eicar`
-: Lines per minute carrying both [secret-filter canaries](../design-docs/20260924-log-secret-filtering/#a-canary-in-the-spirit-of-eicar), at `WARN`.
+: Lines per period carrying both [secret-filter canaries](../design-docs/20260924-log-secret-filtering/#a-canary-in-the-spirit-of-eicar), at `WARN`.
 
-`panic-period`
-: The time between multi-line Rust panics, such as `1200s`.
+`panic`
+: Multi-line Rust panics per period.
   The console doesn't accept it, because it's nginx.
 
 `panic-exit`
 : `true` exits the process after each panic, the way a real panic does, so Kubernetes restarts the pod with the same seed.
+
+Each pod starts every count part of the way to its first line, at a seeded point.
+A fleet's rare events, such as panics, therefore don't fire on the same tick.
 
 ## Regenerate the fixtures
 
@@ -208,7 +235,10 @@ Don't drop it.
    An unclassified label's values are only scrubbed of recognizable patterns, such as UUIDs, addresses, and host names.
    Classify it in `src/anonymize.rs` before you commit.
 
-1. Run the tests, which scan the committed fixtures for identifiers and render every role at scale:
+   The command also checks every anonymized fixture for addresses, host names, UUIDs, raw user IDs, and cloud regions.
+   Its own stand-ins pass, and it writes nothing when anything else turns up.
+
+1. Run the tests, which repeat that check on the committed fixtures and render every role at scale:
 
    ```bash
    cargo test -p mz-monitoring-benchmark

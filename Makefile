@@ -387,6 +387,21 @@ charts/materialize-monitoring-crds/README.md: \
 		--log-level debug \
 		--ignore-non-descriptions
 
+# The load-testing chart's README, from its values.yaml + README template.
+test/load/README.md: \
+		test/load/values.yaml \
+		test/load/Chart.yaml \
+		tools/chartlib/helm-docs-lib.gotmpl \
+		test/load/README.md.gotmpl
+	$(HELM_DOCS) \
+		--chart-search-root test/load \
+		--template-files ../../tools/chartlib/helm-docs-lib.gotmpl \
+		--template-files README.md.gotmpl \
+		--output-file README.md \
+		--sort-values-order file \
+		--log-level debug \
+		--ignore-non-descriptions
+
 # Generate each dashboards chart's README.md from values.yaml + the README
 # template they share, which lives in the dashboards-common library chart and
 # reads the chart's name.
@@ -495,7 +510,8 @@ helm-unittest-install:
 HELM_TEST_CHARTS = \
 	charts/materialize-monitoring \
 	charts/materialize-monitoring-crds \
-	$(DASHBOARDS_CHARTS:%=charts/%)
+	$(DASHBOARDS_CHARTS:%=charts/%) \
+	test/load
 
 # Runs every suite as its own `helm unittest` process, as many at once as there
 # are CPUs (HELM_TESTS_JOBS overrides). See bin/helm-tests.sh for why. To run one
@@ -561,6 +577,7 @@ helm-docs: \
 	charts/materialize-monitoring/README.md \
 	charts/materialize-monitoring-crds/README.md \
 	$(DASHBOARDS_CHARTS:%=charts/%/README.md) \
+	test/load/README.md \
 	docs/content/reference/helm/materialize-monitoring-values.md
 .PHONY: helm-docs
 

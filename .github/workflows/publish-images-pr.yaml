@@ -1,27 +1,61 @@
 name: publish-images-pr
 
-# Build and push a throwaway dev image for pull requests that touch the alloy
-# image, so the change can be pulled and tested before release. Tagged
+# Build and push a throwaway dev image for pull requests that touch an image, so
+# the change can be pulled and tested before release. Tagged
 # <version>-dev.0--pr.g<short-sha> to sort below any real release suffix.
+#
+# The trigger's `paths` is the union of the images' paths, and the `changes` job
+# picks which images to build. No check here is required, so a run the trigger
+# skips leaves nothing pending.
 on:
   pull_request:
     paths:
       - packages/alloy/**
       - .github/actions/build-alloy-image/**
+      - packages/mz-monitoring-benchmark/**
+      - .github/actions/build-benchmark-image/**
+      - Cargo.lock
       - .github/workflows/publish-images-pr.yaml
 
 permissions:
   contents: read
   packages: write
+  # dorny/paths-filter lists a PR's changed files via the API.
+  pull-requests: read
 
 concurrency:
   group: publish-images-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  alloy-dev:
+  changes:
     # Fork PRs can't push to GHCR (no package write, no secrets) — skip them.
     if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    outputs:
+      alloy: ${{ steps.filter.outputs.alloy }}
+      benchmark: ${{ steps.filter.outputs.benchmark }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            alloy:
+              - packages/alloy/**
+              - .github/actions/build-alloy-image/**
+              - .github/workflows/publish-images-pr.yaml
+            benchmark:
+              - packages/mz-monitoring-benchmark/**
+              - .github/actions/build-benchmark-image/**
+              - Cargo.lock
+              - .github/workflows/publish-images-pr.yaml
+
+  alloy-dev:
+    needs: changes
+    if: needs.changes.outputs.alloy == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
@@ -33,6 +67,25 @@ jobs:
         id: suffix
         run: echo "value=dev.0--pr.g$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
       - uses: $/.github/actions/build-alloy-image
+        with:
+          push: "true"
+          image-suffix: ${{ steps.suffix.outputs.value }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  benchmark-dev:
+    needs: changes
+    if: needs.changes.outputs.benchmark == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Compute dev suffix
+        id: suffix
+        run: echo "value=dev.0--pr.g$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: $/.github/actions/build-benchmark-image
         with:
           push: "true"
           image-suffix: ${{ steps.suffix.outputs.value }}

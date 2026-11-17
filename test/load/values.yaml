@@ -1,0 +1,142 @@
+# Values for the mz-monitoring-benchmark load-testing chart.
+#
+# Every count in a scenario is per period, five minutes unless the scenario
+# sets `period=`. A count below 1 fires once every few periods: `panic=0.25` is
+# one panic every 20 minutes. See the load testing page in the docs for the
+# scenario keys.
+
+# -- The image every pod runs.
+# @notationType -- (sectionstart) Image
+image:
+  # -- Image repository.
+  repository: ghcr.io/materializeinc/mz-monitoring-benchmark
+  # -- Image tag. Empty means the chart version, which a release keeps equal to
+  # the image's.
+  tag: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Pull secrets for a private registry, as `[{name: <secret>}]`.
+imagePullSecrets: []
+
+# -- How the stack finds the pods.
+# @notationType -- (sectionstart) Scraping
+serviceMonitor:
+  # -- Create one `ServiceMonitor` per role. The gateway scrapes every
+  # `ServiceMonitor` in the cluster.
+  enabled: true
+  # -- Extra labels on each `ServiceMonitor`, for a scraper that selects by label.
+  labels: {}
+  # -- Scrape interval. Empty leaves the scraper's default.
+  interval: ""
+  # -- Scrape timeout. Empty leaves the scraper's default.
+  scrapeTimeout: ""
+
+# -- One environment's worth of pods: an environmentd with 25,000 collections
+# on 10 clusters, a clusterd per cluster, and the operator, balancer and
+# console. To simulate more environments, scale every role's `replicas` by the
+# same factor; each pod's identities derive from its name, so each adds series
+# of its own.
+# @notationType -- (sectionstart) Load
+__loadSection:
+
+# -- Relative spread applied to every count, rate and value.
+jitter: 0.1
+
+roles:
+  environmentd:
+    # -- Pods impersonating environmentd. `0` turns the role off.
+    replicas: 1
+    # -- Persist shards per pod. `null` keeps the fixture's count.
+    persistShards: 1024
+    # -- User collections per pod. `null` keeps the fixture's count. With the
+    # shards and clusters here, about 236,000 series and 24 MB per scrape.
+    collectionCount: 25000
+    # -- User clusters per pod. `null` keeps the fixture's count.
+    clusterCount: 10
+    # -- Replicas per user cluster. `null` keeps the fixture's count.
+    replicasPerCluster: null
+    # -- `--metric-scenario`. `collection-grow` adds collections without bound;
+    # use `collection-churn` for a steady state.
+    metricScenario: "dist=pulse180,collection-grow=200"
+    # -- `--log-scenario`.
+    logScenario: "info=25000,warn=5000,error=2500,error-dist=bell,non-json=10,eicar=0.25,panic=0.25"
+    # -- Further `gen-load` arguments.
+    extraArgs: []
+    # -- Container resources.
+    resources:
+      requests:
+        cpu: "1"
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+
+  # -- One pod per replica of environmentd's clusters, each holding a tenth of
+  # the collections: about 10,000 series per scrape. Takes the same keys as
+  # `roles.environmentd`, except `clusterCount` and `replicasPerCluster`.
+  clusterd:
+    replicas: 10
+    persistShards: 100
+    collectionCount: 2500
+    metricScenario: "dist=pulse180"
+    logScenario: "debug=2500,info=10000,warn=1000,error=100,eicar=0.25,panic=0.1"
+    extraArgs: []
+    resources:
+      requests:
+        cpu: 250m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  # -- Two, as the operator runs them. Small scrapes and text-format logs. Takes
+  # `replicas`, `metricScenario`, `logScenario`, `extraArgs` and `resources`.
+  balancerd:
+    replicas: 2
+    metricScenario: ""
+    logScenario: "info=1500,warn=50,error=5"
+    extraArgs: []
+    resources:
+      requests:
+        cpu: 50m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+
+  # -- The operator logs a DEBUG line per HTTP request, so debug dominates.
+  # Takes the same keys as `roles.balancerd`.
+  orchestratord:
+    replicas: 1
+    metricScenario: ""
+    logScenario: "debug=3000,info=600,warn=30,error=5,error-dist=pulse15"
+    extraArgs: []
+    resources:
+      requests:
+        cpu: 50m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+
+  # -- nginx, with access lines on stdout and errors on stderr. Takes the same
+  # keys as `roles.balancerd`.
+  console:
+    replicas: 2
+    metricScenario: ""
+    logScenario: "info=600,warn=10,error=5"
+    extraArgs: []
+    resources:
+      requests:
+        cpu: 50m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+
+# -- Where the pods run.
+# @notationType -- (sectionstart) Scheduling
+__schedulingSection:
+
+# -- Node selector for every pod.
+nodeSelector: {}
+# -- Tolerations for every pod.
+tolerations: []
+# -- Affinity for every pod.
+affinity: {}

@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: Services
+templates:
+  - templates/services.yaml
+release:
+  name: bench
+  namespace: mzmon-bench
+tests:
+  - it: should make each pod its own target with a headless Service
+    documentSelector:
+      path: metadata.name
+      value: bench-clusterd
+    asserts:
+      - equal:
+          path: spec.clusterIP
+          value: None
+      - equal:
+          path: spec.selector["app.kubernetes.io/component"]
+          value: clusterd

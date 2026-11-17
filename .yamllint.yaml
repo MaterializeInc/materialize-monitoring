@@ -29,6 +29,7 @@ ignore: |
   charts/*/pre-rendered/
   charts/*/templates/
   charts/*/charts/*/templates/
+  test/load/templates/
   *.kyaml
   *.yaml.snap
 

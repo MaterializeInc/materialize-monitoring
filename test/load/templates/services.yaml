@@ -1,0 +1,21 @@
+{{- /* Headless, so each pod is its own scrape target. */}}
+{{- range $role := include "bench.roles" $ | fromJsonArray }}
+{{- $ctx := dict "root" $ "role" $role }}
+{{- if include "bench.enabled" $ctx }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bench.name" $ctx }}
+  labels:
+    {{- include "bench.labels" $ctx | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "bench.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: metrics
+      port: 6878
+      targetPort: metrics
+{{- end }}
+{{- end }}

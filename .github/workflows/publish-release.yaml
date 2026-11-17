@@ -22,8 +22,9 @@ env:
 jobs:
   # Publish container images before cutting the release. Runs for every
   # version-update merge so `publish-release` can depend on it, but only the
-  # container-images component actually builds/pushes — for other components
-  # this is a no-op that simply succeeds. A failed image push blocks the release.
+  # container-images and benchmark-images components build and push, each its
+  # own image; for other components this is a no-op that simply succeeds. A
+  # failed image push blocks the release.
   publish-images:
     if: >
       github.event.pull_request.merged == true &&
@@ -41,6 +42,12 @@ jobs:
       - name: build and push alloy image
         if: github.event.pull_request.head.ref == 'version-update/container-images'
         uses: $/.github/actions/build-alloy-image
+        with:
+          push: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: build and push benchmark image
+        if: github.event.pull_request.head.ref == 'version-update/benchmark-images'
+        uses: $/.github/actions/build-benchmark-image
         with:
           push: "true"
           github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -942,6 +942,52 @@ fn workspace_version_inheritors(workspace_manifest: &Path) -> anyhow::Result<Vec
     Ok(names)
 }
 
+/// The workspace lockfile and package name of the crate whose manifest is
+/// `manifest`, from `cargo metadata`, for a crate that versions itself rather
+/// than inheriting the workspace version.
+fn member_lock_entry(manifest: &Path) -> anyhow::Result<(PathBuf, String)> {
+    #[derive(Deserialize)]
+    struct Metadata {
+        packages: Vec<MetadataPackage>,
+        workspace_root: PathBuf,
+    }
+    #[derive(Deserialize)]
+    struct MetadataPackage {
+        name: String,
+        manifest_path: PathBuf,
+    }
+
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let out = Command::new(cargo)
+        .args([
+            "metadata",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--manifest-path",
+        ])
+        .arg(manifest)
+        .output()
+        .context("running cargo metadata")?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "cargo metadata failed for {}: {}",
+            manifest.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    let meta: Metadata =
+        serde_json::from_slice(&out.stdout).context("parsing cargo metadata output")?;
+    let wanted = std::fs::canonicalize(manifest)
+        .with_context(|| format!("resolving {}", manifest.display()))?;
+    let pkg = meta
+        .packages
+        .into_iter()
+        .find(|p| std::fs::canonicalize(&p.manifest_path).is_ok_and(|m| m == wanted))
+        .ok_or_else(|| anyhow!("{} is not a workspace member", manifest.display()))?;
+    Ok((meta.workspace_root.join("Cargo.lock"), pkg.name))
+}
+
 /// Bump each of `packages` to `new` in the lockfile at `path`, recording each
 /// edit in `summary`. Returns the rewritten lockfile, or `None` when there is
 /// nothing to bump or no lockfile.
@@ -1145,13 +1191,19 @@ pub(crate) fn plan_release(
         {
             lock_packages.push(name);
         }
-        if file_name == Some("Cargo.toml")
-            && content.lines().any(|l| l.trim() == "[workspace.package]")
-        {
-            cargo_locks.push((
-                path.with_file_name("Cargo.lock"),
-                workspace_version_inheritors(&path)?,
-            ));
+        if file_name == Some("Cargo.toml") {
+            if content.lines().any(|l| l.trim() == "[workspace.package]") {
+                cargo_locks.push((
+                    path.with_file_name("Cargo.lock"),
+                    workspace_version_inheritors(&path)?,
+                ));
+            } else {
+                // A member crate with a version of its own, such as
+                // `mz-monitoring-benchmark`: its entry lives in the workspace's
+                // lockfile, not beside its manifest.
+                let (lock, name) = member_lock_entry(&path)?;
+                cargo_locks.push((lock, vec![name]));
+            }
         }
         let readme = if file_name == Some("Chart.yaml") {
             rewrite_chart_readme(&path, &old, &released_plain)?
@@ -2093,6 +2145,26 @@ mod tests {
         let text = "[project]\nname = \"sample-pkg\"\nversion = \"0.7.0\"\n";
         assert_eq!(pyproject_name(text).as_deref(), Some("sample-pkg"));
         assert_eq!(pyproject_name("[project]\nversion = \"1\"\n"), None);
+    }
+
+    /// A crate that versions itself, as `benchmark-images` versions
+    /// `mz-monitoring-benchmark`, bumps its entry in the workspace lockfile at
+    /// the repository root, which is not the directory beside its manifest.
+    #[test]
+    fn member_lock_entry_finds_the_workspace_lockfile() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = root.join("packages/mz-monitoring-benchmark/Cargo.toml");
+        let (lock, name) = member_lock_entry(&manifest).unwrap();
+        assert_eq!(name, "mz-monitoring-benchmark");
+        assert_eq!(
+            std::fs::canonicalize(&lock).unwrap(),
+            std::fs::canonicalize(root.join("Cargo.lock")).unwrap()
+        );
+        let text = std::fs::read_to_string(&lock).unwrap();
+        let (old, _) = rewrite_lock_version(&text, &name, "9.9.9").unwrap();
+        let manifest_text = std::fs::read_to_string(&manifest).unwrap();
+        let (declared, _) = rewrite_version_str(&manifest_text, true, "9.9.9").unwrap();
+        assert_eq!(old, declared, "Cargo.lock and the manifest disagree");
     }
 
     #[test]

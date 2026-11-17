@@ -65,7 +65,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `mz-monitoring-benchmark/`: the load-testing tool (see [Load testing](../load-testing/)).
       `fixture-gen` captures and anonymizes real scrapes into `fixtures/<role>/`, which are embedded in the binary;
       `gen-load` serves them expanded to a requested size and writes logs in each role's format.
-      Its `Dockerfile` builds from the repository root with `make benchmark-image`
+      Its `Dockerfile` builds from the repository root with `make benchmark-image`, and the `benchmark-images` component releases it
     * `mz-monitoring-e2e/`: Rust assertion suite for a *running* stack — one binary for every kind and cloud tier, reading the release's coalesced Helm values to decide what applies (`make e2e-verify`). Asserts only; installs nothing
   * `charts/`
     * `materialize-monitoring/`: umbrella chart
@@ -108,7 +108,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         Several clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
     * `test/generic-cloud/`: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
   * `test/e2e/`: kind cluster config and the failure-diagnostics collector (`make e2e-*`). The assertions themselves live in `packages/mz-monitoring-e2e`
-  * `test/load/`: the kustomization that runs one synthetic environment of `mz-monitoring-benchmark` pods behind `ServiceMonitor`s
+  * `test/load/`: the Helm chart that runs one synthetic environment of `mz-monitoring-benchmark` pods behind `ServiceMonitor`s, released with the image by the `benchmark-images` component
   * `docs/`: Hugo docsite (the source of this page)
     * `hugo.toml`: site config; `go.mod` / `go.sum` pin the theme
     * `content/`: authored Markdown
@@ -123,4 +123,5 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `shlib/`: shared bash helpers
   * `.claude/skills/`: authoring conventions consumed by both contributors and AI agents
   * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`, `design-doc-notify.yaml` (Slack notification for new design docs), `zizmor.yaml` (workflow security scan, uploaded to code scanning); also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever.
-    `design-doc-notify.yaml` is the exception, filtering on the trigger because it reports no status anyone gates on
+    `design-doc-notify.yaml` and `publish-images-pr.yaml` are the exceptions, filtering on the trigger because they report no status anyone gates on.
+    `actions/` holds the composite actions the image workflows share: `build-alloy-image` and `build-benchmark-image`

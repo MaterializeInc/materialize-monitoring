@@ -1,0 +1,90 @@
+{{- /*
+A StatefulSet per role, so each pod keeps its name across restarts. `gen-load`
+seeds every identity it generates from `$HOSTNAME`, the pod name, so a restarted
+pod serves the same shard IDs.
+*/}}
+{{- include "bench.validate" $ }}
+{{- range $role := include "bench.roles" $ | fromJsonArray }}
+{{- $ctx := dict "root" $ "role" $role }}
+{{- if include "bench.enabled" $ctx }}
+{{- $r := get $.Values.roles $role }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "bench.name" $ctx }}
+  labels:
+    {{- include "bench.labels" $ctx | nindent 4 }}
+spec:
+  serviceName: {{ include "bench.name" $ctx }}
+  replicas: {{ int $r.replicas }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "bench.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bench.labels" $ctx | nindent 8 }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ include "bench.containerName" $ctx }}
+          image: {{ printf "%s:%s" $.Values.image.repository ($.Values.image.tag | default $.Chart.Version) | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - "gen-load"
+            - {{ printf "--role=%s" $role | quote }}
+            - {{ printf "--jitter=%v" $.Values.jitter | quote }}
+            {{- range $key, $flag := dict "persistShards" "--persist-shards" "collectionCount" "--collection-count" "clusterCount" "--cluster-count" "replicasPerCluster" "--replicas-per-cluster" }}
+            {{- if and (hasKey $r $key) (not (kindIs "invalid" (get $r $key))) }}
+            - {{ printf "%s=%d" $flag (int64 (get $r $key)) | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with $r.metricScenario }}
+            - {{ printf "--metric-scenario=%s" . | quote }}
+            {{- end }}
+            {{- with $r.logScenario }}
+            - {{ printf "--log-scenario=%s" . | quote }}
+            {{- end }}
+            {{- range $r.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 6878
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+          {{- with $r.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}
