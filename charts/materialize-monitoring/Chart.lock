@@ -1,10 +1,10 @@
 dependencies:
 - name: alloy
   repository: https://grafana.github.io/helm-charts
-  version: 1.15.0
+  version: 1.16.0
 - name: alloy
   repository: https://grafana.github.io/helm-charts
-  version: 1.15.0
+  version: 1.16.0
 - name: loki
   repository: oci://ghcr.io/grafana-community/helm-charts
   version: 21.0.0
@@ -32,5 +32,5 @@ dependencies:
 - name: prometheus-postgres-exporter
   repository: oci://ghcr.io/prometheus-community/charts
   version: 8.2.5
-digest: sha256:e14d17165504a11801cfd9e9b71e3592c202f01d1af2ab316f6beb54c487098c
-generated: "2026-11-14T19:25:49.627029Z"
+digest: sha256:d69b9ef273158016436f999f576a500ce41286a5ea8906288c1c9e1e651b954b
+generated: "2026-11-18T00:53:28.068413423Z"
