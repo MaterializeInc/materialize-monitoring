@@ -39,10 +39,14 @@ repos:
       - id: check-added-large-files
         # scrapeconfig schema is largest file
         args: [--maxkb=640]
+        # Generated text, sized by the install it is captured from: environmentd's
+        # holds every built-in object's series. Capped by fixture-gen's
+        # --max-exemplars rather than by this hook.
+        exclude: ^packages/mz-monitoring-benchmark/fixtures/
       - id: check-yaml
         # Helm templates contain Go template syntax and are not valid YAML.
         # Vendored subcharts (charts/<chart>/charts/<sub>/templates/) count too.
-        exclude: ^charts/[^/]+/(charts/[^/]+/)?templates/
+        exclude: ^(charts/[^/]+/(charts/[^/]+/)?|test/load/)templates/
 
   # ── Python: ruff (lint + format) ───────────────────────────────────────
   # Pinned to match ruff>=0.15.12 in pyproject.toml [dependency-groups].dev
@@ -157,7 +161,7 @@ repos:
         entry: make helm-docs
         language: system
         pass_filenames: false
-        files: ^(charts/materialize-monitoring/(values\.yaml|Chart\.yaml|README\.md\.gotmpl)|docs/content/reference/helm/materialize-monitoring-values\.md\.gotmpl)$
+        files: ^(charts/materialize-monitoring/(values\.yaml|Chart\.yaml|README\.md\.gotmpl)|test/load/(values\.yaml|Chart\.yaml|README\.md\.gotmpl)|docs/content/reference/helm/materialize-monitoring-values\.md\.gotmpl)$
 
       - id: terraform-fmt
         name: terraform fmt

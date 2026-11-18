@@ -309,6 +309,17 @@ alloy-image.iid: $(wildcard packages/alloy/*) Makefile alloy-image.tag
 alloy-image: alloy-image.iid
 .PHONY: alloy-image
 
+# The load-testing image (`test/load/`). Not part of `docker-images`: it is never
+# released, so it is built on demand and pushed wherever the test cluster pulls
+# from, such as `make CONTAINER_REGISTRY=<registry> benchmark-image`.
+BENCHMARK_VERSION ?= $(shell grep -E '^version = ' packages/mz-monitoring-benchmark/Cargo.toml | head -n1 | cut -d'"' -f2)
+BENCHMARK_IMAGE = $(CONTAINER_REGISTRY)/mz-monitoring-benchmark:$(BENCHMARK_VERSION)
+
+benchmark-image:
+	docker buildx build --load --platform linux/amd64,linux/arm64 --tag $(BENCHMARK_IMAGE) \
+		-f packages/mz-monitoring-benchmark/Dockerfile .
+.PHONY: benchmark-image
+
 ### HELM CHARTS ###
 
 # Helm chart name
@@ -369,6 +380,21 @@ charts/materialize-monitoring-crds/README.md: \
 		charts/materialize-monitoring-crds/README.md.gotmpl
 	$(HELM_DOCS) \
 		--chart-search-root charts/materialize-monitoring-crds \
+		--template-files ../../tools/chartlib/helm-docs-lib.gotmpl \
+		--template-files README.md.gotmpl \
+		--output-file README.md \
+		--sort-values-order file \
+		--log-level debug \
+		--ignore-non-descriptions
+
+# The load-testing chart's README, from its values.yaml + README template.
+test/load/README.md: \
+		test/load/values.yaml \
+		test/load/Chart.yaml \
+		tools/chartlib/helm-docs-lib.gotmpl \
+		test/load/README.md.gotmpl
+	$(HELM_DOCS) \
+		--chart-search-root test/load \
 		--template-files ../../tools/chartlib/helm-docs-lib.gotmpl \
 		--template-files README.md.gotmpl \
 		--output-file README.md \
@@ -484,7 +510,8 @@ helm-unittest-install:
 HELM_TEST_CHARTS = \
 	charts/materialize-monitoring \
 	charts/materialize-monitoring-crds \
-	$(DASHBOARDS_CHARTS:%=charts/%)
+	$(DASHBOARDS_CHARTS:%=charts/%) \
+	test/load
 
 # Runs every suite as its own `helm unittest` process, as many at once as there
 # are CPUs (HELM_TESTS_JOBS overrides). See bin/helm-tests.sh for why. To run one
@@ -550,6 +577,7 @@ helm-docs: \
 	charts/materialize-monitoring/README.md \
 	charts/materialize-monitoring-crds/README.md \
 	$(DASHBOARDS_CHARTS:%=charts/%/README.md) \
+	test/load/README.md \
 	docs/content/reference/helm/materialize-monitoring-values.md
 .PHONY: helm-docs
 

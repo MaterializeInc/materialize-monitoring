@@ -1,0 +1,23 @@
+# Synthetic Materialize pods for load-testing the monitoring stack. Not
+# published: install it from a checkout. Its version doesn't follow the image's;
+# the image tag defaults to the crate's version, read from files/Cargo.toml.
+apiVersion: v2
+name: mz-monitoring-benchmark
+description: >-
+  Synthetic Materialize pods, each behind a ServiceMonitor, that put realistic
+  metric and log load on the materialize-monitoring stack.
+type: application
+version: 0.1.0
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/MaterializeInc/materialize-monitoring
+sources:
+  - https://github.com/MaterializeInc/materialize-monitoring
+maintainers:
+  - name: Materialize
+    email: support@materialize.com
+    url: https://materialize.com
+keywords:
+  - materialize
+  - observability
+  - monitoring
+  - load-testing

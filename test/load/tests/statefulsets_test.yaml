@@ -1,0 +1,142 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: StatefulSets
+templates:
+  - templates/statefulsets.yaml
+chart:
+  version: 1.2.3
+release:
+  name: bench
+  namespace: mzmon-bench
+tests:
+  - it: should render one StatefulSet per role
+    asserts:
+      - hasDocuments:
+          count: 5
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: StatefulSet
+          name: bench-environmentd
+          any: true
+
+  # The gateway picks the operator's log parsing by container name.
+  - it: should name the operator's container materialize-operator
+    documentSelector:
+      path: metadata.name
+      value: bench-orchestratord
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: materialize-operator
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--role=orchestratord"
+
+  # The suite pins the chart version to 1.2.3, so a tag that is a version but
+  # not that one came from the crate's manifest through files/Cargo.toml.
+  - it: should default the image tag to the crate's version, not the chart's
+    documentSelector:
+      path: metadata.name
+      value: bench-clusterd
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: ^ghcr\.io/materializeinc/mz-monitoring-benchmark:\d+\.\d+\.\d+$
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: :1\.2\.3$
+
+  - it: should take an explicit image tag over the crate's version
+    set:
+      image.tag: dev.0--pr.gabc1234
+    documentSelector:
+      path: metadata.name
+      value: bench-clusterd
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/materializeinc/mz-monitoring-benchmark:dev.0--pr.gabc1234
+
+  - it: should pass only the sizing flags that are set
+    documentSelector:
+      path: metadata.name
+      value: bench-environmentd
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--collection-count=25000"
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: "--replicas-per-cluster=0"
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--log-scenario=info=25000,warn=5000,error=2500,error-dist=bell,non-json=10,eicar=0.25,panic=0.25"
+
+  - it: should not pass sizing flags to a role that has none
+    documentSelector:
+      path: metadata.name
+      value: bench-balancerd
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value:
+            - "gen-load"
+            - "--role=balancerd"
+            - "--period=5m"
+            - "--jitter=0.1"
+            - "--log-scenario=info=1500,warn=50,error=5"
+
+  # One period for both scenarios, so it is one argument rather than a key in
+  # each scenario string.
+  - it: should pass the shared period to every role
+    set:
+      period: 60s
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--period=60s"
+
+  # A long release name is truncated, never the role: five roles must still
+  # render five names. 53 characters is the longest name Helm accepts.
+  - it: should keep the role in every name under the longest release name
+    release:
+      name: a-release-name-at-helms-fifty-three-character-limit-x
+    asserts:
+      - hasDocuments:
+          count: 5
+      - matchRegex:
+          path: metadata.name
+          pattern: -(environmentd|clusterd|balancerd|orchestratord|console)$
+      - matchRegex:
+          path: metadata.name
+          pattern: ^.{1,52}$
+
+  - it: should render a large count as an integer
+    set:
+      roles.environmentd.collectionCount: 2500000
+    documentSelector:
+      path: metadata.name
+      value: bench-environmentd
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--collection-count=2500000"
+
+  - it: should drop a role scaled to zero
+    set:
+      roles.console.replicas: 0
+    asserts:
+      - hasDocuments:
+          count: 4
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: StatefulSet
+          name: bench-console
+          any: true
+        not: true
+
+  - it: should refuse a key under roles that is no role
+    set:
+      roles.environmentdd.replicas: 1
+    asserts:
+      - failedTemplate:
+          errorPattern: "roles.environmentdd is not a role"

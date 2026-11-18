@@ -1,0 +1,104 @@
+{{/*
+One StatefulSet per role, impersonating that Materialize process.
+
+A StatefulSet rather than a Deployment so each pod keeps its name across
+restarts. `gen-load` seeds every identity it generates from `$HOSTNAME`, the pod
+name, so a restarted pod serves the same shard IDs, the way a restarted
+Materialize process keeps its catalog.
+*/}}
+{{- include "mzmon.bench.validate" $ }}
+{{- range $role := include "mzmon.bench.roles" $ | fromJsonArray }}
+  {{- $ctx := dict "root" $ "role" $role }}
+  {{- if ( include "mzmon.bench.enabled" $ctx ) }}
+    {{- $config := get $.Values.roles $role }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "mzmon.bench.name" $ctx }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "mzmon.bench.labels" $ctx | nindent 4 }}
+spec:
+  serviceName: {{ include "mzmon.bench.name" $ctx }}
+  replicas: {{ int $config.replicas }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "mzmon.bench.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mzmon.bench.labels" $ctx | nindent 8 }}
+    spec:
+    {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ include "mzmon.bench.containerName" $ctx }}
+          image: {{ printf "%s:%s" $.Values.image.repository ( include "mzmon.bench.imageTag" $ ) | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - "gen-load"
+            - {{ printf "--role=%s" $role | quote }}
+            - {{ printf "--period=%s" $.Values.period | quote }}
+            - {{ printf "--jitter=%v" $.Values.jitter | quote }}
+    {{- /*
+    Only the sizing keys a role sets: an unset one keeps the fixture's count,
+    and `gen-load` refuses one the role's fixtures never name.
+    */}}
+    {{- range $key, $flag := ( dict
+      "persistShards" "--persist-shards"
+      "collectionCount" "--collection-count"
+      "clusterCount" "--cluster-count"
+      "replicasPerCluster" "--replicas-per-cluster"
+    ) }}
+      {{- if and ( hasKey $config $key ) ( not ( kindIs "invalid" ( get $config $key ) ) ) }}
+            - {{ printf "%s=%d" $flag ( int64 ( get $config $key ) ) | quote }}
+      {{- end }}
+    {{- end }}
+    {{- with $config.metricScenario }}
+            - {{ printf "--metric-scenario=%s" . | quote }}
+    {{- end }}
+    {{- with $config.logScenario }}
+            - {{ printf "--log-scenario=%s" . | quote }}
+    {{- end }}
+    {{- range $config.extraArgs }}
+            - {{ . | quote }}
+    {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 6878
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+    {{- with $config.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+    {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+    {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

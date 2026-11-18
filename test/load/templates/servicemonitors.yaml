@@ -1,0 +1,46 @@
+{{/*
+One ServiceMonitor per role, with one endpoint per path the real process serves.
+
+A role with several paths labels each with `metrics_path`, as the umbrella
+chart's SQL exporter monitor does. Without it, every path's `up` and `scrape_*`
+series would be one series written several times.
+*/}}
+{{- if $.Values.serviceMonitor.enabled }}
+  {{- range $role := include "mzmon.bench.roles" $ | fromJsonArray }}
+    {{- $ctx := dict "root" $ "role" $role }}
+    {{- if ( include "mzmon.bench.enabled" $ctx ) }}
+      {{- $paths := include "mzmon.bench.paths" $ctx | fromJsonArray }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "mzmon.bench.name" $ctx }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "mzmon.bench.labels" $ctx | nindent 4 }}
+      {{- with $.Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+      {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "mzmon.bench.selectorLabels" $ctx | nindent 6 }}
+  endpoints:
+      {{- range $path := $paths }}
+    - port: metrics
+      path: {{ $path }}
+        {{- with $.Values.serviceMonitor.interval }}
+      interval: {{ . }}
+        {{- end }}
+        {{- with $.Values.serviceMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+        {{- end }}
+        {{- if gt ( len $paths ) 1 }}
+      relabelings:
+        - sourceLabels: [__metrics_path__]
+          targetLabel: metrics_path
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
