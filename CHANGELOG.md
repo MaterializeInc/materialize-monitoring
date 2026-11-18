@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Benchmark Images v0.2.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.12.0 (Unreleased)
 
 _Changes Pending_
@@ -63,9 +67,10 @@ _Changes Pending_
 
   </details>
 
-## Benchmark Images v0.1.0 (Unreleased)
+## Benchmark Images v0.1.0
 
-_Changes Pending_
+* Add mz-monitoring-benchmark, a load generator that impersonates Materialize
+    * [materialize-monitoring#758](https://github.com/MaterializeInc/materialize-monitoring/pull/758)
 
 ## Benchmark Images v0.0.0
 
