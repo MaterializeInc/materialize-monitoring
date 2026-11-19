@@ -104,7 +104,7 @@ loki:
     image:
       registry: "cgr.dev"
       repository: "<ORG>/nginx"
-      tag: "1.31.6"
+      tag: "1.31.9"
   sidecar:
     image:
       registry: "cgr.dev"

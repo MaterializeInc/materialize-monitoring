@@ -40,7 +40,7 @@ tests:
       # The tags move with Renovate, so these pin each image and variant, not the version.
       - matchRegex:
           path: spec.template.spec.containers[0].image
-          pattern: '^docker\.io/nginxinc/nginx-unprivileged:\d+\.\d+\.\d+-alpine-slim$'
+          pattern: '^docker\.io/nginx/nginx-unprivileged:\d+\.\d+\.\d+-alpine-slim$'
       - matchRegex:
           path: spec.template.spec.containers[1].image
           pattern: '^ghcr\.io/jkroepke/access-log-exporter:\d+\.\d+\.\d+$'

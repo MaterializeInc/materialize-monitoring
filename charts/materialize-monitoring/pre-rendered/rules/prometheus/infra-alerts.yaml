@@ -751,7 +751,98 @@ groups:
       audience: platform
     annotations:
       summary: More than 30% of a critical scrape job's targets have been down for 30m.
+      description: |-
+        Counts only the targets that service discovery returns, so a job whose
+        targets have all vanished has nothing to count and never fires this.
+        `kube-state-metrics-not-scraped`, `cadvisor-not-scraped`, and
+        `node-exporter-not-scraped` fire when none of their job's targets is
+        up, whether down or gone.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#critical-metrics-missing
+  - alert: kube-state-metrics-not-scraped
+    expr: absent(up{job="kube-state-metrics"} == 1)
+    for: 15m
+    labels:
+      severity: warning
+      component: monitoring
+      audience: platform
+    annotations:
+      summary: |-
+        No kube-state-metrics target has reported for 15m, so every alert on
+        Kubernetes objects has gone quiet. Check the kube-state-metrics pod, then
+        the gateway's logs for errors discovering it.
+      description: |-
+        Either every kube-state-metrics target is down, or service discovery
+        returns none and no `up` series is left to read. Every `kube_*` series
+        stops with it. Alerts on Deployments, pods, and nodes can't fire,
+        Materialize's replica and environmentd pods included, and any alert
+        that tests for a `kube_*` series' absence fires falsely. Check that the
+        kube-state-metrics pod is running and ready. If it is, the gateway has
+        lost the target: look in the gateway's logs for discovery errors, and
+        check that the kube-state-metrics ServiceMonitor still selects the
+        Service.
+
+        It also fires on a healthy kube-state-metrics when the gateway pod that
+        holds its target is refusing what it scrapes under memory pressure. When
+        `alloy-gateway-refusing-scrapes` is firing beside this, act on that alert
+        instead.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#kube-state-metrics-not-scraped
+  - alert: cadvisor-not-scraped
+    expr: absent(up{job="cadvisor"} == 1)
+    for: 15m
+    labels:
+      severity: warning
+      component: monitoring
+      audience: platform
+    annotations:
+      summary: |-
+        No node's cAdvisor has reported for 15m, so every alert on container
+        memory, CPU, and filesystems has gone quiet. Check the gateway's logs for
+        errors scraping the kubelets.
+      description: |-
+        The gateway scrapes each node's kubelet at `/metrics/cadvisor`, and no
+        node is answering, so every `container_*` series has stopped. If every
+        target is down, look in the gateway's logs for a TLS error from the
+        kubelets. A distribution that signs kubelet certificates with a CA the
+        gateway doesn't trust needs
+        `pipeline.metrics.kubelet.tlsInsecureSkipVerify: true`. If there's no
+        target at all, the gateway can't list the cluster's nodes.
+
+        It also fires while the kubelets are healthy when every gateway pod is
+        refusing what it scrapes under memory pressure. When
+        `alloy-gateway-refusing-scrapes` is firing beside this, act on that alert
+        instead.
+
+        Some nodes down while others report is `critical-metrics-missing`.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cadvisor-not-scraped
+  - alert: node-exporter-not-scraped
+    expr: absent(up{job="node-exporter"} == 1)
+    for: 15m
+    labels:
+      severity: warning
+      component: monitoring
+      audience: platform
+    annotations:
+      summary: |-
+        No node-exporter target has reported for 15m, so every alert on node
+        disks, memory, and network has gone quiet. Check the node-exporter
+        DaemonSet, then the gateway's logs for errors discovering it.
+      description: |-
+        Either every node-exporter target is down, or service discovery returns
+        none and no `up` series is left to read. Every `node_*` series stops with
+        it: node alerts can't fire, and `egress-traffic-missing-metrics`, which
+        tests for a node series' absence, fires falsely. Check that the
+        node-exporter DaemonSet has a ready pod on each node. If it does, the
+        gateway has lost the targets: look in the gateway's logs for discovery
+        errors, and check that the node-exporter ServiceMonitor still selects the
+        Service.
+
+        It also fires while node-exporter is healthy when every gateway pod is
+        refusing what it scrapes under memory pressure. When
+        `alloy-gateway-refusing-scrapes` is firing beside this, act on that alert
+        instead.
+
+        Some nodes down while others report is `critical-metrics-missing`.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#node-exporter-not-scraped
   - alert: logging-collection-down
     expr: (sum(rate(loki_distributor_bytes_received_total[5m])) or vector(0)) == 0
     for: 15m

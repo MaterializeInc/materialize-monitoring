@@ -5852,7 +5852,7 @@ Upstream reference:
 {
   "registry": "docker.io",
   "repository": "grafana/loki",
-  "tag": "3.7.9"
+  "tag": "3.7.10"
 }</pre>
 </td>
       <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -6211,11 +6211,11 @@ query frontend, and Grafana then shows no Loki rules.
 {
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
-  "repository": "nginxinc/nginx-unprivileged",
-  "tag": "1.31.7-alpine-slim"
+  "repository": "nginx/nginx-unprivileged",
+  "tag": "1.31.9-alpine-slim"
 }</pre>
 </td>
-      <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size.
+      <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size. Upstream publishes from `nginx/nginx-unprivileged` since nginx 1.31.7; the older `nginxinc/nginx-unprivileged` repository gets no new tags.
 </td>
     </tr>
     <tr>
@@ -6922,7 +6922,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "extraArgs":["-labelvalue=$(POD_NAMESPACE)", "-streamname=container", "-streamvalue=canary", "-query-append=| pod=\"$(POD_NAME)\" | stream=\"stdout\""], "extraEnv":[{"name":"POD_NAMESPACE", "valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}], "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.9"}, "kind":"Deployment", "labelname":"namespace", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}, "tenant":{"name":"loki"}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "extraArgs":["-labelvalue=$(POD_NAMESPACE)", "-streamname=container", "-streamvalue=canary", "-query-append=| pod=\"$(POD_NAME)\" | stream=\"stdout\""], "extraEnv":[{"name":"POD_NAMESPACE", "valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}], "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.10"}, "kind":"Deployment", "labelname":"namespace", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}, "tenant":{"name":"loki"}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -6933,7 +6933,7 @@ unconditional so the two modes share one code path.
 {
   "registry": "docker.io",
   "repository": "grafana/loki-canary",
-  "tag": "3.7.9"
+  "tag": "3.7.10"
 }</pre>
 </td>
       <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
