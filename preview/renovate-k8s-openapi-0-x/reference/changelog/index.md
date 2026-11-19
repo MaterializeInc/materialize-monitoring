@@ -15,13 +15,53 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v1.13.0 (Unreleased)
+
+_Changes Pending_
+
 ## Benchmark Images v0.2.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v1.12.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.12.0
 
-_Changes Pending_
+* Update loki Helm Chart to v21.4.1
+    * [materialize-monitoring#711](https://github.com/MaterializeInc/materialize-monitoring/pull/711)
+    * [`v21.4.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.4.1)
+    * [`v21.4.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.4.0)
+    * [`v21.3.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.3.1)
+    * [`v21.3.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.3.0)
+    * [`v21.2.3`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.2.3)
+    * [`v21.2.2`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.2.2)
+    * [`v21.2.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.2.1)
+    * [`v21.2.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.2.0)
+    * [`v21.1.3`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.1.3)
+    * [`v21.1.2`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.1.2)
+    * [`v21.1.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.1.1)
+    * [`v21.1.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-21.1.0)
+* Update Loki to v3.7.10 and the Loki gateway's nginx to 1.31.9
+    * [materialize-monitoring#753](https://github.com/MaterializeInc/materialize-monitoring/pull/753)
+    * Loki `3.7.10` is a bug-fix and dependency release: it fixes a shutdown deadlock when the internal server is enabled, and updates `golang.org/x/net` and `golang.org/x/crypto`.
+    * The Loki gateway runs nginx `1.31.9` from a new repository, `docker.io/nginx/nginx-unprivileged`, which replaces `docker.io/nginxinc/nginx-unprivileged`. Upstream publishes no new tags to the old repository.
+        * If you mirror images into a private registry and set `loki.gateway.image.registry`, mirror the new repository. If you also set `loki.gateway.image.repository`, update it to the new path.
+        * The Chainguard registry profile's `loki.gateway.image.tag` moves to `1.31.9`.
+
+### Dependencies
+
+* <details><summary>Included Pipelines @ v0.12.0..v0.13.0</summary>
+
+    * Alert when kube-state-metrics, cAdvisor or node-exporter is not scraped (CLO-429)
+        * [materialize-monitoring#762](https://github.com/MaterializeInc/materialize-monitoring/pull/762)
+
+  </details>
+
+* Included Prometheus Scrapers @ v0.6.0..v0.7.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.15.0..v0.16.0</summary>
+
+    * Add mz-monitoring-benchmark, a load generator that impersonates Materialize
+        * [materialize-monitoring#758](https://github.com/MaterializeInc/materialize-monitoring/pull/758)
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.11.0
 
