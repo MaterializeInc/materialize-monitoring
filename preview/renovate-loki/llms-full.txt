@@ -6125,10 +6125,13 @@ It needs both a metrics and a logs datasource.
 
 ### Alloy Meta Monitoring (`infra-alloy`)
 
-Whether telemetry collection is healthy, and which stage of it broke if not, across eight tabs: Overview, Log Pipeline, Metric Pipeline, Ingest, Components, Resources, Events, and Logs.
+Whether telemetry collection is healthy, and which stage of it broke if not, across Overview, Log Pipeline, Metric Pipeline, Ingest, Compliance, Components, Resources, Events, and Logs tabs.
 The Overview tab leads with any alert about collection firing or pending now, such as a lost scrape target or a gateway refusing what it scraped.
 The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
 Ingest covers what other senders push into the gateway over log push, Prometheus remote write, and OTLP, including remote-write senders' own view of their queues.
+Compliance covers what the gateway removed from log lines before storing them: credentials the secret filter redacted and card numbers it replaced, by rule and source, how much of each tier the filter scanned, and what shadow mode would have redacted.
+Its graphs of redactions are on a log axis, so a new source shows beside the steady matches that aren't credentials.
+Its rows that search the stored lines start collapsed, because they read Loki rather than counters.
 Components covers configuration loads, uptime, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits; Events is what Kubernetes reported about the collectors' pods and workloads, and about the configuration-validation Jobs that run before every install and upgrade.
 It needs both a metrics and a logs datasource.
 
@@ -10814,6 +10817,7 @@ The filter scans the line and nothing else, so it has the following limits:
 - **Some credentials don't look like credentials.**
   A short or low-randomness value after a key such as `api_key` or `token` can pass, and so can a password of fewer than four characters.
   A numeric password after a JSON key passes too, because a placeholder in its place, or in place of the same digits elsewhere in the line, would break the line's JSON.
+  A value after a field whose name ends in an identifier word, such as `podName`, `containerID`, or `token_id`, passes, whatever the words before the name.
   The filter decodes nothing, so an encoded credential passes unless a rule matches its encoded form, as one does for base64 `postgres://` URLs.
 - **Some identifiers look like credentials.**
   A pagination cursor such as `next_page_token`, or the word after `password:` in an error message, is replaced.
@@ -10834,9 +10838,13 @@ The checksum has the following limits:
   A number of exactly 13, 16, or 19 digits that starts with `1` is left alone, which covers timestamps in milliseconds, microseconds, and nanoseconds.
   Airline cards also start with `1`, but they're 15 digits, so they're still replaced.
 - **JSON numbers are exempt.**
-  A number directly after a quoted key and a colon is left alone, because a placeholder in its place would make the line invalid JSON.
+  A number directly after a quoted key and a colon, fraction included, is left alone, because a placeholder in its place would make the line invalid JSON.
   That includes a card number written as a JSON number rather than a string.
   A number in a JSON array has no key before it, so one that passes the checksum is replaced, and the line is no longer valid JSON.
+- **Digits inside identifiers and decimals are exempt.**
+  A number in a word that contains a letter or an underscore, such as a collection ID like `si144115188075856159` or a hex digest, is left alone.
+  So is a decimal number, with digits on both sides of the point, and a 14-digit timestamp that starts with `20`.
+  A card number written directly against a letter or an underscore passes too.
 - **A grouped number passes.**
   The gateway reads unbroken runs of digits, so a card number written in groups separated by spaces or dashes passes, because each group is too short.
 
@@ -10936,22 +10944,30 @@ The gateway exports the following metrics:
 `loki_secretfilter_processing_duration_seconds`
 : Time spent per line. Its high quantiles are where to start when you set the timeout.
 
-The bundled Thanos keeps these metrics.
-A remote-write destination that filters by `minMetricImportance` drops them, because the query registry doesn't grade them.
 `loki_process_custom_luhn_redacted_lines_total`
 : Lines in which the gateway replaced a [card number](#card-numbers), by stream.
+  It carries the labels of the stream it counted, so its `namespace`, `pod`, and `job` name the workload that logged the line, not the gateway.
   A stream's series appears at its first replacement and disappears five minutes after its last.
 
+The query registry grades these metrics `recommended`, so every destination keeps them unless its `minMetricImportance` is `essential` or narrower.
+For the tiers, see [the importance tiers](../../../metrics/storing/#the-importance-tiers).
+
+The **Compliance** tab of the [Alloy Meta Monitoring dashboard](../../../dashboards/all/#alloy-meta-monitoring-infra-alloy) reads them.
+It counts redactions and card numbers over the selected time range by rule and source, shows how much of each tier the filter scanned, and has collapsed rows that search the stored lines.
+
 No alert ships for redactions, so to be told about one, alert on any increase in `loki_secretfilter_secrets_redacted_by_category_total`.
-<!-- FIXME(DEP-316): increase() misses a (rule, origin) series' first redaction, because the series starts at 1. -->
+<!-- FIXME(DEP-316): increase() misses a (rule, origin) series' first redaction, because the series starts at 1. The dashboard's range counts in infra-alloy.yaml show the fix. -->
 For card numbers, alert while the series exists, such as `max_over_time(loki_process_custom_luhn_redacted_lines_total[1h]) > 0`, because an increase misses a stream's first replacement.
-<!-- TODO(DEP-316): link the shipped alerts and the dashboard row here. -->
+<!-- TODO(DEP-316): link the shipped alerts here. -->
 
 To find the redacted lines in Loki, query for the placeholder:
 
 ```logql
-{level=~".+"} |= "<redacted:"
+{job=~".+"} |~ "<redacted[:]"
 ```
+
+Write the search as a regular expression with a bracket, as in the example.
+Loki logs the text of each query it runs, so a search for the literal `<redacted:` also finds Loki's own log lines about the earlier searches.
 
 For how the filter is placed in the pipeline and tested, see the [logging pipeline reference](../../../reference/development/pipelines/logging/#secret-filter).
 
@@ -12424,7 +12440,7 @@ Delete the Service when you're done; Helm doesn't manage it.
 ### Healthy targets go dark: `data refused due to high memory usage`
 
 A share of the metrics stops arriving, `up` included, for targets that are running fine.
-Alerts that read absence fire on whichever targets are affected: `environmentd-not-scraped`, `logging-collection-down`, the Thanos `*IsDown` rules.
+Alerts that read absence fire on whichever targets are affected: `environmentd-not-scraped`, `kube-state-metrics-not-scraped`, `logging-collection-down`, and the Thanos `*IsDown` rules.
 A gateway pod logs this on every scrape it makes:
 
 ```text
@@ -17592,7 +17608,7 @@ Forward into the gateway's own entry points, so the data gets the same processin
 | Scraped metrics | `otelcol.receiver.prometheus.inputBridge.receiver` |
 | Pushed metrics that may lack `job` or `instance` | `prometheus.relabel.receiveIdentity.receiver` |
 | Loki log entries | `loki.process.inputPrefilter.receiver` |
-| OTLP metrics | `otelcol.processor.transform.inputMetricProcessor.input` |
+| OTLP metrics | `otelcol.processor.transform.localTenant.input` |
 | OTLP logs | `otelcol.exporter.loki.bridge.input` |
 
 These are internal component names, not a stable interface: if a release renames one, the pre-validate job fails rather than the gateway.
@@ -17617,6 +17633,72 @@ pipeline:
           }
         }
 ```
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false,
+  "format": "",
+  "header": "X-Amzn-Mtls-Clientcert-Subject"
+}</pre>
+</td>
+      <td class="helm-value-desc">Take each OTLP request's tenant from the client certificate a proxy verified, for Materialize's control plane.
+
+For the gateway that receives call-home telemetry from many installs, behind a proxy that terminates mTLS.
+The proxy checks each client certificate against its trust store and passes what it found on in a header.
+When this is on, the OTLP receiver on `4317` and `4318` reads that header,
+and every log record and metric data point takes its tenant from the CN of the certificate's subject:
+
+- Logs go to the Loki tenant the CN names, overriding `pipeline.logging.tenancy`.
+- Metrics carry the CN in the `mzmonTenant` label.
+  Run Thanos Receive with `--receive.split-tenant-label-name=mzmonTenant`, and it writes each series to that tenant and removes the label.
+
+| Proxy | `header` | `format` |
+| --- | --- | --- |
+| AWS Application Load Balancer, mTLS in verify mode | `X-Amzn-Mtls-Clientcert-Subject` | `subject` |
+| nginx, with `proxy_set_header X-SSL-Client-S-DN $ssl_client_s_dn;` | `X-SSL-Client-S-DN`, or the name you set | `subject` |
+| Envoy, with `forward_client_cert_details: SANITIZE_SET` and `subject` set | `X-Forwarded-Client-Cert` | `xfcc` |
+
+The gateway drops a request with no header, a header sent twice or naming more than one certificate,
+a subject with more than one CN, an escaped character, or a multi-valued attribute (`+`),
+or a CN that isn't 1 to 150 letters, digits, `.`, `_`, and `-`.
+It replaces whatever tenant the sender set, and no other way in can set one:
+the gateway removes `mzmonTenant` from scraped and remote-written metrics.
+
+**The proxy has to verify the certificate and set the header on every request,** replacing any copy the client sent.
+For nginx that means `ssl_verify_client on`; `optional_no_ca` passes on a subject it never checked.
+
+**Every OTLP sender then has to come through the proxy,** because any pod that can reach `4317` or `4318` could send the header itself.
+In `alloy-gateway.networkPolicy.ingress`, admit only the proxy to those ports:
+its subnets by `ipBlock`, or its pods by a selector that names them.
+The render fails while a rule admits every pod.
+Behind an AWS load balancer, it also fails while `pipeline.logging.gateway.server.tls.clientAuth` asks for a client certificate,
+which the load balancer doesn't present.
+nginx and Envoy can present one, and requiring a certificate only the proxy holds keeps out any pod that skips it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Read each OTLP request's tenant from the proxy's client-certificate header.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.header</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"X-Amzn-Mtls-Clientcert-Subject"</code></td>
+      <td class="helm-value-desc">The header the proxy sets, in any case.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.gateway<wbr>.clientCertificateTenancy<wbr>.format</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">How to read `header`. `subject` is an RFC 2253 subject, such as `CN=stack-a,O=Materialize`. `xfcc` is Envoy's `X-Forwarded-Client-Cert`. Empty means `xfcc` when `header` is `X-Forwarded-Client-Cert`, and `subject` otherwise.
 </td>
     </tr>
   </tbody>
@@ -21980,11 +22062,11 @@ query frontend, and Grafana then shows no Loki rules.
 {
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
-  "repository": "nginxinc/nginx-unprivileged",
-  "tag": "1.31.7-alpine-slim"
+  "repository": "nginx/nginx-unprivileged",
+  "tag": "1.31.9-alpine-slim"
 }</pre>
 </td>
-      <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size.
+      <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size. Upstream publishes from `nginx/nginx-unprivileged` since nginx 1.31.7; the older `nginxinc/nginx-unprivileged` repository gets no new tags.
 </td>
     </tr>
     <tr>
@@ -26453,6 +26535,8 @@ otelcol.receiver.otlp                          (OTLP metrics) ──────
          prometheus.remote_write "<name>"   prometheus.remote_write "<name>"
 ```
 
+Under `pipeline.gateway.clientCertificateTenancy`, `inputBridge` forwards through `otelcol.processor.transform "localTenant"`, and OTLP metrics take the [client-certificate tenancy](../logging/#client-certificate-tenancy) path before `inputMetricProcessor`.
+
 Cloud provider pulls join the same bridge when enabled: each is an instance of a custom component whose body ends in the shared `provider_scrape` (an `instance` pin and a clustered `prometheus.scrape`) → `inputBridge`.
 They are covered under [Cloud provider pulls](#cloud-provider-pulls) below.
 
@@ -26714,6 +26798,10 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       `terraform-render` is the tier-0 Terraform render check behind `make terraform-render`.
       It plans each module example, renders the chart against the composed values, and runs the assertions under `src/terraform_render/checks/`.
       Each assertion runs as one libtest-style trial per example
+    * `mz-monitoring-benchmark/`: the load-testing tool (see [Load testing](../load-testing/)).
+      `fixture-gen` captures and anonymizes real scrapes into `fixtures/<role>/`, which are embedded in the binary;
+      `gen-load` serves them expanded to a requested size and writes logs in each role's format.
+      Its `Dockerfile` builds from the repository root with `make benchmark-image`, and the `benchmark-images` component releases it
     * `mz-monitoring-e2e/`: Rust assertion suite for a *running* stack — one binary for every kind and cloud tier, reading the release's coalesced Helm values to decide what applies (`make e2e-verify`). Asserts only; installs nothing
   * `charts/`
     * `materialize-monitoring/`: umbrella chart
@@ -26756,12 +26844,13 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         Several clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
     * `test/generic-cloud/`: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
   * `test/e2e/`: kind cluster config and the failure-diagnostics collector (`make e2e-*`). The assertions themselves live in `packages/mz-monitoring-e2e`
+  * `test/load/`: the Helm chart that runs one synthetic environment of `mz-monitoring-benchmark` pods behind `ServiceMonitor`s, not published. `files/Cargo.toml` is a symlink to the crate's manifest, from which the chart takes its default image tag
   * `docs/`: Hugo docsite (the source of this page)
     * `hugo.toml`: site config; `go.mod` / `go.sum` pin the theme
     * `content/`: authored Markdown
       * `_index.md` files carry **frontmatter only** — no prose. A section's landing content lives in a regular page inside it at `weight: 1` (e.g. `logs-and-events/architecture.md`, `reference/development/contributing.md`), so every directory in the sidebar is a container and every clickable title is a real page. The site home `content/_index.md` is the one exception
       * top-level sections: `getting-started/`, `metrics/` (incl. `collecting/`), `logs-and-events/`, `dashboards/` (incl. `grafana/`), `alerting/`, `o11y-tools/`, `operating/`, plus `architecture.md` and `o11y-glossary.md`
-      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `development/` (this section — `dashboard/`, `queries/`, `pipelines/`, `design-docs/`, plus `contributing.md`, `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
+      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `development/` (this section — `dashboard/`, `queries/`, `pipelines/`, `design-docs/`, plus `contributing.md`, `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`, `load-testing.md`)
     * `layouts/`, `static/`, `assets/`, `data/`, `i18n/`, `archetypes/`, `themes/`: Hugo machinery
     * `public/`, `resources/`: generated output (not checked in)
   * `legacy/`: preserved field-engineering assets — `sql_exporter/`, `prometheus/`, `grafana/`, `datadog/`, `tests/`, `docker-compose.yml`, `scrape_config.yaml`
@@ -26770,7 +26859,8 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `shlib/`: shared bash helpers
   * `.claude/skills/`: authoring conventions consumed by both contributors and AI agents
   * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`, `design-doc-notify.yaml` (Slack notification for new design docs), `zizmor.yaml` (workflow security scan, uploaded to code scanning); also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever.
-    `design-doc-notify.yaml` is the exception, filtering on the trigger because it reports no status anyone gates on
+    `design-doc-notify.yaml` and `publish-images-pr.yaml` are the exceptions, filtering on the trigger because they report no status anyone gates on.
+    `actions/` holds the composite actions the image workflows share: `build-alloy-image` and `build-benchmark-image`
 
 
 --------------------------------------------------------------------------------
@@ -29067,6 +29157,38 @@ The gateway is where normalization, cardinality reduction, and routing happen.
 Every component in these pipelines is typed and schema-validated, including the ingress components and the `loki.write` sink.
 The `raw:` escape (see [Authoring](../authoring/)) remains available and is currently unused.
 
+### Client-certificate tenancy
+
+With `pipeline.gateway.clientCertificateTenancy` on, a proxy in front of the gateway terminates mTLS,
+and passes the verified certificate on in a header.
+The OTLP receiver forwards to one of two attributes processors instead of the bridge and `inputMetricProcessor`:
+
+- `clientTenantSubject` reads an RFC 2253 subject,
+  as an AWS Application Load Balancer sends in `X-Amzn-Mtls-Clientcert-Subject` and nginx in `$ssl_client_s_dn`.
+- `clientTenantXfcc` reads Envoy's `X-Forwarded-Client-Cert`.
+
+Both read the header `GATEWAY_CLIENT_TENANT_HEADER` names, which the chart sets from the values.
+Every log record and metric data point then takes its tenant from the CN of the certificate's subject.
+The comments on those components in `gateway.yaml` explain the construction.
+When you change the gateway, keep these true:
+
+- Only `loki.relabel "clientTenant"` sets `__mzmon_tenant__`, the label `inputProcessor` takes the Loki tenant from.
+  `loki.source.api` drops every label that starts with `__`, and `loki.relabel "bridge"` drops this one.
+  A new way in that can carry arbitrary labels needs the same drop.
+- The tenant attribute is `mzmonTenant`, with no underscore.
+  Both OTLP bridges rename attributes into label names, and when two attributes land on one name, they keep whichever their map iteration reaches last.
+  Only a name without `_` is safe from a lookalike.
+- A new way into the metric pipeline passes `otelcol.processor.transform "localTenant"`, which removes `mzmonTenant`, as `inputBridge` does under this setting.
+- Each format's pattern refuses a header that names more than one certificate.
+  The collector joins the values of a repeated header with `;`, and Envoy separates appended certificates with `,`.
+  A new format needs a pattern that refuses both, and a test case for each.
+- Each pattern takes the CN only from a subject with exactly one CN and no `\` or `+`.
+  An escape can hide a separator: `O=dept\,CN=victim` puts a second CN inside the organization.
+  A `+` joins one to it: `O=dept+CN=victim`.
+
+`packages/mzmon-lib/tests/gateway_client_tenant.rs` sends each forgery it knows of through `alloy run`.
+Add a case when you add a way in.
+
 ### Processing conventions
 
 These are the conventions a contributor must preserve when editing the gateway `loki.process` pipeline:
@@ -29196,21 +29318,35 @@ A line the sniff can't classify goes to the full tier, so a miss costs a scan ra
 
 `inputPrefilter` ends with `stage.luhn`, which replaces each run of 13 to 19 digits that passes the Luhn checksum with `<redacted:luhn>`.
 It runs in every mode of the filter, and on every line before the tier split, so the bulk tier's scan rate never applies to it.
-Its `skip_regex` has two alternatives.
-The first, `1(?:\d{18}|\d{15}|\d{12})`, exempts epoch timestamps in milliseconds, microseconds, and nanoseconds: runs of exactly 13, 16, or 19 digits that start with `1`.
-Alloy skips a run only when one match covers all of it, so the longest width goes first and the expression needs no word boundaries.
-That also exempts a timestamp followed by a unit, such as `ms`.
-The leading `1` holds until 2033-05-18, and `packages/mzmon-lib/tests/gateway_luhn.rs` starts failing a year before.
+Its `skip_regex` exempts digits that are part of something else.
+Alloy finds the expression's matches without overlap, and skips a run only when one match covers all of it.
+An alternative that matches part of a token could use up a character another alternative needed, so each alternative matches a whole token, and their order matters only where two can start at the same character.
+`packages/mzmon-lib/tests/gateway_luhn.rs` places a Luhn-valid number beside every pair of neighbours and checks each outcome against a function that states the intent, so an alternative that breaks this fails there.
 
-The second, `"(?:[^"\\]|\\.)*":\s*-?\d+`, exempts a JSON number: a number directly after a quoted key and a colon.
-A placeholder in its place would make the line invalid JSON, and `inputProcessor` would lose the line's level and fields.
-The alternative matches the key whole, escapes included, for the following reasons:
+The following table lists the alternatives in the order the expression tries them:
 
-- A key made of digits, such as a timestamp, can't be taken by the first alternative, which would leave the number after it unexempted.
-- An escaped quote can't end a key, so a card number in JSON escaped inside a string is still replaced.
+| Alternative | Exempts | Seen as |
+|---|---|---|
+| `"(?:[^"\\]\|\\.)*":\s*-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?` | A JSON number after its key, fraction and exponent included | Any JSON log line. A placeholder in its place makes the line invalid JSON, and `inputProcessor` loses its level and fields |
+| `\w*[A-Za-z_]\w*` | A word that contains a letter or an underscore | Materialize's 18-digit `si` collection IDs, the Azure VM agent's `etag_` IDs, and container IDs |
+| `\d+\.\d+` | A decimal number, with digits on both sides of the point | Ratios, and the timestamp in a Go pseudo-version such as `v1.2.2-0.<timestamp>-<hash>` |
+| `1(?:\d{18}\|\d{15}\|\d{12})` | An epoch timestamp in milliseconds, microseconds, or nanoseconds: exactly 13, 16, or 19 digits that start with `1` | The frontiers Materialize logs |
+| `20\d{12}` | A compact `yyyymmddhhmmss` timestamp | Go pseudo-versions without the `0.` |
 
-A card number written as a JSON number passes, as a numeric password after a JSON key does in the ingest rules.
-A number in a JSON array has no key before it, so one that passes the checksum still breaks its line's JSON.
+The JSON alternative matches the key whole, escapes included.
+So a key made of digits, such as a timestamp, still counts, and an escaped quote can't end a key, so a card number in JSON escaped inside a string is still replaced.
+
+The word alternative comes before the timestamps, which would otherwise take 16 digits of an 18-digit number followed by a letter and leave the rest uncovered.
+Inside the timestamp alternative, the longest width comes first for the same reason.
+The leading `1` holds until 2033-05-18, and `gateway_luhn.rs` starts failing a year before.
+No card number is 14 digits long and starts with `20`.
+
+Each exemption has a cost:
+
+- A card number written as a JSON number, or directly against a letter or an underscore, passes.
+- A number in a JSON array has no key before it, so one that passes the checksum still breaks its line's JSON.
+- A number after a word and a point, such as `x1.`, isn't a decimal, so one that passes the checksum is still replaced.
+
 A `stage.match` on the placeholder feeds `stage.metrics`, which counts changed lines in `loki_process_custom_luhn_redacted_lines_total`.
 `gateway_luhn.rs` runs the prefilter on the pinned Alloy with card numbers and Luhn-valid timestamps it generates, so the repository commits no card-shaped number.
 
@@ -29286,7 +29422,7 @@ The structured metadata budget later on this page still applies to those fields.
 
 The last-stage rules exist because Loki refuses an entry over its limits rather than shortening it, and `loki.write` doesn't retry the refusal.
 The figures in the following list come from measuring Loki 3.7.8.
-Loki 3.7.9, the version the chart deploys, has the same default limits.
+Loki 3.7.10, the version the chart deploys, has the same default limits.
 With those defaults, Loki refuses the following:
 
 - A line longer than 256KiB (262,144 bytes).
@@ -32230,7 +32366,13 @@ BYOC environments are ones Materialize operates; self-managed installs are invis
 | [DEP-288] The `elevated` window: time-boxed, self-expiring, never set remotely | ⬜ |
 | [DEP-289] An Alertmanager webhook receiver path | ⬜ |
 | [DEP-290] Terraform variables for the level, the credential reference and the proxy | ⬜ |
-| [DEP-291] Control-plane per-tenant limits sized for install count, and a stated response model | ⬜ |
+| [DEP-488] A control-plane values overlay: client-certificate tenancy, proxy-only ingress, and the Thanos tenant split | ⬜ |
+| [DEP-489] Per-tenant fairness in the control-plane gateway's log rate limits | ⬜ |
+| [DEP-490] Control-plane sizing for install count: per-tenant overhead in Loki and Thanos | ⬜ |
+| [DEP-491] A response model: a routing destination, a stated response, and a stated non-response | ⬜ |
+| [DEP-492] An identity directory that refuses churned installs and maps installs to customers | ⬜ |
+| [DEP-493] Per-tenant limits in Loki and Thanos Receive, with values from [DEP-490] | ⬜ |
+| [DEP-494] Fleet-shaped alerting: heartbeat absence, clone detection, and grouping | ⬜ |
 | A customer-facing page: the levels and the schedule for each, previewing, the local meter, and retention, access and deletion | ⬜ |
 
 **The channel is the BYOC channel; the feature is consent.**
@@ -32427,7 +32569,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-288]: https://linear.app/materializeinc/issue/DEP-288
 [DEP-289]: https://linear.app/materializeinc/issue/DEP-289
 [DEP-290]: https://linear.app/materializeinc/issue/DEP-290
-[DEP-291]: https://linear.app/materializeinc/issue/DEP-291
 [DEP-295]: https://linear.app/materializeinc/issue/DEP-295
 [DEP-297]: https://linear.app/materializeinc/issue/DEP-297
 [DEP-298]: https://linear.app/materializeinc/issue/DEP-298
@@ -32485,6 +32626,287 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385
+[DEP-488]: https://linear.app/materializeinc/issue/DEP-488
+[DEP-489]: https://linear.app/materializeinc/issue/DEP-489
+[DEP-490]: https://linear.app/materializeinc/issue/DEP-490
+[DEP-491]: https://linear.app/materializeinc/issue/DEP-491
+[DEP-492]: https://linear.app/materializeinc/issue/DEP-492
+[DEP-493]: https://linear.app/materializeinc/issue/DEP-493
+[DEP-494]: https://linear.app/materializeinc/issue/DEP-494
+
+
+--------------------------------------------------------------------------------
+title: "Load testing"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-loki/reference/development/load-testing/index.md
+--------------------------------------------------------------------------------
+
+`mz-monitoring-benchmark` puts realistic write load on the monitoring stack without running Materialize at scale.
+This page is for you if you're a contributor sizing the gateway, Thanos, or Loki, or measuring what a change costs them.
+
+Each benchmark pod impersonates one Materialize process.
+It serves that process's metrics endpoints, expanded to the size you ask for, and writes that process's logs at the rates you ask for.
+The goal is the load: series counts, churn, scrape sizes, and log volume and shape.
+The graphs the load draws aren't meant to look like a real environment's.
+
+## How it works
+
+The tool has two halves.
+
+`fixture-gen`
+: Captures each role's real scrapes from a live install and anonymizes them into fixtures under `packages/mz-monitoring-benchmark/fixtures/`.
+  User entities become numbered placeholders, and everything a user named or that identifies the install is removed.
+
+`gen-load`
+: Serves the fixtures, with every placeholder expanded into as many generated entities as you request, and writes log lines in the role's own format.
+
+The following table lists the roles a pod can take:
+
+| Role | Endpoints | Log format |
+|---|---|---|
+| `environmentd` | `/metrics`, and the SQL exporter's `/metrics/mz_compute`, `/metrics/mz_frontier`, `/metrics/mz_storage`, and `/metrics/mz_usage` | tracing JSON on stderr, startup banner on stdout |
+| `clusterd` | `/metrics` | tracing JSON on stderr |
+| `balancerd` | `/metrics` | tracing text on stderr |
+| `orchestratord` | `/metrics` | tracing text on stderr |
+| `console` | `/metrics` | nginx access log on stdout, error log on stderr |
+
+### Expansion
+
+A fixture series that names a user entity copies itself once per generated entity of that kind.
+Generated collection `j` copies the series of exemplar `j mod E`, where `E` is the number of collections in the fixture.
+The generated set therefore keeps the captured mix of sources, tables, views, and indexes.
+The entities a series also names are derived from the one it's copied for:
+collection `j` lives on cluster `j mod C`, and a series that names a replica fans out across its cluster's replicas.
+System objects exist in every environment, so they stay literal and are emitted once.
+
+### Identities and values
+
+Every identity a pod generates derives from its seed, which defaults to the pod's name.
+A StatefulSet pod keeps its name, so after a restart it serves the same persist shard IDs, which look like `s` followed by a version 4 UUID.
+
+Nothing is stored per series.
+Counters are the captured value plus the captured rate times the integral of the scenario's shape.
+They never decrease, and their `rate()` follows the shape.
+Gauges are the captured value times the shape and per-second noise.
+Gauges that hold a wall-clock time, such as frontiers, stay their captured distance behind the clock.
+Every count, rate, and value carries a seeded spread of ±10% by default, which you set with `--jitter`.
+
+## Run a load test
+
+The chart in `test/load/` runs the pods, each behind a `ServiceMonitor`.
+You need a test install of the stack, whose gateway scrapes every `ServiceMonitor` in the cluster.
+
+1. Install the chart:
+
+   ```bash
+   helm install bench test/load --namespace mzmon-bench --create-namespace
+   ```
+
+   The chart isn't published, so install it from a checkout.
+   Its image tag defaults to the crate's version, the tag a release of the `benchmark-images` component publishes.
+   The chart reads that version from `files/Cargo.toml`, a symlink to the crate's manifest.
+   To run a dev build, set `--set image.repository=REPOSITORY,image.tag=TAG`.
+   Replace `REPOSITORY` and `TAG` with the image you built, such as one that `make CONTAINER_REGISTRY=REGISTRY benchmark-image` built and you pushed.
+   A pull request that changes the crate also publishes a dev image tagged `VERSION-dev.0--pr.gSHA`.
+
+1. Watch the targets come up in the `mzmon-bench` namespace, and the load arrive on the **infra-alloy** and **infra-loki** dashboards.
+
+1. Remove the load when you're done:
+
+   ```bash
+   helm uninstall bench --namespace mzmon-bench
+   ```
+
+The chart's defaults describe one environment.
+It has an `environmentd` with 25,000 collections on 10 clusters, one `clusterd` per cluster, and the operator, balancer, and console pods.
+To simulate more environments, scale every role's `replicas` by the same factor.
+Each pod's seed differs, so every pod adds series of its own.
+For every value the chart takes, see its [README](https://github.com/MaterializeInc/materialize-monitoring/blob/main/test/load/README.md).
+
+The pods run in their own namespace, so the gateway's per-namespace log limits meter them apart from real workloads.
+Each container takes the name its real process runs under, because the gateway chooses Materialize's log parsing by container name.
+That name is the role, except for `orchestratord`, whose container is `materialize-operator`.
+The pod labels aren't Materialize's, so the chart's own Materialize monitors and alerts ignore the pods.
+
+## Size the load
+
+The following flags set how many entities a pod generates:
+
+| Flag | Roles | Default |
+|---|---|---|
+| `--persist-shards` | `environmentd`, `clusterd` | The fixture's shards |
+| `--collection-count` | `environmentd`, `clusterd` | The fixture's user collections |
+| `--cluster-count` | `environmentd` | The fixture's user clusters |
+| `--replicas-per-cluster` | `environmentd` | The fixture's replicas per cluster |
+
+A flag for an entity the role's fixtures never name is an error rather than a silent no-op.
+
+To see what a size costs before you deploy it, run `preview` with the same flags:
+
+```bash
+cargo run --release -p mz-monitoring-benchmark -- preview \
+  --role environmentd --persist-shards 1024 --collection-count 25000 --cluster-count 10
+```
+
+The output gives the series count and size of each endpoint per scrape.
+Add `--body PATH` to print an endpoint's body, and `--at SECONDS` to render a later moment of a growing scenario.
+
+## Shape the load over time
+
+The metric and log scenarios share one period, which you set with `--period`, or `period` in the chart's values.
+The default is `5m`, and the period has to be at least `1s`.
+The period is an argument of its own rather than a key in either scenario, so the two can't run on different clocks.
+Every count in either scenario is per period.
+A count below 1 fires once every few periods, so at the default period `panic=0.25` is one panic every 20 minutes.
+
+Each shape repeats once per period, aligned to the wall clock, so a metric pulse and a log pulse with the same numbers line up.
+Every shape averages to 1 over the period, so a shaped rate keeps its configured mean.
+The following shapes are available:
+
+`average`
+: Constant.
+  `flat` is a synonym.
+
+`bell`
+: A Gaussian bump in the middle of the period.
+
+`sine`
+: One sine wave per period.
+
+`saw`
+: A ramp from nothing at the start of the period to twice the mean at its end.
+
+`pulseD`
+: On for the first `D` of each period and off for the rest, such as `pulse180` for three minutes on and two off.
+  `D` takes a unit, such as `pulse30s` or `pulse3m`, and is in seconds without one.
+
+`plateauD`
+: A ramp up, a hold for `D`, and a ramp down.
+
+### Shape the metrics
+
+`--metric-scenario` takes a comma-separated list of the following keys:
+
+`dist`
+: The shape gauges and counter rates follow.
+  The default is `average`, which keeps the captured values.
+
+`amp`
+: How far the shape moves values, from 0 for none to 1 for the full shape.
+  The default is `0.5`.
+
+`collection-grow`, `shard-grow`
+: Entities added per period, which grows the series count without bound.
+
+`collection-churn`, `shard-churn`
+: Entities replaced per period: the oldest stop being served and new IDs appear.
+  Churn is the expensive case for a TSDB head.
+
+### Shape the logs
+
+`--log-scenario` takes a comma-separated list of the following keys:
+
+`trace`, `debug`, `info`, `warn`, `error`
+: Mean lines per period at that level.
+  Naming any level replaces the default of `info=1500,warn=150,error=15`.
+
+`LEVEL-dist`, `dist`
+: The shape of one level's lines, or of every level's when you use `dist`.
+  The default is `average`.
+
+`phase`
+: `sync`, the default, starts every pod's period on the same wall-clock boundary, so bursts across a fleet land together.
+  `seeded` offsets each pod's period.
+
+`non-json`
+: Lines per period in no structured format, written to stdout as `environmentd`'s startup banner is.
+  Only `environmentd` and `clusterd` accept it, because the other roles' lines are already plain text.
+
+`eicar`
+: Lines per period carrying both [secret-filter canaries](../design-docs/20260924-log-secret-filtering/#a-canary-in-the-spirit-of-eicar), at `WARN`.
+
+`panic`
+: Multi-line Rust panics per period.
+  The console doesn't accept it, because it's nginx.
+
+`panic-exit`
+: `true` exits the process after each panic, the way a real panic does, so Kubernetes restarts the pod with the same seed.
+
+Each pod starts every count part of the way to its first line, at a seeded point.
+A fleet's rare events, such as panics, therefore don't fire on the same tick.
+
+## Regenerate the fixtures
+
+Regenerate the fixtures when Materialize changes what it exports, and check them against a new Materialize version to see what changed.
+Run `fixture-gen` only against a test install you own.
+Its anonymizer is built to keep identifiers out of the fixtures, and every fixture still goes through code review before it merges.
+
+The capture needs user objects to take exemplars from.
+The maintainers' GCP test install (internal) keeps a small workload for that purpose.
+It lives in the `bench_fixture` schema of the install's `materialize-environment` environment.
+It holds an `AUCTION` load-generator source, a table, two materialized views, a view, and two indexes.
+Don't drop it.
+
+1. Capture and write the fixtures:
+
+   ```bash
+   cargo run -p mz-monitoring-benchmark -- fixture-gen \
+     --context CONTEXT --namespace NAMESPACE
+   ```
+
+   Replace the following:
+
+   - `CONTEXT`: the kube context of the test install.
+   - `NAMESPACE`: the namespace of the Materialize environment to capture.
+
+   The command finds one ready pod per role, port-forwards to it, and scrapes each endpoint twice, 15 seconds apart, to measure counter rates.
+   The SQL exporter endpoints use the basic auth in the `monitoring/materialize-sql-monitor` Secret, which the chart creates.
+
+1. Read the report.
+   It lists the exemplars found per entity kind, any values replaced by a fixed stand-in, and any label the anonymizer has no rule for.
+   An unclassified label's values are only scrubbed of recognizable patterns, such as UUIDs, addresses, and host names.
+   Classify it in `src/anonymize.rs` before you commit.
+
+   The command also checks every anonymized fixture for addresses, host names, UUIDs, raw user IDs, and cloud regions.
+   Its own stand-ins pass, and it writes nothing when anything else turns up.
+
+1. Run the tests, which repeat that check on the committed fixtures and render every role at scale:
+
+   ```bash
+   cargo test -p mz-monitoring-benchmark
+   ```
+
+To check a Materialize version against the committed fixtures without writing anything, add `--check`.
+The command fails when a family in both has a different type or different label names.
+It lists families found on one side only without failing.
+The SQL exporter emits a family only while its query returns rows, so one capture can't tell a removed family from an idle one.
+Add `--strict` to fail on unclassified labels as well.
+
+### What the anonymizer removes
+
+The anonymizer treats each kind of value as follows:
+
+| Value | Becomes |
+|---|---|
+| Persist shard IDs, and user collection, cluster, and replica IDs (`u` followed by digits) | Numbered placeholders, such as `${shard:3}` |
+| Introspection collection IDs on a user replica | Placeholders numbered per replica |
+| Names of user objects, schemas, databases, clusters, and replicas | Attributes of the entity's placeholder, such as `${collection:3.name}` |
+| Environment IDs and other UUIDs | Placeholders that each pod fills from its seed |
+| Application names, zones, and replica sizes outside Materialize's own | Fixed stand-ins, such as `application_0` and `zone-a` |
+| IPv4 addresses, host names, email addresses, long hex strings, and environment resource IDs | Fixed stand-ins |
+| System object IDs and names, enumerations, and versions | Unchanged |
+
+The log message catalog isn't captured.
+A log message is free text that no rule set can promise to clean.
+The catalog in `src/logs.rs` is written by hand after lines seen on a live install, and every identifier in it is generated.
+
+## Limits
+
+The following list describes what the load doesn't reproduce:
+
+- **Cross-pod consistency:** a `clusterd` pod's collections aren't the ones an `environmentd` pod lists.
+- **Environment labels:** the pods carry no `materialize.cloud/organization-name` label, so dashboards filtered by environment don't show them.
+- **Compression:** the endpoints answer uncompressed, as Materialize's do.
+- **Log content:** messages come from a fixed catalog, so their variety is lower than a real environment's.
 
 
 --------------------------------------------------------------------------------
@@ -34167,7 +34589,9 @@ Four stakeholder classes consume this:
 - **Logs are the actual gap.** There is exactly one `loki.write "destination"` and one `egress` seam. Logs need what metrics already have: a destination *list* with per-destination processing. This is the bulk of the pipeline work.
 - **Redaction attaches to the destination, not to the pipeline.** A global redaction stage would destroy the customer's own copy to protect ours — the exact inversion of the goal. Per-destination chains are what make "the customer keeps more" true.
 - **Redaction is fail-closed and allowlist-shaped for log bodies.** A denylist of patterns is a promise we cannot keep against arbitrary log content; structured fields we recognize cross, and unrecognized bodies do not, unless explicitly opted in.
-- **Client certificates come from the license**, verified **twice**: at an L7 load balancer that holds the verifier CA public key and does revocation, and again at `otelcol.receiver.otlp`. The receiver has **no CRL support**, which makes the load balancer the **only** revocation checkpoint — a load-bearing fact, not a detail.
+- **Client certificates come from the license**, verified at an L7 load balancer that holds the verifier CA public key and does revocation.
+  The load balancer terminates TLS, so the certificate never reaches `otelcol.receiver.otlp`,
+  which makes the load balancer the **only** verification and revocation checkpoint — a load-bearing fact, not a detail.
 - **Certificate identity is assigned, never asserted.** The LB injects a verified tenant header derived from the client certificate, and the gateway **overwrites** any client-supplied tenant metadata unconditionally. Without that, any valid cert holder can write as any other tenant.
 - **Per-destination failure isolation is a hard requirement.** The control-plane branch gets its own queue and its own drop policy, so our unavailability produces a gap in *our* copy and nothing else.
 - **Delivery is the stack deployer**, using the same self-managed Terraform modules plus a BYOC profile. The BYOC-specific part is credential material and destination wiring, not a different stack.
@@ -34251,7 +34675,7 @@ flowchart TB
 
   subgraph mz["Materialize control plane"]
     lb["L7 load balancer<br/>verify chain · check revocation<br/>inject tenant header"]
-    cpgw["alloy-gateway — control plane role<br/>otelcol.receiver.otlp · verify client cert again<br/>OVERWRITE tenant metadata · per-tenant limits"]
+    cpgw["alloy-gateway — control plane role<br/>otelcol.receiver.otlp · read the LB's identity header<br/>OVERWRITE tenant metadata · per-tenant limits"]
     mzstore[("Loki / Thanos — ours<br/>multi-tenant, reduced, shorter retention")]
     mzgraf["Grafana + Alertmanager<br/>internal only"]
 
@@ -34276,31 +34700,26 @@ Keeping it the same artifact is a deliberate constraint. A control-plane fork wo
 
 ## Ingress: OTLP into the control plane
 
-### Two-stage verification, with one revocation checkpoint
+### One verification, at the load balancer
 
-The client certificate is verified at both hops, and the split is not redundant — the two hops can check different things.
+The load balancer verifies the client certificate's chain and checks revocation, and it is the only place either happens.
+It needs **only the verifier CA public key** — no private material, no per-customer configuration, no state that grows with the fleet.
+Adding a customer is issuing a certificate, not touching the ingress.
 
-| | **L7 load balancer** | **`otelcol.receiver.otlp`** |
-|---|---|---|
-| Needs | Verifier CA public key only | Client CA bundle |
-| Chain verification | ✅ | ✅ |
-| **Revocation (CRL / OCSP)** | ✅ | ❌ **not supported** |
-| Identity extraction → header | ✅ | — (consumes the header) |
-| Terminates TLS | ✅ | Re-terminates (LB → gateway is a separate session) |
-| Protects against | Unauthenticated and revoked clients, at the edge | An attacker who reaches the pod directly |
+**The receiver can't verify the certificate a second time.**
+The load balancer terminates TLS and opens its own session to the gateway, presenting no client certificate,
+so the customer's certificate never reaches `otelcol.receiver.otlp`.
+What reaches it is the certificate's subject, in a header the load balancer sets.
 
-The load balancer needs **only the verifier CA public key** — no private material, no per-customer configuration, no state that grows with the fleet. Adding a customer is issuing a certificate, not touching the ingress.
-
-**The receiver cannot check revocation, so the load balancer is the only place revocation is enforced.**
-That has a consequence worth writing in the operational runbook rather than discovering later: *any* network path that reaches the gateway pod while bypassing the LB also bypasses revocation.
+That has a consequence worth writing in the operational runbook rather than discovering later:
+*any* network path that reaches the gateway pod while bypassing the LB bypasses verification and revocation, and can send that header itself.
 The mitigations are ordinary and must all be present — the gateway's Service is internal, a NetworkPolicy admits only the LB's source, and no second ingress object targets it.
-That work has since landed for the gateway, but not in the shape this needs: the shipped policy accepts the ingest ports from any pod in the cluster, which is right for a customer-side install and is not "only the LB". The control-plane overlay has to replace that rule.
-
-Certificate verification at the receiver is expressible today only through the schema's `raw` escape hatch, since the `grpc` and `http` blocks accept nested blocks as raw text. Typing the `tls` block is listed in the [prerequisites](#chart-side-prerequisites).
+The shipped policy accepts the ingest ports from any pod in the cluster, which is right for a customer-side install and is not "only the LB".
+The control-plane overlay has to replace that rule, and `pipeline.gateway.clientCertificateTenancy` refuses to render until it does.
 
 ### Identity is assigned by the load balancer, never asserted by the client
 
-The load balancer extracts the environment identity from the verified certificate subject or SAN and injects it as a request header.
+The load balancer passes the verified certificate's subject on as a request header, and the gateway takes the identity from its CN.
 `otelcol.receiver.otlp` can propagate request metadata downstream with `include_metadata`, which is how the value reaches the pipeline and becomes the Loki tenant.
 
 **The gateway must overwrite that metadata unconditionally, not merely read it.**
@@ -34531,8 +34950,8 @@ Work in **this** repo. Ordered roughly by dependency.
 | **Map-shaped log destinations** — a named map of destinations, rendered as one writer per destination off the `egress` seam | The core gap: logs have one destination, metrics have many. Everything else in this doc depends on it | ✅ Shipped as `pipeline.destinations` ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). The map is signal-agnostic: one entry is one wire, and each signal it carries has its own block, so the control plane is one `otlp` entry with one credential, carrying logs and tier-filtered metrics over mTLS |
 | **Per-destination log processing block** (class, level, sampling, rate limit, redaction) | Makes "the customer keeps more" structural rather than a promise. Global processing would degrade both copies | ✅ Class, level, sampling, and rate limit, as `logs.selector`, `minLevel`, `sampleRate`, and `rateLimit` in a `loki.process "dest_<name>"` per destination ([DEP-124](https://linear.app/materializeinc/issue/DEP-124)). Class is a LogQL selector rather than a new taxonomy. Redaction attaches to the same component ([DEP-317](https://linear.app/materializeinc/issue/DEP-317)) |
 | **Per-destination queue and drop policy** — `wal` per `loki.write`, bounded, droppable on the control-plane branch only | Prevents our outage from degrading the customer's own log delivery. The single highest-severity failure this design can have | ✅ Bounded and droppable: `queue.capacity` and `queue.blockOnOverflow: false` on each destination, measured to keep the local copy whole while another destination is unreachable. The per-destination `wal` is not wired |
-| **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | **Blocking** for the control-plane gateway |
-| **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | **Blocking** |
+| **Typed `tls` block on `otelcol.receiver.otlp`'s `grpc` / `http`** in the pipeline schema | Receiver-side mTLS is `raw`-only today, so the control-plane ingress config would be unvalidated at build time | Not needed: [the receiver can't see the client certificate](#one-verification-at-the-load-balancer) behind the load balancer. The chart renders the receiver's server TLS from `pipeline.logging.gateway.server.tls` |
+| **Tenant metadata overwrite, fail-closed**, on the control-plane receiver path | Without it a valid certificate can write as any tenant. Security-blocking, not merely correctness | ✅ `pipeline.gateway.clientCertificateTenancy`, which takes the tenant from the certificate subject's CN, in the header an AWS Application Load Balancer, nginx, or Envoy sets ([DEP-291](https://linear.app/materializeinc/issue/DEP-291)) |
 | **`otelcol.processor.transform` before the log bridge** ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) | Label ↔ resource-attribute fidelity across the OTLP round trip. Already an open TODO in `gateway.yaml`; shared with the agent OTLP work | **Blocking** — silent label loss is worse than delivery failure |
 | **Redaction stage set** composed from existing primitives, allowlist-shaped, fail-closed | [DEP-220](https://linear.app/materializeinc/issue/DEP-220). Primitives exist; the composition and the values surface do not | **Blocking** for log egress |
 | **Generated log-class / field allowlist artifact**, alongside `metric-tiers.yaml` | The customer-readable egress schedule, and the thing that stops the allowlist drifting on a rename | Should land with redaction |
@@ -34674,7 +35093,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | **Grafana → backends client certificates** | ✅ Modeled | `connections.datasources.*.tls.clientCert`, a `valuesFrom` reference to a Secret. `mtls-phase2` sets it to Grafana's own certificate for Alertmanager |
 | **Authenticated node-exporter scrape** | ⚠️ Parked | `nodeExporter.kubeRBACProxy` off by default — a sidecar on every node to protect an endpoint that exposes no secrets |
 | **NetworkPolicy coverage** | ✅ Shipped | Every workload, on by default ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)). Ingress is narrowed to known peers; egress is narrowed only where the chart knows the destination set, which is node-exporter, kube-state-metrics and Loki |
-| **External client-cert auth (BYOC)** | 📄 Designed | [BYOC design doc](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint) |
+| **External client-cert auth (BYOC)** | 📄 Designed | [BYOC design doc](../20260813-byoc-observability/#one-verification-at-the-load-balancer) |
 
 The pattern in that table is worth stating directly: **the values surface implies more security than the deployment has.**
 An operator reading `minVersion: TLS13` next to `enabled: false` can reasonably come away thinking TLS is a switch rather than a project.
@@ -36220,7 +36639,10 @@ Either query IDs join the committed surface with the cooldown that implies, or t
 
 ## Token exchange for BYOC ingest
 
-The [BYOC design](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint) authenticates a customer's gateway with a client certificate carried in the license, verified twice: at the load balancer, which can check revocation, and at the receiver, which cannot.
+The [BYOC design](../20260813-byoc-observability/#one-verification-at-the-load-balancer)
+authenticates a customer's gateway with a client certificate carried in the license,
+verified once, at the load balancer, which also checks revocation.
+The load balancer terminates TLS, so the receiver never sees the certificate.
 This design introduces a token issuer and a token verifier, which raises a fair question — should the write path use tokens too?
 
 **The answer is yes for the credential and no for the component.**
@@ -37707,7 +38129,9 @@ The call-home destination has to leave `tls.caFile` unset for that to apply, bec
 **Churn and revocation are ordinary rather than exceptional.**
 BYOC customers are operated accounts.
 Self-managed installs get decommissioned, forked into test clusters, cloned into staging, and left running after a contract ends.
-Revocation is a routine operation in this segment, and [`otelcol.receiver.otlp` has no CRL support](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint), which leaves CRL freshness at the load balancer as the only control and its refresh interval as the revocation window.
+Revocation is a routine operation in this segment,
+and [the load balancer is the only place the certificate is checked](../20260813-byoc-observability/#one-verification-at-the-load-balancer),
+which leaves CRL freshness at the load balancer as the only control and its refresh interval as the revocation window.
 
 **The credential should carry the consent grant.**
 This is the argument specific to this design.
@@ -37737,7 +38161,7 @@ This is the [token-exchange shape the query-API doc proposes for BYOC ingest](..
 
 Concretely, in the order it should ship:
 
-1. **Direct mTLS first**, using the license-carried certificate, for the levels that ship first. It needs nothing that does not exist, and the [BYOC ingress will already verify it](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint). This is what makes the first customer possible.
+1. **Direct mTLS first**, using the license-carried certificate, for the levels that ship first. It needs nothing that does not exist, and the [BYOC ingress will already verify it](../20260813-byoc-observability/#one-verification-at-the-load-balancer). This is what makes the first customer possible.
 2. **Token exchange next**, authenticated by that same certificate, with the grant in the claim. This is what makes the feature reachable for proxied customers and revocable in minutes instead of a CRL interval.
 3. **Both paths stay supported.** mTLS has no online dependency, which is a real property to keep for customers whose networks make an issuer round trip fragile.
 
@@ -37807,7 +38231,12 @@ A self-managed fleet is potentially an order of magnitude more installs, most of
 The cost is per-tenant overhead — Loki stream and index overhead, Thanos series churn, per-tenant limit configuration — rather than ingest volume, and it is the number that has to be computed before this ships rather than discovered.
 
 That reframes [the BYOC open question](../20260813-byoc-observability/#open-questions) about whether the tenant is the customer or the environment.
-For self-managed, a tenant per *install* with the customer as a label is likely right, because installs are the unit that appears, disappears and gets cloned, and because a support engineer's question is nearly always about one install.
+
+**Decision: for self-managed, the tenant is the install, with the customer as a label.**
+Installs are the unit that appears, disappears and gets cloned, and a support engineer's question is nearly always about one install.
+A customer commonly runs a dev install and a prod install, each under its own license.
+The client certificate is derived from the license, so the certificate already names the install, and the control-plane gateway takes the tenant from it.
+A customer-wide view joins installs on the customer, which the control plane maps from the install ([DEP-492](https://linear.app/materializeinc/issue/DEP-492)).
 
 **Identity is three-part, not two.**
 A self-managed cluster commonly hosts several Materialize environments, and a customer commonly runs several clusters.
@@ -37928,9 +38357,12 @@ The kind tiers extend to cover this, and the assertions that matter are the ones
   Resolved: no. A destination at `minMetricImportance: alerts` takes `ALERTS` and the heartbeat, and nothing else.
 - [x] **What is the heartbeat interval**, and does its absence alert immediately or after a documented number of misses? The interval sets both the fleet-side noise floor and how quickly a dark install is noticed.
   Resolved for the interval: one minute, the Thanos ruler's default evaluation interval.
-  How many misses page someone is the control plane's to set, with its response model ([DEP-291](https://linear.app/materializeinc/issue/DEP-291)).
-- [ ] **Is the tenant the install or the customer?** This doc leans install-with-customer-as-a-label, which is the opposite lean to the one a support engineer's cross-environment question wants. It should agree with whatever [BYOC settles](../20260813-byoc-observability/#open-questions).
+  How many misses page someone is the control plane's to set, with its response model ([DEP-491](https://linear.app/materializeinc/issue/DEP-491)).
+- [x] **Is the tenant the install or the customer?** This doc leans install-with-customer-as-a-label, which is the opposite lean to the one a support engineer's cross-environment question wants. It should agree with whatever [BYOC settles](../20260813-byoc-observability/#open-questions).
+  Resolved: [the install](#control-plane-shape-and-scale).
+  A customer's dev and prod installs run under different licenses, and each presents a certificate derived from its own.
 - [ ] **What is the per-install control-plane cost**, and what fleet size does the first deployment size for? Tenant overhead rather than ingest volume, and nobody has computed it.
+  Tracked in [DEP-490](https://linear.app/materializeinc/issue/DEP-490).
 - [ ] **Can the `elevated` window be customer-initiated rather than customer-approved?** Initiated is stronger and puts the work on the customer during an incident; approved is faster and requires a request mechanism Materialize can send.
 - [ ] **Does the customer get to read their own copy?** The [tenant-scoped proxy answers this](../20260916-tenant-query-api/#deployment-shapes) for BYOC with the same mechanism, and it is a stronger trust argument here than there, because the disclosure was voluntary.
 - [ ] **Is the offline bundle worth building**, and how large is the air-gapped segment? The processing chain is shared with preview mode, so the marginal cost is the transfer format and a verification story.

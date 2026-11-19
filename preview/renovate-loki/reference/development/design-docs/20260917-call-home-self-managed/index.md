@@ -422,7 +422,9 @@ The call-home destination has to leave `tls.caFile` unset for that to apply, bec
 **Churn and revocation are ordinary rather than exceptional.**
 BYOC customers are operated accounts.
 Self-managed installs get decommissioned, forked into test clusters, cloned into staging, and left running after a contract ends.
-Revocation is a routine operation in this segment, and [`otelcol.receiver.otlp` has no CRL support](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint), which leaves CRL freshness at the load balancer as the only control and its refresh interval as the revocation window.
+Revocation is a routine operation in this segment,
+and [the load balancer is the only place the certificate is checked](../20260813-byoc-observability/#one-verification-at-the-load-balancer),
+which leaves CRL freshness at the load balancer as the only control and its refresh interval as the revocation window.
 
 **The credential should carry the consent grant.**
 This is the argument specific to this design.
@@ -452,7 +454,7 @@ This is the [token-exchange shape the query-API doc proposes for BYOC ingest](..
 
 Concretely, in the order it should ship:
 
-1. **Direct mTLS first**, using the license-carried certificate, for the levels that ship first. It needs nothing that does not exist, and the [BYOC ingress will already verify it](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint). This is what makes the first customer possible.
+1. **Direct mTLS first**, using the license-carried certificate, for the levels that ship first. It needs nothing that does not exist, and the [BYOC ingress will already verify it](../20260813-byoc-observability/#one-verification-at-the-load-balancer). This is what makes the first customer possible.
 2. **Token exchange next**, authenticated by that same certificate, with the grant in the claim. This is what makes the feature reachable for proxied customers and revocable in minutes instead of a CRL interval.
 3. **Both paths stay supported.** mTLS has no online dependency, which is a real property to keep for customers whose networks make an issuer round trip fragile.
 
@@ -522,7 +524,12 @@ A self-managed fleet is potentially an order of magnitude more installs, most of
 The cost is per-tenant overhead — Loki stream and index overhead, Thanos series churn, per-tenant limit configuration — rather than ingest volume, and it is the number that has to be computed before this ships rather than discovered.
 
 That reframes [the BYOC open question](../20260813-byoc-observability/#open-questions) about whether the tenant is the customer or the environment.
-For self-managed, a tenant per *install* with the customer as a label is likely right, because installs are the unit that appears, disappears and gets cloned, and because a support engineer's question is nearly always about one install.
+
+**Decision: for self-managed, the tenant is the install, with the customer as a label.**
+Installs are the unit that appears, disappears and gets cloned, and a support engineer's question is nearly always about one install.
+A customer commonly runs a dev install and a prod install, each under its own license.
+The client certificate is derived from the license, so the certificate already names the install, and the control-plane gateway takes the tenant from it.
+A customer-wide view joins installs on the customer, which the control plane maps from the install ([DEP-492](https://linear.app/materializeinc/issue/DEP-492)).
 
 **Identity is three-part, not two.**
 A self-managed cluster commonly hosts several Materialize environments, and a customer commonly runs several clusters.
@@ -643,9 +650,12 @@ The kind tiers extend to cover this, and the assertions that matter are the ones
   Resolved: no. A destination at `minMetricImportance: alerts` takes `ALERTS` and the heartbeat, and nothing else.
 - [x] **What is the heartbeat interval**, and does its absence alert immediately or after a documented number of misses? The interval sets both the fleet-side noise floor and how quickly a dark install is noticed.
   Resolved for the interval: one minute, the Thanos ruler's default evaluation interval.
-  How many misses page someone is the control plane's to set, with its response model ([DEP-291](https://linear.app/materializeinc/issue/DEP-291)).
-- [ ] **Is the tenant the install or the customer?** This doc leans install-with-customer-as-a-label, which is the opposite lean to the one a support engineer's cross-environment question wants. It should agree with whatever [BYOC settles](../20260813-byoc-observability/#open-questions).
+  How many misses page someone is the control plane's to set, with its response model ([DEP-491](https://linear.app/materializeinc/issue/DEP-491)).
+- [x] **Is the tenant the install or the customer?** This doc leans install-with-customer-as-a-label, which is the opposite lean to the one a support engineer's cross-environment question wants. It should agree with whatever [BYOC settles](../20260813-byoc-observability/#open-questions).
+  Resolved: [the install](#control-plane-shape-and-scale).
+  A customer's dev and prod installs run under different licenses, and each presents a certificate derived from its own.
 - [ ] **What is the per-install control-plane cost**, and what fleet size does the first deployment size for? Tenant overhead rather than ingest volume, and nobody has computed it.
+  Tracked in [DEP-490](https://linear.app/materializeinc/issue/DEP-490).
 - [ ] **Can the `elevated` window be customer-initiated rather than customer-approved?** Initiated is stronger and puts the work on the customer during an incident; approved is faster and requires a request mechanism Materialize can send.
 - [ ] **Does the customer get to read their own copy?** The [tenant-scoped proxy answers this](../20260916-tenant-query-api/#deployment-shapes) for BYOC with the same mechanism, and it is a stronger trust argument here than there, because the disclosure was voluntary.
 - [ ] **Is the offline bundle worth building**, and how large is the air-gapped segment? The processing chain is shared with preview mode, so the marginal cost is the transfer format and a verification story.

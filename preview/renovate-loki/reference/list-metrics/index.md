@@ -2546,6 +2546,18 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="loki_process_custom_luhn_redacted_lines_total">loki_process_custom_luhn_redacted_lines_total
+        <details>
+            Used labels: component_id
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.compliance.cards">infra.alloy.compliance.cards</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.cards.by_source">infra.alloy.compliance.cards.by_source</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.cards.table">infra.alloy.compliance.cards.table</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="loki_process_dropped_lines_total">loki_process_dropped_lines_total
         <details>
             Used labels: app, component_id, namespace, pod, reason
@@ -2611,6 +2623,79 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
                 <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_secretfilter_entries_bypassed_total">loki_secretfilter_entries_bypassed_total
+        <details>
+            Used labels: app, component_id, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.compliance.coverage">infra.alloy.compliance.coverage</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.scanned">infra.alloy.compliance.scanned</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_secretfilter_lines_dropped_total">loki_secretfilter_lines_dropped_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.compliance.timeouts">infra.alloy.compliance.timeouts</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_secretfilter_lines_timed_out_total">loki_secretfilter_lines_timed_out_total
+        <details>
+            Used labels: app, component_id, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.compliance.timed_out">infra.alloy.compliance.timed_out</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.timeouts">infra.alloy.compliance.timeouts</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_secretfilter_processing_duration_seconds">loki_secretfilter_processing_duration_seconds
+        <details>
+            Used labels: app, namespace, pod, quantile
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.compliance.scan_time">infra.alloy.compliance.scan_time</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_secretfilter_processing_duration_seconds_count">loki_secretfilter_processing_duration_seconds_count
+        <details>
+            Used labels: app, component_id, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.compliance.cards">infra.alloy.compliance.cards</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.coverage">infra.alloy.compliance.coverage</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.redacted">infra.alloy.compliance.redacted</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.scanned">infra.alloy.compliance.scanned</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.shadow">infra.alloy.compliance.shadow</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_secretfilter_secrets_redacted_by_category_total">loki_secretfilter_secrets_redacted_by_category_total
+        <details>
+            Used labels: app, component_id, namespace, pod, rule
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.compliance.redacted">infra.alloy.compliance.redacted</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.redacted.by_origin">infra.alloy.compliance.redacted.by_origin</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.redacted.by_rule">infra.alloy.compliance.redacted.by_rule</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.redacted.table">infra.alloy.compliance.redacted.table</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.shadow">infra.alloy.compliance.shadow</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.shadow.by_origin">infra.alloy.compliance.shadow.by_origin</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.shadow.by_rule">infra.alloy.compliance.shadow.by_rule</a></li>
+                <li><a href="../common-queries#infra.alloy.compliance.shadow.table">infra.alloy.compliance.shadow.table</a></li>
             </ul>
         </details>
     </li>
