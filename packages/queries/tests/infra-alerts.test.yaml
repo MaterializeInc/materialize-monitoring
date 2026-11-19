@@ -85,6 +85,48 @@ tests:
         eval_time: 20m
         exp_samples: []
 
+  # --- *-not-scraped: a vanished target is not a healthy one ------------------
+  #
+  # When service discovery stops returning a job's targets, their `up` series
+  # end instead of going to 0, and critical-metrics-missing, which divides the
+  # down targets by the discovered ones, has nothing to count.
+  - name: kube-state-metrics-not-scraped fires when its target vanishes
+    interval: 1m
+    input_series:
+      - series: 'up{job="kube-state-metrics", instance="10.0.0.5:8080"}'
+        values: "1x10 stale"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="kube-state-metrics-not-scraped", alertstate="firing"})
+        eval_time: 20m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="kube-state-metrics-not-scraped", alertstate="firing"})
+        eval_time: 30m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: count(ALERTS{alertname="critical-metrics-missing"})
+        eval_time: 30m
+        exp_samples: []
+
+  # One node still reporting is critical-metrics-missing's partial outage, not
+  # a lost job; with none reporting, down reads the same as gone.
+  - name: node-exporter-not-scraped stays quiet while any node reports
+    interval: 1m
+    input_series:
+      - series: 'up{job="node-exporter", instance="node-a:9100"}'
+        values: "1x10 0x30"
+      - series: 'up{job="node-exporter", instance="node-b:9100"}'
+        values: "0x40"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="node-exporter-not-scraped"})
+        eval_time: 9m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="node-exporter-not-scraped", alertstate="firing"})
+        eval_time: 30m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+
   # --- k8s-container-disk-usage: per node ------------------------------------
   #
   # Grouped by a node label the gateway does not keep, every node collapsed into
