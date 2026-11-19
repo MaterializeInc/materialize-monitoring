@@ -452,6 +452,36 @@ rules:
     - cadvisor
     enabledByDefault: false
     minImportance: essential
+  kube-state-metrics-not-scraped:
+    file: prometheus/infra-alerts.yaml
+    engine: promql
+    group: metric_collection
+    severity: warning
+    audience: platform
+    requires:
+    - kube-state-metrics
+    enabledByDefault: true
+    minImportance: essential
+  cadvisor-not-scraped:
+    file: prometheus/infra-alerts.yaml
+    engine: promql
+    group: metric_collection
+    severity: warning
+    audience: platform
+    requires:
+    - cadvisor
+    enabledByDefault: true
+    minImportance: essential
+  node-exporter-not-scraped:
+    file: prometheus/infra-alerts.yaml
+    engine: promql
+    group: metric_collection
+    severity: warning
+    audience: platform
+    requires:
+    - node-exporter
+    enabledByDefault: true
+    minImportance: essential
   logging-collection-down:
     file: prometheus/infra-alerts.yaml
     engine: promql
