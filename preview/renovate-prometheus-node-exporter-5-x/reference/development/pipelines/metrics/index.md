@@ -57,6 +57,8 @@ otelcol.receiver.otlp                          (OTLP metrics) ──────
          prometheus.remote_write "<name>"   prometheus.remote_write "<name>"
 ```
 
+Under `pipeline.gateway.clientCertificateTenancy`, `inputBridge` forwards through `otelcol.processor.transform "localTenant"`, and OTLP metrics take the [client-certificate tenancy](../logging/#client-certificate-tenancy) path before `inputMetricProcessor`.
+
 Cloud provider pulls join the same bridge when enabled: each is an instance of a custom component whose body ends in the shared `provider_scrape` (an `instance` pin and a clustered `prometheus.scrape`) → `inputBridge`.
 They are covered under [Cloud provider pulls](#cloud-provider-pulls) below.
 

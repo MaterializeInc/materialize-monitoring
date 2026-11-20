@@ -10,23 +10,23 @@ date: 2026-09-16
 <table class="param-table">
   <tbody>
         <tr>
-          <th>agent</th>
+          <th>Agent</th>
           <td>Claude Opus 5</td>
         </tr>
         <tr>
-          <th>author</th>
+          <th>Author</th>
           <td>Heather Lapointe</td>
         </tr>
         <tr>
-          <th>lastmod</th>
-          <td>2026-10-04 00:00:00 &#43;0000 UTC</td>
+          <th>Lastmod</th>
+          <td>2026-10-04 00:00:00 +0000 UTC</td>
         </tr>
         <tr>
-          <th>publishdate</th>
-          <td>2026-09-16 00:00:00 &#43;0000 UTC</td>
+          <th>Publishdate</th>
+          <td>2026-09-16 00:00:00 +0000 UTC</td>
         </tr>
         <tr>
-          <th>status</th>
+          <th>Status</th>
           <td>Ready</td>
         </tr>
   </tbody>
@@ -707,7 +707,10 @@ Either query IDs join the committed surface with the cooldown that implies, or t
 
 ## Token exchange for BYOC ingest
 
-The [BYOC design](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint) authenticates a customer's gateway with a client certificate carried in the license, verified twice: at the load balancer, which can check revocation, and at the receiver, which cannot.
+The [BYOC design](../20260813-byoc-observability/#one-verification-at-the-load-balancer)
+authenticates a customer's gateway with a client certificate carried in the license,
+verified once, at the load balancer, which also checks revocation.
+The load balancer terminates TLS, so the receiver never sees the certificate.
 This design introduces a token issuer and a token verifier, which raises a fair question — should the write path use tokens too?
 
 **The answer is yes for the credential and no for the component.**

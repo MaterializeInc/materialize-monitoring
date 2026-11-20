@@ -23,35 +23,33 @@ It's the single most consequential setting, and the one most often misread.
 Neither choice, by itself, gives you redundancy.
 **The replication factor does.**
 The subchart passes `--receive.replication-factor` only in split mode, so standalone would run at Thanos's default of **1**.
-This chart sets it to 3 through `receive.extraArgs` instead, which is the shape the following example shows.
-
-Thanos write quorum is `(rf / 2) + 1`:
-
-| Replication factor | Write quorum | Ingester losses tolerated |
-|---:|---:|---:|
-| 1 | 1 | 0 |
-| **2** | **2** | **0** |
-| 3 | 2 | 1 |
-| 4 | 3 | 1 |
-| 5 | 3 | 2 |
-
-**Use an odd factor.**
-A factor of 2 requires both copies and tolerates nothing — the same as 1, and on a small ring *worse*: on three pods,
-losing one fails ~1/3 of series at RF 1 but ~2/3 at RF 2, because more series depend on any given pod while quorum still demands all of their copies.
-Even factors above 2 tolerate no more losses than the odd factor below them; the extra copy buys durability, not availability.
+This chart sets it to 2 through `receive.extraArgs` instead, as the following example shows:
 
 ```yaml
 thanos:
   receive:
     replicaCount: 3
     extraArgs:
-      - --receive.replication-factor=3
+      - --receive.replication-factor=2
 ```
 
-This is the same shape as Loki, where ingesters are deliberately ephemeral and durability comes from RF 3 alone —
-**Thanos Receive is `emptyDir`-backed for the same reason**, and the replication factor is therefore the only thing
-standing between you and data loss.
-It holds up to `receive.tsdb.retention` (6h) of blocks locally, of which at most 2h has not yet reached object storage.
+Thanos write quorum is `(rf / 2) + 1`, except at a factor of 2, where it's 1.
+The following table gives the quorum and the tolerated losses for each factor:
+
+| Replication factor | Write quorum | Ingester losses tolerated |
+|---:|---:|---:|
+| 1 | 1 | 0 |
+| **2** | **1** | **1** |
+| 3 | 2 | 1 |
+| 4 | 3 | 1 |
+| 5 | 3 | 2 |
+
+Even factors above 2 tolerate no more losses than the odd factor below them.
+Their extra copy buys durability, not availability.
+
+Loki's ingesters work the same way: they're ephemeral, and replication is their only durability.
+**Thanos Receive is `emptyDir`-backed for the same reason**, so the replication factor is the only thing between you and data loss.
+Receive holds up to `receive.tsdb.retention` (6h) of blocks locally, of which at most 2h hasn't reached object storage.
 With RF 1 that window exists in exactly one copy, on one node.
 See [Storage: ephemeral by default](#thanos-ephemeral-storage) for why no volume is involved.
 
@@ -60,10 +58,32 @@ See [Storage: ephemeral by default](#thanos-ephemeral-storage) for why no volume
 >   `receive.ingester` doesn't inherit from the top-level `receive.*` defaults, and upstream considers the non-merging behavior intentional.
 >   In practice that means restating about 31 keys, of which the values schema hard-requires eight sub-objects
 >   (`hashrings`, `service`, `vpa`, `persistence`, `podSecurityContext`, `probes`, `serviceMonitor`, `pdb`) before the chart renders at all.
->   Prefer standalone with an odd replication factor.
+>   Prefer standalone mode.
 
 Every shipped profile restates `receive.extraArgs` in full so the factor survives, and a unit test pins that at all three sizes.
 If you override the list yourself, read the warning in [Protective limits](#thanos-protective-limits) first.
+
+### Choose a replication factor {#choose-a-replication-factor}
+
+Factors 2 and 3 both survive the loss of one Receive pod.
+They differ in memory, and in how durable a write is while a pod is down.
+The following table compares them at the same replica count:
+
+| | Factor 2 (default) | Factor 3 |
+|---|---|---|
+| Copies of each series | 2 | 3 |
+| Receive memory | Two thirds of factor 3's | 50% more than factor 2's |
+| A write accepted while one pod is down | Can be acknowledged on one copy | Always lands on two copies |
+| Two pods lost together | Fails writes, and loses the un-uploaded window, for the series both pods hold | Fails writes, and loses no acknowledged data |
+
+At factor 2, Thanos acknowledges a write after one copy succeeds.
+While a pod is down, a write to a series with a copy on that pod lands on one pod's `emptyDir` only.
+That write stays a single copy until its pod uploads the next block, at most 2h later.
+Losing that pod within the window loses the write.
+
+Choose 3 when a write acknowledged during a pod outage has to survive a second loss.
+Otherwise, factor 2 is the better use of memory.
+To use 3, set `--receive.replication-factor=3` in `receive.extraArgs`, and restate any other flags the list carries.
 
 ## Sizing the metrics backend {#sizing-the-metrics-backend}
 
@@ -157,7 +177,7 @@ The chart's defaults are the M column, and the `thanos-small` and `thanos-large`
 
 | Component | S | M | L |
 |---|---|---|---|
-| Receive (RF 3, `emptyDir`) | 3 × (250m / 1Gi) | 3 × (500m / 4Gi) | 6 × (1500m / 8Gi) |
+| Receive (RF 2, `emptyDir`) | 3 × (250m / 1Gi) | 3 × (500m / 4Gi) | 6 × (1500m / 8Gi) |
 | Receive `ephemeral-storage` req / limit | 2Gi / 3Gi | 4Gi / 6Gi | 6Gi / 8Gi |
 | Store Gateway | 2 × (100m / 1Gi) | 2 × (500m / 3Gi) | 2 × (1500m / 8Gi) |
 | Store Gateway **PVC** | 10Gi | 10Gi | 20Gi |
@@ -166,9 +186,9 @@ The chart's defaults are the M column, and the `thanos-small` and `thanos-large`
 | Query (HPA) | 2–3 × (200m / 512Mi) | 2–5 × (500m / 1Gi) | 3–8 × (1 / 2Gi) |
 | Query Frontend | omit | omit | 2–5 × (250m / 512Mi) |
 
-- **At `replicaCount == replicationFactor` every Receive pod holds every series.**
-  Sharding begins only above RF, which is why **L** runs six pods rather than three — and why a replica count that is a
-  multiple of both the replication factor and the zone count spreads evenly across both.
+- **Each Receive pod holds `replicationFactor / replicaCount` of the series.**
+  At the defaults that's two thirds, and **L** runs six pods to bring it to a third.
+  A replica count that's a multiple of both the replication factor and the zone count spreads evenly across both.
 - **Don't set a tight memory limit on Receive.**
   An OOM-kill drops up to `tsdb.retention` (6h) of locally held blocks, and unlike Loki's ingesters that window has
   nothing protecting it but the replication factor.
@@ -184,13 +204,16 @@ The chart's defaults are the M column, and the `thanos-small` and `thanos-large`
 
 ## Spreading across zones {#thanos-topology-spread}
 
-Replication factor 3 is a claim about surviving a lost availability zone, and it is only true if the three replicas are *in* three zones.
-Nothing makes that happen by default: a scheduler with no constraint is free to pack all three onto whatever nodes are
-cheapest, at which point RF 3 costs three times the memory and protects against nothing but a single pod restart.
+Replication is a claim about surviving a lost availability zone.
+It's only true if each series' copies are in different zones.
+Without a constraint, the scheduler is free to pack every Receive pod onto whatever nodes are cheapest.
+Replication then costs its memory and protects against nothing but a single pod restart.
+
+The following table gives the spread rule for each Thanos component:
 
 | Component | Zones | Hosts | Why |
 |---|---|---|---|
-| Receive | **hard** (`DoNotSchedule`) | soft | Write quorum (2 of 3) depends on it |
+| Receive | **hard** (`DoNotSchedule`) | soft | Write quorum depends on it |
 | Store Gateway | soft | soft | Read capacity only, and PVC-backed |
 | Query, Query Frontend | soft | soft | Stateless and autoscaled |
 | Compactor | none | none | Singleton — nothing to spread against |
@@ -218,6 +241,17 @@ own skew math against the pods it is replacing — and note the label differs by
 >   With `volumeBindingMode: WaitForFirstConsumer` (the default for zonal CSI classes, and what you want) the volume
 >   follows the pod and the two agree; with `Immediate` the PVC's zone is chosen *before* scheduling and a hard rule pointing elsewhere deadlocks.
 >   Soft degrades on a StorageClass this chart does not control.
+
+**At three Receive pods in three zones, every series survives a zone loss.**
+Each pod has a zone to itself, so a series' two copies are always in two zones.
+Above three pods, nothing guarantees that.
+The chart generates the hashring from the StatefulSet's pod names, and the generated endpoints carry no zone.
+Thanos's ketama hashring spreads a series' copies across zones only when its endpoints name one, so here it places them by ring position alone.
+At the **L** profile's six pods, some series keep both copies in one zone.
+Losing that zone fails their writes and loses their un-uploaded window.
+Factor 3 has the same exposure at six pods, without the data loss.
+A series with two of its three copies in the lost zone falls below its write quorum of 2, so its writes fail.
+Naming zones in the hashring would need each pod's zone at render time, and the scheduler only decides it later.
 
 Unlike Loki, nothing had to be undone to make room for this: the Thanos subchart ships no default pod anti-affinity, so
 there was no hard per-host rule to null out first.
@@ -251,9 +285,9 @@ Node ephemeral storage cannot serve the second.
 That is the reasoning behind all three rows, and it is the opposite of the intuition a volume usually carries.
 An EBS volume cannot be attached from another zone, so a pod whose zone is gone stays `Pending` until the zone comes
 back rather than rescheduling into a healthy one.
-On the write path that converts a recoverable event into an outage that waits on the cloud provider: with RF 3 write
-quorum is 2, so two Receive pods stuck `Pending` on dead volumes block writes outright, where two `emptyDir` pods would
-have been rescheduled and rejoined the hashring.
+On the write path that converts a recoverable event into an outage that waits on the cloud provider.
+Two Receive pods stuck `Pending` on dead volumes fail the writes of every series whose copies they both hold.
+Two `emptyDir` pods would have been rescheduled and rejoined the hashring.
 
 This is the same call the chart makes for [Loki's ingesters](../loki/#ingester-durability), for the same reason.
 Blocks ship to object storage every 2h, so the window that exists only on local disk is at most 2h — and every replica
@@ -264,7 +298,7 @@ A pod that returns with an empty volume has lost its copy of that window; the qu
 > [!WARNING]
 >   **The trade accepted in exchange:** Thanos Receive has **no peer hand-off**, so unlike Loki it will not backfill an
 >   emptied pod from its neighbours.
->   That window stays at two copies instead of three until the next block ships.
+>   That window stays at one copy instead of two until the next block ships.
 >   Loki's ingesters recover from peers; Thanos's do not.
 >
 >   This is why the replication factor is load-bearing rather than merely advisable, and why RF 1 with ephemeral storage
@@ -342,11 +376,11 @@ All of the following limits are `extraArgs`, set per profile:
 
 > [!WARNING]
 >   **`extraArgs` is a list, and Helm overwrites lists rather than merging them.**
->   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=3`,
+>   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=2`,
 >   `compactor.extraArgs` carries `--consistency-delay=30m` and the [vertical compaction and deduplication
 >   flags](#thanos-retention-compaction), `query.extraArgs` carries `--log.level=info`.
 >   Setting `extraArgs` to add a limit **silently drops whatever was already there**, and on Receive that means falling
->   back to Thanos's default replication factor of 1 — the exact failure the quorum table above exists to prevent.
+>   back to Thanos's default replication factor of 1 — the exact failure [the quorum table](#receive-replication) exists to prevent.
 >   Restate the base arguments in full every time.
 >   The shipped profiles do.
 
@@ -408,7 +442,7 @@ Receive keeps **6h of local TSDB retention**, overriding the subchart's 24h, wit
 Blocks still ship to object storage every 2h, so local retention is a recent-query cache, not a durability window, and
 the Store Gateway serves everything older.
 6h is what makes the `emptyDir` budget fit a modest node.
-24h at the medium envelope is about 7.3Gi per pod, against about 18.8Gi allocatable on a typical GKE node shared with Loki.
+24h at the medium envelope is about 4.9Gi per pod, against about 18.8Gi allocatable on a typical GKE node shared with Loki.
 
 ## Scaling past large {#scaling-past-large}
 

@@ -34,7 +34,7 @@ flowchart TB
   query["Thanos Query"]
   am["Alertmanager"]
   other["Other destinations<br/>AMP · OTLP backends"]
-  recv["Thanos Receive<br/>RF 3"]
+  recv["Thanos Receive<br/>RF 2"]
   sg["Thanos Store Gateway"]
   bucket[("Object storage")]
   comp["Thanos Compactor"]
@@ -145,7 +145,7 @@ flowchart TB
   gw["alloy-gateway<br/>thanos destination"]
   svc["thanos-receive Service :10908"]
   router["any Receive pod<br/>routes the request"]
-  ring(("ketama hashring<br/>3 owners per series"))
+  ring(("ketama hashring<br/>2 owners per series"))
   own0["receive-0<br/>head + WAL"]
   own1["receive-1<br/>head + WAL"]
   own2["receive-2<br/>head + WAL"]
@@ -162,10 +162,10 @@ flowchart TB
 
 Receive runs in `standalone` mode, where every pod both routes and ingests.
 The pod that takes a request hashes each series onto an auto-generated ketama hashring and forwards it to the pods that own it.
-With replication factor 3 a write succeeds once two of the three owners accept it.
+With replication factor 2, each series has two owners, and a write succeeds after one of them accepts it.
 
-At the default 3 replicas every pod owns every series.
-The `thanos-large` profile runs 6, and each series then lives on 3 of the 6.
+At the default 3 replicas, each series lives on 2 of the 3 pods.
+The `thanos-large` profile runs 6, and each series then lives on 2 of the 6.
 
 Each pod keeps its head and WAL on an `emptyDir`, cuts a block every two hours, and uploads it to object storage.
 Local retention is 6h, which serves the recent window to queries until the Store Gateway has the uploaded blocks.
@@ -307,5 +307,5 @@ A deployment that already runs its own Prometheus can skip the gateway entirely 
 - [Thanos Compactor](https://thanos.io/tip/components/compact.md/) (official): compaction levels, vertical compaction and downsampling.
 - [Alloy clustering](https://grafana.com/docs/alloy/latest/get-started/clustering/) (official).
 - [Metrics pipeline reference](../../reference/development/pipelines/metrics/): the gateway's pipeline, component by component.
-- [o11y Glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
+- [Observability glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
 

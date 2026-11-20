@@ -58,6 +58,13 @@ about pod names.</p>
 no Alloy scope. Those series describe the target, not the collector, and
 nothing on them records which gateway replica produced them. The same holds
 for the remote-write senders&rsquo; own queues, which are found by their <code>url</code>.</p>
+<p>The <code>infra.alloy.compliance.*</code> queries that read stored lines carry no Alloy
+scope either. They search every workload&rsquo;s logs for what the secret filter
+and the card-number check replaced, and the collectors are only one source.
+Nor do the card-number counts. That counter carries the labels of the log
+stream it counted, which the gateway&rsquo;s scrape keeps over its own, so its
+<code>namespace</code>, <code>pod</code> and <code>app</code> name the workload, and only <code>component_id</code> says
+the gateway counted it.</p>
 <p>Kubernetes events carry the involved object&rsquo;s <code>name</code> rather than an <code>app</code>
 label. The event queries match <code>name</code> against the role pattern, as
 <code>${alloyRole:regex}</code> since it is embedded in a longer pattern, and against the
@@ -2400,6 +2407,813 @@ because the client presented a certificate the listener does not trust.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.alloy.ingest.tls_rejections-tabs" id="infra.alloy.ingest.tls_rejections-tab-0" checked>
   <label for="infra.alloy.ingest.tls_rejections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.scanned">infra.alloy.compliance.scanned
+  <a class="anchor" href="#infra.alloy.compliance.scanned">#</a>
+</h4>
+The share of log lines each ingest filter scanned over the selected time
+range, for the full tier and for the <code>DEBUG</code> and <code>TRACE</code> bulk tier.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.scanned-tabs" id="infra.alloy.compliance.scanned-tab-0" checked>
+  <label for="infra.alloy.compliance.scanned-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_processing_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>      component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_secretfilter_processing_duration_seconds_count{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>        component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">+</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_secretfilter_entries_bypassed_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>        component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.scanned-tabs" id="infra.alloy.compliance.scanned-tab-1">
+  <label for="infra.alloy.compliance.scanned-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_processing_duration_seconds_count{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(loki.secretfilter.ingest</span>,<span style="color:#960050;background-color:#1e0010">loki.secretfilter.ingestbulk)</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">component_id</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_processing_duration_seconds_count{
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(loki.secretfilter.ingest</span>,<span style="color:#960050;background-color:#1e0010">loki.secretfilter.ingestbulk)</span>
+</span></span><span style="display:flex;"><span>  } <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">component_id</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_entries_bypassed_total{
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(loki.secretfilter.ingest</span>,<span style="color:#960050;background-color:#1e0010">loki.secretfilter.ingestbulk)</span>
+</span></span><span style="display:flex;"><span>  } <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">component_id</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.redacted">infra.alloy.compliance.redacted
+  <a class="anchor" href="#infra.alloy.compliance.redacted">#</a>
+</h4>
+Credentials the ingest filters replaced over the selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.redacted-tabs" id="infra.alloy.compliance.redacted-tab-0" checked>
+  <label for="infra.alloy.compliance.redacted-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      last_over_time<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>          component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;,
+</span></span><span style="display:flex;"><span>          rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>      loki_secretfilter_secrets_redacted_by_category_total <span style="color:#66d9ef">offset</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">rangeWindow</span>}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>        component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;,
+</span></span><span style="display:flex;"><span>        rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_processing_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>      component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.redacted-tabs" id="infra.alloy.compliance.redacted-tab-1">
+  <label for="infra.alloy.compliance.redacted-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>default_zero<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(loki.secretfilter.ingest</span>,<span style="color:#960050;background-color:#1e0010">loki.secretfilter.ingestbulk)</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">rule:mzmon-canary</span>
+</span></span><span style="display:flex;"><span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">())</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.cards">infra.alloy.compliance.cards
+  <a class="anchor" href="#infra.alloy.compliance.cards">#</a>
+</h4>
+Log lines in which the gateway replaced a payment card number over the
+selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.cards-tabs" id="infra.alloy.compliance.cards-tab-0" checked>
+  <label for="infra.alloy.compliance.cards-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      last_over_time<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        loki_process_custom_luhn_redacted_lines_total{
+</span></span><span style="display:flex;"><span>          component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.process.inputPrefilter</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>      loki_process_custom_luhn_redacted_lines_total <span style="color:#66d9ef">offset</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">rangeWindow</span>}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_process_custom_luhn_redacted_lines_total{
+</span></span><span style="display:flex;"><span>        component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.process.inputPrefilter</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_processing_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.cards-tabs" id="infra.alloy.compliance.cards-tab-1">
+  <label for="infra.alloy.compliance.cards-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>default_zero<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_process_custom_luhn_redacted_lines_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">component_id:loki.process.inputprefilter</span>
+</span></span><span style="display:flex;"><span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">())</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.timed_out">infra.alloy.compliance.timed_out
+  <a class="anchor" href="#infra.alloy.compliance.timed_out">#</a>
+</h4>
+Log lines the ingest filters stopped scanning at the timeout, over the
+selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.timed_out-tabs" id="infra.alloy.compliance.timed_out-tab-0" checked>
+  <label for="infra.alloy.compliance.timed_out-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_lines_timed_out_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>      component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.timed_out-tabs" id="infra.alloy.compliance.timed_out-tab-1">
+  <label for="infra.alloy.compliance.timed_out-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>default_zero<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_lines_timed_out_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(loki.secretfilter.ingest</span>,<span style="color:#960050;background-color:#1e0010">loki.secretfilter.ingestbulk)</span>
+</span></span><span style="display:flex;"><span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">())</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.shadow">infra.alloy.compliance.shadow
+  <a class="anchor" href="#infra.alloy.compliance.shadow">#</a>
+</h4>
+Credentials the shadow filter would have replaced over the selected time
+range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow-tabs" id="infra.alloy.compliance.shadow-tab-0" checked>
+  <label for="infra.alloy.compliance.shadow-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      last_over_time<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>          component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.secretfilter.shadow</span>&#34;,
+</span></span><span style="display:flex;"><span>          rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>      loki_secretfilter_secrets_redacted_by_category_total <span style="color:#66d9ef">offset</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">rangeWindow</span>}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>        component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.secretfilter.shadow</span>&#34;,
+</span></span><span style="display:flex;"><span>        rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_processing_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>      component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.secretfilter.shadow</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow-tabs" id="infra.alloy.compliance.shadow-tab-1">
+  <label for="infra.alloy.compliance.shadow-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>default_zero<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id:loki.secretfilter.shadow</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">rule:mzmon-canary</span>
+</span></span><span style="display:flex;"><span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">())</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.redacted.by_rule">infra.alloy.compliance.redacted.by_rule
+  <a class="anchor" href="#infra.alloy.compliance.redacted.by_rule">#</a>
+</h4>
+Credentials the ingest filters replaced per second, split by the rule
+that matched.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.redacted.by_rule-tabs" id="infra.alloy.compliance.redacted.by_rule-tab-0" checked>
+  <label for="infra.alloy.compliance.redacted.by_rule-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>      component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;,
+</span></span><span style="display:flex;"><span>      rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.redacted.by_rule-tabs" id="infra.alloy.compliance.redacted.by_rule-tab-1">
+  <label for="infra.alloy.compliance.redacted.by_rule-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(loki.secretfilter.ingest</span>,<span style="color:#960050;background-color:#1e0010">loki.secretfilter.ingestbulk)</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">rule:mzmon-canary</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">rule</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.redacted.by_origin">infra.alloy.compliance.redacted.by_origin
+  <a class="anchor" href="#infra.alloy.compliance.redacted.by_origin">#</a>
+</h4>
+Credentials the ingest filters replaced per second, split by the
+container that logged them.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.redacted.by_origin-tabs" id="infra.alloy.compliance.redacted.by_origin-tab-0" checked>
+  <label for="infra.alloy.compliance.redacted.by_origin-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span><span style="color:#f92672">or</span>igin<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>        component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;,
+</span></span><span style="display:flex;"><span>        rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>  &#34;<span style="color:#e6db74">origin</span>&#34;, &#34;<span style="color:#e6db74">(no container)</span>&#34;, &#34;<span style="color:#e6db74">origin</span>&#34;, &#34;&#34;
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.redacted.by_origin-tabs" id="infra.alloy.compliance.redacted.by_origin-tab-1">
+  <label for="infra.alloy.compliance.redacted.by_origin-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(loki.secretfilter.ingest</span>,<span style="color:#960050;background-color:#1e0010">loki.secretfilter.ingestbulk)</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">rule:mzmon-canary</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">origin</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.redacted.table">infra.alloy.compliance.redacted.table
+  <a class="anchor" href="#infra.alloy.compliance.redacted.table">#</a>
+</h4>
+Credentials the ingest filters replaced over the selected time range,
+one row per rule and container.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.redacted.table-tabs" id="infra.alloy.compliance.redacted.table-tab-0" checked>
+  <label for="infra.alloy.compliance.redacted.table-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule, <span style="color:#f92672">or</span>igin<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        last_over_time<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>            namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>            pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>            component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;,
+</span></span><span style="display:flex;"><span>            rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>          <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>        loki_secretfilter_secrets_redacted_by_category_total <span style="color:#66d9ef">offset</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">rangeWindow</span>}
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>          component_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">loki.secretfilter.ingest(Bulk)?</span>&#34;,
+</span></span><span style="display:flex;"><span>          rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>,
+</span></span><span style="display:flex;"><span>  &#34;<span style="color:#e6db74">origin</span>&#34;, &#34;<span style="color:#e6db74">(no container)</span>&#34;, &#34;<span style="color:#e6db74">origin</span>&#34;, &#34;&#34;
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.redacted.table-tabs" id="infra.alloy.compliance.redacted.table-tab-1">
+  <label for="infra.alloy.compliance.redacted.table-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>cutoff_min<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id</span> <span style="color:#960050;background-color:#1e0010">IN</span> <span style="color:#960050;background-color:#1e0010">(loki.secretfilter.ingest</span>,<span style="color:#960050;background-color:#1e0010">loki.secretfilter.ingestbulk)</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">rule:mzmon-canary</span>
+</span></span><span style="display:flex;"><span>  } <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">rule</span>,<span style="color:#960050;background-color:#1e0010">origin</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">()</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">e</span><span style="color:#ae81ff">-9</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.cards.by_source">infra.alloy.compliance.cards.by_source
+  <a class="anchor" href="#infra.alloy.compliance.cards.by_source">#</a>
+</h4>
+Log lines per second in which the gateway replaced a card number, split
+by the source that logged them: <code>&lt;namespace&gt;/&lt;container&gt;</code> for a
+container, or the journal and its systemd unit for a node.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.cards.by_source-tabs" id="infra.alloy.compliance.cards.by_source-tab-0" checked>
+  <label for="infra.alloy.compliance.cards.by_source-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job, unit<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_process_custom_luhn_redacted_lines_total{
+</span></span><span style="display:flex;"><span>      component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.process.inputPrefilter</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.cards.by_source-tabs" id="infra.alloy.compliance.cards.by_source-tab-1">
+  <label for="infra.alloy.compliance.cards.by_source-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_process_custom_luhn_redacted_lines_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">component_id:loki.process.inputprefilter</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">namespace</span>,<span style="color:#960050;background-color:#1e0010">container</span>,<span style="color:#960050;background-color:#1e0010">unit</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.cards.table">infra.alloy.compliance.cards.table
+  <a class="anchor" href="#infra.alloy.compliance.cards.table">#</a>
+</h4>
+Log lines in which the gateway replaced a card number over the selected
+time range, one row per source: <code>&lt;namespace&gt;/&lt;container&gt;</code> for a
+container, or the journal and its systemd unit for a node.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.cards.table-tabs" id="infra.alloy.compliance.cards.table-tab-0" checked>
+  <label for="infra.alloy.compliance.cards.table-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job, unit<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      last_over_time<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        loki_process_custom_luhn_redacted_lines_total{
+</span></span><span style="display:flex;"><span>          component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.process.inputPrefilter</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>      loki_process_custom_luhn_redacted_lines_total <span style="color:#66d9ef">offset</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">rangeWindow</span>}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_process_custom_luhn_redacted_lines_total{
+</span></span><span style="display:flex;"><span>        component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.process.inputPrefilter</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.cards.table-tabs" id="infra.alloy.compliance.cards.table-tab-1">
+  <label for="infra.alloy.compliance.cards.table-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>cutoff_min<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_process_custom_luhn_redacted_lines_total{
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010">component_id:loki.process.inputprefilter</span>
+</span></span><span style="display:flex;"><span>  } <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">namespace</span>,<span style="color:#960050;background-color:#1e0010">container</span>,<span style="color:#960050;background-color:#1e0010">unit</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">()</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">e</span><span style="color:#ae81ff">-9</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.coverage">infra.alloy.compliance.coverage
+  <a class="anchor" href="#infra.alloy.compliance.coverage">#</a>
+</h4>
+Log lines per second each secret-filter instance scanned, beside those
+it forwarded unscanned.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.coverage-tabs" id="infra.alloy.compliance.coverage-tab-0" checked>
+  <label for="infra.alloy.compliance.coverage-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_processing_duration_seconds_count{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_entries_bypassed_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.coverage-tabs" id="infra.alloy.compliance.coverage-tab-1">
+  <label for="infra.alloy.compliance.coverage-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_processing_duration_seconds_count{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">component_id</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_entries_bypassed_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">component_id</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.scan_time">infra.alloy.compliance.scan_time
+  <a class="anchor" href="#infra.alloy.compliance.scan_time">#</a>
+</h4>
+The 99th percentile of time spent scanning one line, per secret-filter
+instance, from the slowest gateway.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.scan_time-tabs" id="infra.alloy.compliance.scan_time-tab-0" checked>
+  <label for="infra.alloy.compliance.scan_time-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  loki_secretfilter_processing_duration_seconds{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>    quantile<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">0.99</span>&#34;
+</span></span><span style="display:flex;"><span>  } <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.scan_time-tabs" id="infra.alloy.compliance.scan_time-tab-1">
+  <label for="infra.alloy.compliance.scan_time-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_processing_duration_seconds{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">quantile:0.99</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">component_id</span>}
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.timeouts">infra.alloy.compliance.timeouts
+  <a class="anchor" href="#infra.alloy.compliance.timeouts">#</a>
+</h4>
+Log lines per second each secret-filter instance stopped scanning at
+the timeout, beside those it dropped for it.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.timeouts-tabs" id="infra.alloy.compliance.timeouts-tab-0" checked>
+  <label for="infra.alloy.compliance.timeouts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_lines_timed_out_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_lines_dropped_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.timeouts-tabs" id="infra.alloy.compliance.timeouts-tab-1">
+  <label for="infra.alloy.compliance.timeouts-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_lines_timed_out_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">component_id</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_lines_dropped_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">component_id</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.shadow.by_rule">infra.alloy.compliance.shadow.by_rule
+  <a class="anchor" href="#infra.alloy.compliance.shadow.by_rule">#</a>
+</h4>
+Credentials per second the shadow filter would have replaced, split by
+the rule that matched.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow.by_rule-tabs" id="infra.alloy.compliance.shadow.by_rule-tab-0" checked>
+  <label for="infra.alloy.compliance.shadow.by_rule-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>      component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.secretfilter.shadow</span>&#34;,
+</span></span><span style="display:flex;"><span>      rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow.by_rule-tabs" id="infra.alloy.compliance.shadow.by_rule-tab-1">
+  <label for="infra.alloy.compliance.shadow.by_rule-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id:loki.secretfilter.shadow</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">rule:mzmon-canary</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">rule</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.shadow.by_origin">infra.alloy.compliance.shadow.by_origin
+  <a class="anchor" href="#infra.alloy.compliance.shadow.by_origin">#</a>
+</h4>
+Credentials per second the shadow filter would have replaced, split by
+the container that logged them.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow.by_origin-tabs" id="infra.alloy.compliance.shadow.by_origin-tab-0" checked>
+  <label for="infra.alloy.compliance.shadow.by_origin-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span><span style="color:#f92672">or</span>igin<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>        component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.secretfilter.shadow</span>&#34;,
+</span></span><span style="display:flex;"><span>        rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>  &#34;<span style="color:#e6db74">origin</span>&#34;, &#34;<span style="color:#e6db74">(no container)</span>&#34;, &#34;<span style="color:#e6db74">origin</span>&#34;, &#34;&#34;
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow.by_origin-tabs" id="infra.alloy.compliance.shadow.by_origin-tab-1">
+  <label for="infra.alloy.compliance.shadow.by_origin-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id:loki.secretfilter.shadow</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">rule:mzmon-canary</span>
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">origin</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_rate<span style="color:#f92672">()</span><span style="color:#960050;background-color:#1e0010">.</span>rollup<span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span>, <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.shadow.table">infra.alloy.compliance.shadow.table
+  <a class="anchor" href="#infra.alloy.compliance.shadow.table">#</a>
+</h4>
+Credentials the shadow filter would have replaced over the selected time
+range, one row per rule and container.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow.table-tabs" id="infra.alloy.compliance.shadow.table-tab-0" checked>
+  <label for="infra.alloy.compliance.shadow.table-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule, <span style="color:#f92672">or</span>igin<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        last_over_time<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>            namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>            pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>            component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.secretfilter.shadow</span>&#34;,
+</span></span><span style="display:flex;"><span>            rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>          <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>        loki_secretfilter_secrets_redacted_by_category_total <span style="color:#66d9ef">offset</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">rangeWindow</span>}
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>          component_id<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki.secretfilter.shadow</span>&#34;,
+</span></span><span style="display:flex;"><span>          rule<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">mzmon-canary</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>,
+</span></span><span style="display:flex;"><span>  &#34;<span style="color:#e6db74">origin</span>&#34;, &#34;<span style="color:#e6db74">(no container)</span>&#34;, &#34;<span style="color:#e6db74">origin</span>&#34;, &#34;&#34;
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow.table-tabs" id="infra.alloy.compliance.shadow.table-tab-1">
+  <label for="infra.alloy.compliance.shadow.table-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>cutoff_min<span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#960050;background-color:#1e0010">:</span>loki_secretfilter_secrets_redacted_by_category_total{
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010">$alloyRole</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyNamespace</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">$alloyPod</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">component_id:loki.secretfilter.shadow</span> <span style="color:#960050;background-color:#1e0010">AND</span> <span style="color:#960050;background-color:#1e0010">NOT</span> <span style="color:#960050;background-color:#1e0010">rule:mzmon-canary</span>
+</span></span><span style="display:flex;"><span>  } <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">rule</span>,<span style="color:#960050;background-color:#1e0010">origin</span>}<span style="color:#960050;background-color:#1e0010">.</span>as_count<span style="color:#f92672">()</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1</span><span style="color:#960050;background-color:#1e0010">e</span><span style="color:#ae81ff">-9</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.stored.rate">infra.alloy.compliance.stored.rate
+  <a class="anchor" href="#infra.alloy.compliance.stored.rate">#</a>
+</h4>
+Stored log lines per minute that carry a <code>&lt;redacted:…&gt;</code> placeholder,
+split by source: <code>&lt;namespace&gt;/&lt;container&gt;</code> for a container, or the
+journal and its systemd unit for a node. Shadow copies are excluded.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.stored.rate-tabs" id="infra.alloy.compliance.stored.rate-tab-0" checked>
+  <label for="infra.alloy.compliance.stored.rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.stored.stream">infra.alloy.compliance.stored.stream
+  <a class="anchor" href="#infra.alloy.compliance.stored.stream">#</a>
+</h4>
+Stored log lines that carry a <code>&lt;redacted:…&gt;</code> placeholder, newest first.
+Shadow copies are excluded.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.stored.stream-tabs" id="infra.alloy.compliance.stored.stream-tab-0" checked>
+  <label for="infra.alloy.compliance.stored.stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.shadow_copies.rate">infra.alloy.compliance.shadow_copies.rate
+  <a class="anchor" href="#infra.alloy.compliance.shadow_copies.rate">#</a>
+</h4>
+Shadow copies stored per minute, split by the source whose line was
+copied: <code>&lt;namespace&gt;/&lt;container&gt;</code> for a container, or the journal and
+its systemd unit for a node.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow_copies.rate-tabs" id="infra.alloy.compliance.shadow_copies.rate-tab-0" checked>
+  <label for="infra.alloy.compliance.shadow_copies.rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.shadow_copies.stream">infra.alloy.compliance.shadow_copies.stream
+  <a class="anchor" href="#infra.alloy.compliance.shadow_copies.stream">#</a>
+</h4>
+Shadow copies, newest first: lines as the filter would have stored them.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.shadow_copies.stream-tabs" id="infra.alloy.compliance.shadow_copies.stream-tab-0" checked>
+  <label for="infra.alloy.compliance.shadow_copies.stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.partly_scanned.rate">infra.alloy.compliance.partly_scanned.rate
+  <a class="anchor" href="#infra.alloy.compliance.partly_scanned.rate">#</a>
+</h4>
+Stored log lines per minute that the ingest filters stopped scanning at
+the timeout, split by source: <code>&lt;namespace&gt;/&lt;container&gt;</code> for a container,
+or the journal and its systemd unit for a node.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.partly_scanned.rate-tabs" id="infra.alloy.compliance.partly_scanned.rate-tab-0" checked>
+  <label for="infra.alloy.compliance.partly_scanned.rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.compliance.partly_scanned.stream">infra.alloy.compliance.partly_scanned.stream
+  <a class="anchor" href="#infra.alloy.compliance.partly_scanned.stream">#</a>
+</h4>
+Stored log lines the ingest filters stopped scanning at the timeout,
+newest first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.compliance.partly_scanned.stream-tabs" id="infra.alloy.compliance.partly_scanned.stream-tab-0" checked>
+  <label for="infra.alloy.compliance.partly_scanned.stream-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>

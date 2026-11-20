@@ -443,7 +443,7 @@ Delete the Service when you're done; Helm doesn't manage it.
 ### Healthy targets go dark: `data refused due to high memory usage`
 
 A share of the metrics stops arriving, `up` included, for targets that are running fine.
-Alerts that read absence fire on whichever targets are affected: `environmentd-not-scraped`, `logging-collection-down`, the Thanos `*IsDown` rules.
+Alerts that read absence fire on whichever targets are affected: `environmentd-not-scraped`, `kube-state-metrics-not-scraped`, `logging-collection-down`, and the Thanos `*IsDown` rules.
 A gateway pod logs this on every scrape it makes:
 
 ```text

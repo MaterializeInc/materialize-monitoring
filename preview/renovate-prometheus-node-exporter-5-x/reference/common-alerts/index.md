@@ -791,6 +791,60 @@ Labels:
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">30</span>
 </span></span></code></pre></div>
+<h4 id="kube-state-metrics-not-scraped">kube-state-metrics-not-scraped
+  <a class="anchor" href="#kube-state-metrics-not-scraped">#</a>
+</h4>
+No kube-state-metrics target has reported for 15m, so every alert on
+Kubernetes objects has gone quiet. Check the kube-state-metrics pod, then
+the gateway&rsquo;s logs for errors discovering it.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> monitoring</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">absent</span><span style="color:#f92672">(</span>up{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">kube-state-metrics</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h4 id="cadvisor-not-scraped">cadvisor-not-scraped
+  <a class="anchor" href="#cadvisor-not-scraped">#</a>
+</h4>
+No node&rsquo;s cAdvisor has reported for 15m, so every alert on container
+memory, CPU, and filesystems has gone quiet. Check the gateway&rsquo;s logs for
+errors scraping the kubelets.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> monitoring</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">absent</span><span style="color:#f92672">(</span>up{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cadvisor</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h4 id="node-exporter-not-scraped">node-exporter-not-scraped
+  <a class="anchor" href="#node-exporter-not-scraped">#</a>
+</h4>
+No node-exporter target has reported for 15m, so every alert on node
+disks, memory, and network has gone quiet. Check the node-exporter
+DaemonSet, then the gateway&rsquo;s logs for errors discovering it.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> monitoring</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>node-exporter</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">absent</span><span style="color:#f92672">(</span>up{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">node-exporter</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
 <h4 id="logging-collection-down">logging-collection-down
   <a class="anchor" href="#logging-collection-down">#</a>
 </h4>

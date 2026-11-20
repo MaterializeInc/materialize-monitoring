@@ -557,7 +557,7 @@ There are three shapes, and which one applies follows from the layer you exposed
 
 | | Where TLS terminates | What you set |
 |---|---|---|
-| **L4 load balancer** (the Terraform default, all three clouds) | The Grafana pod | `certificates.external` — the chart issues the certificate |
+| **L4 load balancer** (the Terraform default, all three clouds) | The Grafana pod | `certificates.external` and the `grafana-https` profile. The chart issues the certificate, and Grafana serves it |
 | **L7 load balancer** with a cloud-managed certificate | The load balancer | An ARN or resource ID in `grafana.service.annotations` / the Ingress controller's annotations |
 | **Ingress** with cert-manager | The ingress controller | An Ingress `tls` block naming the Secret |
 
@@ -577,20 +577,42 @@ certificates:
       - grafana.example.com    # what users type, and what root_url says
 ```
 
-That renders a second `Certificate` for Grafana — `<release>-grafana-external-tls` — alongside its internal one, and
+That renders a second `Certificate` for Grafana — `<fullname>-grafana-external-tls`, which is `mzmon-grafana-external-tls` at the default `fullnameOverride` — alongside its internal one, and
 adds the same public names to the internal certificate's SANs so an in-cluster client dialing the public name still
 matches.
 
-> [!INFO]
->   The chart **issues** the certificate; it does not wire Grafana to serve it.
->   Mount the Secret with `grafana.extraSecretMounts` and point `grafana.ini.server` at the files (`protocol`, `cert_file`, `cert_key`).
->   `grafana.ini` is an arbitrary-config passthrough, so anything Grafana understands can go there.
+Issuing the certificate doesn't make Grafana serve it.
+The `grafana-https` profile does that, and it changes the following together:
+
+- It mounts the Secret and points `grafana.ini.server` at it: `protocol: https`, `cert_file`, and `cert_key`.
+  Grafana rereads the files hourly (`certs_watch_interval`), so a renewal takes effect without a restart.
+- It sets `root_url` to `https://grafana.example.com` and `security.cookie_secure: true`.
+- It moves the Service to port 443, so the public URL needs no port.
+  The container port stays 3000, so NetworkPolicies don't change.
+- It switches the liveness and readiness probes and the ServiceMonitor to HTTPS.
+  The scrape verifies the certificate against `tlsConfig.serverName` and the system's public roots.
+
+Layer it over your platform profile, then replace its issuer name and every `grafana.example.com`:
+
+```bash
+helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
+  -f charts/materialize-monitoring/profiles/gcp-example.values.yaml \
+  -f charts/materialize-monitoring/profiles/grafana-https.values.yaml
+```
+
+The render refuses a Grafana serving HTTPS with any of those settings left behind.
+It warns about an external certificate that Grafana serves over plain HTTP, because nothing presents that certificate.
+
+grafana-operator reaches Grafana at its Service, a name the public certificate doesn't carry.
+It therefore connects over HTTPS without verifying the certificate.
+To verify instead, set `connections.grafana.tls`, for example to a `certSecretRef` whose CA signs a certificate that names both the public host and the Service.
 
 For an **L7** load balancer holding a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault), the
 key never enters the cluster — leave `certificates.external` unset and attach the certificate by annotation.
 Setting `dnsNames` without an `issuerRef.name` renders nothing and warns, precisely so this case is stated rather than assumed.
 
-Once TLS is in place, set `security.cookie_secure: true` — and not before.
+Set `security.cookie_secure: true` only after TLS is in place.
+Before that, the browser won't send the session cookie over the plain-HTTP connection, and nobody can sign in.
 
 ### What to set alongside
 

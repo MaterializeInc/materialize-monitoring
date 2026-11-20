@@ -307,7 +307,7 @@ The examples pass it unconditionally, alongside the Materialize console and bala
 > [!WARNING]
 > **The load balancer does not terminate TLS.** An L4 load balancer passes bytes through, so TLS terminates at the Grafana pod or not at all — and until Grafana has a certificate it serves plain HTTP, session cookie and admin password included.
 >
-> The modules can issue that certificate; see [Giving Grafana a certificate](#grafana-certificate) below. Until it is in place, treat exposure as internal-only, and **do not set `security.cookie_secure`** — it marks the cookie `Secure`, the browser then refuses to send it over the plain-HTTP connection that works, and login stops working entirely.
+> The modules can issue that certificate and have Grafana serve it; see [Giving Grafana a certificate](#grafana-certificate) below. Until it is in place, treat exposure as internal-only, and **do not set `security.cookie_secure`** — it marks the cookie `Secure`, the browser then refuses to send it over the plain-HTTP connection that works, and login stops working entirely.
 
 L7 — an ALB, a GCP Application Load Balancer, an Azure Application Gateway — is the intended end state for public exposure, because a WAF and authentication at the edge are the two things L4 cannot do. It is deferred rather than rejected: Azure has no ingress-controller module yet, and the chart's Gateway API support is still BETA, so adopting Ingress now would mean migrating twice. See [Ingress and Service are not interchangeable](../../dashboards/grafana/architecture/#ingress-and-service-are-not-interchangeable).
 
@@ -351,9 +351,20 @@ Setting `grafana_external_dns_names` with no `issuer_ref` issues nothing, and th
 
 If instead an L7 load balancer terminates with a cloud-managed certificate (ACM, Google Certificate Manager, Azure Key Vault), the key never enters the cluster — leave this empty and attach the certificate by annotation through `grafana.service.annotations` in `additional_values`.
 
-> [!INFO]
->   The module issues the certificate; wiring Grafana to *serve* it is `grafana.ini.server` plus a secret mount, through `additional_values`.
->   See [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls).
+With the certificate issued, Grafana serves HTTPS from it, with the settings the chart's `grafana-https` profile carries:
+
+- The module mounts the certificate's Secret and sets `grafana.ini.server.protocol` to `https`, `root_url` to `https://` and the first name, and `security.cookie_secure`.
+- The Grafana Service moves to port 443, so `https://grafana.example.com` needs no port.
+  Point the load balancer's listener at 443 if your wrapper sets one.
+- The probes and Grafana's ServiceMonitor switch to HTTPS.
+  The scrape verifies the certificate against the first name and the system's public roots.
+  For a private `issuer_ref`, set `grafana.serviceMonitor.tlsConfig.ca` to its CA in `additional_values`.
+- grafana-operator connects to Grafana's Service over HTTPS without verifying the certificate, because the certificate doesn't name the Service.
+- The `grafana_url` output becomes `https://`.
+
+A `root_url` in `additional_values` still wins over the module's.
+It has to start with `https://`, or the render fails.
+See [Terminating TLS](../../dashboards/grafana/architecture/#terminating-tls).
 
 Separately, `internal_tls` (`off` / `encrypt` / `present` / `authenticate`) moves the **in-cluster** hops off plaintext. It also requires `certificates_enabled`. On a fresh install go straight to `authenticate`; on a running stack step through `present` first, or a server that rolls before its writers stops ingestion until they catch up.
 

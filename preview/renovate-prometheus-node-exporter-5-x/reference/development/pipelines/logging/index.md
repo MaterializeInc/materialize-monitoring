@@ -48,6 +48,38 @@ The gateway is where normalization, cardinality reduction, and routing happen.
 Every component in these pipelines is typed and schema-validated, including the ingress components and the `loki.write` sink.
 The `raw:` escape (see [Authoring](../authoring/)) remains available and is currently unused.
 
+### Client-certificate tenancy
+
+With `pipeline.gateway.clientCertificateTenancy` on, a proxy in front of the gateway terminates mTLS,
+and passes the verified certificate on in a header.
+The OTLP receiver forwards to one of two attributes processors instead of the bridge and `inputMetricProcessor`:
+
+- `clientTenantSubject` reads an RFC 2253 subject,
+  as an AWS Application Load Balancer sends in `X-Amzn-Mtls-Clientcert-Subject` and nginx in `$ssl_client_s_dn`.
+- `clientTenantXfcc` reads Envoy's `X-Forwarded-Client-Cert`.
+
+Both read the header `GATEWAY_CLIENT_TENANT_HEADER` names, which the chart sets from the values.
+Every log record and metric data point then takes its tenant from the CN of the certificate's subject.
+The comments on those components in `gateway.yaml` explain the construction.
+When you change the gateway, keep these true:
+
+- Only `loki.relabel "clientTenant"` sets `__mzmon_tenant__`, the label `inputProcessor` takes the Loki tenant from.
+  `loki.source.api` drops every label that starts with `__`, and `loki.relabel "bridge"` drops this one.
+  A new way in that can carry arbitrary labels needs the same drop.
+- The tenant attribute is `mzmonTenant`, with no underscore.
+  Both OTLP bridges rename attributes into label names, and when two attributes land on one name, they keep whichever their map iteration reaches last.
+  Only a name without `_` is safe from a lookalike.
+- A new way into the metric pipeline passes `otelcol.processor.transform "localTenant"`, which removes `mzmonTenant`, as `inputBridge` does under this setting.
+- Each format's pattern refuses a header that names more than one certificate.
+  The collector joins the values of a repeated header with `;`, and Envoy separates appended certificates with `,`.
+  A new format needs a pattern that refuses both, and a test case for each.
+- Each pattern takes the CN only from a subject with exactly one CN and no `\` or `+`.
+  An escape can hide a separator: `O=dept\,CN=victim` puts a second CN inside the organization.
+  A `+` joins one to it: `O=dept+CN=victim`.
+
+`packages/mzmon-lib/tests/gateway_client_tenant.rs` sends each forgery it knows of through `alloy run`.
+Add a case when you add a way in.
+
 ### Processing conventions
 
 These are the conventions a contributor must preserve when editing the gateway `loki.process` pipeline:
@@ -161,7 +193,7 @@ So it runs before any stage that copies text out of the line, and everything the
 An entry passes through the following components in order:
 
 1. `inputPrefilter` merges multi-line records, drops lines older than the backlog window, clamps the line, and applies the global rate limit.
-   It then sniffs the level and applies the limit on unlevelled lines to the bulk tier.
+   It then sniffs the level, applies the limit on unlevelled lines to the bulk tier, and replaces card numbers.
 2. `loki.relabel.tierFull` and `loki.relabel.tierBulk` each keep one tier.
    They're relabel components rather than `loki.process` drops, so the other tier's lines don't count in `loki_process_dropped_lines_total`.
 3. `loki.secretfilter.ingest` scans the full tier, and `loki.secretfilter.ingestBulk` scans the bulk tier: `DEBUG` and `TRACE`.
@@ -175,9 +207,44 @@ The `level` label is set only after parsing, so the sniff reads the level field 
 Each pattern is anchored where its format puts the level.
 A line the sniff can't classify goes to the full tier, so a miss costs a scan rather than coverage.
 
+`inputPrefilter` ends with `stage.luhn`, which replaces each run of 13 to 19 digits that passes the Luhn checksum with `<redacted:luhn>`.
+It runs in every mode of the filter, and on every line before the tier split, so the bulk tier's scan rate never applies to it.
+Its `skip_regex` exempts digits that are part of something else.
+Alloy finds the expression's matches without overlap, and skips a run only when one match covers all of it.
+An alternative that matches part of a token could use up a character another alternative needed, so each alternative matches a whole token, and their order matters only where two can start at the same character.
+`packages/mzmon-lib/tests/gateway_luhn.rs` places a Luhn-valid number beside every pair of neighbours and checks each outcome against a function that states the intent, so an alternative that breaks this fails there.
+
+The following table lists the alternatives in the order the expression tries them:
+
+| Alternative | Exempts | Seen as |
+|---|---|---|
+| `"(?:[^"\\]\|\\.)*":\s*-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?` | A JSON number after its key, fraction and exponent included | Any JSON log line. A placeholder in its place makes the line invalid JSON, and `inputProcessor` loses its level and fields |
+| `\w*[A-Za-z_]\w*` | A word that contains a letter or an underscore | Materialize's 18-digit `si` collection IDs, the Azure VM agent's `etag_` IDs, and container IDs |
+| `\d+\.\d+` | A decimal number, with digits on both sides of the point | Ratios, and the timestamp in a Go pseudo-version such as `v1.2.2-0.<timestamp>-<hash>` |
+| `1(?:\d{18}\|\d{15}\|\d{12})` | An epoch timestamp in milliseconds, microseconds, or nanoseconds: exactly 13, 16, or 19 digits that start with `1` | The frontiers Materialize logs |
+| `20\d{12}` | A compact `yyyymmddhhmmss` timestamp | Go pseudo-versions without the `0.` |
+
+The JSON alternative matches the key whole, escapes included.
+So a key made of digits, such as a timestamp, still counts, and an escaped quote can't end a key, so a card number in JSON escaped inside a string is still replaced.
+
+The word alternative comes before the timestamps, which would otherwise take 16 digits of an 18-digit number followed by a letter and leave the rest uncovered.
+Inside the timestamp alternative, the longest width comes first for the same reason.
+The leading `1` holds until 2033-05-18, and `gateway_luhn.rs` starts failing a year before.
+No card number is 14 digits long and starts with `20`.
+
+Each exemption has a cost:
+
+- A card number written as a JSON number, or directly against a letter or an underscore, passes.
+- A number in a JSON array has no key before it, so one that passes the checksum still breaks its line's JSON.
+- A number after a word and a point, such as `x1.`, isn't a decimal, so one that passes the checksum is still replaced.
+
+A `stage.match` on the placeholder feeds `stage.metrics`, which counts changed lines in `loki_process_custom_luhn_redacted_lines_total`.
+`gateway_luhn.rs` runs the prefilter on the pinned Alloy with card numbers and Luhn-valid timestamps it generates, so the repository commits no card-shaped number.
+
 A third instance, `loki.secretfilter.shadow`, measures the rules without enforcing them.
 When `pipeline.logging.secretFilter.mode` is `shadow`, `inputPrefilter` also forwards every line to it, and `loki.process.secretfilterShadow` keeps only the lines it redacted, labels them `secretfilter="shadow"`, and passes them to `inputProcessor`.
 It drops the rest under the reason `secretfilter shadow`.
+The check ignores `<redacted:luhn>`, because the original carries that placeholder too.
 Copies skip `inputProcessor`'s rate limits and have a per-namespace limit of their own in `secretfilterShadow`, 100 lines per second with a burst of 1,000.
 That way a rule that matches most of a namespace's lines can't spend the budget its originals need.
 The Alloy dashboard's guard-drops panel excludes everything `secretfilterShadow` drops, by component, because its limit drops under the same reason as the main path's.
@@ -246,7 +313,7 @@ The structured metadata budget later on this page still applies to those fields.
 
 The last-stage rules exist because Loki refuses an entry over its limits rather than shortening it, and `loki.write` doesn't retry the refusal.
 The figures in the following list come from measuring Loki 3.7.8.
-Loki 3.7.9, the version the chart deploys, has the same default limits.
+Loki 3.7.10, the version the chart deploys, has the same default limits.
 With those defaults, Loki refuses the following:
 
 - A line longer than 256KiB (262,144 bytes).
