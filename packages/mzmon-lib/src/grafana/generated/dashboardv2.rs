@@ -709,7 +709,7 @@ impl ::std::convert::TryFrom<::std::string::String> for AnnotationEventFieldSour
 #[doc = "      \"description\": \"Panel IDs that should be included or excluded\","]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
-#[doc = "        \"type\": \"integer\""]
+#[doc = "        \"type\": \"number\""]
 #[doc = "      }"]
 #[doc = "    }"]
 #[doc = "  },"]
@@ -724,7 +724,7 @@ pub struct AnnotationPanelFilter {
     #[serde(default)]
     pub exclude: bool,
     #[doc = "Panel IDs that should be included or excluded"]
-    pub ids: ::std::vec::Vec<i64>,
+    pub ids: ::std::vec::Vec<f64>,
 }
 #[doc = "`AnnotationQueryKind`"]
 #[doc = r""]
@@ -3482,6 +3482,10 @@ pub struct FetchOptions {
 #[doc = "      \"description\": \"The fixed color value for fixed or shades color modes.\","]
 #[doc = "      \"type\": \"string\""]
 #[doc = "    },"]
+#[doc = "    \"gradientColorTo\": {"]
+#[doc = "      \"description\": \"The end color for the gradient color mode (smallest value). Only used when mode is gradient.\","]
+#[doc = "      \"type\": \"string\""]
+#[doc = "    },"]
 #[doc = "    \"mode\": {"]
 #[doc = "      \"description\": \"The main color scheme mode.\","]
 #[doc = "      \"$ref\": \"#/definitions/FieldColorModeId\""]
@@ -3505,6 +3509,13 @@ pub struct FieldColor {
         skip_serializing_if = "::std::option::Option::is_none"
     )]
     pub fixed_color: ::std::option::Option<::std::string::String>,
+    #[doc = "The end color for the gradient color mode (smallest value). Only used when mode is gradient."]
+    #[serde(
+        rename = "gradientColorTo",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub gradient_color_to: ::std::option::Option<::std::string::String>,
     #[doc = "The main color scheme mode."]
     pub mode: FieldColorModeId,
     #[doc = "Some visualizations need to know how to assign a series color from by value color schemes."]
@@ -3515,18 +3526,22 @@ pub struct FieldColor {
     )]
     pub series_by: ::std::option::Option<FieldColorSeriesByMode>,
 }
-#[doc = "Color mode for a field. You can specify a single color, or select a continuous (gradient) color schemes, based on a value.\nContinuous color interpolates a color using the percentage of a value relative to min and max.\nAccepted values are:\n`thresholds`: From thresholds. Informs Grafana to take the color from the matching threshold\n`palette-classic`: Classic palette. Grafana will assign color by looking up a color in a palette by series index. Useful for Graphs and pie charts and other categorical data visualizations\n`palette-classic-by-name`: Classic palette (by name). Grafana will assign color by looking up a color in a palette by series name. Useful for Graphs and pie charts and other categorical data visualizations\n`continuous-viridis`: Continuous Viridis palette mode\n`continuous-magma`: Continuous Magma palette mode\n`continuous-plasma`: Continuous Plasma palette mode\n`continuous-inferno`: Continuous Inferno palette mode\n`continuous-cividis`: Continuous Cividis palette mode\n`continuous-GrYlRd`: Continuous Green-Yellow-Red palette mode\n`continuous-RdYlGr`: Continuous Red-Yellow-Green palette mode\n`continuous-BlYlRd`: Continuous Blue-Yellow-Red palette mode\n`continuous-YlRd`: Continuous Yellow-Red palette mode\n`continuous-BlPu`: Continuous Blue-Purple palette mode\n`continuous-YlBl`: Continuous Yellow-Blue palette mode\n`continuous-blues`: Continuous Blue palette mode\n`continuous-reds`: Continuous Red palette mode\n`continuous-greens`: Continuous Green palette mode\n`continuous-purples`: Continuous Purple palette mode\n`shades`: Shades of a single color. Specify a single color, useful in an override rule.\n`fixed`: Fixed color mode. Specify a single color, useful in an override rule."]
+#[doc = "Color mode for a field. You can specify a single color, or select a continuous (gradient) color schemes, based on a value.\nContinuous color interpolates a color using the percentage of a value relative to min and max.\nAccepted values are:\n`thresholds`: From thresholds. Informs Grafana to take the color from the matching threshold\n`palette-classic`: Classic palette. Grafana will assign color by looking up a color in a palette by series index. Useful for Graphs and pie charts and other categorical data visualizations\n`palette-classic-by-name`: Classic palette (by name). Grafana will assign color by looking up a color in a palette by series name. Useful for Graphs and pie charts and other categorical data visualizations\n`palette-colorblind`: Color blind safe palette. A discrete palette whose colors are distinguishable under common forms of color vision deficiency. Useful for categorical and multi-series data visualizations\n`palette-categorical-next`: Experimental categorical palette. Useful for categorical and multi-series data visualizations\n`palette-categorical-next-2`: Experimental categorical palette. Useful for categorical and multi-series data visualizations\n`palette-categorical-next-3`: Experimental categorical palette. Useful for categorical and multi-series data visualizations\n`continuous-viridis`: Continuous Viridis palette mode\n`continuous-magma`: Continuous Magma palette mode\n`continuous-plasma`: Continuous Plasma palette mode\n`continuous-inferno`: Continuous Inferno palette mode\n`continuous-cividis`: Continuous Cividis palette mode\n`continuous-GrYlRd`: Continuous Green-Yellow-Red palette mode\n`continuous-RdYlGr`: Continuous Red-Yellow-Green palette mode\n`continuous-BlYlRd`: Continuous Blue-Yellow-Red palette mode\n`continuous-YlRd`: Continuous Yellow-Red palette mode\n`continuous-BlPu`: Continuous Blue-Purple palette mode\n`continuous-YlBl`: Continuous Yellow-Blue palette mode\n`continuous-blues`: Continuous Blue palette mode\n`continuous-reds`: Continuous Red palette mode\n`continuous-greens`: Continuous Green palette mode\n`continuous-purples`: Continuous Purple palette mode\n`shades`: Shades of a single color. Specify a single color, useful in an override rule.\n`fixed`: Fixed color mode. Specify a single color, useful in an override rule.\n`gradient`: Gradient color mode. Interpolate between two colors based on value order; the start color is taken from fixedColor and the end color from gradientColorTo."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
 #[doc = r""]
 #[doc = r" ```json"]
 #[doc = "{"]
-#[doc = "  \"description\": \"Color mode for a field. You can specify a single color, or select a continuous (gradient) color schemes, based on a value.\\nContinuous color interpolates a color using the percentage of a value relative to min and max.\\nAccepted values are:\\n`thresholds`: From thresholds. Informs Grafana to take the color from the matching threshold\\n`palette-classic`: Classic palette. Grafana will assign color by looking up a color in a palette by series index. Useful for Graphs and pie charts and other categorical data visualizations\\n`palette-classic-by-name`: Classic palette (by name). Grafana will assign color by looking up a color in a palette by series name. Useful for Graphs and pie charts and other categorical data visualizations\\n`continuous-viridis`: Continuous Viridis palette mode\\n`continuous-magma`: Continuous Magma palette mode\\n`continuous-plasma`: Continuous Plasma palette mode\\n`continuous-inferno`: Continuous Inferno palette mode\\n`continuous-cividis`: Continuous Cividis palette mode\\n`continuous-GrYlRd`: Continuous Green-Yellow-Red palette mode\\n`continuous-RdYlGr`: Continuous Red-Yellow-Green palette mode\\n`continuous-BlYlRd`: Continuous Blue-Yellow-Red palette mode\\n`continuous-YlRd`: Continuous Yellow-Red palette mode\\n`continuous-BlPu`: Continuous Blue-Purple palette mode\\n`continuous-YlBl`: Continuous Yellow-Blue palette mode\\n`continuous-blues`: Continuous Blue palette mode\\n`continuous-reds`: Continuous Red palette mode\\n`continuous-greens`: Continuous Green palette mode\\n`continuous-purples`: Continuous Purple palette mode\\n`shades`: Shades of a single color. Specify a single color, useful in an override rule.\\n`fixed`: Fixed color mode. Specify a single color, useful in an override rule.\","]
+#[doc = "  \"description\": \"Color mode for a field. You can specify a single color, or select a continuous (gradient) color schemes, based on a value.\\nContinuous color interpolates a color using the percentage of a value relative to min and max.\\nAccepted values are:\\n`thresholds`: From thresholds. Informs Grafana to take the color from the matching threshold\\n`palette-classic`: Classic palette. Grafana will assign color by looking up a color in a palette by series index. Useful for Graphs and pie charts and other categorical data visualizations\\n`palette-classic-by-name`: Classic palette (by name). Grafana will assign color by looking up a color in a palette by series name. Useful for Graphs and pie charts and other categorical data visualizations\\n`palette-colorblind`: Color blind safe palette. A discrete palette whose colors are distinguishable under common forms of color vision deficiency. Useful for categorical and multi-series data visualizations\\n`palette-categorical-next`: Experimental categorical palette. Useful for categorical and multi-series data visualizations\\n`palette-categorical-next-2`: Experimental categorical palette. Useful for categorical and multi-series data visualizations\\n`palette-categorical-next-3`: Experimental categorical palette. Useful for categorical and multi-series data visualizations\\n`continuous-viridis`: Continuous Viridis palette mode\\n`continuous-magma`: Continuous Magma palette mode\\n`continuous-plasma`: Continuous Plasma palette mode\\n`continuous-inferno`: Continuous Inferno palette mode\\n`continuous-cividis`: Continuous Cividis palette mode\\n`continuous-GrYlRd`: Continuous Green-Yellow-Red palette mode\\n`continuous-RdYlGr`: Continuous Red-Yellow-Green palette mode\\n`continuous-BlYlRd`: Continuous Blue-Yellow-Red palette mode\\n`continuous-YlRd`: Continuous Yellow-Red palette mode\\n`continuous-BlPu`: Continuous Blue-Purple palette mode\\n`continuous-YlBl`: Continuous Yellow-Blue palette mode\\n`continuous-blues`: Continuous Blue palette mode\\n`continuous-reds`: Continuous Red palette mode\\n`continuous-greens`: Continuous Green palette mode\\n`continuous-purples`: Continuous Purple palette mode\\n`shades`: Shades of a single color. Specify a single color, useful in an override rule.\\n`fixed`: Fixed color mode. Specify a single color, useful in an override rule.\\n`gradient`: Gradient color mode. Interpolate between two colors based on value order; the start color is taken from fixedColor and the end color from gradientColorTo.\","]
 #[doc = "  \"type\": \"string\","]
 #[doc = "  \"enum\": ["]
 #[doc = "    \"thresholds\","]
 #[doc = "    \"palette-classic\","]
 #[doc = "    \"palette-classic-by-name\","]
+#[doc = "    \"palette-colorblind\","]
+#[doc = "    \"palette-categorical-next\","]
+#[doc = "    \"palette-categorical-next-2\","]
+#[doc = "    \"palette-categorical-next-3\","]
 #[doc = "    \"continuous-viridis\","]
 #[doc = "    \"continuous-magma\","]
 #[doc = "    \"continuous-plasma\","]
@@ -3543,7 +3558,8 @@ pub struct FieldColor {
 #[doc = "    \"continuous-greens\","]
 #[doc = "    \"continuous-purples\","]
 #[doc = "    \"fixed\","]
-#[doc = "    \"shades\""]
+#[doc = "    \"shades\","]
+#[doc = "    \"gradient\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -3567,6 +3583,14 @@ pub enum FieldColorModeId {
     PaletteClassic,
     #[serde(rename = "palette-classic-by-name")]
     PaletteClassicByName,
+    #[serde(rename = "palette-colorblind")]
+    PaletteColorblind,
+    #[serde(rename = "palette-categorical-next")]
+    PaletteCategoricalNext,
+    #[serde(rename = "palette-categorical-next-2")]
+    PaletteCategoricalNext2,
+    #[serde(rename = "palette-categorical-next-3")]
+    PaletteCategoricalNext3,
     #[serde(rename = "continuous-viridis")]
     ContinuousViridis,
     #[serde(rename = "continuous-magma")]
@@ -3601,6 +3625,8 @@ pub enum FieldColorModeId {
     Fixed,
     #[serde(rename = "shades")]
     Shades,
+    #[serde(rename = "gradient")]
+    Gradient,
 }
 impl ::std::fmt::Display for FieldColorModeId {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -3608,6 +3634,10 @@ impl ::std::fmt::Display for FieldColorModeId {
             Self::Thresholds => f.write_str("thresholds"),
             Self::PaletteClassic => f.write_str("palette-classic"),
             Self::PaletteClassicByName => f.write_str("palette-classic-by-name"),
+            Self::PaletteColorblind => f.write_str("palette-colorblind"),
+            Self::PaletteCategoricalNext => f.write_str("palette-categorical-next"),
+            Self::PaletteCategoricalNext2 => f.write_str("palette-categorical-next-2"),
+            Self::PaletteCategoricalNext3 => f.write_str("palette-categorical-next-3"),
             Self::ContinuousViridis => f.write_str("continuous-viridis"),
             Self::ContinuousMagma => f.write_str("continuous-magma"),
             Self::ContinuousPlasma => f.write_str("continuous-plasma"),
@@ -3625,6 +3655,7 @@ impl ::std::fmt::Display for FieldColorModeId {
             Self::ContinuousPurples => f.write_str("continuous-purples"),
             Self::Fixed => f.write_str("fixed"),
             Self::Shades => f.write_str("shades"),
+            Self::Gradient => f.write_str("gradient"),
         }
     }
 }
@@ -3635,6 +3666,10 @@ impl ::std::str::FromStr for FieldColorModeId {
             "thresholds" => Ok(Self::Thresholds),
             "palette-classic" => Ok(Self::PaletteClassic),
             "palette-classic-by-name" => Ok(Self::PaletteClassicByName),
+            "palette-colorblind" => Ok(Self::PaletteColorblind),
+            "palette-categorical-next" => Ok(Self::PaletteCategoricalNext),
+            "palette-categorical-next-2" => Ok(Self::PaletteCategoricalNext2),
+            "palette-categorical-next-3" => Ok(Self::PaletteCategoricalNext3),
             "continuous-viridis" => Ok(Self::ContinuousViridis),
             "continuous-magma" => Ok(Self::ContinuousMagma),
             "continuous-plasma" => Ok(Self::ContinuousPlasma),
@@ -3652,6 +3687,7 @@ impl ::std::str::FromStr for FieldColorModeId {
             "continuous-purples" => Ok(Self::ContinuousPurples),
             "fixed" => Ok(Self::Fixed),
             "shades" => Ok(Self::Shades),
+            "gradient" => Ok(Self::Gradient),
             _ => Err("invalid value".into()),
         }
     }
@@ -5319,7 +5355,6 @@ pub struct PanelQuerySpec {
 #[doc = "  \"type\": \"object\","]
 #[doc = "  \"required\": ["]
 #[doc = "    \"data\","]
-#[doc = "    \"description\","]
 #[doc = "    \"id\","]
 #[doc = "    \"links\","]
 #[doc = "    \"title\","]
@@ -5330,6 +5365,7 @@ pub struct PanelQuerySpec {
 #[doc = "      \"$ref\": \"#/definitions/QueryGroupKind\""]
 #[doc = "    },"]
 #[doc = "    \"description\": {"]
+#[doc = "      \"description\": \"Shown in a info icon tooltip next to panel title\","]
 #[doc = "      \"type\": \"string\""]
 #[doc = "    },"]
 #[doc = "    \"id\": {"]
@@ -5340,6 +5376,10 @@ pub struct PanelQuerySpec {
 #[doc = "      \"items\": {"]
 #[doc = "        \"$ref\": \"#/definitions/DataLink\""]
 #[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"subtitle\": {"]
+#[doc = "      \"description\": \"Shown in a sub header below the title.\","]
+#[doc = "      \"type\": \"string\""]
 #[doc = "    },"]
 #[doc = "    \"title\": {"]
 #[doc = "      \"type\": \"string\""]
@@ -5359,9 +5399,14 @@ pub struct PanelQuerySpec {
 #[serde(deny_unknown_fields)]
 pub struct PanelSpec {
     pub data: QueryGroupKind,
-    pub description: ::std::string::String,
+    #[doc = "Shown in a info icon tooltip next to panel title"]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub description: ::std::option::Option<::std::string::String>,
     pub id: f64,
     pub links: ::std::vec::Vec<DataLink>,
+    #[doc = "Shown in a sub header below the title."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub subtitle: ::std::option::Option<::std::string::String>,
     pub title: ::std::string::String,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub transparent: ::std::option::Option<bool>,
@@ -5543,6 +5588,9 @@ pub struct QueryGroupSpec {
 #[doc = "    },"]
 #[doc = "    \"timeShift\": {"]
 #[doc = "      \"type\": \"string\""]
+#[doc = "    },"]
+#[doc = "    \"timeTo\": {"]
+#[doc = "      \"type\": \"string\""]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -5596,6 +5644,12 @@ pub struct QueryOptionsSpec {
         skip_serializing_if = "::std::option::Option::is_none"
     )]
     pub time_shift: ::std::option::Option<::std::string::String>,
+    #[serde(
+        rename = "timeTo",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub time_to: ::std::option::Option<::std::string::String>,
 }
 impl ::std::default::Default for QueryOptionsSpec {
     fn default() -> Self {
@@ -5608,6 +5662,7 @@ impl ::std::default::Default for QueryOptionsSpec {
             time_compare: Default::default(),
             time_from: Default::default(),
             time_shift: Default::default(),
+            time_to: Default::default(),
         }
     }
 }
@@ -7179,6 +7234,10 @@ pub struct TextVariableSpec {
 #[doc = "          \"type\": \"null\""]
 #[doc = "        }"]
 #[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"valueExpr\": {"]
+#[doc = "      \"description\": \"Optional dashboard-variable expression (e.g. `$myVar`) resolved at render time; `value` is the numeric fallback when the expression cannot be resolved to a single finite number.\","]
+#[doc = "      \"type\": \"string\""]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -7191,6 +7250,13 @@ pub struct Threshold {
     pub color: ::std::string::String,
     #[doc = "Value null means -Infinity"]
     pub value: ::std::option::Option<f64>,
+    #[doc = "Optional dashboard-variable expression (e.g. `$myVar`) resolved at render time; `value` is the numeric fallback when the expression cannot be resolved to a single finite number."]
+    #[serde(
+        rename = "valueExpr",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub value_expr: ::std::option::Option<::std::string::String>,
 }
 #[doc = "`ThresholdsConfig`"]
 #[doc = r""]
