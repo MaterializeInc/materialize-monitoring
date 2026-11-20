@@ -8,9 +8,22 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.13.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.14.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.13.0
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.6.0..v0.7.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.15.0..v0.16.0</summary>
+
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#751](https://github.com/MaterializeInc/materialize-monitoring/pull/751)
+
+  </details>
 
 ## Benchmark Images v0.2.0 (Unreleased)
 
