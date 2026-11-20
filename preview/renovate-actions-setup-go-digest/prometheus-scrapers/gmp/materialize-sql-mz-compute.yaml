@@ -1,0 +1,157 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: ClusterPodMonitoring
+metadata:
+  name: materialize-sql-mz-compute
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: environmentd
+    app.kubernetes.io/component: sql-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: environmentd
+  endpoints:
+  - port: internal-http
+    interval: 30s
+    path: /metrics/mz_compute
+    basicAuth:
+      username: mz_support
+    metricRelabeling:
+    - sourceLabels:
+      - cluster_id
+      - instance_id
+      separator: ;
+      targetLabel: cluster_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - cluster_id
+      - compute_instance
+      separator: ;
+      targetLabel: cluster_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - cluster_id
+      - compute_cluster_id
+      separator: ;
+      targetLabel: cluster_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - cluster_id
+      - cluster_environmentd_materialize_cloud_cluster_id
+      separator: ;
+      targetLabel: cluster_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - replica_id
+      - compute_replica_id
+      separator: ;
+      targetLabel: replica_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - replica_id
+      - cluster_environmentd_materialize_cloud_replica_id
+      separator: ;
+      targetLabel: replica_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - cluster_name
+      - compute_cluster_name
+      separator: ;
+      targetLabel: cluster_name
+      regex: ;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - __name__
+      - cluster_name
+      - name
+      separator: ;
+      targetLabel: cluster_name
+      regex: mz_cluster_info;;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - __name__
+      - cluster_size
+      - size
+      separator: ;
+      targetLabel: cluster_size
+      regex: mz_cluster_info;;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - __name__
+      - replica_name
+      - name
+      separator: ;
+      targetLabel: replica_name
+      regex: mz_replica_info;;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - __name__
+      - replica_size
+      - size
+      separator: ;
+      targetLabel: replica_size
+      regex: mz_replica_info;;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - __name__
+      - object_name
+      - name
+      separator: ;
+      targetLabel: object_name
+      regex: mz_object_info;;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - __name__
+      - object_type
+      - type
+      separator: ;
+      targetLabel: object_type
+      regex: mz_object_info;;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - collection_id
+      - global_id
+      separator: ;
+      targetLabel: collection_id
+      regex: ;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - shard_id
+      - shard
+      separator: ;
+      targetLabel: shard_id
+      regex: ;(.+)
+      replacement: $1
+      action: replace
+  targetLabels:
+    fromPod:
+    - from: materialize.cloud/organization-name
+      to: materialize_cloud_organization_name
+    - from: materialize.cloud/organization-namespace
+      to: materialize_cloud_organization_namespace
+    - from: materialize.cloud/organization-id
+      to: materialize_cloud_organization_id
+    - from: cluster.environmentd.materialize.cloud/cluster-id
+      to: cluster_environmentd_materialize_cloud_cluster_id
+    - from: cluster.environmentd.materialize.cloud/replica-id
+      to: cluster_environmentd_materialize_cloud_replica_id
