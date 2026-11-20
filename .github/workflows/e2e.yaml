@@ -82,7 +82,7 @@ jobs:
       # The assertion suite is a workspace member, so the tier needs a toolchain.
       # Set up before the cluster so the build overlaps nothing and a compile
       # error fails the job in seconds rather than after a 10-minute install.
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: stable
       # Only main saves; see the cargo-test job in test.yaml for why.
@@ -157,7 +157,7 @@ jobs:
       # The suite is a workspace member, so this tier needs a toolchain too. Set
       # up before the cluster so a compile error fails in seconds rather than
       # after a long install.
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: stable
       # Only main saves; see the cargo-test job in test.yaml for why.
