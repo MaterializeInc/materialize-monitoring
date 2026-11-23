@@ -1,0 +1,15 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: ClusterPodMonitoring
+metadata:
+  name: cni-cilium-metrics-0
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: cni-cilium
+spec:
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  endpoints:
+  - port: prometheus
+    interval: 30s
+    path: /metrics
