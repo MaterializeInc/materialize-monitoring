@@ -45,7 +45,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked -p mz-monitoring-benchmark --no-default-features --target "${triple}"; \
     cp "target/${triple}/release/mz-monitoring-benchmark" /mz-monitoring-benchmark
 
-FROM gcr.io/distroless/cc-debian13@sha256:809d04afa1be033c441f76bb0051878c342fb76d0ea236bc6dc94b655fa0fbd6
+FROM gcr.io/distroless/cc-debian13@sha256:dac90a25ffe03ebaace90cda886b081e61ab6cd77ac47eda51f7bcc15c320765
 
 LABEL org.opencontainers.image.source="https://github.com/MaterializeInc/materialize-monitoring" \
     org.opencontainers.image.licenses="BSL-1.1" \
