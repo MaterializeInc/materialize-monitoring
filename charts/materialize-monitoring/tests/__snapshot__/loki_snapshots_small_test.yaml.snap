@@ -720,7 +720,7 @@ small workloads:
             - args:
                 - --memcached.address=localhost:11211
                 - --web.listen-address=0.0.0.0:9150
-              image: docker.io/prom/memcached-exporter:v0.17.0
+              image: docker.io/prom/memcached-exporter:v0.18.0
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 3
@@ -2049,7 +2049,7 @@ small workloads:
             - args:
                 - --memcached.address=localhost:11211
                 - --web.listen-address=0.0.0.0:9150
-              image: docker.io/prom/memcached-exporter:v0.17.0
+              image: docker.io/prom/memcached-exporter:v0.18.0
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 3
