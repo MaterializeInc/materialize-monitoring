@@ -37,15 +37,15 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.15.0 |
-| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.15.0 |
+| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.16.0 |
+| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.16.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.4.1 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.4.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.5.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.4.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.5.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.1 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 5.0.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 5.2.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.5 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.49.0 |
 
@@ -6280,7 +6280,7 @@ that holds Loki's own HTTP port at phase 2.
   "pullPolicy": "IfNotPresent",
   "registry": "ghcr.io",
   "repository": "jkroepke/access-log-exporter",
-  "tag": "1.0.2"
+  "tag": "1.0.3"
 }</pre>
 </td>
       <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
@@ -6874,7 +6874,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "prom/memcached-exporter",
-  "tag": "v0.17.0"
+  "tag": "v0.18.0"
 }</pre>
 </td>
       <td class="helm-value-desc">Memcached exporter image for both caches, pinned here rather than left at the subchart's default.
@@ -9308,7 +9308,7 @@ and turning `alerting.server.tls` on changes no volume.
   ],
   "image": {
     "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
-    "tag": "v0.94.2"
+    "tag": "v0.95.2"
   },
   "resources": {
     "limits": {
