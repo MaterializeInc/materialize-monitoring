@@ -39,8 +39,11 @@ Only for the E2E tiers, which are the one part of the suite that needs a cluster
 ## First-time setup
 
 ```sh
-git clone https://github.com/MaterializeInc/materialize-monitoring.git
+# Clone main only, then fetch every branch except gh-pages from now on
+git clone --single-branch https://github.com/MaterializeInc/materialize-monitoring.git
 cd materialize-monitoring
+git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+git config --add remote.origin.fetch '^refs/heads/gh-pages'
 
 # Initialize Git LFS for your user (one-time per machine)
 git lfs install
@@ -251,6 +254,33 @@ LFS is used for packaged Helm subcharts (`charts/*/charts/*.tgz`); the pattern i
 - If you add a binary artifact that would otherwise commit as a regular blob, `check-added-large-files` blocks commits over 512 KB — use LFS instead, or open a discussion if you think the file belongs in-tree as plain content.
 - Run [`./bin/check-lfs.sh`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/bin/check-lfs.sh) if LFS-tracked files look wrong locally (`--fix` can auto-install Git LFS via brew/apt/apk).
 - Once installed, the canonical push-time LFS check is git-lfs's own pre-push hook, set up by `git lfs install`.
+
+## Keep `gh-pages` out of your clone
+
+The `docs` workflow pushes the rendered docs site and every PR preview to the `gh-pages` branch.
+That branch holds most of the repository's size, and you don't need it to work on `main`.
+The [first-time setup](#first-time-setup) clones without it.
+For an existing clone, exclude it from fetches and delete its refs:
+
+```sh
+git config --add remote.origin.fetch '^refs/heads/gh-pages'
+git update-ref -d refs/remotes/origin/gh-pages
+git branch -D gh-pages  # only if you have a local gh-pages branch
+```
+
+To free the disk space right away, run the following command while no other Git command is running in the repository or its worktrees:
+
+```sh
+git reflog expire --expire-unreachable=now --all && git gc --prune=now
+```
+
+### Squash `gh-pages`
+
+To shrink the branch on GitHub, run [`./bin/squash-gh-pages.sh`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/bin/squash-gh-pages.sh).
+The script replaces the branch history with one commit.
+It also drops each PR preview whose branch has no successful `docs` run in the last two days, or in the number of days that `PREVIEW_MAX_AGE_DAYS` sets.
+It runs as a dry run until you pass `--push`.
+To restore a dropped preview for an open PR, rerun the PR's latest `docs` workflow run.
 
 ## Submitting changes
 
