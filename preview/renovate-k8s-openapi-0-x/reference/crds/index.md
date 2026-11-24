@@ -114,6 +114,7 @@ Values key: `grafana-operator-crds`.
 | `GrafanaMuteTiming` | Available — recurring windows that suppress notifications |
 | `GrafanaLibraryPanel` | Available — reusable panels shared across dashboards |
 | `GrafanaServiceAccount` | Available — service accounts and tokens inside Grafana |
+| `GrafanaSilence` | Available — silences in Grafana Alerting |
 
 Unlike the Prometheus set, the "Available" rows here are all serviceable: the operator this chart runs reconciles every one of them, so they are the supported way to extend Grafana alongside the bundled content.
 
