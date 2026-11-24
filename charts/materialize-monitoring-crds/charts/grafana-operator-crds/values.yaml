@@ -67,3 +67,7 @@ crds:
   # GrafanaServiceAccount — service accounts and tokens inside Grafana.
   grafanaserviceaccounts:
     enabled: true
+
+  # GrafanaSilence — silences in Grafana Alerting.
+  grafanasilences:
+    enabled: true

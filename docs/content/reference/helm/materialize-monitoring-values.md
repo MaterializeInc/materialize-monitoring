@@ -42,9 +42,9 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.16.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.16.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.4.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.5.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 21.5.0 |
-| [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
+| [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.26.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.5.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 9.0.1 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 5.2.0 |
@@ -8472,7 +8472,7 @@ Upstream references:
 {
   "registry": "ghcr.io",
   "repository": "grafana/grafana-operator",
-  "tag": "v5.25.0"
+  "tag": "v5.26.0"
 }</pre>
 </td>
       <td class="helm-value-desc">Operator image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -8594,7 +8594,7 @@ for the full checklist.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/grafana",
-  "tag": "13.3.1"
+  "tag": "13.3.2"
 }</pre>
 </td>
       <td class="helm-value-desc">Grafana server image.

@@ -125,7 +125,7 @@ dependencies:
       - bundled-backends
       - thanos
   - name: grafana
-    version: "14.4.1"
+    version: "14.5.0"
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: grafana.enabled
     tags:
@@ -133,7 +133,7 @@ dependencies:
       - managed-grafana
       - grafana-standalone
   - name: grafana-operator
-    version: "5.25.0"
+    version: "5.26.0"
     repository: oci://ghcr.io/grafana/helm-charts
     condition: grafana-operator.enabled
     tags:
