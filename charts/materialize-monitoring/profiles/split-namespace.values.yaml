@@ -25,6 +25,10 @@ loki:
           gateway:
             url: 'http://alloy-gateway.alloy-gateway.svc.{{ include "mzmon.clusterDomain" . }}:9090/api/v1/metrics/write'
 
+  compactor:
+    annotations:
+      config.kubernetes.io/depends-on: apps/namespaces/loki/StatefulSet/loki-ingester
+
 thanos:
   namespaceOverride: thanos
 

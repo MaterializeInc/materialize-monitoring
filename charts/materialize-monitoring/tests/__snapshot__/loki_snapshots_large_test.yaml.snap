@@ -776,7 +776,7 @@ large workloads:
     metadata:
       annotations:
         argocd.argoproj.io/sync-wave: "20"
-        config.kubernetes.io/depends-on: statefulset/loki-ingester
+        config.kubernetes.io/depends-on: apps/namespaces/monitoring/StatefulSet/loki-ingester
       labels:
         app.kubernetes.io/component: compactor
         app.kubernetes.io/instance: t

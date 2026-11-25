@@ -3719,7 +3719,7 @@ alloy-agent:
     extraLabels: {}
     # -- Extra annotations to apply to the alloy agent pod.
     # If you are using pulumi, be sure to add
-    # `config.kubernetes.io/depends-on: job/mzmon-validate-agent`
+    # `config.kubernetes.io/depends-on: batch/namespaces/monitoring/Job/mzmon-validate-agent`
     extraAnnotations: {}
 
     hostNetwork: false
@@ -4067,7 +4067,7 @@ alloy-gateway:
     extraLabels: {}
     # -- Extra annotations to apply to the alloy gateway pod.
     # If you are using pulumi, be sure to add
-    # `config.kubernetes.io/depends-on: job/mzmon-validate-gateway`
+    # `config.kubernetes.io/depends-on: batch/namespaces/monitoring/Job/mzmon-validate-gateway`
     extraAnnotations: {}
 
     hostNetwork: false
@@ -4876,7 +4876,7 @@ loki:
 
     annotations:
       argocd.argoproj.io/sync-wave: "20"
-      config.kubernetes.io/depends-on: statefulset/loki-ingester
+      config.kubernetes.io/depends-on: apps/namespaces/monitoring/StatefulSet/loki-ingester
 
     persistence:
       # -- Run the compactor ephemerally (no PVC, node-local emptyDir).
