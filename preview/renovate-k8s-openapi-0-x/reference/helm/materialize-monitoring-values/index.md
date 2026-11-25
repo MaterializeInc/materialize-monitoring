@@ -5222,7 +5222,7 @@ equal to the request turns that into CFS throttling on the busiest nodes.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra annotations to apply to the alloy agent pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-agent`
+      <td class="helm-value-desc">Extra annotations to apply to the alloy agent pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: batch/namespaces/monitoring/Job/mzmon-validate-agent`
 </td>
     </tr>
     <tr>
@@ -5601,7 +5601,7 @@ memory limiter's thresholds follow it (see `extraEnv`).
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra annotations to apply to the alloy gateway pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: job/mzmon-validate-gateway`
+      <td class="helm-value-desc">Extra annotations to apply to the alloy gateway pod. If you are using pulumi, be sure to add `config.kubernetes.io/depends-on: batch/namespaces/monitoring/Job/mzmon-validate-gateway`
 </td>
     </tr>
     <tr>
