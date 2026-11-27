@@ -8,9 +8,46 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.13.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.14.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.13.0
+
+* use the correct format for config.kubernetes.io/depends-on
+    * [materialize-monitoring#785](https://github.com/MaterializeInc/materialize-monitoring/pull/785)
+    * fixed: use the correct format for config.kubernetes.io/depends-on
+* Update Grafana to 13.3.2 and the Grafana Operator to v5.26.0
+    * [materialize-monitoring#782](https://github.com/MaterializeInc/materialize-monitoring/pull/782)
+    * **Upgrade `materialize-monitoring-crds` before `materialize-monitoring`.** Grafana Operator `v5.26.0` watches the new `GrafanaSilence` kind and fails to start until its CRD exists. The Terraform module already applies the CRDs release first.
+    * Grafana moves to `13.3.2`, a security release that fixes CVE-2026-107561 and CVE-2026-88960.
+    * Grafana Operator moves to `v5.26.0`, with its chart:
+        * The new `GrafanaSilence` CRD manages silences in Grafana Alerting. The CRDs chart installs it; `grafana-operator-crds.crds.grafanasilences.enabled` turns it off.
+        * The operator rejects a `GrafanaDashboard` that holds a v2 dashboard document before calling Grafana. Deliver v2 dashboards with `GrafanaManifest`, as the bundled dashboards do.
+        * `GrafanaNotificationPolicy` routes are ordered deterministically, and `GrafanaMuteTiming` entries stay in the `Grafana` status across operator restarts.
+    * The `grafana` subchart moves to `14.5.0`, which changes nothing this chart renders.
+* Update the loki, alloy, alertmanager, and node-exporter subcharts and three pinned images
+    * [materialize-monitoring#771](https://github.com/MaterializeInc/materialize-monitoring/pull/771)
+    * Subchart updates:
+        * `alertmanager` `2.5.1`. The Alertmanager image doesn't change: the chart already pins `v0.35.0`, and the `app.kubernetes.io/version` label now matches it.
+        * `alloy` `1.16.0`, for the agent and the gateway. The subchart's only change is its app version, `v1.22.0`, which is the Alloy release the chart's `mzmon-alloy` image already runs.
+        * `loki` `21.5.0`. None of the upstream changes reach what this chart renders: they touch the rollout operator, which this chart doesn't deploy, and an image tag the chart pins itself.
+        * `prometheus-node-exporter` `5.2.0`. The node-exporter DaemonSet's liveness and readiness probes now time out after 5 seconds instead of 1. The node-exporter image stays at `v1.12.1`.
+    * Image updates:
+        * The Alertmanager config reloader, `prometheus-config-reloader`, moves to `v0.95.2`. Its log lines now always put `ts` before `level`.
+        * Loki's cache metrics exporter, `memcached-exporter`, moves to `v0.18.0`. It exports more memcached statistics, including expired and flushed gets, extstore activity, and slab rebalancer activity. The metric registry doesn't list them, so only a destination at `minMetricImportance: all`, such as the bundled Thanos, receives them.
+        * The Loki gateway's `access-log-exporter` sidecar moves to `1.0.3`, a dependency-only release.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.6.0..v0.7.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.15.0..v0.16.0</summary>
+
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#751](https://github.com/MaterializeInc/materialize-monitoring/pull/751)
+
+  </details>
 
 ## Benchmark Images v0.2.0 (Unreleased)
 
