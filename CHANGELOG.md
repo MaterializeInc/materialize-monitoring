@@ -8,13 +8,18 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Benchmark Images v0.3.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.13.0 (Unreleased)
 
 _Changes Pending_
 
-## Benchmark Images v0.2.0 (Unreleased)
+## Benchmark Images v0.2.0
 
-_Changes Pending_
+* Update gcr.io/distroless/cc-debian13 Docker digest to dac90a2
+    * [materialize-monitoring#773](https://github.com/MaterializeInc/materialize-monitoring/pull/773)
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.12.0
 
