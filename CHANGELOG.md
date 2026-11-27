@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## Container Images v0.12.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.13.0 (Unreleased)
 
 _Changes Pending_
@@ -116,9 +120,10 @@ _Changes Pending_
 
 * Bootstrapped.
 
-## Container Images v0.11.0 (Unreleased)
+## Container Images v0.11.0
 
-_Changes Pending_
+* Update gcr.io/distroless/base-debian13 Docker digest to 8bf71f4
+    * [materialize-monitoring#772](https://github.com/MaterializeInc/materialize-monitoring/pull/772)
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.10.0
 
