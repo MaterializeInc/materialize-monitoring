@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## materialize-monitoring Optional CRDs v0.5.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.13.0 (Unreleased)
 
 _Changes Pending_
@@ -3098,9 +3102,35 @@ _Changes Pending_
     * Update Rust crate jsonschema to 0.49.0
         * [materialize-monitoring#134](https://github.com/MaterializeInc/materialize-monitoring/pull/134)
 
-## materialize-monitoring Optional CRDs v0.4.0 (Unreleased)
+## materialize-monitoring Optional CRDs v0.4.0
 
-_Changes Pending_
+* Update Grafana to 13.3.2 and the Grafana Operator to v5.26.0
+    * [materialize-monitoring#782](https://github.com/MaterializeInc/materialize-monitoring/pull/782)
+    * **Upgrade `materialize-monitoring-crds` before `materialize-monitoring`.** Grafana Operator `v5.26.0` watches the new `GrafanaSilence` kind and fails to start until its CRD exists. The Terraform module already applies the CRDs release first.
+    * Grafana moves to `13.3.2`, a security release that fixes CVE-2026-107561 and CVE-2026-88960.
+    * Grafana Operator moves to `v5.26.0`, with its chart:
+        * The new `GrafanaSilence` CRD manages silences in Grafana Alerting. The CRDs chart installs it; `grafana-operator-crds.crds.grafanasilences.enabled` turns it off.
+        * The operator rejects a `GrafanaDashboard` that holds a v2 dashboard document before calling Grafana. Deliver v2 dashboards with `GrafanaManifest`, as the bundled dashboards do.
+        * `GrafanaNotificationPolicy` routes are ordered deterministically, and `GrafanaMuteTiming` entries stay in the `Grafana` status across operator restarts.
+    * The `grafana` subchart moves to `14.5.0`, which changes nothing this chart renders.
+* Split the dashboards chart into one chart per Grafana folder
+    * [materialize-monitoring#585](https://github.com/MaterializeInc/materialize-monitoring/pull/585)
+    * The dashboards ship in three charts, one per Grafana folder: `materialize-monitoring-dashboards` for the Materialize environment (`env-*`), `materialize-monitoring-dashboards-infra` for the platform underneath it, and `materialize-monitoring-dashboards-meta` for Alloy, Loki, and Thanos.
+        * The Terraform module installs all three, with no variable changes.
+        * If you install with Helm directly, upgrading `materialize-monitoring-dashboards` removes the infrastructure and meta-monitoring dashboards from it. To keep them, install `materialize-monitoring-dashboards-infra` and `materialize-monitoring-dashboards-meta` after that upgrade.
+        * Each chart's `selected` defaults to `["*"]`, and its `grafana.folderUids` default names only its own folder. Pass the same values file to all three; each ignores folder entries it doesn't use.
+        * Dashboard UIDs, titles, and links don't change.
+* Update grafana-operator to v5.25.0
+    * [materialize-monitoring#460](https://github.com/MaterializeInc/materialize-monitoring/pull/460)
+* Renovate: unblock pending updates, automerge crates, split lock files; DEP-324 pin subchart images
+    * [materialize-monitoring#446](https://github.com/MaterializeInc/materialize-monitoring/pull/446)
+    * Every subchart image the chart renders under its shipped profiles is now pinned in `values.yaml` (`loki.loki.image`, `loki.lokiCanary.image`, `loki.memcached.image`, `loki.memcachedExporter.image`, `loki.sidecar.image`, `thanos.global.image`, `grafana-operator.image`, `kube-state-metrics.image`, `metrics-server.image`, `grafana.initChownData.image`). Rendered images are unchanged. These are the subcharts' own value paths, so existing overrides keep applying.
+* Ensure auto-format on version-update PRs does not update Chart.lock
+    * [materialize-monitoring#262](https://github.com/MaterializeInc/materialize-monitoring/pull/262)
+* Upgrade all subcharts to latest version (Loki 15->18, etc)
+    * [materialize-monitoring#198](https://github.com/MaterializeInc/materialize-monitoring/pull/198)
+* More documentation cleanups
+    * [materialize-monitoring#187](https://github.com/MaterializeInc/materialize-monitoring/pull/187)
 
 ## materialize-monitoring Helm Chart v0.8.0
 
